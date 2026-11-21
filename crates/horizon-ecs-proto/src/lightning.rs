@@ -153,7 +153,7 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
         use crate::species::lists::{struck as kind_of, Struck};
         let what = name.map_or(Struck::Plain, kind_of);
         if let Struck::Converts(into) = what {
-            if !peaceful && crate::conversion::convert(w, t, into, crate::conversion::ConvertKeep::NONE).is_some() {
+            if !peaceful && crate::conversion::convert_or_ask(w, t, into, crate::conversion::ConvertKeep::NONE) {
                 continue;
             }
         }

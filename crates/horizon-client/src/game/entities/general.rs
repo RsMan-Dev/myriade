@@ -585,78 +585,9 @@ pub type GeneralRows = JoinList<GeneralRow, true>;
 pub struct GeneralStore {
     /// The level's general rows, in join order.
     pub rows: GeneralRows,
-    /// The rows' rider adjacency, reused across the level's entity passes
-    /// (`tick.rs` refreshes it).
-    pub riders: RiderIndex,
     /// How many times a live row's mount was rewritten (`entity_stop_riding`
-    /// is the only path): each change retires the rider adjacency, which the
-    /// rows' own write stamp does not see.
+    /// is the only path).
     pub mount_writes: u64,
-}
-
-/// Root-to-rider adjacency of the general rows, as a first-child and
-/// next-sibling index over the rows' places: rebuilt in place, and only
-/// when the rows' storage changed or a mount was rewritten, so a stable
-/// world's pass allocates nothing and visits each edge once. The sibling
-/// chains keep the storage's own order, which is the join order — a
-/// vehicle's riders ride in the order their tree loaded, as
-/// `addPassenger`'s list does.
-#[derive(Default)]
-pub struct RiderIndex {
-    stamp: Option<horizon_client::join_seq::ListStamp>,
-    length: usize,
-    mounts: u64,
-    /// Each row's first rider's place; `None` carries none.
-    pub(super) first_child: Vec<Option<usize>>,
-    /// Each rider's next sibling's place on the same vehicle.
-    pub(super) next_sibling: Vec<Option<usize>>,
-    /// Each vehicle's latest rider of the ongoing rebuild.
-    last_child: Vec<Option<usize>>,
-    /// Each row's place by id, for the rebuild's edge pass.
-    places: FxHashMap<u32, usize>,
-}
-
-impl RiderIndex {
-    /// Re-derive the adjacency unless nothing changed since the last pass:
-    /// one pass over the rows, each edge written once, no allocation while
-    /// the row count and the mounts hold still.
-    pub fn refresh(&mut self, rows: &GeneralRows, mounts: u64) {
-        let stamp = rows.stamp();
-        if self.stamp == Some(stamp) && self.length == rows.len() && self.mounts == mounts {
-            return;
-        }
-        self.stamp = Some(stamp);
-        self.length = rows.len();
-        self.mounts = mounts;
-        // The buffers are reused — clear first and resize back, keeping the
-        // capacity: a plain resize keeps the surviving slots' old links too,
-        // so a row list that shrank leaves links to places that no longer
-        // exist, and the next pass would walk off the end.
-        self.first_child.clear();
-        self.first_child.resize(rows.len(), None);
-        self.next_sibling.clear();
-        self.next_sibling.resize(rows.len(), None);
-        self.last_child.clear();
-        self.last_child.resize(rows.len(), None);
-        self.places.clear();
-        for (place, row) in rows.iter().enumerate() {
-            self.places.insert(row.id, place);
-        }
-        for (place, row) in rows.iter().enumerate() {
-            let Some(vehicle) = row.mount else {
-                continue;
-            };
-            let Some(&vehicle_place) = self.places.get(&vehicle) else {
-                continue;
-            };
-            match self.last_child[vehicle_place] {
-                // The chain's tail takes the new rider; the head opens it.
-                Some(tail) => self.next_sibling[tail] = Some(place),
-                None => self.first_child[vehicle_place] = Some(place),
-            }
-            self.last_child[vehicle_place] = Some(place);
-        }
-    }
 }
 
 impl Game<'_> {
@@ -926,60 +857,21 @@ impl Game<'_> {
             );
             return Ok(());
         }
-        self.insert_general_record(record, &tag, None, transferred);
-        Ok(())
-    }
-
-    /// Insert one record as a row (and, recursively, its riders as rows of
-    /// their vehicle): the same join list a fresh spawn pushes into, the
-    /// same remember (`persist.uuids`, the saved attachments) every loaded
-    /// kind takes, and each row's next runtime id from the game's counter.
-    fn insert_general_record(
-        &mut self,
-        record: GeneralEntityRecord,
-        tag: &Tag,
-        mount: Option<u32>,
-        transferred: Option<TransferredEntityState>,
-    ) {
-        let slot = general_type_catalog()
-            .slot(&record.envelope.type_key)
-            .expect("check_general_record resolved every type of the tree");
-        self.next_entity += 1;
-        let id = self.next_entity;
+        // The tree is built by the ECS level, from its saved compound; its id is bound here, as the transferred state and the uuid are.
+        let Tag::Compound(compound) = &tag else {
+            return Ok(());
+        };
+        let Some(entity) = self.ecs_with(|ecs, mw| ecs.load_entity(mw, compound)) else {
+            return Ok(());
+        };
+        let id = self.ecs_id_of(entity);
         // Install before `remember_uuid` (the same ordering a transferred
         // mob's state takes): the destination is the same logical entity.
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
         }
-        self.remember_uuid(id, Some(record.uuid), tag);
-        let position = Vec3::new(record.position[0], record.position[1], record.position[2]);
-        let mut row = GeneralRow {
-            id,
-            uuid: record.uuid,
-            join: JoinSeq::UNJOINED,
-            type_slot: slot,
-            previous: position,
-            position,
-            velocity: Vec3::new(record.velocity[0], record.velocity[1], record.velocity[2]),
-            rotation: record.rotation,
-            fall_distance: 0.0,
-            payload_version: record.envelope.payload_version,
-            payload_bytes: record.envelope.payload_bytes,
-            mount,
-            attachment_lifetime: Default::default(),
-        };
-        self.bind_saved_entity_attachments(id, &mut row.attachment_lifetime);
-        self.resident_entities.general.rows.push(row);
-        // The riders' tags sit inside `Passengers` in the order the record
-        // tree was built from them, so each rider's own tag (its saved
-        // attachments) is the one at its index.
-        let riders: Vec<(&GeneralEntityRecord, &Tag)> = match tag.get(format::PASSENGERS) {
-            Some(Tag::List(list)) => record.passengers.iter().zip(list.iter()).collect(),
-            _ => Vec::new(),
-        };
-        for (rider, rider_tag) in riders {
-            self.insert_general_record(rider.clone(), rider_tag, Some(id), None);
-        }
+        self.remember_uuid(id, Some(record.uuid), &tag);
+        Ok(())
     }
 }
 
@@ -1114,9 +1006,6 @@ mod tick;
 #[path = "general/save_load_tests.rs"]
 mod save_load_tests;
 
-#[cfg(test)]
-#[path = "general/tick_tests.rs"]
-mod tick_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1360,62 +1249,6 @@ mod tests {
         assert_eq!(
             catalog.save_policy(65_536),
             mod_api::GeneralSavePolicy::Save
-        );
-    }
-
-    /// A general row pushed to its list binds residency the way
-    /// `resident_owners!` wires `Kind::General` (the default arm's
-    /// `bind_residency` with the row's id and join identity), and the entity
-    /// table then resolves the row's id to that owner: the one lookup path
-    /// every family shares, with no second index.
-    #[test]
-    fn general_row_binds_and_resolves_through_the_entity_table() {
-        use horizon_client::join_seq::residency::table::{EntityLookup, EntityTable, SourceEntity};
-        use horizon_client::join_seq::residency::{Journal, Kind, Owner};
-        use mod_api::DimensionKey;
-        let journal = Journal::default();
-        let mut rows: GeneralRows = Default::default();
-        let owner = Owner {
-            dimension: DimensionKey::OVERWORLD,
-            kind: Kind::General,
-        };
-        rows.bind_residency(&journal, owner, |row| (row.id, row.join));
-        rows.push(GeneralRow {
-            id: 42,
-            uuid: [1, 2, 3, 4],
-            join: horizon_client::join_seq::JoinSeq::UNJOINED,
-            type_slot: 0,
-            position: Vec3::new(0.5, 64.0, 0.5),
-            previous: Vec3::new(0.5, 64.0, 0.5),
-            velocity: Vec3::ZERO,
-            rotation: [0.0, 0.0],
-            fall_distance: 0.0,
-            payload_version: 1,
-            payload_bytes: Vec::new(),
-            mount: None,
-            attachment_lifetime: Default::default(),
-        });
-        let mut table = EntityTable::new(journal);
-        let EntityLookup::Found { location, .. } =
-            table.entity_lookup(&DimensionKey::OVERWORLD, 42, |at| {
-                rows.locate(at.join).and_then(|index| {
-                    rows.get(index).map(|row| SourceEntity {
-                        id: row.id,
-                        value: index,
-                    })
-                })
-            })
-        else {
-            panic!("the general row never became resident");
-        };
-        assert_eq!(location.owner, owner);
-        // The list keeps join order: removal is not a swap, and the row's
-        // slot moves with it.
-        let index = rows.len() - 1;
-        assert_eq!(rows[index].id, 42);
-        assert_ne!(
-            rows[index].join,
-            horizon_client::join_seq::JoinSeq::UNJOINED
         );
     }
 

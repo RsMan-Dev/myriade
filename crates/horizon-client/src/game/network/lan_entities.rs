@@ -223,53 +223,8 @@ impl Game<'_> {
         drain_minecart_steps: bool,
         after: u32,
     ) {
-        let Some(host) = self.lan.as_ref() else {
+        if self.lan.is_none() {
             return;
-        };
-        let hub = &host.hub;
-        let guests: Vec<(u128, i32)> = hub
-            .guests
-            .iter()
-            .filter(|g| hub.here(g))
-            .map(|g| (g.uuid, g.entity_id))
-            .collect();
-        for b in self.boats.iter().filter(|b| b.id > after) {
-            let p = b.position;
-            let leash = self.boat_leash_link(b, &guests);
-            let e = add_state(
-                out,
-                b.id,
-                &b.entity_type(),
-                [p.x, p.y, p.z],
-                b.yaw,
-                b.on_ground,
-            );
-            // Leashable.setLeashedTo / dropLeash: who holds the boat's lead.
-            e.leash = leash;
-            e.velocity = [b.velocity.x, b.velocity.y, b.velocity.z];
-            vehicle_meta(e, b.hurt_time, b.hurt_dir, b.damage);
-            if b.fire_ticks > 0 {
-                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
-            }
-
-            // AbstractBoat.DATA_ID_PADDLE_LEFT and DATA_ID_PADDLE_RIGHT.
-            // Omitted false values must reset clients that saw a true value,
-            // including when the controlling passenger dismounts mid-stroke.
-            for (k, paddling) in b.paddling.iter().enumerate() {
-                e.defaults
-                    .push((11 + k as u8, serializer::BOOLEAN, Value::Bool(false)));
-                if *paddling {
-                    e.meta
-                        .push((11 + k as u8, serializer::BOOLEAN, Value::Bool(true)));
-                }
-            }
-            // AbstractBoat.DATA_ID_BUBBLE_TIME, back to 0 once the boat is off
-            // the column.
-            if b.bubble_time != 0 {
-                e.meta
-                    .push((13, serializer::INT, Value::Int(b.bubble_time)));
-            }
-            e.defaults.push((13, serializer::INT, Value::Int(0)));
         }
         let improvements = self.minecart_improvements();
         self.carts.for_each_mut(|c| {
@@ -412,7 +367,7 @@ impl Game<'_> {
             }
             e.attributes = attributes;
         }
-        for f in self.item_frames.iter().filter(|f| f.id > after) {
+        for f in self.ecs_frames().iter().filter(|f| f.id > after) {
             // ItemFrame.getAddEntityPacket: the block it hangs in and its direction.
             let e = add_state(out, f.id, f.kind(), f.pos.map(f64::from), 0.0, false);
             e.pitch = match f.facing {
@@ -463,7 +418,7 @@ impl Game<'_> {
                 false,
             );
         }
-        for p in self.paintings.iter().filter(|p| p.id > after) {
+        for p in self.ecs_paintings().iter().filter(|p| p.id > after) {
             let e = add_state(
                 out,
                 p.id,
@@ -715,13 +670,9 @@ impl Game<'_> {
             m.needs_sync = false;
             m.sync_position = false;
         }
-        self.creatures
-            .projectiles
-            .for_each_mut(|p| p.needs_sync = false);
         for d in &mut self.dropped {
             d.needs_sync = false;
         }
-        self.tridents.iter_mut().for_each(|t| t.needs_sync = false);
     }
 
     /// Gives the entities Horizon keeps without an id one (`Entity.id`, from
@@ -735,13 +686,6 @@ impl Game<'_> {
         use super::entity_residency::assign_resident_ids;
         assign_resident_ids!(self.tnts, t, next, None);
         assign_resident_ids!(self.falling, f, next, Some(&f.attachment_lifetime));
-        assign_resident_ids!(
-            self.creatures.projectiles,
-            p,
-            next,
-            Some(&p.attachment_lifetime)
-        );
-        assign_resident_ids!(self.tridents, t, next, None);
         assign_resident_ids!(self.rockets, r, next, None);
         assign_resident_ids!(self.crystals, c, next, None);
         self.bolts.iter_mut().for_each(|b| {
@@ -757,17 +701,14 @@ impl Game<'_> {
         assign_resident_ids!(self.breath_clouds, b, next, None);
     }
 
-    /// Primed TNT, falling blocks, projectiles, tridents, firework rockets and
-    /// end crystals, as guests track them.
+    /// Primed TNT, falling blocks, firework rockets, thrown potions and end
+    /// crystals, as guests track them. The ECS projectiles are tracked by
+    /// `tick_lan_ecs`.
     fn lan_projectile_states(&mut self, out: &mut States, after: u32) {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
         let hub = &mut host.hub;
-        let owner = |who: Option<horizon_client::mobs::Who>| match who {
-            Some(horizon_client::mobs::Who::Mob(id)) => id as i32,
-            Some(horizon_client::mobs::Who::Player) | None => 0,
-        };
         let at = |p: horizon_core::geometry::Vec3| [p.x, p.y, p.z];
         for f in self.fangs.list.iter().filter(|f| f.id > after) {
             add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
@@ -806,132 +747,6 @@ impl Game<'_> {
                 e.meta.push((8, serializer::BLOCK_POS, Value::Pos(start)));
             }
         }
-        for p in self.creatures.projectiles.iter().filter(|p| p.id > after) {
-            use horizon_client::projectiles::ProjectileKind as K;
-            // A spectral arrow is its own entity type.
-            let kind = p.entity_type();
-            let data = match p.guest.and_then(|conn| hub.guest(conn)) {
-                Some(g) => g.entity_id,
-                None => owner(p.owner),
-            };
-            let e = add_state(out, p.id, kind, at(p.position), p.yaw, p.on_ground);
-            e.pitch = p.pitch;
-            e.velocity = at(p.velocity);
-            e.needs_sync = p.needs_sync;
-            // AbstractHurtingProjectile.accelerationPower, which goes to the
-            // clients bundled with the velocity (a breeze's deflection halves it).
-            e.acceleration_power = p.acceleration_power();
-            // Projectile.getAddEntityPacket: the owner's id.
-            e.data = data;
-            let uuid = e.uuid;
-            // Entity.DATA_SHARED_FLAGS_ID's FLAG_ONFIRE: Entity.baseTick's
-            // `setSharedFlagOnFire(remainingFireTicks > 0)`, which a client's
-            // isOnFire reads to draw the flames (a Flame bow's arrow).
-            let fire = p.arrow.as_ref().map_or(p.synced_fire, |a| a.on_fire());
-            if fire {
-                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
-            }
-            if p.air_supply != 300 {
-                e.meta.push((1, serializer::INT, Value::Int(p.air_supply)));
-            }
-            match &p.kind {
-                K::Arrow { critical, .. } => {
-                    let a = p.arrow.as_deref();
-                    push_arrow_meta(
-                        &mut e.meta,
-                        *critical,
-                        a.is_some_and(|a| a.no_physics),
-                        a.map_or(0, |a| a.pierce),
-                        a.is_some_and(|a| a.in_ground) || p.stuck,
-                    );
-                    // Arrow.ID_EFFECT_COLOR, -1 by default.
-                    let color = p.arrow_effect_color();
-                    if color != -1 {
-                        e.meta.push((11, serializer::INT, Value::Int(color)));
-                    }
-                }
-                // ThrownTrident.ID_LOYALTY (none for a mob's) and ID_FOIL, on
-                // AbstractArrow's flags.
-                K::Trident => {
-                    let a = p.arrow.as_deref();
-                    push_arrow_meta(
-                        &mut e.meta,
-                        false,
-                        a.is_some_and(|a| a.no_physics),
-                        0,
-                        a.is_some_and(|a| a.in_ground) || p.stuck,
-                    );
-                    if a.is_some_and(|a| a.pickup_item.has_any_enchantments()) {
-                        e.meta.push((12, serializer::BOOLEAN, Value::Bool(true)));
-                    }
-                }
-                // WitherSkull.DATA_DANGEROUS.
-                K::WitherSkull { dangerous: true } => {
-                    e.meta.push((8, serializer::BOOLEAN, Value::Bool(true)));
-                }
-                // ThrowableItemProjectile.DATA_ITEM_STACK: the potion's
-                // `potion_contents`, whose effects the guest's splash and
-                // whose colour its drawing need. A plain splash potion is the
-                // client's default and is not sent.
-                K::Potion(stack, _) if stack.extra.is_some() || stack.count != 1 => {
-                    e.meta.push((
-                        8,
-                        serializer::ITEM_STACK,
-                        Value::Item(hub.stack(&Some((**stack).clone()))),
-                    ));
-                }
-                // Fireball.DATA_ITEM_STACK: the item it is drawn as, which a
-                // guest has no other way of learning. A plain fire charge is
-                // the client's default and is not sent.
-                K::SmallFireball | K::LargeFireball { .. }
-                    if p.item.as_ref().is_some_and(|i| {
-                        &*i.item != "minecraft:fire_charge" || i.count != 1 || i.extra.is_some()
-                    }) =>
-                {
-                    e.meta
-                        .push((8, serializer::ITEM_STACK, Value::Item(hub.stack(&p.item))));
-                }
-                _ => {}
-            }
-            // ChunkMap.addEntity (#7461): a fresh arrow joined before its first tick
-            // is paired as it joined with IN_GROUND=false, and its first update is deferred
-            // to the next tick's send_changes so impact updates (e.g. point-blank wall
-            // collision) arrive after the client's first tick has completed.
-            if !hub.tracks(p.id as i32)
-                && let Some(a) = p.arrow.as_deref()
-                && let (Some(spawn_pos), Some(spawn_vel), Some((pitch, yaw))) =
-                    (a.spawn_pos, a.spawn_velocity, a.spawn_rot)
-            {
-                let mut joined = state(p.id, kind, at(spawn_pos), yaw, false);
-                joined.pitch = pitch;
-                joined.velocity = at(spawn_vel);
-                joined.needs_sync = p.needs_sync;
-                joined.data = data;
-                joined.uuid = uuid;
-                if a.on_fire() {
-                    joined.meta.push((0, serializer::BYTE, Value::Byte(1)));
-                }
-                match &p.kind {
-                    K::Arrow { critical, .. } => {
-                        push_arrow_meta(&mut joined.meta, *critical, a.no_physics, a.pierce, false);
-                        let color = p.arrow_effect_color();
-                        if color != -1 {
-                            joined.meta.push((11, serializer::INT, Value::Int(color)));
-                        }
-                    }
-                    K::Trident => {
-                        push_arrow_meta(&mut joined.meta, false, a.no_physics, 0, false);
-                        if a.pickup_item.has_any_enchantments() {
-                            joined
-                                .meta
-                                .push((12, serializer::BOOLEAN, Value::Bool(true)));
-                        }
-                    }
-                    _ => {}
-                }
-                hub.note_fresh_joined(&[joined]);
-            }
-        }
         // Thrown potions and bottles: ThrowableItemProjectile.DATA_ITEM_STACK
         // (the potion's colour), which a plain bottle's type already has.
         for (id, kind, stack, position, velocity) in
@@ -951,39 +766,6 @@ impl Game<'_> {
         for (id, position, velocity) in self.end.eyes_tracked().filter(|(id, ..)| *id > after) {
             let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
             e.velocity = velocity;
-        }
-        for t in self.tridents.iter().filter(|t| t.id > after) {
-            let data = match t.guest.and_then(|conn| hub.guest(conn)) {
-                Some(g) => g.entity_id,
-                None => owner(Some(horizon_client::mobs::Who::Player)),
-            };
-            let e = add_state(
-                out,
-                t.id,
-                "minecraft:trident",
-                at(t.position),
-                t.yaw,
-                t.on_ground,
-            );
-            e.pitch = t.pitch;
-            e.velocity = at(t.velocity);
-            e.needs_sync = t.needs_sync;
-            // Projectile.getAddEntityPacket: the owner's id, the guest's that
-            // threw it.
-            e.data = data;
-            push_arrow_meta(&mut e.meta, false, t.no_physics, 0, t.in_ground);
-            // Entity.DATA_SHARED_FLAGS_ID: FLAG_ONFIRE.
-            if t.fire_ticks > 0 {
-                e.meta.push((0, serializer::BYTE, Value::Byte(1)));
-            }
-            // ThrownTrident.ID_LOYALTY and ID_FOIL.
-            if t.loyalty != 0 {
-                e.meta
-                    .push((11, serializer::BYTE, Value::Byte(t.loyalty as i8)));
-            }
-            if t.stack.has_any_enchantments() {
-                e.meta.push((12, serializer::BOOLEAN, Value::Bool(true)));
-            }
         }
         for r in self.rockets.iter().filter(|r| r.id > after) {
             let plain = &*r.item.item == "minecraft:firework_rocket"
@@ -1078,27 +860,6 @@ impl Game<'_> {
     }
 }
 
-/// `AbstractArrow`'s ID_FLAGS (critical 1, no physics 2), PIERCE_LEVEL and
-/// IN_GROUND, when they differ from the defaults.
-fn push_arrow_meta(
-    meta: &mut Vec<(u8, i32, Value)>,
-    critical: bool,
-    no_physics: bool,
-    pierce: u8,
-    in_ground: bool,
-) {
-    let flags = i8::from(critical) | i8::from(no_physics) << 1;
-    if flags != 0 {
-        meta.push((8, serializer::BYTE, Value::Byte(flags)));
-    }
-    if pierce != 0 {
-        meta.push((9, serializer::BYTE, Value::Byte(pierce as i8)));
-    }
-    if in_ground {
-        meta.push((10, serializer::BOOLEAN, Value::Bool(true)));
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1110,182 +871,6 @@ mod tests {
             owner.id = 0;
             $list.push(owner);
         }};
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn tracking_ids_preserve_all_family_interleaving() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            for (kind, nbt) in [
-                ("minecraft:tnt", "{fuse:80s}"),
-                (
-                    "minecraft:falling_block",
-                    "{BlockState:{Name:\"minecraft:sand\"},Time:1}",
-                ),
-                ("minecraft:arrow", "{}"),
-                ("minecraft:trident", "{}"),
-                ("minecraft:firework_rocket", "{LifeTime:20}"),
-                ("minecraft:end_crystal", "{}"),
-                (
-                    "minecraft:ominous_item_spawner",
-                    "{item:{id:\"minecraft:stone\",count:1}}",
-                ),
-                ("minecraft:area_effect_cloud", "{Duration:200,Radius:3.0f}"),
-            ] {
-                game.summon_with_nbt(kind, [1.0, 70.0, 1.0], nbt).unwrap();
-            }
-            pending!(game.tnts);
-            pending!(game.falling);
-            pending!(game.creatures.projectiles);
-            pending!(game.tridents);
-            pending!(game.rockets);
-            pending!(game.crystals);
-            pending!(game.ominous_spawners);
-            pending!(game.breath_clouds);
-            game.spawn_remote_bolt(0, [1.0, 70.0, 1.0]);
-            game.potions.add_remote_thrown(
-                0,
-                "minecraft:splash_potion",
-                Default::default(),
-                Default::default(),
-            );
-            game.end.add_remote_eye(0, [1.0, 70.0, 1.0], [0.0; 3]);
-            let base = game.next_entity;
-            let joined = game.persist.joined_seq;
-            let announced = game.persist.live.clone();
-            let mut slots = crate::game::entity::taken_pass_tests::SlotIdentities::default();
-            for _ in 0..2 {
-                game.lan_assign_ids();
-                let ids = [
-                    game.tnts[0].id,
-                    game.falling[0].id,
-                    game.creatures.projectiles[0].id,
-                    game.tridents[0].id,
-                    game.rockets[0].id,
-                    game.crystals[0].id,
-                    game.bolts[0].id,
-                    game.ominous_spawners[0].id,
-                    *game.potions.thrown_ids().next().unwrap(),
-                    *game.end.eye_ids().next().unwrap(),
-                    game.breath_clouds[0].id,
-                ];
-                assert_eq!(
-                    ids,
-                    std::array::from_fn::<_, 11, _>(|i| base + i as u32 + 1)
-                );
-                assert_eq!(game.next_entity, base + 11);
-                assert_eq!(game.persist.joined_seq, joined);
-                assert_eq!(game.persist.live, announced);
-                let epoch = game.native_lifecycle.epoch().unwrap();
-                slots.observe(&mut game.falling, epoch, |f| f.id);
-                game.creatures.projectiles.for_each_mut(|p| {
-                    let id = p.id;
-                    slots.observe_one(p, epoch, id);
-                });
-            }
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn tracking_ids_refuse_bound_zero_owners() {
-        for kind in ["minecraft:falling_block", "minecraft:arrow"] {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                let nbt = if kind == "minecraft:arrow" {
-                    "{}"
-                } else {
-                    "{BlockState:{Name:\"minecraft:sand\"},Time:1}"
-                };
-                game.summon_with_nbt(kind, [1.0, 70.0, 1.0], nbt).unwrap();
-                let epoch = game.native_lifecycle.epoch().unwrap();
-                let mut slots = crate::game::entity::taken_pass_tests::SlotIdentities::default();
-                if kind == "minecraft:arrow" {
-                    pending!(game.creatures.projectiles);
-                    game.creatures
-                        .projectiles
-                        .for_each_mut(|p| slots.observe_one(p, epoch, 0));
-                } else {
-                    pending!(game.falling);
-                    slots.observe(&mut game.falling, epoch, |f| f.id);
-                }
-                let before = game.next_entity;
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    game.lan_assign_ids()
-                }));
-                assert!(result.is_err());
-                assert_eq!(game.next_entity, before);
-            });
-        }
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn tracking_ids_only_number_the_spawn_buffer_during_a_taken_pass() {
-        macro_rules! check {
-            ($kind:expr, $nbt:expr, $game:ident, $list:expr) => {
-                crate::game::native_entity_refs::tests::with_game(|$game| {
-                    $game
-                        .summon_with_nbt($kind, [1.0, 70.0, 1.0], $nbt)
-                        .unwrap();
-                    pending!($list);
-                    let taken = $list.lift();
-                    $game
-                        .summon_with_nbt($kind, [2.0, 70.0, 1.0], $nbt)
-                        .unwrap();
-                    pending!($list);
-                    let base = $game.next_entity;
-                    $game.lan_assign_ids();
-                    assert_eq!(taken[0].id, 0);
-                    assert_eq!($list[0].id, base + 1);
-                    $list.restore(
-                        taken,
-                        horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-                    );
-                    $game.lan_assign_ids();
-                    assert_eq!(
-                        $list.iter().map(|p| p.id).collect::<Vec<_>>(),
-                        [base + 2, base + 1]
-                    );
-                    assert_eq!($game.next_entity, base + 2);
-                });
-            };
-        }
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.summon_with_nbt("minecraft:arrow", [1.0, 70.0, 1.0], "{}")
-                .unwrap();
-            pending!(game.creatures.projectiles);
-            let taken = game.take_entities();
-            game.summon_with_nbt("minecraft:arrow", [2.0, 70.0, 1.0], "{}")
-                .unwrap();
-            pending!(game.creatures.projectiles);
-            let base = game.next_entity;
-            game.lan_assign_ids();
-            assert_eq!(game.creatures.projectiles[0].id, base + 1);
-            game.restore_entities(taken);
-            assert_eq!(game.creatures.projectiles[0].id, 0);
-            game.lan_assign_ids();
-            assert_eq!(
-                game.creatures
-                    .projectiles
-                    .iter()
-                    .map(|p| p.id)
-                    .collect::<Vec<_>>(),
-                [base + 2, base + 1]
-            );
-            assert_eq!(game.next_entity, base + 2);
-        });
-        check!(
-            "minecraft:area_effect_cloud",
-            "{Duration:200,Radius:3.0f}",
-            game,
-            game.breath_clouds
-        );
-        check!(
-            "minecraft:ominous_item_spawner",
-            "{}",
-            game,
-            game.ominous_spawners
-        );
     }
 
     #[test]

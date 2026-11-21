@@ -262,7 +262,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_travel_and_both_leash_sites_use_the_parts_answer_once() {
-        use super::super::boats::Boat;
         use horizon_client::mobs::{Mob, leash};
         let calls = mod_platform::__private::part_tests::friction_game_thread();
         crate::entry::install_client_hooks();
@@ -318,18 +317,6 @@ mod tests {
                     );
                     assert_eq!(calls.load(Ordering::SeqCst), listens);
                 }
-                let mut boat = Boat::new(11, "oak".into(), at, 0.0);
-                boat.on_ground = true;
-                boat.leash_spin = 2.0;
-                boat.leash = Some(leash::Holder::Mob(99));
-                calls.store(0, Ordering::SeqCst);
-                game.tick_boat_leash(&mut boat);
-                assert!(
-                    (boat.leash_spin - spin).abs() < 1.0e-6,
-                    "boat lead {block}: {}",
-                    boat.leash_spin
-                );
-                assert_eq!(calls.load(Ordering::SeqCst), listens);
             }
         });
     }

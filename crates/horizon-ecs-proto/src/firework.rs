@@ -4,8 +4,9 @@
 //! The blast hurts the creatures and players within 5 blocks that it sees. Its own state is `Rocket`, its body and owner the
 //! projectile's (`Projectile`); it is not visited by `projectile::fly`.
 use crate::cow::*;
-use crate::goals::{Events, Online, Player};
-use crate::hostile::PlayerState;
+use crate::firework_burst::{rocket_end, FireworkOut};
+use crate::goals::{Online, Player};
+use crate::host_out_firework::FireworkEvent;
 use crate::projectile::{entity_hit, Projectile};
 use crate::rules::firework::{box_at, detonation_damage, exposure, glide_boost, hit_margin, is_sideways_stop, life_ticks, rise_motion};
 use crate::targeting::{player_box, Who};
@@ -17,20 +18,21 @@ use horizon_core::random::{LegacyRandom, RandomSource};
 use std::collections::HashMap;
 
 /// `FireworkRocketEntity.explode` broadcasts this entity status before it is discarded.
-const EXPLODE_EVENT: u8 = 17;
+pub const EXPLODE_EVENT: u8 = 17;
 
-/// A rocket in the air: its explosions (their count sets the blast), the player who holds it (`attachedToEntity`), whether it was
-/// shot at an angle, whether its last move was stopped sideways (`horizontalCollision`), whether it is silent, and whether its life
-/// is over (set by its deadline; it goes off where it is).
+/// A rocket in the air: its explosions (their count sets the blast), its flight (1 to 3) and its life in ticks (`LifeTime`), the player
+/// who holds it (`attachedToEntity`), whether it was shot at an angle, whether its last move was stopped sideways
+/// (`horizontalCollision`), and whether it is silent.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Rocket {
     pub explosions: u8,
+    pub flight: u8,
+    pub lifetime: i32,
     pub carrier: Option<u32>,
     pub angled: bool,
     pub horizontal: bool,
     pub silent: bool,
-    pub due: bool,
 }
 
 /// The glide of a player who holds a rocket, indexed by the player's id (an assumed player component): the velocity and the view
@@ -61,6 +63,7 @@ pub struct Shot {
 
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(Gliders::default());
+    w.insert_resource(FireworkOut::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(rockets.after(travel).before(reindex));
@@ -68,7 +71,10 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// `FireworkRocketEntity`'s constructor, its draws in vanilla's order: the two triangles of the velocity (x, then z), then the two
 /// `nextInt`s of the life. A shot at an angle keeps the velocity it is given.
-pub fn launch(w: &mut World, s: Shot, random: &mut LegacyRandom) -> Entity {
+pub fn launch(w: &mut World, s: Shot) -> Entity {
+    // The seed mixes the tick and the live entities, so two rockets launched in one tick draw differently.
+    let seed = (w.resource::<Clock>().0 as i64).wrapping_mul(0x9E37_79B9) ^ i64::from(w.entities().len());
+    let mut random = LegacyRandom::new(seed);
     let drawn_x = random.triangle(0.0, 0.002297);
     let drawn_z = random.triangle(0.0, 0.002297);
     let lifetime = life_ticks(s.flight, random.next_int_bound(6).unwrap_or(0), random.next_int_bound(7).unwrap_or(0));
@@ -76,20 +82,14 @@ pub fn launch(w: &mut World, s: Shot, random: &mut LegacyRandom) -> Entity {
         Some(v) => (v, true),
         None => (Vec3::new(drawn_x, 0.05, drawn_z), false),
     };
-    let rocket = Rocket { explosions: s.explosions, carrier: s.carrier, angled, horizontal: false, silent: s.silent, due: false };
+    let rocket = Rocket { explosions: s.explosions, flight: s.flight, lifetime, carrier: s.carrier, angled, horizontal: false, silent: s.silent };
     let e = w.spawn((Pos(s.at), Vel(velocity), Projectile { owner: s.owner, age: 0, left_owner: false, expires: 0 }, rocket, OwnTime))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::FIREWORK_ROCKET);
     // `life > lifetime` after the tick's increment: the rocket goes off at the end of its tick `lifetime + 1`, which is the start of
     // the tick `lifetime + 2` for the wheel (the deadline runs before the flight of its tick).
-    after(w, e, lifetime + 2, lifetime_over);
+    after(w, e, lifetime + 2, rocket_end);
     e
-}
-/// The deadline of a rocket's life: it goes off where it is, at the start of its tick (it does not move that tick).
-pub fn lifetime_over(w: &mut World, e: Entity) {
-    if let Some(mut r) = w.get_mut::<Rocket>(e) {
-        r.due = true;
-    }
 }
 
 /// The first creature or player the path from `from` to `motion` meets, before the block it stops at (`ProjectileUtil`'s entity
@@ -132,56 +132,6 @@ fn struck(
     (best.map(|b| b.0), block.is_some())
 }
 
-/// `FireworkRocketEntity.dealExplosionDamage`: `5 + 2 * explosions` to the holder, then to each other creature and player within 5
-/// blocks of the blast that sees its feet or its middle; each takes `blast_damage`.
-#[allow(clippy::too_many_arguments)]
-fn detonate(
-    level: &Level,
-    idx: &Index,
-    on: &Online,
-    creatures: &Query<&Bounds, With<Health>>,
-    ps: &mut PlayerState,
-    dq: &mut DamageQueue,
-    now: u64,
-    at: Vec3,
-    owner: Option<Who>,
-    holder: Option<u32>,
-    explosions: u8,
-) {
-    let damage = detonation_damage(explosions);
-    let from = (at.x, at.z);
-    if let Some(id) = holder {
-        ps.hurt(now, id, damage, from, owner);
-    }
-    let mut near = Vec::new();
-    idx.for_radius(at.x, at.z, 6.0, |c| near.push(c));
-    for c in near {
-        let Ok(b) = creatures.get(c) else { continue };
-        let feet = b.0.center();
-        let feet = Vec3::new(feet.x, b.0.min_position().y, feet.z);
-        let height = b.0.max_position().y - b.0.min_position().y;
-        if let Some(amount) = exposure(level.mw.0, at, feet, height, damage) {
-            match owner {
-                Some(o) => dq.add_via(c, amount, from, o),
-                None => dq.add_from(c, amount, Cause::Entity, from),
-            }
-        }
-    }
-    let mut players: Vec<Player> = Vec::new();
-    on.for_near(at.x, at.z, 6.0, |pl| players.push(pl));
-    for pl in players {
-        if Some(pl.id) == holder {
-            continue;
-        }
-        let feet = Vec3::new(pl.x, pl.y, pl.z);
-        let body = player_box(&pl);
-        let height = body.max_position().y - body.min_position().y;
-        if let Some(amount) = exposure(level.mw.0, at, feet, height, damage) {
-            ps.hurt(now, pl.id, amount, from, owner);
-        }
-    }
-}
-
 /// One tick of every rocket: the sound at its first tick, its deadline, its holder's boost, its speed-up and rise, its move, and
 /// the impact that makes it go off (an entity, or a block when it carries explosions).
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -192,31 +142,20 @@ fn rockets(w: &mut World) {
     }
 }
 pub fn fly_rockets(
-    clock: Res<Clock>,
     level: Res<Level>,
     idx: Res<Index>,
     on: Res<Online>,
-    mut ps: ResMut<PlayerState>,
-    mut dq: ResMut<DamageQueue>,
-    mut events: ResMut<Events>,
+    mut out: ResMut<FireworkOut>,
     mut gliders: ResMut<Gliders>,
     creatures: Query<&Bounds, With<Health>>,
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &mut Rocket)>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
-    let now = clock.0;
     for (e, mut pos, mut vel, mut p, mut r) in &mut q {
         p.age += 1;
         if p.age == 1 && !r.silent {
-            events.host.sound("entity.firework_rocket.launch", [pos.0.x, pos.0.y, pos.0.z], 3.0, 1.0);
-        }
-        let holder = r.carrier.filter(|id| gliders.0.contains_key(id));
-        if r.due {
-            events.host.entity_event(e, EXPLODE_EVENT);
-            detonate(&level, &idx, &on, &creatures, &mut ps, &mut dq, now, pos.0, p.owner, holder, r.explosions);
-            commands.entity(e).despawn();
-            continue;
+            out.0.push(FireworkEvent::Launched { at: [pos.0.x, pos.0.y, pos.0.z] });
         }
         // `Projectile.checkLeftOwner`: out of the owner's box once the box, swept by its velocity and grown by 1, no longer touches it.
         if !p.left_owner {
@@ -261,9 +200,7 @@ pub fn fly_rockets(
         vel.0 = motion;
         let goes_off = who.is_some() || (block && r.explosions > 0);
         if goes_off {
-            events.host.entity_event(e, EXPLODE_EVENT);
-            detonate(&level, &idx, &on, &creatures, &mut ps, &mut dq, now, pos.0, p.owner, holder, r.explosions);
-            commands.entity(e).despawn();
+            commands.queue(move |w: &mut World| crate::firework_burst::go_off(w, e));
         }
     }
 }

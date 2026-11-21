@@ -811,18 +811,13 @@ impl LevelAccess for GameLevel<'_> {
         machines::container_signal(self, pos)
     }
     fn item_frame_analog_output(&self, pos: BlockPos, facing: Direction) -> Option<i32> {
-        let mut frames = self
-            .item_frames
-            .iter()
-            .filter(|f| f.pos == [pos.x, pos.y, pos.z] && f.facing == facing as u8);
-        let frame = frames.next().filter(|_| frames.next().is_none())?;
+        // Only a single frame in the cell counts; `(has item, rotation)` per frame.
+        let frames = self.ecs.frames_at([pos.x, pos.y, pos.z], facing as u8);
+        let &[(has_item, rotation)] = frames.as_slice() else {
+            return None;
+        };
         // ItemFrame.getAnalogOutput.
-        Some(
-            frame
-                .item
-                .as_ref()
-                .map_or(0, |_| i32::from(frame.rotation % 8) + 1),
-        )
+        Some(if has_item { i32::from(rotation % 8) + 1 } else { 0 })
     }
     fn block_entity_signal(
         &self,
@@ -984,8 +979,11 @@ impl LevelAccess for GameLevel<'_> {
             f64::from(pos.y),
             f64::from(pos.z),
         ));
+        let Some(zone) = shape.bounds() else {
+            return true;
+        };
         horizon_world::entity_obstruction::is_unobstructed(
-            &mut BuildingObstruction(self.building_blocker_boxes()),
+            &mut BuildingObstruction(self.building_blocker_boxes(zone)),
             None,
             &shape,
         )
@@ -1013,17 +1011,17 @@ impl LevelAccess for GameLevel<'_> {
                 Vec3::new(hi[0], hi[1], hi[2]),
             ))
         };
-        let carts = || self.cart_boxes.iter().filter(|b| hit(b)).count();
+        let carts = || self.ecs.cart_bounds_in(area).len();
         let others = || {
             self.crystals
                 .iter()
                 .map(dragon::Crystal::bounds)
-                .chain(self.trigger_hooks.iter().map(|&(bounds, _)| bounds))
                 .chain(self.trigger_extras.iter().copied())
                 .filter(|b| area.intersects(*b))
                 .count()
         };
-        let arrows = || self.arrow_boxes.iter().filter(|b| hit(b)).count();
+        // Arrows and tridents (`AbstractArrow`): the ECS projectiles that stick.
+        let arrows = || self.ecs.count_arrows_in(area);
         let players = || {
             self.player_box
                 .iter()
@@ -1034,8 +1032,8 @@ impl LevelAccess for GameLevel<'_> {
         match query {
             EntityQuery::Minecart => carts(),
             EntityQuery::Arrows => arrows(),
-            EntityQuery::Mobs => players() + self.count_triggers::<true>(area),
-            EntityQuery::Everything => players() + self.count_triggers::<false>(area) + others(),
+            EntityQuery::Mobs => players() + self.ecs.count_triggers_in(area, true),
+            EntityQuery::Everything => players() + self.ecs.count_triggers_in(area, false) + others(),
         }
     }
     fn emit(&mut self, event: LevelEvent) {

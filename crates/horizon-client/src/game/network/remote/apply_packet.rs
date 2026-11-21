@@ -198,7 +198,7 @@ impl Game<'_> {
                 // handleRespawn adds the new LocalPlayer after what the kept
                 // level holds; a new level holds nothing yet.
                 let before: std::collections::HashSet<u32> =
-                    self.mobs.iter().map(|m| m.id).collect();
+                    self.remote_entities.iter().map(|m| m.id).collect();
                 if let Some(r) = self.remote.as_mut() {
                     r.ticked_before_player = before;
                 }
@@ -521,7 +521,7 @@ impl Game<'_> {
                         None => Some(Holder::Mob(d as u32)),
                     },
                 };
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.source as u32) {
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.source as u32) {
                     m.extra.leash = holder;
                 } else if let Some(i) = self.boats.iter().position(|b| b.id == p.source as u32) {
                     self.boats.update(i, |b| {
@@ -555,7 +555,7 @@ impl Game<'_> {
                 // Entity.DATA_SHARED_FLAGS_ID, DATA_CUSTOM_NAME and
                 // DATA_CUSTOM_NAME_VISIBLE: server NPCs and holograms rely on
                 // these instead of saved NBT.
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     for (index, _, value) in &p.values {
                         match (index, value) {
                             (0, Value::Byte(flags)) => {
@@ -588,7 +588,7 @@ impl Game<'_> {
                     }
                 }
                 self.remote_mob_data(p.id, &p.values);
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                     && m.species() == horizon_client::mobs::Species::Creeper
                 {
                     for (index, _, value) in &p.values {
@@ -601,7 +601,7 @@ impl Game<'_> {
                         }
                     }
                 }
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     for (index, _, value) in &p.values {
                         match (index, value) {
                             // Entity.DATA_TICKS_FROZEN: isFullyFrozen shakes it.
@@ -620,7 +620,7 @@ impl Game<'_> {
                 // LivingEntity.DATA_LIVING_ENTITY_FLAGS: for another player
                 // too, remote_mob_data's apply reads index 8 above.
                 let mannequin = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .any(|m| m.id == p.id as u32 && &*m.kind.id == "minecraft:mannequin");
                 let other = mannequin
@@ -634,7 +634,7 @@ impl Game<'_> {
                         if let (14, Value::OptPos(bed)) = (index, value) {
                             let code = bed.map_or(0, |b| self.bed_facing(b));
                             let at = bed.and_then(|head| self.sleeping_position(head));
-                            if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                            if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                                 m.extra.ints[1] = code;
                                 if bed.is_some() {
                                     // setPosToBed leaves the server's position alone
@@ -651,14 +651,14 @@ impl Game<'_> {
                         // Avatar.DATA_PLAYER_MAIN_HAND (HumanoidArm: 0 left, 1
                         // right): the arm a swing of the main hand moves.
                         if let (15, Value::Id(arm)) = (index, value)
-                            && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                            && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                         {
                             m.extra.main_hand_left = *arm == 0;
                         }
                         // Avatar.DATA_PLAYER_MODE_CUSTOMISATION: the skin layers
                         // the player shows (PlayerModelPart bits).
                         if let (16, Value::Byte(bits)) = (index, value)
-                            && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                            && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                         {
                             m.extra.hidden_model_parts = !(*bits as u8) & 0x7F;
                         }
@@ -800,7 +800,7 @@ impl Game<'_> {
                         .remote
                         .as_ref()
                         .is_some_and(|r| r.level_players.contains_key(&p.id)))
-                    && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                    && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                 {
                     for (index, _, value) in &p.values {
                         if let (0, Value::Byte(flags)) = (index, value) {
@@ -853,7 +853,7 @@ impl Game<'_> {
                         )
                     })
                 });
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     if let Some(charged) = charged
                         && &*m.kind.id == "minecraft:player"
                     {
@@ -1001,8 +1001,8 @@ impl Game<'_> {
                         .cause
                         .and_then(|id| u32::try_from(id).ok())
                         .and_then(|id| {
-                            self.mob_index
-                                .get(&self.mobs, id)
+                            self.remote_index
+                                .get(&self.remote_entities, id)
                                 .map(|m| m.kind.id.to_string())
                         });
                     self.events
@@ -1013,7 +1013,7 @@ impl Game<'_> {
                         let pitch = player_voice_pitch();
                         self.play_client_player_sound(sound, 1.0, pitch);
                     }
-                } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                } else if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     m.limb_speed = 1.5;
                     m.hurt_time = 10;
                 } else {
@@ -1026,7 +1026,7 @@ impl Game<'_> {
                     if let Some(pl) = self.player.as_mut() {
                         pl.health.animate_hurt_dir(p.yaw);
                     }
-                } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                } else if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     m.hurt_time = 10;
                 } else {
                     self.remote_dragon_hurt(p.id);
@@ -1094,7 +1094,7 @@ impl Game<'_> {
                 // Entity.spawnSprintParticle (one block-dust crumb).
                 if p.event == 1 {
                     let hop = {
-                        let m = self.mob_index.get_mut(&mut self.mobs, p.id as u32);
+                        let m = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32);
                         if let Some(m) = m
                             && m.species() == horizon_client::mobs::Species::Rabbit
                         {
@@ -1110,21 +1110,21 @@ impl Game<'_> {
                         let id = p.id as u32;
                         self.sprint_particle(position, movement, support, width, |game| {
                             // this.random: the rabbit's own, x then z.
-                            game.mob_index
-                                .get_mut(&mut game.mobs, id)
+                            game.remote_index
+                                .get_mut(&mut game.remote_entities, id)
                                 .map(|m| (m.random.next_double(), m.random.next_double()))
                         });
                     }
                 }
                 if p.event == 19
-                    && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                    && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                 {
                     horizon_client::mobs::aquatic::squid_cycle_event(m);
                 }
                 // LivingEntity.handleEntityEvent 55: another player swapped
                 // its main and off hand (`swapHandItems`).
                 if p.event == 55
-                    && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                    && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                 {
                     m.extra.swap_hands();
                 }
@@ -1136,7 +1136,7 @@ impl Game<'_> {
                 }
                 // EntityEvent.DEATH: start the death animation.
                 if p.event == 3
-                    && let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32)
+                    && let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32)
                 {
                     m.health = 0.0;
                 }
@@ -1152,7 +1152,7 @@ impl Game<'_> {
                     self.play_client_player_sound(sound, 1.0, pitch);
                 }
                 // The events that start a mob's animation (the warden's).
-                if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     horizon_client::mobs::sync::entity_event(m, p.event as u8);
                 }
                 // LivingEntity.handleEntityEvent 46: portal particles from the
@@ -1162,7 +1162,7 @@ impl Game<'_> {
                 }
                 // LivingEntity.handleEntityEvent 60: the poof as the dead body goes.
                 if p.event == 60
-                    && let Some(m) = self.mob_index.get(&self.mobs, p.id as u32)
+                    && let Some(m) = self.remote_index.get(&self.remote_entities, p.id as u32)
                 {
                     let (at, w, h) = (m.position, f64::from(m.width()), f64::from(m.height()));
                     self.death_poof([at.x, at.y, at.z], w, h);
@@ -1171,7 +1171,7 @@ impl Game<'_> {
                     self.remote_totem(p.id);
                 }
                 // Mob.handleEntityEvent 20: the spawn poof.
-                if p.event == 20 && self.mobs.iter().any(|m| m.id == p.id as u32) {
+                if p.event == 20 && self.remote_entities.iter().any(|m| m.id == p.id as u32) {
                     self.poof_particles(p.id as u32);
                 }
                 // The particle bursts of Villager 12 to 14 and 42, TamableAnimal
@@ -1214,7 +1214,7 @@ impl Game<'_> {
                             .as_ref()
                             .map(|q| [q.position.x, q.position.y, q.position.z])
                     } else {
-                        self.mobs
+                        self.remote_entities
                             .iter()
                             .find(|m| m.id == p.id as u32)
                             .map(|m| [m.position.x, m.position.y, m.position.z])
@@ -1240,7 +1240,7 @@ impl Game<'_> {
                 };
                 if self.remote.as_ref().is_some_and(|r| r.entity_id == p.id) {
                     self.swing_hand(hand, animation);
-                } else if let Some(m) = self.mob_index.get_mut(&mut self.mobs, p.id as u32) {
+                } else if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, p.id as u32) {
                     m.swing_hand_modified(hand == Hand::Off, animation);
                 }
             }

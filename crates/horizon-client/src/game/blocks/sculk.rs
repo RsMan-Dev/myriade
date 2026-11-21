@@ -383,6 +383,24 @@ impl Game<'_> {
         self.sculk.actor
     }
 
+    /// A game event an ECS entity makes while it moves: its own context (`GameEvent.Context.of(entity, state)`, the state being the block it
+    /// stands on for a step or a landing), with the discreet walk and the dampening of its type as P reports them.
+    pub(in crate::game) fn post_move_event(&mut self, id: u32, event: &'static str, at: [f64; 3], ground: bool, sneaking: bool, dampens: bool) {
+        self.sculk_prepare();
+        let state = ground.then(|| match self.main_support(Who::Mob(id)) {
+            Some(s) => self.world.block(s.x, s.y, s.z),
+            None => self.world.block(at[0].floor() as i32, (at[1] - 0.2).floor() as i32, at[2].floor() as i32),
+        });
+        let mut ctx = self.who_context(Some(Who::Mob(id)), state);
+        ctx.stepping_carefully = sneaking;
+        ctx.dampens = dampens;
+        self.post_game_event(event, at, ctx);
+    }
+    /// Whether a vibration may be heard: a sculk block is indexed or a mod hears the game events.
+    pub(crate) fn vibration_heard(&self) -> bool {
+        !self.sculk.index.set.is_empty() || mod_api::__private::listened(mod_api::HookId::VanillaGameEvent)
+    }
+
     // ---- setup and the block entity index ----
 
     pub(super) fn sculk_prepare(&mut self) {
@@ -602,13 +620,38 @@ impl Game<'_> {
     }
     /// `GameEvent.Context.of(mob, state)`.
     pub(super) fn mob_context(&mut self, id: u32, state: Option<BlockStateId>) -> Context {
+        if self.ecs.is_active() {
+            return self.ecs_mob_context(id, state);
+        }
         let mob = self.mob_slot(id).map(|i| &self.mobs[i]);
         self.context_of_mob(mob, id, state)
     }
+    /// `GameEvent.Context.of(mob, state)` for an ECS mob: its rider and its listening are read from P's components.
+    fn ecs_mob_context(&self, id: u32, state: Option<BlockStateId>) -> Context {
+        let listens = self.ecs_is_listener(id);
+        Context {
+            source: Some(Who::Mob(id).into()),
+            owner: None,
+            affected_state: state,
+            source_uuid: None,
+            owner_uuid: None,
+            dampening_state: self.state_dampens(state),
+            spectator: false,
+            stepping_carefully: false,
+            dampens: listens,
+            targetable: self.ecs_view(id).is_some(),
+            living: true,
+            player: self.ecs_has_rider(id),
+        }
+    }
     /// The slot of the first mob with this id, from the slots taken for the
     /// mobs' events while the mob is still there (mobs are only appended
-    /// meanwhile), else from the mob index (as a scan finds it).
+    /// meanwhile), else from the mob index (as a scan finds it). None on an
+    /// ECS level, which keeps no mob slots.
     fn mob_slot(&mut self, id: u32) -> Option<usize> {
+        if self.ecs.is_active() {
+            return None;
+        }
         if let Some(slots) = &self.sculk.mob_slots
             && let Some(&i) = slots.by_id.get(&id)
             && self.mobs.get(i).is_some_and(|m| m.id == id)
@@ -765,6 +808,17 @@ impl Game<'_> {
         let at = block_of(pos);
         let radius = sculk::notification_radius(event).min(16);
         let near = self.sculk.index.within(at, radius);
+        if self.ecs.is_active() {
+            // The ECS listeners hear the vibration from P's ears: P ranges them by its index, so nothing here scans the mobs.
+            let ctx = ctx.unwrap_or_else(|| make_ctx(self));
+            let ctx = self.with_vibration_uuids(ctx);
+            for key in near {
+                self.sculk_listen(key, event, pos, &ctx);
+            }
+            self.ecs_post_vibration(pos, ctx.source.and_then(|s| s.actor()), ctx.owner, false);
+            self.ecs_allays_hear(event, pos);
+            return;
+        }
         // The wardens and allays that may hear it, in the mobs' order, while
         // the slots taken for the mobs' events hold; else every mob is asked.
         let mobs = self.sculk.mob_slots.as_ref().and_then(|s| {
@@ -888,6 +942,12 @@ impl Game<'_> {
     /// `LivingEntity.actuallyHurt`'s damage vibration, heard as the hit lands;
     /// the end-of-tick scan then knows this damage.
     pub(super) fn mob_damage_event(&mut self, id: u32) {
+        if self.ecs.is_active() {
+            // The hit is asked of P this tick: its time is now.
+            self.sculk.damaged.insert(id, self.world.game_time);
+            self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
+            return;
+        }
         if let Some(t) = self
             .mob_index
             .get(&self.mobs, id)
@@ -904,6 +964,7 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
+            Who::Mob(id) if self.ecs.is_active() => self.ecs_view(id).map(|v| v.position),
             Who::Mob(id) => self.mob_slot(id).map(|i| {
                 let p = self.mobs[i].position;
                 [p.x, p.y, p.z]
@@ -1259,7 +1320,10 @@ impl Game<'_> {
         Ok(())
     }
     fn rides_player(&self, who: Option<Who>) -> bool {
-        matches!(who, Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && m.rider.is_some()))
+        match who {
+            Some(Who::Mob(id)) if self.ecs.is_active() => self.ecs_has_rider(id),
+            _ => matches!(who, Some(Who::Mob(id)) if self.mobs.iter().any(|m| m.id == id && m.rider.is_some())),
+        }
     }
     /// `SculkSensorBlock.activate`.
     fn activate_sensor(
@@ -1303,10 +1367,13 @@ impl Game<'_> {
     /// them is heard (or seen) every tick.
     fn sculk_step_on(&mut self) {
         self.sculk_step_on_player();
+        // On an ECS level no mob is walked here (P emits no step vibration yet).
         let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
-        for m in &self.mobs {
-            if m.alive() && m.on_ground {
-                standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
+        if !self.ecs.is_active() {
+            for m in &self.mobs {
+                if m.alive() && m.on_ground {
+                    standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
+                }
             }
         }
         self.sculk_stand_on(standing);
@@ -1321,7 +1388,7 @@ impl Game<'_> {
             self.sculk_stand_on(vec![(Who::Player, at)]);
         }
     }
-    fn sculk_stand_on(&mut self, standing: Vec<(Who, [f64; 3])>) {
+    pub(in crate::game) fn sculk_stand_on(&mut self, standing: Vec<(Who, [f64; 3])>) {
         for (who, at) in standing {
             // getOnPosLegacy: 0.2 below the feet.
             let key = (
@@ -1333,8 +1400,11 @@ impl Game<'_> {
                 continue;
             }
             let state = self.world.block(key.0, key.1, key.2);
-            let is_warden = matches!(who, Who::Mob(id)
-                if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Warden));
+            let is_warden = match who {
+                Who::Mob(id) if self.ecs.is_active() => self.ecs_is_listener(id),
+                _ => matches!(who, Who::Mob(id)
+                    if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Warden)),
+            };
             match self.kind_of_state(state.0) {
                 KIND_SENSOR | KIND_CALIBRATED => {
                     if is_warden || !self.res.behaviours().sculk_sensor_can_activate(state) {
@@ -1409,13 +1479,26 @@ impl Game<'_> {
     /// `WardenSpawnTracker.tryWarn` for the one player.
     fn try_to_warn(&mut self, key: (i32, i32, i32)) -> bool {
         let c = center(key);
-        let warden_nearby = self.mobs.iter().any(|m| {
-            m.species() == Species::Warden
-                && m.alive()
-                && (m.position.x - c[0]).abs() < 24.0
-                && (m.position.y + f64::from(m.height()) / 2.0 - c[1]).abs() < 24.0
-                && (m.position.z - c[2]).abs() < 24.0
-        });
+        let warden_nearby = if self.ecs.is_active() {
+            // The wardens within the reach of the 24-block box (its corner), from the index, then the box itself.
+            self.ecs.ids_near(c, 24.0 * 3f64.sqrt()).into_iter().any(|id| {
+                self.ecs_kind(id).as_deref() == Some("minecraft:warden")
+                    && self.ecs_mob_bounds(id).is_some_and(|b| {
+                        let centre = b.center();
+                        (centre.x - c[0]).abs() < 24.0
+                            && (centre.y - c[1]).abs() < 24.0
+                            && (centre.z - c[2]).abs() < 24.0
+                    })
+            })
+        } else {
+            self.mobs.iter().any(|m| {
+                m.species() == Species::Warden
+                    && m.alive()
+                    && (m.position.x - c[0]).abs() < 24.0
+                    && (m.position.y + f64::from(m.height()) / 2.0 - c[1]).abs() < 24.0
+                    && (m.position.z - c[2]).abs() < 24.0
+            })
+        };
         // The only player is the one who set it off.
         let mut trackers = [self.sculk.tracker];
         let level = WardenSpawnTracker::try_warn(&mut trackers, warden_nearby);
@@ -1486,6 +1569,9 @@ impl Game<'_> {
         if warning < 4 {
             return false;
         }
+        if self.ecs.is_active() {
+            return self.ecs_try_summon_warden(key);
+        }
         let Some(kind) = self.res.mob_types().get("minecraft:warden").cloned() else {
             return false;
         };
@@ -1506,7 +1592,7 @@ impl Game<'_> {
             let mut mob = Mob::new(
                 self.next_entity,
                 kind.clone(),
-                horizon_core::geometry::Vec3::new(spot[0], spot[1], spot[2]),
+                Vec3::new(spot[0], spot[1], spot[2]),
                 yaw,
             );
             // Warden.finalizeSpawn, then Mob.finalizeSpawn's draws from the
@@ -1525,6 +1611,32 @@ impl Game<'_> {
             self.mobs.push(mob);
             self.native_mobs_joined(self.mobs.len() - 1, false);
             return true;
+        }
+        false
+    }
+    /// `try_summon_warden` on an ECS level: the same twenty spots, the first whose box is free gets a warden of P (its finalize is P's).
+    fn ecs_try_summon_warden(&mut self, key: (i32, i32, i32)) -> bool {
+        for _ in 0..20 {
+            let r = &mut self.world.random;
+            let dx = r.next_int_bound(11).unwrap_or(0) - 5;
+            let dz = r.next_int_bound(11).unwrap_or(0) - 5;
+            let Some(at) = self.spawn_position(key.0 + dx, key.1 + 6, key.2 + dz, 6) else {
+                continue;
+            };
+            let spot = [f64::from(at.0) + 0.5, f64::from(at.1), f64::from(at.2) + 0.5];
+            // The yaw is drawn from the level random as `EntityType.create` draws it, its value unused here.
+            self.world.random.next_float();
+            // The warden's box, 0.9 wide and 2.9 high.
+            let bounds = Aabb::new(
+                Vec3::new(spot[0] - 0.45, spot[1], spot[2] - 0.45),
+                Vec3::new(spot[0] + 0.45, spot[1] + 2.9, spot[2] + 0.45),
+            );
+            if !self.ecs_warden_fits(bounds) {
+                continue;
+            }
+            if self.ecs_with(|ecs, mw| ecs.spawn(mw, "minecraft:warden", spot, None)).is_some() {
+                return true;
+            }
         }
         false
     }
@@ -1550,16 +1662,26 @@ impl Game<'_> {
     /// in the way (`isUnobstructed`), and no block collision.
     fn warden_fits(&self, mob: &Mob) -> bool {
         let bounds = mob.bounds();
+        if self
+            .mobs
+            .iter()
+            .any(|m| !m.removed && m.alive() && m.bounds().intersects(bounds))
+        {
+            return false;
+        }
+        self.warden_box_clear(bounds)
+    }
+    /// The space of an ECS warden's box: the same checks as `warden_fits`, with the ECS entities in the box in place of the mobs.
+    fn ecs_warden_fits(&self, bounds: Aabb) -> bool {
+        self.ecs_in_box(bounds).is_empty() && self.warden_box_clear(bounds)
+    }
+    /// The checks of `warden_fits` that every mob shares: no player, no liquid and no block in the box.
+    fn warden_box_clear(&self, bounds: Aabb) -> bool {
         let player_blocks = self
             .level_players()
             .iter()
             .any(|p| p.alive && !p.spectator && p.bounds.intersects(bounds));
-        if player_blocks
-            || self
-                .mobs
-                .iter()
-                .any(|m| !m.removed && m.alive() && m.bounds().intersects(bounds))
-        {
+        if player_blocks {
             return false;
         }
         let others: Vec<horizon_client::mobs::Seen> = Vec::new();
@@ -2234,6 +2356,10 @@ impl Game<'_> {
     }
 
     fn tick_mob_sculk_events(&mut self) {
+        if self.ecs.is_active() {
+            // On an ECS level no mob is walked here (P emits no step vibration yet).
+            return;
+        }
         let snapshot: Vec<(
             u32,
             [f64; 3],
@@ -2355,6 +2481,11 @@ impl Game<'_> {
     }
     /// Where the vehicle `id` stands: a mob, boat, minecart or cushion.
     fn vehicle_position(&mut self, id: u32) -> Option<[f64; 3]> {
+        if self.ecs.is_active()
+            && let Some(p) = self.ecs_view(id).map(|v| v.position)
+        {
+            return Some(p);
+        }
         let p = if let Some(i) = self.mob_slot(id) {
             self.mobs[i].position
         } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
@@ -2438,6 +2569,11 @@ impl Game<'_> {
     fn main_support(&mut self, who: Who) -> Option<BlockPos> {
         match who {
             Who::Player => self.player.as_ref()?.ground.supporting_block,
+            Who::Mob(id) if self.ecs.is_active() => {
+                let p = self.ecs_view(id)?.position;
+                let bounds = self.ecs_mob_bounds(id)?;
+                self.supporting_block(Vec3::new(p[0], p[1], p[2]), bounds)
+            }
             Who::Mob(id) => {
                 let slot = self.mob_slot(id)?;
                 let mob = &self.mobs[slot];
@@ -2820,7 +2956,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .cloned()
                 .unwrap();
-            let at = |x| horizon_core::geometry::Vec3::new(x, 100.0, 0.0);
+            let at = |x| Vec3::new(x, 100.0, 0.0);
             let post = |game: &mut Game<'_>| {
                 game.post_game_event("minecraft:explode", [0.5, 100.5, 0.5], Context::default());
                 let later = game.world.game_time + 1;

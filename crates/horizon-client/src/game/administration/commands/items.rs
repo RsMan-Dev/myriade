@@ -233,11 +233,7 @@ impl Game<'_> {
             }
             // `getChestVehicleSlot` takes any index below `getContainerSize`.
             Owner::Entity(Target::Cart(id)) => {
-                let size = self
-                    .carts
-                    .iter()
-                    .find(|c| c.id == *id)
-                    .map_or(0, |c| c.kind.slots());
+                let size = self.ecs.cart_items(*id).map_or(0, |s| s.len());
                 for i in 0..size {
                     if matches_name(name, &format!("container.{i}")) {
                         add(Slot::Cart(*id, i));
@@ -476,7 +472,10 @@ impl Game<'_> {
                 .equipment
                 .get(*i)
                 .cloned(),
-            Slot::Frame(id) => self.item_frames.iter().find(|f| f.id == *id)?.item.clone(),
+            Slot::Frame(id) => {
+                let c = self.ecs.entity_of(*id).and_then(|e| self.ecs.entity_nbt(e))?;
+                c.get(&horizon_core::nbt::JavaString::from("Item")).and_then(horizon_items::item_nbt::item_from_nbt)
+            }
             Slot::Cart(id, i) => self
                 .edit_cart_slots(*id, |slots| slots.get(*i).cloned().flatten())
                 .flatten(),
@@ -803,13 +802,7 @@ impl Game<'_> {
                 }
                 None => false,
             },
-            Slot::Frame(id) => match self.item_frames.iter().position(|f| f.id == *id) {
-                Some(i) => {
-                    self.set_frame_item(i, stack);
-                    true
-                }
-                None => false,
-            },
+            Slot::Frame(id) => self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, *id, stack)),
             Slot::Cart(id, i) => self
                 .edit_cart_slots(*id, |slots| match slots.get_mut(*i) {
                     Some(slot) => {

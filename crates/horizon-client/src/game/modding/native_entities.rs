@@ -19,15 +19,6 @@ fn position_ok(pos: [f64; 3]) -> bool {
         && (-20_000_000.0..20_000_000.0).contains(&pos[1])
 }
 
-/// The id of a summoned stack's root: its command target's, else `first`,
-/// the first id handed out, when an entity no command target stands for
-/// (`live`) holds it.
-fn root_id(target: Option<Target>, first: u32, live: impl Fn(u32) -> bool) -> Option<u32> {
-    match target {
-        Some(t) => target_id(t),
-        None => live(first).then_some(first),
-    }
-}
 
 /// The entity id a summoned stack's root is known by.
 pub(super) fn target_id(t: Target) -> Option<u32> {
@@ -101,54 +92,16 @@ impl Game<'_> {
         // As `/summon` does: every entity of the stack, passengers included,
         // stands at `pos`.
         place_summoned(&mut tag, pos);
-        let from = self.mobs.len();
-        let first = self.next_entity + 1;
-        let deferred = (self.tnts.len(), self.falling.len(), self.rockets.len());
-        let target = self.spawn_entity_from_nbt(tag);
-        // These roots take their id as they load, and a rocket has no command
-        // Target variant. Select the newly appended root, never an older waiting entity.
-        let root = match kind {
-            "minecraft:tnt" if deferred.0 < self.tnts.len() => {
-                Some(super::entity_residency::assign_resident_id!(
-                    self.tnts,
-                    deferred.0,
-                    e,
-                    &mut self.next_entity,
-                    None
-                ))
-            }
-            "minecraft:falling_block" if deferred.1 < self.falling.len() => {
-                Some(super::entity_residency::assign_resident_id!(
-                    self.falling,
-                    deferred.1,
-                    f,
-                    &mut self.next_entity,
-                    Some(&f.attachment_lifetime)
-                ))
-            }
-            "minecraft:firework_rocket" if deferred.2 < self.rockets.len() => {
-                Some(super::entity_residency::assign_resident_id!(
-                    self.rockets,
-                    deferred.2,
-                    e,
-                    &mut self.next_entity,
-                    None
-                ))
-            }
-            _ => None,
+        let Tag::Compound(c) = &tag else {
+            return None;
         };
-        self.native_mobs_joined(from, false);
-        // Otherwise the root is the first entity spawned, also for kinds no
-        // command target stands for (experience orbs, end crystals, cushions). An id handed out to an
-        // entity a mod then kept out is not given back, so the root must be
-        // there.
-        root.or_else(|| {
-            root_id(target, first, |id| {
-                self.orbs.iter().any(|o| o.id == id)
-                    || self.crystals.iter().any(|c| c.id == id)
-                    || self.cushions.iter().any(|c| c.id == id)
-            })
-        })
+        let e = self.with_ecs(|ecs, mw| ecs.load_entity(mw, c))?;
+        let id = self.ecs_id_of(e);
+        // The join hook of a summoned mob, as `native_mobs_joined` gives it to the remote ones.
+        if let (Some(kind), Some(at)) = (self.ecs.kind(id), self.ecs.position(id)) {
+            self.native_mob_spawned(self.dim.id(), kind, at, false);
+        }
+        Some(id)
     }
 }
 
@@ -807,9 +760,9 @@ mod tests {
                 let sheep = game.res.mob_types().get("minecraft:sheep").unwrap().clone();
                 let child = Mob::new(base + 1, cow.clone(), Vec3::ZERO, 0.0);
                 game.next_entity += 2;
-                game.mobs.push(Mob::new(base + 2, cow, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(base + 2, cow, Vec3::ZERO, 0.0));
                 game.native_joins_flush(false, 0);
-                game.mobs.push(child);
+                game.remote_entities.push(child);
                 game.native_joins_flush(false, 0);
                 game.native_joins_flush(false, 0);
                 assert_eq!(
@@ -820,9 +773,9 @@ mod tests {
                     ]
                 );
                 game.next_entity += 1;
-                game.mobs.push(Mob::new(base + 3, sheep, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(base + 3, sheep, Vec3::ZERO, 0.0));
                 assert!(!game.native_joins_flush(true, base + 3));
-                assert!(!game.mobs.iter().any(|mob| mob.id == base + 3));
+                assert!(!game.remote_entities.iter().any(|mob| mob.id == base + 3));
                 game.native_entity_left(base + 3);
                 assert!(leaves.lock().unwrap().is_empty());
                 assert_eq!(
@@ -957,17 +910,6 @@ mod tests {
             panic!()
         };
         assert_eq!(rider.get(&"Pos".into()), Some(&pos));
-    }
-
-    #[test]
-    fn an_orb_root_has_an_id_only_while_it_is_in_the_level() {
-        // Spawned: the orb holds the first id.
-        assert_eq!(root_id(None, 36, |id| id == 36), Some(36));
-        // A mod kept it out: id 36 was handed out, but no entity holds it.
-        assert_eq!(root_id(None, 36, |_| false), None);
-        // A command target answers for itself.
-        assert_eq!(root_id(Some(Target::Mob(40)), 36, |_| false), Some(40));
-        assert_eq!(root_id(Some(Target::Player), 36, |_| true), None);
     }
 
     #[test]

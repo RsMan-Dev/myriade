@@ -5,9 +5,9 @@
 //! bows, crossbows, thrown items, dispensers, mobs and the mod host.
 use super::{Game, enchant_effects::look_impulse};
 use horizon_client::{
-    enchant::{EffectContext, level_value},
+    enchant::EffectContext,
     items::ItemStack,
-    projectiles::Projectile,
+    projectiles::{Projectile, ProjectileKind},
 };
 use horizon_world::worldgen::value_provider::FloatProvider;
 use serde_json::Value;
@@ -83,7 +83,23 @@ impl Game<'_> {
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
     pub(super) fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> u32 {
-        let id = self.add_projectile(projectile);
+        let at = [projectile.position.x, projectile.position.y, projectile.position.z];
+        let velocity = [projectile.velocity.x, projectile.velocity.y, projectile.velocity.z];
+        let owner = self.ecs_owner(projectile.owner);
+        let id = match projectile.arrow.as_deref() {
+            Some(arrow) => {
+                let effect = match projectile.kind {
+                    ProjectileKind::Arrow { effect, .. } => effect,
+                    _ => None,
+                };
+                let shot = self.arrow_shot_of(arrow, effect);
+                let weapon = arrow.fired_from_weapon.clone();
+                self.ecs_shoot_arrow(at, velocity, owner, shot, weapon)
+            }
+            None => self
+                .ecs_launch_item(projectile.entity_type(), at, velocity, owner, projectile.item.clone())
+                .unwrap_or(0),
+        };
         self.apply_on_projectile_spawned(id, stack);
         id
     }
@@ -107,11 +123,9 @@ impl Game<'_> {
     pub(super) fn apply_on_projectile_spawned(&mut self, id: u32, stack: &ItemStack) {
         self.on_projectile_spawned(id, stack);
         let weapon = self
-            .spawned_projectile(id)
-            .and_then(|p| p.arrow.as_ref())
-            .and_then(|a| a.fired_from_weapon.as_ref())
-            .filter(|w| w.count > 0 && &*w.item != "minecraft:air" && w.item != stack.item)
-            .cloned();
+            .ecs
+            .projectile_weapon(id)
+            .filter(|w| w.count > 0 && &*w.item != "minecraft:air" && w.item != stack.item);
         if let Some(weapon) = weapon {
             self.on_projectile_spawned(id, &weapon);
         }
@@ -168,7 +182,7 @@ impl Game<'_> {
                     );
                     continue;
                 }
-                let Some(kind) = self.spawned_projectile(id).map(Projectile::entity_type) else {
+                let Some(kind) = self.ecs.projectile_kind(id) else {
                     return;
                 };
                 let ctx = EffectContext {
@@ -203,54 +217,53 @@ impl Game<'_> {
             }
             return;
         }
-        let Some(index) = self.creatures.projectiles.iter().position(|p| p.id == id) else {
-            return;
-        };
-        let sound = self.creatures.projectiles.update(index, |p| match kind {
+        match kind {
+            // Entity.igniteForSeconds: floor(seconds * 20) ticks, the longer fire stays.
             SpawnedEffect::Ignite => {
-                p.ignite_for_seconds(level_value(&effect["duration"], level));
-                None
-            }
-            // Entity.addDeltaMovement skips a non-finite impulse; the motion
-            // is sent either way (syncVelocity).
-            SpawnedEffect::Impulse => {
-                let impulse = look_impulse(effect, level, p.yaw, p.pitch);
-                if impulse.is_finite() {
-                    p.velocity = p.velocity.add_vector(impulse);
+                let seconds = horizon_client::enchant::level_value(&effect["duration"], level);
+                let ticks = (seconds * 20.0).floor().max(0.0) as u32;
+                if ticks > self.ecs.projectile_fire_ticks(id).unwrap_or(0) {
+                    self.ecs.set_projectile_fire(id, ticks);
                 }
-                p.needs_sync = true;
-                None
             }
-            // A new projectile is never silent: the volume, then the pitch,
-            // from its random, at its position.
+            SpawnedEffect::Inert => {}
+            // Entity.addDeltaMovement skips a non-finite impulse; the motion is synced by the ECS.
+            SpawnedEffect::Impulse => {
+                let Some((_, vel, yaw, pitch)) = self.ecs.projectile_motion(id) else {
+                    return;
+                };
+                let impulse = look_impulse(effect, level, yaw, pitch);
+                if impulse.is_finite() {
+                    let v = vel.add_vector(impulse);
+                    self.ecs.set_projectile_velocity(id, [v.x, v.y, v.z]);
+                }
+            }
+            // A new projectile is never silent: the volume, then the pitch, at its position. The draws come from a fresh
+            // random: P keeps no random per projectile.
             SpawnedEffect::Sound => {
-                let sound = level_sound(effect, level)?;
-                let volume = float_provider(&effect["volume"])?;
-                let pitch = float_provider(&effect["pitch"])?;
-                let volume = volume.sample(&mut p.random.0);
-                let pitch = pitch.sample(&mut p.random.0);
-                Some((
+                let (Some(sound), Some(volume), Some(pitch)) = (
+                    level_sound(effect, level),
+                    float_provider(&effect["volume"]),
+                    float_provider(&effect["pitch"]),
+                ) else {
+                    return;
+                };
+                let Some((at, ..)) = self.ecs.projectile_motion(id) else {
+                    return;
+                };
+                let mut random = horizon_client::random_source::create();
+                let volume = volume.sample(&mut random);
+                let pitch = pitch.sample(&mut random);
+                self.audio.play_on(
+                    mod_api::SoundSource::Neutral as usize,
                     sound,
-                    [p.position.x, p.position.y, p.position.z],
+                    Some([at.x, at.y, at.z]),
                     volume,
                     pitch,
-                ))
+                );
             }
-            SpawnedEffect::AllOf | SpawnedEffect::Inert => None,
-        });
-        if let Some((sound, at, volume, pitch)) = sound {
-            self.audio.play_on(
-                mod_api::SoundSource::Neutral as usize,
-                sound,
-                Some(at),
-                volume,
-                pitch,
-            );
+            SpawnedEffect::AllOf => {}
         }
-    }
-
-    fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
-        self.creatures.projectiles.iter().find(|p| p.id == id)
     }
 }
 

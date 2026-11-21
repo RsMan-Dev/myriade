@@ -65,6 +65,14 @@ impl ServerEntities {
         slot
     }
 
+    /// Drops the entity `id` in O(1): its slot is free again (a stale order entry for it fails `holds`).
+    pub(super) fn remove(&mut self, id: i32) {
+        if let Some(slot) = self.by_id.remove(&id) {
+            self.slots[slot as usize] = None;
+            self.free.push(slot);
+        }
+    }
+
     /// Starts meeting a tick's entities in order.
     pub(super) fn begin(&mut self) {
         self.cursor = 0;

@@ -318,7 +318,7 @@ impl Game<'_> {
             player.spin_targets.clear();
             if player.auto_spin_attack_ticks > 0 {
                 player.spin_targets.extend(
-                    self.mobs
+                    self.remote_entities
                         .iter()
                         .filter(|m| !m.removed)
                         .map(|m| (m.id, m.bounds())),

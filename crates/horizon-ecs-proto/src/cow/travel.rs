@@ -58,6 +58,11 @@ pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Y
         return true;
     }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
+    // `Entity.move`'s last step: the horizontal velocity scaled by the block's speed factor, read only when it moves sideways.
+    if vel.0.x != 0.0 || vel.0.z != 0.0 {
+        let f = f64::from(crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]));
+        vel.0 = Vec3::new(vel.0.x * f, vel.0.y, vel.0.z * f);
+    }
     let mut friction = 0.98_f32;
     if c.on_ground {
         let mw = level.mw.0;
@@ -89,6 +94,11 @@ pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
     }
     let wanted_y = vel.0.y;
     do_move(level, pos, vel, c, body, bounds, fall_damage);
+    // `Entity.move`'s last step, as for an object: the horizontal velocity scaled by the block's speed factor.
+    if vel.0.x != 0.0 || vel.0.z != 0.0 {
+        let f = f64::from(crate::block_factor::speed(mw, [pos.0.x, pos.0.y, pos.0.z]));
+        vel.0 = Vec3::new(vel.0.x * f, vel.0.y, vel.0.z * f);
+    }
     let mut friction = 0.98_f32;
     if c.on_ground {
         let below = mw.world.block(pos.0.x.ifloor(), (pos.0.y - 0.999_999).ifloor(), pos.0.z.ifloor());

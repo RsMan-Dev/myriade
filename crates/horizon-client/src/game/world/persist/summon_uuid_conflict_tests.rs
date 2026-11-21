@@ -920,8 +920,9 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert!(mob_tagged(game, "root_travel_rejected").is_empty());
         assert_eq!(mob_tagged(game, "root_travel_grandchild").len(), 1);
 
-        let source_root = match (game.boats.first(), game.carts.first()) {
-            (Some(boat), _) => Target::Boat(boat.id),
+        let boats = game.ecs.boats_in(Vec3::new(0.0, 190.0, 0.0), Vec3::new(3.0, 210.0, 3.0));
+        let source_root = match (boats.first(), game.carts.first()) {
+            (Some(&boat), _) => Target::Boat(boat),
             (_, Some(cart)) => Target::Cart(cart.id),
             _ => panic!("the summoned root is resident in the source"),
         };
@@ -952,9 +953,9 @@ fn vehicle_root_travel(expected: &RootTravel, dismount: Option<&str>) {
         assert_eq!(mount(game, grandchild), Some(rejected));
         let root = mount(game, rejected).expect("the copied root stays the pig's vehicle");
         assert!(game.level_entity(root as i32).is_none());
-        assert!(game.boats.iter().all(|b| b.id != root));
+        assert!(game.ecs.boat_status(root).is_none());
         assert!(game.carts.iter().all(|c| c.id != root));
-        assert!(game.boat_object(root).is_some() || game.cart_object(root).is_some());
+        assert!(game.is_boat(root) || game.ecs.cart_kind(root).is_some());
         let y = |game: &Game<'_>, id: u32| game.mob_object(id).unwrap().position.y;
         assert_eq!([y(game, rejected), y(game, grandchild)], expected.seated);
         for _ in 0..5 {

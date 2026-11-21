@@ -19,7 +19,6 @@ use horizon_core::random::RandomSource as _;
 #[derive(Default, Clone)]
 pub(super) struct OrderedTicks {
     /// Joins at or above this started after the tick began; they tick next tick.
-    /// The general rows' pass (`general/tick.rs`) shares the same cutoff.
     pub(in crate::game) born: JoinSeq,
     /// The last join number ticked, if any: later ones are still to come.
     pub(super) done: Option<JoinSeq>,
@@ -39,9 +38,6 @@ pub(super) struct OrderedTicks {
     /// The level's entities out of the tick order or back in it at its end:
     /// each level keeps its own (`levels.rs` swaps it in with the lists).
     pub(super) restarts: TickRestarts,
-    /// The falling blocks (id, join) that ended a tick still falling with a part listening to
-    /// `falling_tick`, delivered after the pass.
-    pub(super) falling_ticked: Vec<(u32, JoinSeq)>,
 }
 
 /// `EntityTickList` beyond the join order, for one level's orbs, primed TNT
@@ -73,28 +69,19 @@ impl OrderedTicks {
 pub(super) enum Batch {
     ArmorStands,
     Boats,
-    Carts,
     Tridents,
     Rockets,
     Items,
     Mobs,
-    Projectiles,
-    /// The general rows tick last of the kinds (`general/tick.rs`): a slot
-    /// of its own keeps every earlier batch's `ordered_before` draining the
-    /// orbs, TNT and falling blocks that joined before the earliest general
-    /// row, so the mobile kinds keep their join order against them.
-    General,
 }
 
 impl Batch {
-    const COUNT: usize = 9;
+    const COUNT: usize = 6;
 }
 
 #[derive(Clone, Copy)]
 enum Pending {
     Orb,
-    Tnt,
-    Falling,
 }
 
 /// The lowest join number in a batch, or none when it is empty.
@@ -119,7 +106,6 @@ impl Game<'_> {
             game.tnts
                 .locate(join)
                 .map(|i| game.tnts[i].position)
-                .or_else(|| game.falling.locate(join).map(|i| game.falling[i].position))
                 .or_else(|| game.orbs.locate(join).map(|i| game.orbs[i].position))
         };
         let idle = std::mem::take(&mut self.ordered.restarts.idle);
@@ -170,18 +156,13 @@ impl Game<'_> {
         let _span = horizon_client::spans::guard("ordered_ticks");
         self.restart_woken_entities();
         let pending_buf = std::mem::take(&mut self.ordered.pending_buf);
-        let mut falling_ticked = std::mem::take(&mut self.ordered.falling_ticked);
-        falling_ticked.clear();
         let firsts = [
             first_join(&self.armor_stands),
             first_join(&self.boats),
-            first_join(&self.carts),
             first_join(&self.tridents),
             first_join(&self.rockets),
             first_join(&self.dropped),
             first_join(&self.mobs),
-            first_join(&self.creatures.projectiles),
-            first_join(&self.resident_entities.general.rows),
         ];
         // A batch ticks whole, so an entity of the three kinds goes after the
         // last batch that holds anything that joined before it.
@@ -199,7 +180,6 @@ impl Game<'_> {
             lava_random: None,
             pending_buf,
             restarts: std::mem::take(&mut self.ordered.restarts),
-            falling_ticked,
         };
     }
 
@@ -209,7 +189,6 @@ impl Game<'_> {
         let _span = horizon_client::spans::guard("ordered_ticks");
         let mut first_error = None;
         let mut followed = None;
-        let mut events = false;
         let entity_ticking = self.entity_ticking_area();
         // Who ticks in this run, sorted once: entities that join meanwhile are
         // at or above `born`, so the set cannot grow, only lose the removed.
@@ -232,10 +211,6 @@ impl Game<'_> {
             }
         };
         self.orbs.iter().for_each(|e| offer(e.join, Pending::Orb));
-        self.tnts.iter().for_each(|e| offer(e.join, Pending::Tnt));
-        self.falling
-            .iter()
-            .for_each(|e| offer(e.join, Pending::Falling));
         pending.sort_unstable_by_key(|&(j, _, _)| j);
         // EntityGetter.getEntityCollisions: the boxes that stop these moves (a
         // boat, a shulker, a happy ghast held still), gathered once for the
@@ -246,56 +221,6 @@ impl Game<'_> {
             self.ordered.done = Some(key);
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
-                Pending::Tnt => {
-                    let Some(i) = self.tnts.locate(join) else {
-                        continue;
-                    };
-                    let at = self.tnts[i].position;
-                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
-                        let t = &self.tnts[i];
-                        let area = t.bounds().expand_towards(t.velocity);
-                        obstacles
-                            .get_or_insert_with(|| {
-                                horizon_client::entities::ObstacleGrid::new(
-                                    self.item_entity_collisions(),
-                                )
-                            })
-                            .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
-                        let count = self.tnts.len();
-                        if let Err(e) = self.tick_one_tnt(i, &nearby) {
-                            first_error.get_or_insert(e);
-                        }
-                        if self.tnts.len() < count {
-                            obstacles = None;
-                        }
-                    } else {
-                        self.went_idle(join);
-                    }
-                }
-                Pending::Falling => {
-                    let Some(i) = self.falling.locate(join) else {
-                        continue;
-                    };
-                    let at = self.falling[i].position;
-                    if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
-                        events = true;
-                        let f = &self.falling[i];
-                        let area = horizon_client::falling_block::bounds(f.position)
-                            .expand_towards(f.velocity);
-                        obstacles
-                            .get_or_insert_with(|| {
-                                horizon_client::entities::ObstacleGrid::new(
-                                    self.item_entity_collisions(),
-                                )
-                            })
-                            .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
-                        if let Err(e) = self.tick_one_falling(i, &nearby) {
-                            first_error.get_or_insert(e);
-                        }
-                    } else {
-                        self.went_idle(join);
-                    }
-                }
                 Pending::Orb => {
                     let Some(i) = self.orbs.locate(join) else {
                         continue;
@@ -403,10 +328,6 @@ impl Game<'_> {
             }
         }
         self.ordered.pending_buf = pending;
-        self.deliver_falling_ticks();
-        if events && let Err(e) = self.process_level_events() {
-            first_error.get_or_insert(e);
-        }
         first_error.map_or(Ok(()), Err)
     }
 
@@ -467,8 +388,7 @@ mod tests {
                 .add_empty_chunk(ChunkPos::new(0, 0))
                 .unwrap();
             for x in [4, 12] {
-                assert!(game.run_command(&format!("summon tnt {x} 70 4 {{fuse:80}}")));
-                assert!(game.run_command(&format!(
+                        assert!(game.run_command(&format!(
                     "summon falling_block {x} 70 8 {{BlockState:{{Name:\"minecraft:sand\"}},Time:1}}"
                 )));
                 assert!(game.run_command(&format!("summon experience_orb {x} 70 12 {{Value:1}}")));
@@ -479,10 +399,6 @@ mod tests {
             game.begin_ordered_ticks();
             game.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();
-            assert_eq!(
-                game.tnts.iter().map(|t| t.fuse).collect::<Vec<_>>(),
-                [79, 79]
-            );
             assert_eq!(
                 game.falling.iter().map(|f| f.age).collect::<Vec<_>>(),
                 [2, 2]

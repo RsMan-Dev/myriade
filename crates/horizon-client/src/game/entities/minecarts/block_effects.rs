@@ -1,6 +1,5 @@
-//! A cart's `applyEffectsFromBlocks`: bubble columns, powder snow, cobwebs
-//! and cactus (`CactusBlock.entityInside`), whose hits are taken once the
-//! ticked cart is stored.
+//! A cart's `applyEffectsFromBlocks`, client display only: bubble columns,
+//! powder snow and cobwebs. Cactus, lava and fire hits are the ECS's.
 use super::*;
 
 impl Game<'_> {
@@ -15,8 +14,8 @@ impl Game<'_> {
         ) {
             c.fall_distance = 0.0;
         }
-        // PowderSnowBlock's FREEZE contact is counted here too, and each
-        // cactus the box is in (`CactusBlock.entityInside`, hurt on the server).
+        // PowderSnowBlock's FREEZE contact is counted here too. The cactus is
+        // the ECS's (`inside_more::vehicle_scan`), not a hit taken here.
         // WebBlock.entityInside: makeStuckInBlock(0.25, 0.05, 0.25) for every
         // cobweb the box (deflated by 1.0E-5) is in; it resets the fall distance.
         let b = c.bounds().deflate(Vec3::new(1e-5, 1e-5, 1e-5));
@@ -30,9 +29,6 @@ impl Game<'_> {
                     if name == "minecraft:powder_snow" {
                         froze = true;
                     }
-                    if name == "minecraft:cactus" && self.remote.is_none() {
-                        c.cactus_hits += 1;
-                    }
                     if name == "minecraft:cobweb" {
                         c.fall_distance = 0.0;
                         c.stuck = Vec3::new(0.25, f64::from(0.05_f32), 0.25);
@@ -44,26 +40,6 @@ impl Game<'_> {
             // InsideBlockEffectType.FREEZE: once per applyEffectsFromBlocks.
             c.ticks_frozen = (c.ticks_frozen + 1)
                 .min(horizon_client::motion::PlayerMotion::TICKS_REQUIRED_TO_FREEZE);
-        }
-    }
-    /// The cactus hits cart `id` (at `slot`) met in this tick's
-    /// `applyEffectsFromBlocks`: `VehicleEntity.hurtServer` for 1 each, which
-    /// an `Invulnerable` cart ignores. A hit that breaks it ends them.
-    pub(super) fn cart_cactus_tick(&mut self, id: u32, slot: usize) {
-        let Some(i) = cart_at(&self.carts, id, slot) else {
-            return;
-        };
-        let hits = self.carts.update(i, |c| std::mem::take(&mut c.cactus_hits));
-        let invulnerable = self
-            .persist
-            .raw
-            .get(&id)
-            .is_some_and(|tag| horizon_client::entity_nbt::flag(tag, "Invulnerable"));
-        for _ in 0..if invulnerable { 0 } else { hits } {
-            let Some(i) = cart_at(&self.carts, id, slot) else {
-                return;
-            };
-            self.hurt_cart_result(i, 1.0, false, false, CartHit::default());
         }
     }
 }

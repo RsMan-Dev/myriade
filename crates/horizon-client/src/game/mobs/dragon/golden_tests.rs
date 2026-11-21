@@ -3,6 +3,7 @@
 use super::*;
 use crate::game::*;
 use horizon_client::chunk::Chunk;
+use horizon_ecs_proto::bridge::select::Select;
 use std::fmt::Write as _;
 
 const GROUND: i32 = 64;
@@ -214,14 +215,31 @@ fn world_tick(g: &mut Game<'_>) {
     }
     g.tick_dragon();
     g.tick_breath();
-    g.tick_projectiles_now().unwrap();
+    g.tick_ecs().unwrap();
+}
+
+fn fireball_select() -> Select {
+    Select { kind: Some("minecraft:dragon_fireball".into()), ..Default::default() }
+}
+
+/// The positions of the dragon's fireballs in the ECS level.
+fn fireball_positions(g: &Game<'_>) -> Vec<Vec3> {
+    let Some(world) = g.ecs.world() else {
+        return Vec::new();
+    };
+    g.ecs
+        .select(&fireball_select())
+        .into_iter()
+        .filter_map(|e| horizon_ecs_proto::bridge::view::view(world, e))
+        .map(|v| Vec3::new(v.position[0], v.position[1], v.position[2]))
+        .collect()
 }
 
 /// A tick's state: the dragon, the fireballs in flight, the breath clouds. A fireball's cloud is placed half a block under the
 /// fireball by Horizon (`fireball_cloud_origin(next.y - 0.5)`): its height is left out here (logged in `ecs-ecarts.md`).
 fn frame(g: &Game<'_>, name: &str, t: usize) -> String {
     let d = g.dragon.as_ref().unwrap();
-    let mut fb: Vec<String> = g.creatures.projectiles.iter().map(|p| bits(p.position)).collect();
+    let mut fb: Vec<String> = fireball_positions(g).into_iter().map(bits).collect();
     fb.sort();
     let mut cl: Vec<String> = g
         .breath_clouds
@@ -284,7 +302,9 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
             let _ = writeln!(out, "{}", frame(g, name, t));
             let _ = writeln!(rng, "{name} {t} {:012x} ph{} tg {} pa {} ac{}", g.dragon.as_ref().map_or(0, |d| d.random.state()), g.player.as_ref().map_or(0.0, |p| p.health.health()), g.dragon.as_ref().and_then(|d| d.phase.target()).map_or("-".to_string(), bits), match g.dragon.as_ref().map(|d| &d.phase) { Some(Phase::LandingApproach { path: Some(p), .. }) => format!("{:?}", p.0.nodes), _ => String::new() }, g.fight.alive_crystals);
         }
-        g.creatures.projectiles.clear();
+        for e in g.ecs.select(&fireball_select()) {
+            g.ecs.despawn(e);
+        }
         g.breath_clouds.clear();
     }
     (out, rng)

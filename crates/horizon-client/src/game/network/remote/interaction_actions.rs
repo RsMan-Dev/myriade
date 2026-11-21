@@ -93,7 +93,7 @@ impl Game<'_> {
                 && self.before_block(distance)
                 && self.held_range_allows(distance)
             {
-                self.pvp_attacked(self.mobs[i].id as i32, distance);
+                self.pvp_attacked(self.remote_entities[i].id as i32, distance);
             }
             // ServerboundPlayerActionPacket.Action.STAB.
             self.send(S::PlayerAction(play::PlayerAction {
@@ -114,12 +114,11 @@ impl Game<'_> {
         let mut instant = false;
         // A ghast's fireball or a wind charge nearer than any mob: the
         // server turns it (game/items/deflect.rs).
-        if let Some((i, distance)) = self.redirectable_hit()
+        if let Some((id, distance)) = self.redirectable_hit()
             && self.mob_hit().is_none_or(|(_, d, _)| distance <= d)
             && self.before_block(distance)
-            && self.creatures.projectiles[i].id != 0
         {
-            self.remote_attack_entity(self.creatures.projectiles[i].id as i32, distance);
+            self.remote_attack_entity(id as i32, distance);
         } else if let Some(hit) = self.remote_object_hit(true)
             && self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
             && self.before_block(hit.distance)
@@ -128,7 +127,7 @@ impl Game<'_> {
         } else if let Some((i, distance, _)) = self.mob_hit()
             && self.before_block(distance)
         {
-            self.remote_attack_entity(self.mobs[i].id as i32, distance);
+            self.remote_attack_entity(self.remote_entities[i].id as i32, distance);
         } else if !self.entity_targeted()
             && let Some(hit) = self.pick()
         {

@@ -225,6 +225,22 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
     table
 }
 
+/// The level of a host world (`bridge/host.rs`): the mob world it is given (read only, lent for one call), no blocks of its own
+/// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), a spatial index of `half` blocks each way.
+pub(crate) fn host_level(mw: &'static MobWorld<'static>, types: &'static horizon_client_lib::mobs::MobTypes, half: i32) -> Level {
+    // The species' rows need the mob types: a mob world does not carry them. `type_tags::install` is not run here (it needs the
+    // resources' folder); a process whose first level is a host's keeps no tags.
+    let _ = TYPES.set(types);
+    TABLE.get_or_init(|| {
+        if let Some(items) = mw.items {
+            crate::items::install(items);
+            crate::equipment_items::install(items);
+        }
+        species_rows(types)
+    });
+    Level { mw: Mw(mw), blocks: Blocks(std::ptr::null_mut()), occ: Box::leak(Box::default()), half }
+}
+
 /// A path that a block change asked to make again (`PathNavigation.pendingRecompute` and `delayedRecompute`).
 #[derive(Component, Default)]
 #[component(storage = "SparseSet")]
@@ -269,6 +285,7 @@ pub(crate) fn block_changes(
     mut seen: ResMut<crate::hostile::ChangedBlocks>,
     mut dirty: Option<ResMut<crate::spawning::DirtyColumns>>,
     mut block_events: Option<ResMut<crate::block_events::BlockEvents>>,
+    mut events: ResMut<crate::goals::Events>,
     mut q: Query<(&mut Bounds, &Pos, &mut Contact)>,
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
@@ -284,15 +301,20 @@ pub(crate) fn block_changes(
     for (x, y, z, name, props, id) in named.chain(with_state).chain(by_id).collect::<Vec<_>>() {
         let Some(state) = id.or_else(|| crate::blocks::resolve(mw, name, props)) else { continue };
         let name: &str = if id.is_some() { mw.registry.state(state).map_or("", |s| s.name.as_str()) } else { name };
-        // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
-        unsafe {
-            let world = &mut *level.blocks.0;
-            let _ = world.set(x, y, z, state);
-            level.occ.changed(&*world, level.mw.0.collision, x, y, z);
-            world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
-            crate::pathsearch::layer_bump();
+        // The host's level (no blocks: `host_level`) only reports the change; the host applies it to its own world.
+        if level.blocks.0.is_null() {
+            events.host.set_block([x, y, z], state);
+        } else {
+            // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.
+            unsafe {
+                let world = &mut *level.blocks.0;
+                let _ = world.set(x, y, z, state);
+                level.occ.changed(&*world, level.mw.0.collision, x, y, z);
+                world.path_type_block_updated(horizon_core::position::BlockPos::new(x, y, z));
+                crate::pathsearch::layer_bump();
+            }
+            lit.push((x, y, z));
         }
-        lit.push((x, y, z));
         hazards.set(x, y, z, hazard_bit(name));
         hazards.eggs.remove(&[x, y, z]);
         if name == EGG {
@@ -340,6 +362,7 @@ pub(crate) fn block_changes(
     // The real light engine: the sky above the columns changed with the blocks (one pass for all of the tick's changes).
     // SAFETY: as above, nothing else reads the blocks meanwhile.
     if !lit.is_empty() {
+        // SAFETY: as above (`lit` is empty on the host's level).
         unsafe {
             horizon_client_lib::mobs::world::relight_test_world(&mut *level.blocks.0, &lit);
         }

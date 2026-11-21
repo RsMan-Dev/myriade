@@ -35,6 +35,12 @@ impl Game<'_> {
     pub(super) fn summon_for_execute(&mut self, kind: &str, pos: [f64; 3]) -> R<Target> {
         summonable(kind)?;
         self.summon_checks(kind, pos)?;
+        if self.res.mob_types().contains_key(kind) && self.ecs.is_active() {
+            let id = self
+                .ecs_spawn(kind, pos, None)
+                .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
+            return Ok(Target::Mob(id));
+        }
         if self.res.mob_types().contains_key(kind) {
             let short = kind.trim_start_matches("minecraft:");
             // Loaded from `{id:..}`: the compound's yaw, 0.

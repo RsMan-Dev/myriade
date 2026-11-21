@@ -17,6 +17,10 @@ impl NetIds {
     }
 }
 
+/// The network ids of the followed entities removed (despawned or unbound) since the last `EcsWorld::drain_removed`.
+#[derive(Resource, Default)]
+pub struct Removed(pub Vec<u32>);
+
 /// The network id of `e`, when it is followed.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet", on_add = added, on_remove = removed)]
@@ -35,9 +39,16 @@ fn added(mut w: DeferredWorld, ctx: HookContext) {
 
 fn removed(mut w: DeferredWorld, ctx: HookContext) {
     let id = w.get::<NetId>(ctx.entity).map_or(0, |n| n.0);
-    let mut t = w.resource_mut::<NetIds>();
-    if t.by_id.get(&id) == Some(&ctx.entity) {
-        t.by_id.remove(&id);
+    let held = {
+        let mut t = w.resource_mut::<NetIds>();
+        let held = t.by_id.get(&id) == Some(&ctx.entity);
+        if held {
+            t.by_id.remove(&id);
+        }
+        held
+    };
+    if held {
+        w.resource_mut::<Removed>().0.push(id);
     }
 }
 
@@ -45,6 +56,7 @@ fn removed(mut w: DeferredWorld, ctx: HookContext) {
 pub fn bind(world: &mut World, e: Entity, id: u32) -> bool {
     world.init_resource::<NetIds>();
     world.init_resource::<Modified>();
+    world.init_resource::<Removed>();
     if world.resource::<NetIds>().by_id.contains_key(&id) || world.get::<NetId>(e).is_some() {
         return false;
     }

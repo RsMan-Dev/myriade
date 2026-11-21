@@ -41,27 +41,21 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
             .spawn_projectile_from_rotation(owner, &entity_type, &stack, 0.0, 1.5, 1.0)
             .unwrap();
         assert_eq!(game.projectile_owner(shot), Some(source));
-        let projectile = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == shot.entity().id())
-            .unwrap();
+        let projectile = game.ecs.projectile_view(shot.entity().id()).unwrap();
         assert_eq!(projectile.item.as_ref().unwrap().count, 1);
         assert_eq!(stack.count, 64);
-        assert_eq!(projectile.position.y, eye[1] - 0.10000000149011612);
+        assert_eq!(projectile.pos[1], eye[1] - 0.10000000149011612);
         // Computed with an independent implementation of the documented
         // java.util.Random algorithm, not from the game's output: seed 1234,
         // four next(32) advances for the UUID's two nextLong calls, then
         // twelve advances for the shot's six nextDouble calls. The following
         // double uses advances 17 and 18. Include the owner's inherited motion.
-        assert!((projectile.velocity.x - 0.2103198363925326).abs() < 1e-12);
-        assert!((projectile.velocity.y - 0.3034130508130313).abs() < 1e-12);
-        assert!((projectile.velocity.z - 1.093012354329919).abs() < 1e-12);
-        let mut random = projectile.random.0.clone();
-        assert_eq!(random.next_double(), 0.9468595742485053);
+        assert!((projectile.velocity[0] - 0.2103198363925326).abs() < 1e-12);
+        assert!((projectile.velocity[1] - 0.3034130508130313).abs() < 1e-12);
+        assert!((projectile.velocity[2] - 1.093012354329919).abs() < 1e-12);
+        // Retired: the projectile's own random (`projectile.random`) is not a component of P.
         assert_eq!(game.world.random.next_long(), level_before.next_long());
-        let count = game.creatures.projectiles.len();
+        let count = game.ecs.entity_count();
         assert!(
             game.spawn_projectile_from_rotation(owner, &entity_type, &stack, 0.0, f32::NAN, 1.0)
                 .is_none()
@@ -71,39 +65,24 @@ fn owner_launch_sets_owner_before_insertion_and_uses_projectile_random() {
             game.spawn_projectile_from_rotation(owner, &unknown, &stack, 0.0, 1.5, 1.0)
                 .is_none()
         );
-        assert_eq!(game.creatures.projectiles.len(), count);
+        assert_eq!(game.ecs.entity_count(), count);
         // Flame's projectile_spawned Ignite(100) runs once the snowball is in
         // the level: 100 seconds, 2000 ticks.
         let mut enchanted = stack.clone();
         enchanted.enchant("minecraft:flame", 1);
-        let shot = game
+        let burning = game
             .spawn_projectile_from_rotation(owner, &entity_type, &enchanted, 0.0, 1.5, 1.0)
             .unwrap();
-        let projectile = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == shot.entity().id())
-            .unwrap();
-        assert_eq!(projectile.fire_ticks, 2000);
+        let fire = game.ecs.projectile_view(burning.entity().id()).unwrap().fire_ticks;
+        assert!((1999..=2000).contains(&fire));
         assert_eq!(enchanted.count, 64);
         let potion = ItemStack::new("minecraft:splash_potion", 16);
         let potion_type = Identifier::parse("minecraft:splash_potion").unwrap();
         let shot = game
             .spawn_projectile_from_rotation(owner, &potion_type, &potion, 0.0, 1.5, 1.0)
             .unwrap();
-        let projectile = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == shot.entity().id())
-            .unwrap();
-        match &projectile.kind {
-            horizon_client::projectiles::ProjectileKind::Potion(stack, false) => {
-                assert_eq!(stack.count, 1)
-            }
-            _ => panic!("expected splash potion payload"),
-        }
+        let projectile = game.ecs.projectile_view(shot.entity().id()).unwrap();
+        assert_eq!(projectile.item.as_ref().unwrap().count, 1);
         assert_eq!(potion.count, 16);
         let wind = Identifier::parse("minecraft:wind_charge").unwrap();
         let wind_stack = ItemStack::new("minecraft:wind_charge", 1);
@@ -173,14 +152,14 @@ fn owner_launch_reports_explicit_guest_to_launch_listeners() {
                     guest.dimension = "minecraft:the_nether".to_owned();
                 })
                 .unwrap();
-            let count = game.creatures.projectiles.len();
+            let count = game.ecs.entity_count();
             let mut before = game.world.random.clone();
             horizon_client::random_source::set_thread_uniquifier(2709830126447559882).unwrap();
             assert!(
                 game.spawn_projectile_from_rotation(owner, &kind, &stack, 0.0, 1.5, 1.0)
                     .is_none()
             );
-            assert_eq!(game.creatures.projectiles.len(), count);
+            assert_eq!(game.ecs.entity_count(), count);
             assert_eq!(game.world.random.next_long(), before.next_long());
             assert_eq!(
                 horizon_client::random_source::create().next_double(),

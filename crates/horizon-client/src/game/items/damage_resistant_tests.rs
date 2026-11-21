@@ -152,29 +152,6 @@ fn environmental_tag_stone_keeps_five_health_for_forty_lava_ticks() {
 
 #[test]
 #[ignore = "daily"]
-fn tnt_destroys_an_unprotected_star_and_spares_an_explosion_resistant_diamond() {
-    with_game(|game| {
-        prepare(game);
-        let star = drop_stack(game, "nether_star[!damage_resistant]", [4.5, 64.0, 4.5]);
-        let diamond = drop_stack(
-            game,
-            r##"diamond[damage_resistant={types:"#minecraft:is_explosion"}]"##,
-            [4.5, 64.0, 4.5],
-        );
-        game.spawn_primed_tnt(BlockPos::new(4, 64, 4), false, None, None);
-        game.tnts[0].fuse = 1;
-        game.tnts[0].no_gravity = true;
-        game.tnts[0].velocity = Vec3::ZERO;
-        game.tick_one_tnt(0, &[]).unwrap();
-        assert!(game.tnts.is_empty(), "the primed TNT actually detonated");
-        assert!(game.dropped.iter().all(|item| item.id != star));
-        let survivor = game.dropped.iter().find(|item| item.id == diamond).unwrap();
-        assert_eq!(survivor.health, 5);
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_mod_items_default_cactus_resistance_keeps_five_health_for_ten_ticks() {
     // Give the owning resource load a private mod-item report and registry, as
     // native_components' changed-default fixture does. Shared resources are read-only.

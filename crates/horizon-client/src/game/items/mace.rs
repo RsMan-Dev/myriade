@@ -46,6 +46,15 @@ pub(super) fn ally_of_player(m: &Mob, player: Option<[i32; 4]>) -> bool {
         || m.species() == Species::Allay && m.extra.tame
 }
 
+/// `ally_of_player` for an ECS mob: `owner` is the network id the bridge reads (`EcsLevel::owner`), `player` the acting one.
+pub(super) fn ally_of_player_ecs(species: Option<Species>, tame: bool, owner: Option<u32>, player: u32) -> bool {
+    let tamable = matches!(
+        species,
+        Some(Species::Wolf | Species::Cat | Species::Parrot | Species::Nautilus | Species::ZombieNautilus)
+    );
+    tame && (tamable && owner == Some(player) || species == Some(Species::Allay))
+}
+
 /// The entity a sweep leaves out: the one the attack hit (`target` of
 /// `Player.doSweepAttack`).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -243,8 +252,16 @@ impl Game<'_> {
                     feet: [p.position.x, p.position.y, p.position.z],
                 })
             }
+            horizon_client::mobs::Who::Mob(id) if self.ecs_has(id) => {
+                let m = self.ecs_mob(id)?;
+                Some(horizon_client::mobs::Aim {
+                    eye: [m.at.x, m.at.y + self.ecs.eye_height(id), m.at.z],
+                    look: self.ecs.look_angle(id)?,
+                    feet: [m.at.x, m.at.y, m.at.z],
+                })
+            }
             horizon_client::mobs::Who::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id)?;
+                let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 Some(horizon_client::mobs::Aim {
                     eye: [m.position.x, m.eye_y(), m.position.z],
                     look: m.look_angle(),
@@ -283,16 +300,21 @@ impl Game<'_> {
         if projectile {
             return None;
         }
-        let mob = self.mobs.iter().find(|m| Some(m.id) == attacker)?;
-        let stack = mob.extra.main_hand_stack()?;
+        let (stack, kind) = match attacker.filter(|&id| self.ecs_has(id)) {
+            Some(id) => (self.ecs_main_hand(id)?, self.ecs_mob(id)?.kind.to_owned()),
+            None => {
+                let mob = self.remote_entities.iter().find(|m| Some(m.id) == attacker)?;
+                (mob.extra.main_hand_stack()?.clone(), mob.kind.id.clone())
+            }
+        };
         let enchantments = world_stations!(self).enchantments.clone();
-        if !enchantments.has_component(stack, "minecraft:armor_effectiveness") {
+        if !enchantments.has_component(&stack, "minecraft:armor_effectiveness") {
             return None;
         }
         Some(ArmorWeapon {
-            stack: stack.clone(),
+            stack,
             enchantments,
-            attacker: mob.kind.id.clone(),
+            attacker: kind,
             // `DamageSource.isDirect`: the mob swung itself.
             is_direct: true,
         })
@@ -303,7 +325,7 @@ impl Game<'_> {
         let attack = self.attack_of_who(Some(horizon_client::mobs::Who::Player));
         let held = self.held().cloned();
         let aim = self.attacker_aim(source.attacker);
-        let kind = self.mobs[index].kind.id.clone();
+        let kind = self.remote_entities[index].kind.id.clone();
         let ctx = EffectContext {
             this: Some(&kind),
             attacker: Some("minecraft:player"),
@@ -329,43 +351,43 @@ impl Game<'_> {
                 fraction,
             )
         };
-        let old_health = self.mobs[index].health;
+        let old_health = self.remote_entities[index].health;
         // The causing entity's aim, for what turns a blow by where it points
         // (`SulfurCube.knockback`).
-        self.mobs[index].creative_attacker = self.creative;
-        self.mobs[index].attacker_aim = aim;
-        self.mobs[index].dealt_absorbed = 0;
-        let hurt = self.mobs[index].damage_with(
+        self.remote_entities[index].creative_attacker = self.creative;
+        self.remote_entities[index].attacker_aim = aim;
+        self.remote_entities[index].dealt_absorbed = 0;
+        let hurt = self.remote_entities[index].damage_with(
             crate::game::entity::damage_level_of!(self, &attack),
             amount,
             source,
             Some(&mut breach),
         );
-        self.mobs[index].attacker_aim = None;
-        self.mobs[index].creative_attacker = false;
+        self.remote_entities[index].attacker_aim = None;
+        self.remote_entities[index].creative_attacker = false;
         // `Guardian.hurtServer`'s spikes answer the attacker inside the hurt,
         // before `super.hurtServer` returns: those hits land here, where
         // `Who::Player` is the player whose blow this is. Left in the outbox,
         // the end-of-tick sweep would deal them with no player in place (a
         // serving thread's players are all guests).
-        let raised = std::mem::take(&mut self.mobs[index].outbox);
+        let raised = std::mem::take(&mut self.remote_entities[index].outbox);
         let (hits, rest): (Vec<_>, Vec<_>) = raised.into_iter().partition(|e| {
             matches!(
                 e,
                 MobEvent::DamagePlayer { .. } | MobEvent::DamageMob { .. }
             )
         });
-        self.mobs[index].outbox = rest;
+        self.remote_entities[index].outbox = rest;
         let _ = self.handle_mob_events(hits);
         // LivingEntity.actuallyHurt: Stats.DAMAGE_DEALT_ABSORBED for the attacking player,
         // awarded here, during that player's own attack (a server's guest has its own
         // statistics only inside `as_guest`).
-        let absorbed = std::mem::take(&mut self.mobs[index].dealt_absorbed);
+        let absorbed = std::mem::take(&mut self.remote_entities[index].dealt_absorbed);
         if absorbed > 0 {
             self.award_custom_stat("damage_dealt_absorbed", absorbed);
         }
-        if hurt && self.mobs[index].health != old_health {
-            self.mob_damage_event(self.mobs[index].id);
+        if hurt && self.remote_entities[index].health != old_health {
+            self.mob_damage_event(self.remote_entities[index].id);
         }
         hurt
     }
@@ -373,7 +395,7 @@ impl Game<'_> {
     /// as `damage_dealt_absorbed` when it is the player (`LivingEntity.actuallyHurt`).
     pub(super) fn settle_dealt_absorbed(&mut self, by_player: bool) {
         let absorbed: i32 = self
-            .mobs
+            .remote_entities
             .iter_mut()
             .map(|m| std::mem::take(&mut m.dealt_absorbed))
             .fold(0, i32::saturating_add);
@@ -429,10 +451,22 @@ impl Game<'_> {
     /// waived from where the hit landed, the ground or air smash sounds, and
     /// the knockback around the target.
     fn mace_hurt_enemy(&mut self, index: usize) {
-        let target_on_ground = self.mobs[index].on_ground;
+        let target_on_ground = self.remote_entities[index].on_ground;
         if let Some(fall) = self.mace_smash_self(target_on_ground) {
-            let target = &self.mobs[index];
+            let target = &self.remote_entities[index];
             self.smash_knockback(target.position, Spared::Mob(target.id), fall);
+        }
+    }
+    /// `mace_hurt_enemy` for an ECS mob, on a smash only: whether it is on the ground comes from its view.
+    pub(in crate::game) fn mace_hurt_enemy_ecs(&mut self, id: u32) {
+        let (Some(on_ground), Some(at)) = (self.ecs_on_ground(id), self.ecs_mob(id).map(|m| m.at)) else {
+            return;
+        };
+        if !self.smash_attack() {
+            return;
+        }
+        if let Some(fall) = self.mace_smash_self(on_ground) {
+            self.smash_knockback(at, Spared::Mob(id), fall);
         }
     }
     /// The attacker's side of `MaceItem.hurtEnemy` for a smash: the fall
@@ -553,7 +587,7 @@ impl Game<'_> {
         self.level_event_at(2013, on_pos, 750);
         let heavy = if fall > HEAVY_THRESHOLD { 2.0 } else { 1.0 };
         let player = Some(self.acting_uuid());
-        for m in self.mobs.iter_mut().filter(|m| {
+        for m in self.remote_entities.iter_mut().filter(|m| {
             target != Spared::Mob(m.id) && m.alive() && !m.removed && !ally_of_player(m, player)
         }) {
             let resistance = m.knockback_resistance();
@@ -565,6 +599,21 @@ impl Game<'_> {
             .filter(|s| !s.marker && target != Spared::Stand(s.id))
         {
             smash_push(center, heavy, s.position, &mut s.velocity, 0.0);
+        }
+        // The ECS entities within the radius, from the spatial index: the push is added to their velocity through P.
+        let own = self.own_entity_id() as u32;
+        for id in self.ecs.ids_near([center.x, center.y, center.z], KNOCKBACK_RADIUS) {
+            let Some(m) = self.ecs_mob(id) else { continue };
+            let owner = self.ecs.owner(id);
+            if target == Spared::Mob(id) || !m.alive || ally_of_player_ecs(m.species, m.tame, owner, own) {
+                continue;
+            }
+            let mut dv = Vec3::ZERO;
+            let resistance = self.ecs.knockback_resistance(id);
+            smash_push(center, heavy, m.at, &mut dv, resistance);
+            if let (Some(e), Some(w)) = (self.ecs.entity_of(id), self.ecs.world_mut()) {
+                horizon_ecs_proto::goals::impulse(w, e, dv);
+            }
         }
         // The host and the LAN guests are living entities too. A guest's turn
         // holds the other players (`as_guest`): the push waits for it to end.
@@ -672,7 +721,7 @@ impl Game<'_> {
             )
         };
         let mut victims: Vec<((i32, i32, i32), u32, bool)> = Vec::new();
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if spared != Spared::Mob(m.id)
                 && m.alive()
                 && !m.removed
@@ -744,25 +793,47 @@ impl Game<'_> {
                 }
                 continue;
             }
-            let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+            let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
                 continue;
             };
-            let kind = self.mobs[i].kind.id.clone();
+            let kind = self.remote_entities[i].kind.id.clone();
             let kind = format!("minecraft:{}", kind.trim_start_matches("minecraft:"));
             let amount = self.enchanted_damage(&kind, base, Some(id)) * scale;
             let source = self.attack_source(from);
             // hurtServer first; the knockback and post-attack effects follow
             // only when it landed.
-            let old_health = self.mobs[i].health;
+            let old_health = self.remote_entities[i].health;
             if self.hurt_by_player(i, amount, source) {
-                if old_health > 0.0 && !self.mobs[i].alive() {
+                if old_health > 0.0 && !self.remote_entities[i].alive() {
                     self.native_kill_event(i);
                 }
                 let level = crate::game::entity::damage_level_of!(self, &attack);
-                self.mobs[i].knockback(level, 0.4, xd, zd, &source, amount);
-                self.remember_mob_player_credit(self.mobs[i].id);
+                self.remote_entities[i].knockback(level, 0.4, xd, zd, &source, amount);
+                self.remember_mob_player_credit(self.remote_entities[i].id);
                 self.post_attack(i);
             }
+        }
+        // The ECS mobs in the box, read from the spatial index: each takes the sweep's hurt and knockback through the bridge.
+        let own = self.own_entity_id() as u32;
+        let mut ecs_victims: Vec<((i32, i32, i32), u32)> = self
+            .ecs_in_box(area)
+            .into_iter()
+            .filter(|&(at, id, bounds)| {
+                spared != Spared::Mob(id)
+                    && bounds.intersects(area)
+                    && near(at)
+                    && self.ecs_mob(id).is_some_and(|m| {
+                        m.alive && !ally_of_player_ecs(m.species, m.tame, self.ecs.owner(id), own)
+                    })
+            })
+            .map(|(at, id, _)| (section(at), id))
+            .collect();
+        ecs_victims.sort_by_key(|&(key, id)| (key, id));
+        for (_, id) in ecs_victims {
+            let Some(kind) = self.ecs_mob(id).map(|m| m.kind) else { continue };
+            let amount = self.enchanted_damage(kind, base, Some(id)) * scale;
+            self.ecs_hurt(id, amount, horizon_ecs_proto::bridge::host::HurtSource::Player(own));
+            self.ecs.knockback(id, 0.4, xd, zd);
         }
         // `getEntitiesOfClass(LivingEntity.class)` takes the other players too.
         let mut sweep = self.player_sweep(base, scale);

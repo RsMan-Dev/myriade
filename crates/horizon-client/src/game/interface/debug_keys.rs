@@ -884,7 +884,7 @@ impl Game<'_> {
             && let Some((index, _, _)) = self.mob_hit()
         {
             let (kind, position, id) = {
-                let m = &self.mobs[index];
+                let m = &self.remote_entities[index];
                 (m.kind.id.clone(), m.position, m.id)
             };
             if query {
@@ -978,7 +978,7 @@ impl Game<'_> {
                 // Entity.position() when the answer comes: where it is now,
                 // else where it was last.
                 let position = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .find(|m| m.id == id)
                     .map_or(position, |m| m.position);
@@ -1040,7 +1040,7 @@ impl Game<'_> {
         }
         let lerp = |a: f64, b: f64| a + f64::from(alpha) * (b - a);
         let lerpf = |a: f32, b: f32| a + alpha * (b - a);
-        for m in self.mobs.iter() {
+        for m in self.remote_entities.iter() {
             if m.removed || m.is_invisible() {
                 continue;
             }
@@ -1178,30 +1178,13 @@ impl Game<'_> {
             let p = c.position;
             g.hitbox([p.x, p.y, p.z], (2.0, 2.0), 1.7, false, (0.0, 0.0));
         }
-        for p in &self.creatures.projectiles {
-            use horizon_client::projectiles::ProjectileKind as K;
-            let (size, eye) = match p.kind {
-                K::Arrow { .. } | K::Trident => (0.5, 0.13),
-                K::Snowball
-                | K::Egg
-                | K::EnderPearl
-                | K::LlamaSpit
-                | K::Potion { .. }
-                | K::ExperienceBottle
-                | K::Thrown(_) => (0.25, 0.2125),
-                K::SmallFireball | K::ShulkerBullet { .. } | K::WitherSkull { .. } => {
-                    (0.3125, 0.265_625)
-                }
-                K::WindCharge | K::BreezeWindCharge => (0.3125, 0.0),
-                K::LargeFireball { .. } | K::DragonFireball => (1.0, 0.85),
+        for id in self.ecs.projectiles_in([-1.0e9; 3], [1.0e9; 3]) {
+            let (Some((lo, hi)), Some(m)) = (self.ecs.projectile_bounds(id), self.ecs.motion(id)) else {
+                continue;
             };
-            g.hitbox(
-                at(p.previous, p.position),
-                (size, size),
-                eye,
-                false,
-                (p.pitch, p.yaw),
-            );
+            let p = Vec3::new(m.position[0], m.position[1], m.position[2]);
+            let eye = self.ecs.eye_offset(id).unwrap_or(0.0);
+            g.hitbox(at(p, p), (hi[0] - lo[0], hi[0] - lo[0]), eye, false, (0.0, m.yaw));
         }
         for t in &self.tridents {
             g.hitbox(

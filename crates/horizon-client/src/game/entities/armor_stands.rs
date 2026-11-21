@@ -20,6 +20,14 @@ use horizon_core::{
     position::BlockPos,
     random::RandomSource,
 };
+use bevy_ecs::entity::Entity as EcsEntity;
+use horizon_ecs_proto::{
+    bridge::{host::Select, ids::id_of},
+    cow::{Bounds, Cause, Contact, Health, Pos},
+    equipment as ecs_equipment, goals,
+    items::{item_id, item_name},
+    stand::{self as ecs_stand, Blow, Stand as EcsStand},
+};
 use std::{collections::HashMap, sync::Arc};
 pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
@@ -424,7 +432,7 @@ impl Game<'_> {
             self.armor
                 .iter()
                 .chain(guests.flat_map(|g| g.armor.iter()))
-                .chain(self.mobs.iter().flat_map(|m| {
+                .chain(self.remote_entities.iter().flat_map(|m| {
                     horizon_items::equipment::ARMOR.map(|slot| &m.extra.equipment[slot])
                 }))
                 .zip(
@@ -636,9 +644,250 @@ impl Game<'_> {
     fn equipment_slot(&self, stack: &ItemStack) -> usize {
         stand_slot(self.res.items(), stack)
     }
+    /// The ECS stand under the crosshair: the nearest the ray meets within reach, by the box P keeps (`Bounds`), among the stands
+    /// the spatial index holds near the eye. Markers and the camera are no target (`armor_stand_hit` on the level).
+    fn ecs_stand_hit(&self) -> Option<(u32, f64, [f64; 3])> {
+        let (eye, dir) = self.aim()?;
+        let reach: f64 = self.entity_reach;
+        let w = self.ecs.world()?;
+        let q = Select { kind: Some(TYPE_ID.to_owned()), tag: None, near: Some((eye, reach)), limit: 64 };
+        let mut best: Option<(u32, f64, [f64; 3])> = None;
+        for e in self.ecs.select(&q) {
+            let Some(id) = id_of(w, e) else { continue };
+            if w.get::<EcsStand>(e).is_some_and(|s| s.flags & ecs_stand::MARKER != 0) || self.remote_camera_id() == Some(id) {
+                continue;
+            }
+            let Some(b) = w.get::<Bounds>(e).map(|b| b.0) else { continue };
+            let (lo, hi) = (b.min_position(), b.max_position());
+            let (lo, hi) = ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
+            let (mut t0, mut t1) = (0.0f64, reach);
+            let mut hit = true;
+            for k in 0..3 {
+                if dir[k].abs() < 1e-9 {
+                    hit &= eye[k] >= lo[k] && eye[k] <= hi[k];
+                    continue;
+                }
+                let (mut ta, mut tb) = ((lo[k] - eye[k]) / dir[k], (hi[k] - eye[k]) / dir[k]);
+                if ta > tb {
+                    std::mem::swap(&mut ta, &mut tb);
+                }
+                t0 = t0.max(ta);
+                t1 = t1.min(tb);
+            }
+            if hit && t0 <= t1 && best.is_none_or(|b| t0 < b.1) {
+                best = Some((id, t0, std::array::from_fn(|k| eye[k] + dir[k] * t0)));
+            }
+        }
+        best
+    }
+    /// `interact_armor_stand` on the ECS level: the slot and the swap are P's (`click_target`, `equipment::set_slot`); the host keeps
+    /// the held stack, the game events, the swing and the chunk's mark. A name tag needs P's `stand::name_with_tag` (not in P yet).
+    fn interact_armor_stand_ecs(&mut self, target: Option<InteractTarget>) -> bool {
+        let (id, point) = match target {
+            Some(t) => {
+                let Some(p) = self.ecs.position(t.id) else { return false };
+                (t.id, [p[0] + t.location[0], p[1] + t.location[1], p[2] + t.location[2]])
+            }
+            None => {
+                let Some((id, d, point)) = self.ecs_stand_hit() else { return false };
+                if !self.before_block(d) {
+                    return false;
+                }
+                (id, point)
+            }
+        };
+        let (Some(e), Some(pos)) = (self.ecs.entity_of(id), self.ecs.position(id)) else { return false };
+        let at = pos;
+        let held = self.held().cloned();
+        if let Some(stack) = held.as_ref().filter(|h| &*h.item == "minecraft:name_tag") {
+            let name = self.ecs.world_mut().and_then(|w| ecs_stand::name_with_tag(w, e, stack));
+            let Some(name) = name else { return false };
+            let alive = self.ecs.world().and_then(|w| w.get::<Health>(e)).is_some_and(|h| h.0 > 0.0);
+            if alive {
+                self.consume_held();
+                if let (Some(player), Some(player_name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+                    self.native_player_name_entity(player, &player_name, id, &name);
+                }
+            }
+            let ctx = self.who_context(Some(Who::Player), None);
+            self.post_game_event("minecraft:entity_interact", at, ctx);
+            self.swing_arm();
+            return true;
+        }
+        let small = self.ecs.world().and_then(|w| w.get::<EcsStand>(e)).is_some_and(|s| s.flags & ecs_stand::SMALL != 0);
+        let held_slot = held.as_ref().map(|h| self.equipment_slot(h));
+        let rel_y = ((point[1] - pos[1]) / if small { 0.5 } else { 1.0 }) as f32;
+        let Some(w) = self.ecs.world() else { return false };
+        let slot = match ecs_stand::click_target(w, e, held.is_some(), held_slot, rel_y) {
+            Some(s) => s,
+            None if held_slot.is_some_and(|s| ecs_stand::is_disabled(w, e, s)) => return true,
+            None => return false,
+        };
+        let Some(slot_enum) = ecs_stand::slot_of_index(slot) else { return false };
+        let current = goals::equipped(w, e, slot_enum);
+        let held_id = held.as_ref().map_or(0, |h| item_id(&h.item));
+        let creative = self.creative;
+        if held.as_ref().is_some_and(|h| h.count > 1) && current != 0 {
+            return true;
+        }
+        // A server's mods hear the swap before it happens, and may stop it; the stands are found again by id after the hook.
+        if held.as_ref().is_none_or(|h| h.count <= 1 || current == 0)
+            && target.is_some()
+            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
+        {
+            let slot_name = ["mainhand", "offhand", "feet", "legs", "chest", "head"][slot];
+            let mut cancel = false;
+            self.native_armor_stand_manipulate(player, &name, id as i32, slot_name, &mut cancel);
+            if cancel {
+                return true;
+            }
+            let key = |s: &Option<ItemStack>| s.as_ref().map(|s| (s.item.clone(), s.count));
+            let Some(w) = self.ecs.world() else { return true };
+            if goals::equipped(w, e, slot_enum) != current
+                || key(&self.held().cloned()) != key(&held)
+                || ecs_stand::swap_locked(w, e, slot, current != 0)
+            {
+                return true;
+            }
+        }
+        let Some(w) = self.ecs.world_mut() else { return false };
+        ecs_equipment::set_slot(w, e, slot_enum, held_id);
+        let new_held = match held {
+            Some(h) if creative && current == 0 => Some(h),
+            Some(h) if h.count > 1 => Some(ItemStack { count: h.count - 1, ..h }),
+            _ => item_name(current).map(|n| ItemStack::new(n, 1)),
+        };
+        *self.held_mut() = new_held;
+        self.world.modified.insert(((at[0].floor() as i32) >> 4, (at[2].floor() as i32) >> 4));
+        self.swing_arm();
+        true
+    }
+    /// `attack_armor_stand` on the ECS level: the pick is `ecs_stand_hit`, the hit is `hit_armor_stand_ecs`.
+    fn attack_armor_stand_ecs(&mut self) -> bool {
+        let Some((id, d, _)) = self.ecs_stand_hit() else { return false };
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
+            return false;
+        }
+        let Some(at) = self.ecs.position(id) else { return false };
+        if !self.may_interact_at(BlockPos::new(at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32)) {
+            return true;
+        }
+        let ((_, scale, crit, magic), admitted) = self.melee_damage_with_admission("minecraft:armor_stand", true, Some(id));
+        let sweep = self.sweep_before_hit("minecraft:armor_stand", crit);
+        let hurt = self.hit_armor_stand_ecs(id, |g, area, id| {
+            let knockback = if admitted { g.extra_knockback("minecraft:armor_stand", scale).0 } else { 0.0 };
+            g.attack_effects(
+                area,
+                sweep,
+                Some(id as i32),
+                crit,
+                super::mace::Spared::Stand(id),
+                magic.then_some(id as i32),
+            );
+            g.special_attack_slowdown(knockback);
+        });
+        self.attack_ticks = 0;
+        if hurt {
+            if admitted {
+                self.special_attack_exhaustion();
+            }
+            self.swing_arm();
+        }
+        hurt
+    }
+    /// `hit_armor_stand` on the ECS level: the box, the centre and the ground are read before the blow may remove the stand.
+    fn hit_armor_stand_ecs(&mut self, id: u32, before_weapon: impl FnOnce(&mut Self, Aabb, u32)) -> bool {
+        let Some(e) = self.ecs.entity_of(id) else { return false };
+        let Some(w) = self.ecs.world() else { return false };
+        let (Some(area), Some(center), Some(on_ground)) = (
+            w.get::<Bounds>(e).map(|b| b.0),
+            w.get::<Pos>(e).map(|p| p.0),
+            w.get::<Contact>(e).map(|c| c.on_ground),
+        ) else {
+            return false;
+        };
+        let hurt = self.punch_armor_stand_ecs(id);
+        if hurt {
+            before_weapon(self, area, id);
+            self.weapon_hit_stand(id, center, on_ground);
+        }
+        hurt
+    }
+    /// `punch_armor_stand` on the ECS level: the invulnerability check as the host does, then P's `stand::blow` decides the
+    /// wobble or the break, and the host plays its sounds and posts its game events from that answer.
+    fn punch_armor_stand_ecs(&mut self, id: u32) -> bool {
+        let Some(e) = self.ecs.entity_of(id) else { return false };
+        let attacker = self.own_entity_id();
+        let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.creative);
+        let source = horizon_client::health::HurtSource {
+            damage_type: "minecraft:player_attack",
+            causing: attacker,
+            direct: attacker,
+            position: None,
+        };
+        if super::entity::damage_level_of!(self, scoped).invulnerability_check(
+            horizon_client::health::Hurting::ArmorStand(id as i32, source),
+            vanilla,
+        ) {
+            return false;
+        }
+        let (creative, by) = (self.creative, Some(super::commands::Target::Player));
+        self.break_armor_stand_by_hit_ecs(e, creative, false, by)
+    }
+    /// `ArmorStand.hurtServer` for a blow on an ECS stand: P's `stand::blow` says wobble or break; the host plays the sounds and
+    /// posts the game events from that answer. True: the blow was taken.
+    fn break_armor_stand_by_hit_ecs(&mut self, e: EcsEntity, creative: bool, always_kills: bool, by: Option<super::commands::Target>) -> bool {
+        let now = self.world.game_time;
+        let Some(at) = self.ecs.world().and_then(|w| w.get::<Pos>(e)).map(|p| [p.0.x, p.0.y, p.0.z]) else { return false };
+        let Some(w) = self.ecs.world_mut() else { return false };
+        match ecs_stand::blow(w, e, now, creative, always_kills) {
+            Blow::Wobble => {
+                self.audio.play("minecraft:entity.armor_stand.hit", Some(at), 0.3, 1.0);
+                self.stand_game_event("minecraft:entity_damage", at, by);
+            }
+            Blow::Break => self.break_armor_stand_ecs(e, at, creative, by),
+        }
+        true
+    }
+    /// The break of an ECS stand by a blow (`brokenByPlayer`, or at once when creative): the host pops the stand item and the
+    /// equipment above the cell and plays the sounds, then the entity is despawned. The loot roll is not in this branch yet.
+    fn break_armor_stand_ecs(&mut self, e: EcsEntity, at: [f64; 3], creative: bool, by: Option<super::commands::Target>) {
+        let (width, height) = self
+            .ecs
+            .world()
+            .and_then(|w| w.get::<EcsStand>(e).copied())
+            .map_or((0.5, 1.975), ecs_stand::stand_size);
+        if creative {
+            self.audio.play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+            self.show_breaking_particles(at, f64::from(width), f64::from(height));
+            self.stand_game_event("minecraft:entity_die", at, by);
+            self.ecs.despawn(e);
+            return;
+        }
+        let block = [at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32];
+        let mut worn = Vec::new();
+        if let Some(w) = self.ecs.world_mut() {
+            for slot in (0..8).filter_map(ecs_stand::slot_of_index) {
+                if let Some(name) = item_name(ecs_equipment::take_slot(w, e, slot)) {
+                    worn.push(ItemStack::new(name, 1));
+                }
+            }
+        }
+        self.pop_resource(block, ItemStack::new(TYPE_ID, 1));
+        self.audio.play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+        for stack in worn {
+            self.pop_resource([block[0], block[1] + 1, block[2]], stack);
+        }
+        self.show_breaking_particles(at, f64::from(width), f64::from(height));
+        self.stand_game_event("minecraft:entity_die", at, by);
+        self.ecs.despawn(e);
+    }
     /// `ArmorStand.interact` for the stand under the crosshair, or for the
     /// stand a guest's interact packet named (its client's click point).
     pub(super) fn interact_armor_stand(&mut self, target: Option<InteractTarget>) -> bool {
+        if self.ecs.is_active() {
+            return self.interact_armor_stand_ecs(target);
+        }
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
@@ -804,6 +1053,9 @@ impl Game<'_> {
     }
     /// `ArmorStand.hurtServer` from a player attack.
     pub(super) fn attack_armor_stand(&mut self) -> bool {
+        if self.ecs.is_active() {
+            return self.attack_armor_stand_ecs();
+        }
         let Some((i, d, _)) = self.armor_stand_hit() else {
             return false;
         };
@@ -1207,7 +1459,8 @@ impl Game<'_> {
         delta: Vec3,
         grid: &mut Option<horizon_client::entities::ObstacleGrid>,
     ) {
-        let joined = shulker.and_then(|id| self.mobs.iter().find(|m| m.id == id).map(|m| m.join));
+        // `join` (the shulker's grip on a mob) has no component in P yet: an ECS mob is not read here (see the report).
+        let joined = shulker.and_then(|id| self.remote_entities.iter().find(|m| m.id == id).map(|m| m.join));
         let grid = grid.get_or_insert_with(|| self.stand_entity_collisions());
         let mut nearby = Vec::new();
         let a = &mut self.armor_stands[i];
@@ -1427,6 +1680,106 @@ impl Game<'_> {
         self.entity_killed_event_by(at, source);
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
     }
+    /// `break_armor_stand_by_anything` on the ECS level: the equipment above the cell pops (P's `take_slot`), the sound, the
+    /// killed event, then the entity is despawned. The loot roll and the vanishing filter are not in this branch yet.
+    fn break_armor_stand_by_anything_ecs(&mut self, e: EcsEntity, id: u32, causing: u32) {
+        let Some(at) = self.ecs.world().and_then(|w| w.get::<Pos>(e)).map(|p| [p.0.x, p.0.y, p.0.z]) else { return };
+        let pos = [at[0].floor() as i32, at[1].floor() as i32 + 1, at[2].floor() as i32];
+        let mut worn = Vec::new();
+        if let Some(w) = self.ecs.world_mut() {
+            for slot in (0..8).filter_map(ecs_stand::slot_of_index) {
+                if let Some(name) = item_name(ecs_equipment::take_slot(w, e, slot)) {
+                    worn.push(ItemStack::new(name, 1));
+                }
+            }
+        }
+        for stack in worn {
+            self.pop_resource(pos, stack);
+        }
+        self.audio.play("minecraft:entity.armor_stand.break", Some(at), 1.0, 1.0);
+        let source = self.level_entity(causing as i32).or(Some(super::commands::Target::Stand(id)));
+        self.entity_killed_event_by(at, source);
+        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.ecs.despawn(e);
+    }
+    /// `command_damage_stand` on the ECS level: the gates are the host's; the stand's flags, life and fire are P's.
+    fn command_damage_stand_ecs(&mut self, id: u32, damage_type: &str, causing: Option<super::commands::Target>) -> bool {
+        use super::commands::Target;
+        let Some(e) = self.ecs.entity_of(id) else { return false };
+        let registry = &self.health_resources.damage;
+        let Some(kind) = registry.id(damage_type) else { return false };
+        if !self.ui.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) && matches!(causing, Some(Target::Mob(_))) {
+            return false;
+        }
+        if registry.in_tag(kind, "minecraft:bypasses_invulnerability") {
+            self.kill_target(Target::Stand(id));
+            return false;
+        }
+        let creative = match causing {
+            Some(Target::Player) => self.creative,
+            Some(Target::Guest(conn)) => self.command_guest(conn).is_some_and(|g| g.creative()),
+            _ => false,
+        };
+        let invulnerable = self
+            .ecs
+            .entity_nbt(e)
+            .is_some_and(|c| horizon_client::entity_nbt::flag(&horizon_core::nbt::Tag::Compound(c), "Invulnerable"));
+        let hidden = self
+            .ecs
+            .world()
+            .and_then(|w| w.get::<EcsStand>(e))
+            .is_some_and(|s| s.flags & (ecs_stand::INVISIBLE | ecs_stand::MARKER) != 0);
+        let from_player = matches!(causing, Some(Target::Player | Target::Guest(_)));
+        let immune = self.ecs.world().is_some_and(|w| ecs_equipment::immune_to_damage(w, e, damage_type, from_player));
+        if (invulnerable && !creative) || hidden || immune {
+            return false;
+        }
+        let by = match causing {
+            Some(Target::Player | Target::Guest(_) | Target::Mob(_)) => causing,
+            _ => None,
+        };
+        let registry = &self.health_resources.damage;
+        let tagged = |tag: &str| registry.in_tag(kind, tag);
+        let (explosion, ignites, burns) = (
+            tagged("minecraft:is_explosion"),
+            tagged("minecraft:ignites_armor_stands"),
+            tagged("minecraft:burns_armor_stands"),
+        );
+        let causing_id = causing.and_then(|target| self.network_entity_id(target)).unwrap_or(0) as u32;
+        let (breaks, always_kills) = (
+            tagged("minecraft:can_break_armor_stand"),
+            tagged("minecraft:always_kills_armor_stands"),
+        );
+        if explosion {
+            self.break_armor_stand_by_anything_ecs(e, id, causing_id);
+            return false;
+        }
+        // P's fire intake: an ignition for 100 ticks, or the burn's hurt on a burning stand; the host reads no more of it.
+        if ignites {
+            if let Some(w) = self.ecs.world_mut() {
+                ecs_stand::fire_intake(w, e, Cause::InFire);
+            }
+            return false;
+        }
+        if burns && self.ecs.world().and_then(|w| w.get::<Health>(e)).is_some_and(|h| h.0 > 0.5) {
+            if let Some(w) = self.ecs.world_mut() {
+                ecs_stand::fire_intake(w, e, Cause::OnFire);
+            }
+            return false;
+        }
+        if !breaks && !always_kills {
+            return false;
+        }
+        let may_build = match causing {
+            Some(Target::Player) => self.may_build(),
+            Some(Target::Guest(conn)) => self.command_guest(conn).is_none_or(|g| g.abilities.may_build),
+            _ => true,
+        };
+        if !may_build {
+            return false;
+        }
+        self.break_armor_stand_by_hit_ecs(e, creative, always_kills, by)
+    }
     /// `ArmorStand.hurtServer` for a command's damage of `damage_type` from the
     /// causing entity `causing`, up to its sources that act and still return
     /// false: a blast breaks the stand (`brokenByAnything`, `kill`), fire that
@@ -1442,6 +1795,9 @@ impl Game<'_> {
         causing: Option<super::commands::Target>,
     ) -> bool {
         use super::commands::Target;
+        if self.ecs.is_active() {
+            return self.command_damage_stand_ecs(id, damage_type, causing);
+        }
         let Some(i) = self.armor_stands.iter().position(|a| a.id == id) else {
             return false;
         };
@@ -1575,11 +1931,16 @@ impl Game<'_> {
         }
         let attacker = match causing {
             Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
-            Some(Target::Mob(m_id)) => self
-                .mobs
-                .iter()
-                .find(|m| m.id == m_id)
-                .map(|m| m.kind.id.clone()),
+            Some(Target::Mob(m_id)) => {
+                if self.ecs.is_active() {
+                    self.fixed_kind(m_id)
+                } else {
+                    self.remote_entities
+                        .iter()
+                        .find(|m| m.id == m_id)
+                        .map(|m| m.kind.id.clone())
+                }
+            }
             Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
             _ => None,
         };

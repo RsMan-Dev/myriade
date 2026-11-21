@@ -9,6 +9,7 @@ use super::*;
 use crate::cow::*;
 use crate::goals::*;
 use crate::spots::stable_destination;
+use crate::bridge::teams::allied;
 use crate::hostile::PlayerState;
 use crate::targeting::{self, Eye, Who};
 use horizon_client_lib::items::ItemStack;
@@ -283,9 +284,12 @@ fn alive(w: &World, c: Who) -> bool {
     }
 }
 
-/// `RAM_TARGET_CONDITIONS` for a creature: not the goat itself, alive, not of its species. A player is always a candidate here
-/// (`targeting::info` says whether it can be targeted).
+/// `RAM_TARGET_CONDITIONS` for a creature: not the goat itself, not its team's, alive, not of its species. A player is a candidate
+/// here unless it is in the goat's team (`targeting::info` says whether it can be targeted).
 fn ram_target_ok(w: &World, e: Entity, who: Who) -> bool {
+    if allied(w, Who::Entity(e), who) {
+        return false;
+    }
     match who {
         Who::Entity(c) => {
             c != e
@@ -632,6 +636,7 @@ mod tests {
     use crate::behaviours::Entry;
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
     use crate::species::Config;
+    use crate::targeting::Who;
 
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 2, &Params { cooldown: (50, 50), ..Params::DEFAULT })];
 
@@ -690,6 +695,20 @@ mod tests {
             }
         }
         assert!(charged, "after the 20 ticks of lowered head the goat charges");
+    }
+
+    /// Un coéquipier n'est pas une cible : la chèvre et sa proie dans une même équipe, le bélier ne part jamais et la vie de la
+    /// proie reste pleine (la règle du Mob : `p.allies.contains`, `goat.rs:491`).
+    #[test]
+    fn a_goat_does_not_ram_its_team_mate() {
+        let Some(mut h) = herd() else { return };
+        let (g, p) = scene(&mut h, 6.5);
+        crate::bridge::teams::set_team(&mut h.world, "herd", &[Who::Entity(g), Who::Entity(p)]);
+        for _ in 0..120 {
+            h.tick();
+            assert!(!running(&h, g), "the goat never starts a ram against its team mate");
+        }
+        assert_eq!(h.world.get::<Health>(p).unwrap().0, 10.0, "the team mate is not hit");
     }
 
     /// La charge touche la cible : des dégâts partent à la cible (témoin : sa vie baisse), le but finit aussitôt, et le

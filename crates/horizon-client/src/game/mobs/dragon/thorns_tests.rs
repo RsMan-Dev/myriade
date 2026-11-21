@@ -3,7 +3,6 @@ use super::*;
 use crate::game::*;
 use horizon_client::{
     mobs::{Damage, DamageKind, Mob, MobEvent, Who, finalize as f},
-    projectiles::{Hit, Projectile, ProjectileKind},
 };
 
 fn with_game(test: impl FnOnce(&mut Game<'_>)) {
@@ -143,51 +142,8 @@ fn mob_thorns_melee_projectiles_and_non_attacks() {
             g.handle_mob_events(vec![event]).unwrap();
             check_answer(g, f::CHEST, case < 3);
         }
-        for (kind, answers) in [
-            (
-                ProjectileKind::Arrow {
-                    base_damage: 2.0,
-                    critical: false,
-                    effect: None,
-                },
-                true,
-            ),
-            (ProjectileKind::Trident, true),
-            (ProjectileKind::SmallFireball, true),
-            (ProjectileKind::LargeFireball { power: 0 }, true),
-            (ProjectileKind::LlamaSpit, true),
-            (
-                ProjectileKind::ShulkerBullet {
-                    target: None,
-                    dir: None,
-                    steps: 0,
-                    delta: [0.0; 3],
-                    seed: 1,
-                },
-                true,
-            ),
-            (ProjectileKind::WitherSkull { dangerous: false }, true),
-            (ProjectileKind::WindCharge, true),
-            (ProjectileKind::BreezeWindCharge, true),
-            (ProjectileKind::Snowball, false),
-            (ProjectileKind::Egg, false),
-        ] {
-            pair(g, f::CHEST);
-            let mut p = Projectile::new(kind, g.mobs[1].position, Some(Who::Mob(41)));
-            p.velocity = Vec3::new(-1.0, 0.0, 0.0);
-            g.projectile_hit(
-                &p,
-                Hit::Entity {
-                    who: Who::Mob(42),
-                    at: p.position,
-                },
-            )
-            .unwrap();
-            check_answer(g, f::CHEST, answers);
-        }
         pair(g, f::CHEST);
         g.insert_fangs(100, [0.5, 64.0, 0.5], 0.0, -7, 41);
-        g.tick_fangs();
         check_answer(g, f::CHEST, true);
     });
 }

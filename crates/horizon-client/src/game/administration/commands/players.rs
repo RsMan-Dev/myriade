@@ -113,12 +113,7 @@ impl Game<'_> {
                         _ => None,
                     })
                     .or_else(|| {
-                        source.cart.and_then(|id| {
-                            self.carts
-                                .iter()
-                                .find(|cart| cart.id == id)
-                                .map(|cart| cart.command.name())
-                        })
+                        source.cart.and_then(|id| self.ecs.cart_command(id)).map(|c| c.name())
                     })
                     .unwrap_or_else(|| self.server_name()),
             },
@@ -395,7 +390,7 @@ mod game_tests {
             // through `execute as` prints nothing here).
             assert!(game.run_command("summon pig 6.5 200 6.5 {NoAI:1b}"));
             let pig = game
-                .mobs
+                .remote_entities
                 .iter()
                 .map(|m| m.id)
                 .next()

@@ -3,6 +3,7 @@
 use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
 use horizon_client::chunk::Chunk;
 use horizon_core::position::ChunkPos;
+use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, trident::Pickup};
 use std::sync::Arc;
 
 fn game() -> Game<'static> {
@@ -58,14 +59,29 @@ fn game() -> Game<'static> {
     game
 }
 
-/// An arrow from `(0.5, 64.5, z)` flying east into the wall at x = 4.
-fn shoot(game: &mut Game<'_>, z: f64) {
-    assert!(game.run_command(&format!(
-        "summon minecraft:arrow 0.5 64.5 {z} {{Motion:[1.0d,0.0d,0.0d]}}"
-    )));
-    for _ in 0..10 {
-        game.tick_projectiles().unwrap();
+/// A plain arrow: no pickup, no fire, no punch, no effect.
+fn plain_shot() -> ArrowShot {
+    ArrowShot {
+        pickup: Pickup::Disallowed,
+        stack: crate::items::ItemStack::new("minecraft:arrow", 1),
+        fx: Def {
+            fire: 0,
+            punch: 0.0,
+            pierce: 0,
+            effects: Vec::new(),
+        },
+        sound: "minecraft:entity.arrow.hit",
     }
+}
+
+/// An arrow from `(0.5, 64.5, z)` flying east into the wall at x = 4; its ECS id.
+fn shoot(game: &mut Game<'_>, z: f64) -> u32 {
+    let id = game.ecs_shoot_arrow([0.5, 64.5, z], [1.0, 0.0, 0.0], None, plain_shot(), None);
+    assert_ne!(id, 0, "the arrow is in the level");
+    for _ in 0..10 {
+        game.tick_ecs().unwrap();
+    }
+    id
 }
 
 fn dropped(game: &Game<'_>, item: &str) -> usize {
@@ -83,14 +99,14 @@ fn an_arrow_knocks_the_item_out_then_breaks_the_frame() {
     assert!(game.run_command(
         "summon minecraft:item_frame 3.5 64.5 6.5 {Facing:4b,Item:{id:\"minecraft:diamond\",count:1}}"
     ));
-    assert_eq!(game.item_frames.len(), 1);
+    assert_eq!(game.ecs_frames().len(), 1);
     shoot(&mut game, 6.5);
-    assert_eq!(game.item_frames.len(), 1, "the first hit leaves the frame");
-    assert!(game.item_frames[0].item.is_none(), "the item came out");
+    assert_eq!(game.ecs_frames().len(), 1, "the first hit leaves the frame");
+    assert!(game.ecs_frames()[0].item.is_none(), "the item came out");
     assert_eq!(dropped(&game, "minecraft:diamond"), 1);
     // The empty frame breaks and drops itself.
     shoot(&mut game, 6.5);
-    assert!(game.item_frames.is_empty());
+    assert!(game.ecs_frames().is_empty());
     assert_eq!(dropped(&game, "minecraft:item_frame"), 1);
 }
 
@@ -101,20 +117,18 @@ fn a_fixed_frame_refuses_the_arrow() {
     assert!(game.run_command(
         "summon minecraft:item_frame 3.5 64.5 9.5 {Facing:4b,Fixed:1b,Item:{id:\"minecraft:diamond\",count:1}}"
     ));
-    shoot(&mut game, 9.5);
-    assert_eq!(game.item_frames.len(), 1);
+    let arrow = shoot(&mut game, 9.5);
+    assert_eq!(game.ecs_frames().len(), 1);
     assert!(
-        game.item_frames[0].item.is_some(),
+        game.ecs_frames()[0].item.is_some(),
         "a fixed frame keeps its item"
     );
     assert_eq!(dropped(&game, "minecraft:diamond"), 0);
     // The frame took the arrow's hit and refused it, so the arrow turned back
     // (`AbstractArrow.onHitEntity`'s deflection) instead of reaching the wall.
     assert!(
-        game.creatures
-            .projectiles
-            .iter()
-            .all(|p| p.position.x < 3.9),
+        game.ecs_view(arrow)
+            .is_none_or(|v| v.position[0] < 3.9),
         "the arrow went through the frame"
     );
 }

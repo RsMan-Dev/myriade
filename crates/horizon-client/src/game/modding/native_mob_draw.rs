@@ -153,7 +153,9 @@ impl Game<'_> {
     }
     /// The mobs of the level a pre hook didn't cancel this frame.
     pub(in crate::game) fn drawn_mobs(&self) -> impl Iterator<Item = &Mob> {
-        self.mobs.iter().filter(|m| !self.render_canceled(m.id))
+        // A server with the ECS draws no mob: its entities have no renderer here.
+        let client = !self.ecs.is_active();
+        self.remote_entities.iter().filter(move |m| client && !self.render_canceled(m.id))
     }
     /// The mods' pre hooks for `mob`, before any of its model is drawn, lit by `light` (packed as
     /// the entity pass packs it): `render_player_pre` for a player (`who`: its name, and whether

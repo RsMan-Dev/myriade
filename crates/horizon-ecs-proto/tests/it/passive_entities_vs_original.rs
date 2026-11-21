@@ -5,10 +5,10 @@
 use bevy_ecs::prelude::*;
 use horizon_core::{geometry::Vec3, nbt::Tag};
 use horizon_ecs_proto::{
-    cow::Pos,
+    cloud_tick,
+    cow::{Herd, Pos},
     display::{self, BlockState, Shown, Transform},
-    effect_cloud::{self, EffectCloud},
-    effects::PotionId,
+    effect_cloud::CloudSpec,
     goals::Events,
     host_out::HostEvent,
     interaction,
@@ -121,17 +121,17 @@ fn origin_tick(o: &mut Origin) -> bool {
 }
 
 /// Ticks a cloud of `spec` in the ECS and `origin` side by side, and returns the tick both are gone on. The radius is compared each tick.
-fn both_end(spec: EffectCloud, mut origin: Origin) -> i32 {
-    let mut w = world();
-    let e = effect_cloud::spawn(&mut w, [10.0, 64.0, -3.0], PotionId("minecraft:poison"), spec);
-    assert!(matches!(w.resource_mut::<Events>().host.drain().next(), Some(HostEvent::Cloud { duration, .. }) if duration == spec.duration));
+fn both_end(spec: CloudSpec, mut origin: Origin) -> i32 {
+    let mut h = Herd::new(0, 4.0, false, false, 7);
+    let e = cloud_tick::spawn(&mut h.world, horizon_core::geometry::Vec3::new(10.0, 64.0, -3.0), spec.clone());
+    assert!(matches!(h.world.resource_mut::<Events>().host.drain().next(), Some(HostEvent::Cloud { duration, .. }) if duration == spec.duration));
     for tick in 1..=1000 {
         let origin_alive = origin_tick(&mut origin);
-        effect_cloud::tick(&mut w);
-        let ours = w.get::<EffectCloud>(e).copied();
+        h.tick();
+        let ours = h.world.get::<CloudSpec>(e).map(|c| c.radius);
         assert_eq!(ours.is_some(), origin_alive, "tick {tick}");
-        if let Some(c) = ours {
-            assert_eq!(c.radius, origin.radius, "tick {tick}");
+        if let Some(radius) = ours {
+            assert_eq!(radius, origin.radius, "tick {tick}");
         }
         if !origin_alive {
             return tick;
@@ -142,10 +142,10 @@ fn both_end(spec: EffectCloud, mut origin: Origin) -> i32 {
 
 #[test]
 fn an_effect_cloud_waits_then_shrinks_and_ends_tick_by_tick_as_the_origin() {
-    let spec = EffectCloud { radius: 3.0, radius_per_tick: -3.0 / 600.0, radius_on_use: 0.0, duration_on_use: 0, age: 0, wait: 10, duration: 600, reapplication_delay: 20, duration_scale: 1.0, hidden: &[], ambient: &[], owner: None };
-    let end = both_end(spec, Origin { age: 0, radius: 3.0, per_tick: -3.0 / 600.0, wait: 10, duration: 600 });
+    let spec = CloudSpec { radius_per_tick: -3.0 / 600.0, wait: 10, duration: 600, ..CloudSpec::new(3.0, "minecraft:poison", None) };
+    let end = both_end(spec.clone(), Origin { age: 0, radius: 3.0, per_tick: -3.0 / 600.0, wait: 10, duration: 600 });
     assert!(end > 10, "the wait comes first, then the shrink, tick {end}");
 
-    let spec = EffectCloud { radius: 5.0, radius_per_tick: 0.0, wait: 20, duration: 200, ..spec };
+    let spec = CloudSpec { radius: 5.0, radius_per_tick: 0.0, wait: 20, duration: 200, ..spec };
     assert_eq!(both_end(spec, Origin { age: 0, radius: 5.0, per_tick: 0.0, wait: 20, duration: 200 }), 220, "the duration counts after the wait: 20 + 200");
 }

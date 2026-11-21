@@ -262,12 +262,15 @@ impl Game<'_> {
     /// The tags a mod gave the mobs from index `from` on before they joined
     /// move to where the level keeps a joined entity's tags.
     pub(super) fn join_spawn_tags(&mut self, from: usize) {
-        for i in from..self.mobs.len() {
-            if self.mobs[i].extra.spawn_tags.is_empty() {
+        if self.ecs.is_active() {
+            return self.ecs.join_spawn_tags(from);
+        }
+        for i in from..self.remote_entities.len() {
+            if self.remote_entities[i].extra.spawn_tags.is_empty() {
                 continue;
             }
-            let given = std::mem::take(&mut self.mobs[i].extra.spawn_tags);
-            let target = super::commands::Target::Mob(self.mobs[i].id);
+            let given = std::mem::take(&mut self.remote_entities[i].extra.spawn_tags);
+            let target = super::commands::Target::Mob(self.remote_entities[i].id);
             let mut tags = self.tags_of(target);
             for tag in given {
                 if !tags.contains(&tag) {
@@ -675,7 +678,7 @@ mod tests {
             || {
                 with_game(|game| {
                     let spawned = spawn_pig(game).unwrap();
-                    let m = game.mobs.iter().find(|m| m.id == spawned).unwrap();
+                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
                     let head = &m.equipment_stacks()[EquipmentSlot::Head as usize];
                     assert_eq!(
                         head.as_ref().map(|s| &*s.item),
@@ -746,7 +749,7 @@ mod tests {
             || {
                 with_game(|game| {
                     let spawned = spawn_pig(game).expect("a skipped finalization still spawns");
-                    let m = game.mobs.iter().find(|m| m.id == spawned).unwrap();
+                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
                     assert_eq!(finalize::base_value(m, Attr::MaxHealth), 20.0);
                     assert!(
                         !finalize::has_modifier(
@@ -767,9 +770,9 @@ mod tests {
             },
             || {
                 with_game(|game| {
-                    let before = game.mobs.len();
+                    let before = game.remote_entities.len();
                     assert_eq!(spawn_pig(game), None);
-                    assert_eq!(game.mobs.len(), before, "a stopped spawn adds no mob");
+                    assert_eq!(game.remote_entities.len(), before, "a stopped spawn adds no mob");
                 });
             },
         );
@@ -783,7 +786,7 @@ mod tests {
     fn the_group_a_listener_leaves_is_what_finalization_reads() {
         with_game(|game| {
             let alone = spawn_pig(game).unwrap();
-            let m = game.mobs.iter().find(|m| m.id == alone).unwrap();
+            let m = game.remote_entities.iter().find(|m| m.id == alone).unwrap();
             assert!(!m.is_baby(), "a pack's first member is never a baby");
         });
         let given = Arc::new(Mutex::new(Vec::new()));
@@ -799,7 +802,7 @@ mod tests {
             || {
                 with_game(|game| {
                     let spawned = spawn_pig(game).unwrap();
-                    let m = game.mobs.iter().find(|m| m.id == spawned).unwrap();
+                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
                     assert!(m.is_baby());
                 });
             },

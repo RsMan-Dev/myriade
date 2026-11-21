@@ -293,57 +293,6 @@ impl Game<'_> {
             && horizon_client::scoreboard::teams_allow_damage(victim, attacker)
     }
 
-    /// A player's projectile on a player: the hit runs as the victim, whose
-    /// hurt refuses it when the `pvp` game rule or their teams forbid it
-    /// (`ServerPlayer.canHarmPlayer`; `AbstractArrow.onHitEntity` then turns
-    /// the arrow back).
-    pub(super) fn projectile_hits_player(
-        &mut self,
-        p: &Projectile,
-        hit: Hit,
-        victim: Victim,
-    ) -> Result<()> {
-        let Hit::Entity { at, .. } = hit else {
-            return Ok(());
-        };
-        let Some(host) = self.lan.as_ref() else {
-            return self.projectile_hit(p, hit);
-        };
-        let team_of = |game: &Self, name: &str| game.score.board.players_team(name).cloned();
-        let attacker = match p.guest {
-            Some(conn) => host.hub.guest(conn).and_then(|g| team_of(self, &g.name)),
-            None => self.player_team().cloned(),
-        };
-        let target = match victim {
-            Victim::Guest(conn) => host.hub.guest(conn).and_then(|g| team_of(self, &g.name)),
-        };
-        let refused = !self.player_may_harm(target.as_ref(), attacker.as_ref());
-        let on_player = Hit::Entity {
-            who: Who::Player,
-            at,
-        };
-        let shooter = self.player_attacker(p.guest);
-        let effect_attacker = shooter
-            .as_ref()
-            .map_or(self.own_entity_id() as u32, |s| s.0);
-        let result = match victim {
-            Victim::Guest(conn) => self.guest_hit_by(conn, |g| {
-                g.combat.refuse_player_hit = refused;
-                g.combat.projectile_attacker = shooter;
-                let saved_effect_attacker = g
-                    .combat
-                    .enchantment_projectile_attacker
-                    .replace(effect_attacker);
-                let r = g.projectile_hit(p, on_player);
-                g.combat.refuse_player_hit = false;
-                g.combat.projectile_attacker = None;
-                g.combat.enchantment_projectile_attacker = saved_effect_attacker;
-                r
-            }),
-        };
-        result.unwrap_or(Ok(()))
-    }
-
     pub(super) fn player_attacker(&self, conn: Option<u32>) -> Option<(u32, Text)> {
         match conn {
             Some(conn) => {

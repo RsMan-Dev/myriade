@@ -72,7 +72,7 @@ pub static DEF: Def = Def {
     ],
     changes: &[],
     rules: &[],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::IgnoresBerryBush]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
     spawn: None,

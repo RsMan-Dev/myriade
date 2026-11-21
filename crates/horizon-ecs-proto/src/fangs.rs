@@ -2,24 +2,27 @@
 //! Three deadlines of its own time wake it: the start at warmup `+ 1` (event 4 to the host, which plays the attack sound), the bite at
 //! `-8` (6 of indirect magic to what stands in its box), the end at `-23` (22 ticks of life after the start).
 use crate::area::{creatures_in, players_in, species_name};
+use crate::colony_register::MiscOut;
 use crate::cow::*;
 use crate::goals::Events;
+use crate::bridge::teams;
+use crate::host_out_misc::MiscEvent;
 use crate::hostile::PlayerState;
 use crate::targeting::Who;
 use crate::tame::Owner;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
 
-/// A fang and the entity that summoned it (`EvokerFangs.owner`, a reference: gone when the owner is despawned).
+/// A fang and the one that summoned it (`EvokerFangs.owner`: a player or a creature, `None` when none is known; a creature owner gone
+/// from the world is no owner at the bite).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Fang {
-    pub owner: Entity,
+    pub owner: Option<Who>,
 }
 
 /// `new EvokerFangs(level, x, y, z, yaw, warmup, owner)`: the three deadlines are armed now, nothing runs in between.
-pub fn spawn_fang(w: &mut World, at: Vec3, warmup: i32, owner: Entity) -> Entity {
-    let e = w.spawn((Pos(at), OwnTime, Fang { owner }))
-.id();
+pub fn spawn_fang(w: &mut World, at: Vec3, warmup: i32, owner: Option<Who>) -> Entity {
+    let e = w.spawn((Pos(at), OwnTime, Fang { owner })).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::EVOKER_FANGS);
     after(w, e, warmup + 1, start);
     after(w, e, warmup + 8, bite);
@@ -45,10 +48,13 @@ fn fang_box(at: Vec3) -> Aabb {
 use crate::species::lists::is_vex;
 
 /// `EvokerFangs.dealDamageTo` for a creature: no owner present hurts everyone; with one, `owner.isAlliedTo(target)` (`Entity.isAlliedTo`:
-/// the same, or either one considers the other an ally). Players are never allied here (no teams in the ECS).
-fn allied(w: &World, owner: Option<Entity>, target: Entity) -> bool {
+/// the same, or either one considers the other an ally, or both are in one team).
+fn allied(w: &World, owner: Option<Who>, target: Entity) -> bool {
     let Some(owner) = owner else { return false };
-    owner == target || considers(w, owner, target) || considers(w, target, owner)
+    match owner {
+        Who::Entity(o) => o == target || considers(w, o, target) || considers(w, target, o) || teams::allied(w, owner, Who::Entity(target)),
+        Who::Player(_) => teams::allied(w, owner, Who::Entity(target)),
+    }
 }
 
 /// `AbstractIllager.considersEntityAsAlly` (an illager's allies are the illagers, `#illager`, no teams), and `Evoker`'s: the vex whose
@@ -79,18 +85,24 @@ fn root_owner(w: &World, mut e: Entity) -> Option<Entity> {
 fn bite(w: &mut World, e: Entity) {
     let (Some(at), Some(owner)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Fang>(e).map(|f| f.owner)) else { return };
     let b = fang_box(at);
-    let owner = w.get_entity(owner).is_ok().then_some(owner);
-    let by = owner.map(Who::Entity);
+    let by = match owner {
+        Some(Who::Entity(o)) if w.get_entity(o).is_err() => None,
+        other => other,
+    };
     let from = Some((at.x, at.z));
     let victims: Vec<Entity> = creatures_in(w, b, e)
         .into_iter()
-        .filter(|&c| Some(c) != owner && w.get::<Health>(c).is_some_and(|h| h.0 > 0.0) && !allied(w, owner, c))
+        .filter(|&c| by != Some(Who::Entity(c)) && w.get::<Health>(c).is_some_and(|h| h.0 > 0.0) && !allied(w, by, c))
         .collect();
     for v in victims {
-        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, from, by, direct: false, power: None });
+        w.resource_mut::<DamageQueue>().0.push(Hit { target: v, amount: 6.0, cause: Cause::Magic, damage: if by.is_some() { "indirect_magic" } else { "magic" }, from, by, direct: false, power: None });
     }
     let tick = w.resource::<Clock>().0;
     for id in players_in(w, b) {
+        if by == Some(Who::Player(id)) || by.is_some_and(|o| teams::allied(w, o, Who::Player(id))) {
+            continue;
+        }
         w.resource_mut::<PlayerState>().hurt(tick, id, 6.0, (at.x, at.z), by);
     }
+    w.get_resource_or_insert_with(MiscOut::default).0.push(MiscEvent::FangsBite { at: [at.x, at.y, at.z] });
 }

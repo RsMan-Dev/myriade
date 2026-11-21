@@ -118,6 +118,18 @@ pub enum Cap {
     Passive,
     /// An entity hung on a block (`hanging.rs`): `Transform` only.
     Hanging,
+    /// `Entity.isIgnoringBlockTriggers` true: it never presses a plate nor trips a wire (`inside::IgnoresTriggers`, put at creation).
+    IgnoresTriggers,
+    /// `SweetBerryBushBlock.entityInside` skips it (the fox and the bee): `inside_effects::IgnoresBerryBush`, put at creation.
+    IgnoresBerryBush,
+    /// `EntityType.fireImmune`: fire damage never hurts it (`Immune` bit `IMMUNE_FIRE`, put at creation).
+    FireImmune,
+    /// `WitherBoss`/`WitherSkeleton.canBeAffected`: the wither effect is refused (`Immune` bit `IMMUNE_WITHER`).
+    WitherImmune,
+    /// `Spider`, `AbstractNautilus` `.canBeAffected`: the poison effect is refused (`IMMUNE_POISON`).
+    PoisonImmune,
+    /// `Parched.canBeAffected`: the weakness effect is refused (`IMMUNE_WEAKNESS`).
+    WeaknessImmune,
 }
 /// The damage an entity just took (the reactions step fills and sends it).
 pub struct Damaged {
@@ -288,6 +300,7 @@ pub mod leave_block;
 pub mod freeze_when_looked_at;
 pub mod strider_go_to_lava;
 pub mod ghast_look;
+pub mod move_emission;
 pub mod move_towards_target;
 pub mod ranged_attack;
 pub mod leap_at_target;
@@ -370,6 +383,7 @@ pub static TABLE: &[&Module] = &[
     &admire_seen::MODULE,
     &crate::dragon::flight::MODULE,
     &vibration_listen::MODULE,
+    &move_emission::MODULE,
     &block_breaker::MODULE,
     &boss_bar::MODULE,
     &bounce_drag::MODULE,

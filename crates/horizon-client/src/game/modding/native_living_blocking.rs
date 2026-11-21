@@ -15,8 +15,9 @@ impl Game<'_> {
         let ticks = match self.native_living_read_target(living)? {
             Target::Player => self.using.map(|(_, ticks)| ticks),
             Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.using_item(id),
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                let mob = self.remote_mob_any(id)?;
                 spear_use::is_using_item(mob).then(|| mob.extra.using_item.unsigned_abs() - 1)
             }
             _ => return None,
@@ -99,19 +100,19 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let mob = game.mobs.len() - 1;
-            game.mobs[mob].extra.set_slot_stack(OFFHAND, Some(shield));
+            let mob = game.remote_entities.len() - 1;
+            game.remote_entities[mob].extra.set_slot_stack(OFFHAND, Some(shield));
             assert_eq!(game.living_is_blocking(zombie), Some(false));
             assert!(game.living_start_using_item(zombie, Hand::Off));
-            game.mobs[mob].extra.using_item = 5;
+            game.remote_entities[mob].extra.using_item = 5;
             assert_eq!(
                 game.living_is_blocking(zombie),
                 Some(false),
                 "4 ticks of use"
             );
-            game.mobs[mob].extra.using_item = 6;
+            game.remote_entities[mob].extra.using_item = 6;
             assert_eq!(
                 game.living_is_blocking(zombie),
                 Some(true),

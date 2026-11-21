@@ -307,7 +307,7 @@ impl Game<'_> {
 
     /// `Level.getEntityCount` over the entities Horizon keeps.
     fn debug_entity_count(&self) -> usize {
-        self.mobs.iter().filter(|m| !m.removed).count()
+        self.remote_entities.iter().filter(|m| !m.removed).count()
             + self.dropped.len()
             + self.orbs.len()
             + self.paintings.len()
@@ -323,7 +323,7 @@ impl Game<'_> {
     /// (`EntitySectionStorage.count`).
     fn debug_entity_sections(&self) -> usize {
         let sections: HashSet<[i32; 3]> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter(|m| !m.removed)
             .map(|m| [m.position.x, m.position.y, m.position.z])
@@ -531,14 +531,14 @@ impl Game<'_> {
         };
         offer(
             self.mob_hit()
-                .map(|(i, d, _)| (d, self.mobs[i].kind.id.to_string())),
+                .map(|(i, d, _)| (d, self.remote_entities[i].kind.id.to_string())),
         );
         offer(
             self.boat_hit()
-                .map(|(i, d)| (d, self.boats[i].entity_type())),
+                .and_then(|(id, d)| Some((d, self.ecs.kind(id)?.to_owned()))),
         );
         offer(
-            self.cart_hit()
+            self.remote_cart_hit()
                 .map(|(i, d)| (d, self.carts[i].kind.id().to_owned())),
         );
         offer(
@@ -546,11 +546,10 @@ impl Game<'_> {
                 .map(|(_, d, _)| (d, "minecraft:armor_stand".to_owned())),
         );
         offer(
-            self.frame_hit()
-                .map(|(i, d)| (d, self.item_frames[i].kind().to_owned())),
+            self.aimed_frame().map(|(id, d)| (d, self.ecs_view(id).map_or("minecraft:item_frame", |v| v.kind).to_owned())),
         );
         offer(
-            self.painting_hit()
+            self.aimed_painting()
                 .map(|(_, d)| (d, "minecraft:painting".to_owned())),
         );
         offer(

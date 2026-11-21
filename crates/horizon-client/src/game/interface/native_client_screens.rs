@@ -236,7 +236,7 @@ mod client_screen_tests {
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             let mut horse = Mob::new(42, kind, Vec3::new(0.5, 65.0, 0.5), 0.0);
             horse.extra.tame = true;
-            game.mobs.push(horse);
+            game.remote_entities.push(horse);
             game.riding = Some(42);
             // An overlay counts as an open screen even when a mount would otherwise
             // make open_inventory report that its command was queued.

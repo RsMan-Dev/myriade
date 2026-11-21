@@ -130,7 +130,7 @@ impl Game<'_> {
         else {
             return false;
         };
-        let m = &mut self.mobs[index];
+        let m = &mut self.remote_entities[index];
         if !m.alive() {
             return false;
         }
@@ -177,10 +177,10 @@ impl Game<'_> {
     /// The other players' models and names: the players a server sends.
     fn other_players(&self) -> Vec<(&Mob, String)> {
         let mut out = Vec::new();
-        let indices = first_mob_indices(&self.mobs);
+        let indices = first_mob_indices(&self.remote_entities);
         for (id, name) in self.remote_player_names() {
             if let Some(&index) = indices.get(&id) {
-                out.push((&self.mobs[index], name));
+                out.push((&self.remote_entities[index], name));
             }
         }
         out
@@ -230,14 +230,14 @@ impl Game<'_> {
         hooks: bool,
         frustum: Option<&horizon_client::gfx::JoinedFrusta>,
     ) -> Vec<NameTag> {
-        let target = self.mob_hit().map(|(i, _, _)| self.mobs[i].id);
+        let target = self.mob_hit().map(|(i, _, _)| self.remote_entities[i].id);
         // Asked once a frame: a mod loaded without this hook costs the tags nothing.
         let name_format = hooks && mod_api::__private::listened(mod_api::HookId::PlayerNameFormat);
         let viewer = self.player_team();
         let mut tags = Vec::new();
         let players = self.other_players();
         let player_ids = named_by_player_list(&players);
-        let named = self.mobs.iter().filter_map(|m| {
+        let named = self.remote_entities.iter().filter_map(|m| {
             // Already named by the player list: a second tag would sit on the
             // first (`named_by_player_list`). A mob a mod's pre hook canceled has none.
             if player_ids.contains(&m.id) || self.render_canceled(m.id) {
@@ -269,7 +269,7 @@ impl Game<'_> {
         // for each tag made this quadratic in the number of loaded entities.
         let local_entity_id = self.remote.as_ref().map(|r| r.entity_id as u32);
         let ridden = collect_vehicle_ids(
-            &self.mobs,
+            &self.remote_entities,
             self.remote_vehicle_ids(),
             self.riding,
             local_entity_id,
@@ -525,19 +525,18 @@ impl Game<'_> {
         // ItemFrameRenderer.shouldShowName/getNameTag: only the targeted
         // frame's custom-named item, with the HUD visible (also glow frames).
         let targeted_frame = (hooks || !self.ui.hide_gui)
-            .then(|| self.frame_hit())
+            .then(|| self.aimed_frame())
             .flatten()
             .filter(|(_, distance)| {
                 self.before_block(*distance) && self.mob_hit().is_none_or(|(_, d, _)| d > *distance)
             })
-            .map(|(index, _)| index);
+            .map(|(id, _)| id);
         let frames = if hooks {
-            0..self.item_frames.len()
+            self.ecs_frames()
         } else {
-            targeted_frame.map_or(0..0, |index| index..index + 1)
+            targeted_frame.and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.frame_from_ecs(e)).into_iter().collect()
         };
-        for index in frames {
-            let frame = &self.item_frames[index];
+        for frame in &frames {
             let name = frame.item.as_ref().and_then(|item| item.custom_name());
             if !hooks && name.is_none() {
                 continue;
@@ -546,7 +545,7 @@ impl Game<'_> {
             let center = glam::DVec3::from_array(std::array::from_fn(|a| (lo[a] + hi[a]) / 2.0));
             if center.distance_squared(camera) < 64.0 * 64.0 {
                 let name_shown =
-                    !self.ui.hide_gui && targeted_frame == Some(index) && name.is_some();
+                    !self.ui.hide_gui && targeted_frame == Some(frame.id) && name.is_some();
                 let mut visible = name_shown;
                 let mut text = None;
                 if hooks {

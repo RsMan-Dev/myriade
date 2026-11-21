@@ -167,7 +167,6 @@ impl Game<'_> {
             host.hub.guests[i].permission,
         );
         let mut play = host.play.remove(&conn).unwrap_or_default();
-        play.hook.begin_loan();
         if fresh {
             // A new body (joined, respawned, changed level): nothing on it yet,
             // its effects' modifiers and armor protection included.
@@ -365,8 +364,6 @@ impl Game<'_> {
         );
         let g = &host.hub.guests[i];
         std::mem::swap(&mut self.stats, &mut play.stats);
-        self.hook.begin_loan();
-        std::mem::swap(&mut self.hook, &mut play.hook);
         let adv_loaded = std::mem::replace(&mut self.adv.loaded, true);
         let last_inventory = std::mem::replace(&mut self.adv.last_inventory, play.last_inventory);
         let levitation = std::mem::replace(&mut self.adv.levitation, play.levitation);
@@ -384,8 +381,6 @@ impl Game<'_> {
         );
         let acting_fake = std::mem::replace(&mut self.lan_acting_fake, !g.participates_online());
         g.residency.put_back();
-        self.hook.finish_loan();
-        self.bind_current_hook_residency();
         let packets = std::mem::take(&mut self.guest_packets);
         let entity_events = std::mem::take(&mut self.guest_entity_events);
         let cooldown_events = std::mem::take(&mut self.guest_cooldowns);
@@ -740,7 +735,6 @@ impl Game<'_> {
             }
         }
         host.hub.guests[i].residency.extract();
-        self.hook.begin_loan();
         (
             self.lan_acting,
             self.lan_acting_name,
@@ -852,7 +846,6 @@ impl Game<'_> {
             self.level.player_impulse_grace = player_save_projection.0;
             self.level.player_fall_particles = player_save_projection.1;
             std::mem::swap(&mut self.stats, &mut play.stats);
-            std::mem::swap(&mut self.hook, &mut play.hook);
             self.adv.loaded = adv_loaded;
             play.last_inventory = std::mem::replace(&mut self.adv.last_inventory, last_inventory);
             play.levitation = std::mem::replace(&mut self.adv.levitation, levitation);
@@ -999,7 +992,6 @@ impl Game<'_> {
         let finished = self.lan_guest_swaps.pop();
         debug_assert_eq!(finished, Some(conn));
         host.hub.guests[i].residency.put_back();
-        host.play[&conn].hook.finish_loan();
         match self.lan_acting {
             Some(outer) => {
                 if let Some(guest) = host.hub.guest(outer) {
@@ -1008,11 +1000,9 @@ impl Game<'_> {
             }
             None => self.resident_entities.local_player.put_back(),
         }
-        self.hook.finish_loan();
         if let Some(vehicle) = released_vehicle {
             self.release_removed_vehicle(vehicle);
         }
-        self.bind_current_hook_residency();
         for event in turn_events {
             match event {
                 MotionEvent::Health(horizon_client::health::HealthEvent::DamageBroadcast {

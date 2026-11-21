@@ -1884,25 +1884,32 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn cart_slot_edits_prefer_the_menu_and_refuse_a_removed_owner() {
-        use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
-        use horizon_core::geometry::Vec3;
+        use super::super::minecarts::CART_KEY_Y;
         with_game(|game| {
-            let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
-            cart.items[0] = Some(ItemStack::new("minecraft:stone", 4));
-            game.carts.push(cart);
-            let key = (i32::MAX - 15, CART_KEY_Y, 600);
+            let mut next = game.next_entity;
+            let id = game
+                .ecs_with(|ecs, mw| {
+                    ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [1.0, 65.0, 2.0], 0.0, &mut || {
+                        next += 1;
+                        next
+                    })
+                })
+                .unwrap();
+            game.next_entity = next;
+            game.ecs.cart_set_slot(id, 0, Some(ItemStack::new("minecraft:stone", 4)));
+            let key = (i32::MAX - 15, CART_KEY_Y, id as i32);
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Chest(vec![None; 27]));
             assert_eq!(
-                game.edit_cart_slots(600, |slots| {
+                game.edit_cart_slots(id, |slots| {
                     slots[0] = Some(ItemStack::new("minecraft:sand", 7));
                     slots.len()
                 }),
                 Some(27)
             );
             assert_eq!(
-                game.carts[0].items[0],
+                game.ecs.cart_items(id).unwrap()[0],
                 Some(ItemStack::new("minecraft:stone", 4))
             );
             let Some(BlockEntity::Chest(open)) = game.world.block_entities.get(&key) else {
@@ -1911,21 +1918,22 @@ pub(super) mod tests {
             assert_eq!(open[0], Some(ItemStack::new("minecraft:sand", 7)));
             game.store_cart_items(key);
             assert_eq!(
-                game.carts[0].items[0],
+                game.ecs.cart_items(id).unwrap()[0],
                 Some(ItemStack::new("minecraft:sand", 7))
             );
-            game.edit_cart_slots(600, |slots| {
+            game.edit_cart_slots(id, |slots| {
                 slots[0] = Some(ItemStack::new("minecraft:gravel", 9))
             });
             game.close_cart_container(key);
             assert_eq!(
-                game.carts[0].items[0],
+                game.ecs.cart_items(id).unwrap()[0],
                 Some(ItemStack::new("minecraft:gravel", 9))
             );
             assert!(!game.world.block_entities.contains_key(&key));
-            game.carts.remove(0);
+            let e = game.ecs.entity_of(id).unwrap();
+            game.ecs.despawn(e);
             assert_eq!(
-                game.edit_cart_slots(600, |_| panic!("stale owner reached its menu")),
+                game.edit_cart_slots(id, |_| panic!("stale owner reached its menu")),
                 None::<()>
             );
         });

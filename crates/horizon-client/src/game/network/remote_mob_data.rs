@@ -495,7 +495,7 @@ impl Game<'_> {
             _ => None,
         });
         let professions = r.professions.clone();
-        if let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) {
+        if let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, id as u32) {
             let stare_sound =
                 super::villager_client::receive(m, values, &r.builtin, r.entity_id, &professions);
             apply_registry_data(m, values, &r.registries, self.world.game_time);

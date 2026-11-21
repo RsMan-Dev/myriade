@@ -82,11 +82,10 @@ pub fn parse(words: &[&str]) -> Result<Command, ()> {
     }
 }
 
-/// Registry ids for the loose entities a level counts apart from its mobs: items, orbs, projectiles, minecarts, boats.
-pub const LOOSE_ENTITIES: [&str; 5] = [
+/// Registry ids for the loose entities a level counts apart from its mobs: items, orbs, minecarts, boats (projectiles are counted by the ECS).
+pub const LOOSE_ENTITIES: [&str; 4] = [
     "minecraft:item",
     "minecraft:experience_orb",
-    "horizon:projectile",
     "minecraft:minecart",
     "minecraft:boat",
 ];

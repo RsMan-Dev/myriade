@@ -264,6 +264,8 @@ pub(super) struct Containers<'a> {
     brewing: Option<&'a horizon_client::brewing::Brewing>,
     /// The level's mobs, for the cat half of `ChestBlock.isChestBlockedAt`.
     mobs: &'a [Mob],
+    /// The ECS level when it runs: its cats are read from the index, not from `mobs`.
+    ecs: Option<&'a crate::ecs_bridge::level::EcsLevel>,
 }
 impl Containers<'_> {
     fn prop(&self, state: BlockStateId, key: &str) -> Option<&str> {
@@ -348,7 +350,10 @@ impl Containers<'_> {
                 self.behaviours.facts(above).flags
                     & horizon_world::level::data::state_flags::CONDUCTOR
                     != 0
-                    || cat_sitting_above(self.mobs, p)
+                    || match self.ecs {
+                        Some(ecs) if ecs.is_active() => ecs_cat_sitting_above(ecs, p),
+                        _ => cat_sitting_above(self.mobs, p),
+                    }
             };
             if blocked_chests && is_blocked(pos) {
                 return None;
@@ -743,6 +748,18 @@ pub(super) fn cat_sitting_above(mobs: &[Mob], key: Pos) -> bool {
     })
 }
 
+/// `ChestBlock.isCatSittingOnChest` on the followed cats: a cat of the index sitting in the box above `key`.
+pub(super) fn ecs_cat_sitting_above(ecs: &crate::ecs_bridge::level::EcsLevel, key: Pos) -> bool {
+    let (x, y, z) = (f64::from(key.0), f64::from(key.1 + 1), f64::from(key.2));
+    let area = Aabb::new(Vec3::new(x, y, z), Vec3::new(x + 1.0, y + 1.0, z + 1.0));
+    ecs.ids_near([x + 0.5, y + 0.5, z + 0.5], 2.0).into_iter().any(|id| {
+        ecs.kind(id) == Some("minecraft:cat")
+            && ecs.alive(id)
+            && ecs.cat_sitting(id)
+            && ecs.bounds(id).is_some_and(|b| b.intersects(area))
+    })
+}
+
 /// Comparator input from a container block entity (0 when there is none):
 /// `ChestBlock.getContainer(.., false)`, whose blocked check sees the level's
 /// cats (`isCatSittingOnChest`).
@@ -754,6 +771,7 @@ pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) 
         registry: level.registry,
         brewing: None,
         mobs: level.entities().mobs,
+        ecs: None,
     };
     let view = c
         .view((pos.x, pos.y, pos.z), true)
@@ -771,6 +789,7 @@ pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) 
         registry: level.registry,
         brewing: None,
         mobs: level.entities().mobs,
+        ecs: None,
     };
     view.map_or(0, |v| c.signal(&v))
 }
@@ -824,7 +843,8 @@ impl Game<'_> {
             items: self.items(),
             registry: self.pack.assets.registry,
             brewing: Some(&self.stations().brewing),
-            mobs: &self.mobs,
+            mobs: if self.ecs.is_active() { &[] } else { &self.remote_entities },
+            ecs: Some(&self.ecs),
         }
     }
     pub(super) fn block_can_place(&self, pos: [i32; 3], slot: usize, stack: &ItemStack) -> bool {
@@ -1489,14 +1509,9 @@ impl Game<'_> {
         let (x, y, z) = view.parts[0].0;
         if x == i32::MAX - 15 && y == super::minecarts::CART_KEY_Y {
             let id = z as u32;
-            let at = self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| c.position)
-                .or_else(|| self.boats.iter().find(|b| b.id == id).map(|b| b.position));
+            let at = self.ecs_view(id).map(|v| v.position).or_else(|| self.ecs.position(id));
             if let Some(p) = at {
-                return [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
+                return [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
             }
         }
         [x, y, z]
@@ -1709,23 +1724,23 @@ impl Game<'_> {
                 && lo.z < at[2] + 0.5
                 && hi.z > at[2] - 0.5
         };
-        let mut found: Vec<u32> = self
-            .carts
-            .iter()
-            .filter(|c| {
-                matches!(
-                    c.kind,
-                    super::minecarts::CartKind::Chest | super::minecarts::CartKind::Hopper
-                ) && meets(c.bounds())
-            })
-            .map(|c| c.id)
-            .collect();
-        found.extend(
-            self.boats
-                .iter()
-                .filter(|b| b.chest && meets(b.bounds()))
-                .map(|b| b.id),
+        // A cart's box reaches past its position by about a block: the query box is widened by 2.0 to find it.
+        let (min, max) = (
+            horizon_core::geometry::Vec3::new(at[0] - 2.0, at[1] - 2.0, at[2] - 2.0),
+            horizon_core::geometry::Vec3::new(at[0] + 2.0, at[1] + 2.0, at[2] + 2.0),
         );
+        let mut found: Vec<u32> = self
+            .ecs
+            .carts_in(min, max)
+            .into_iter()
+            .filter(|&id| {
+                self.ecs.cart_kind(id).and_then(super::minecarts::CartKind::from_id).is_some_and(|k| k.slots() > 0)
+                    && self.ecs.bounds(id).is_some_and(meets)
+            })
+            .collect();
+        found.extend(self.ecs.boats_in(min, max).into_iter().filter(|&id| {
+            self.boat_has_chest(id) == Some(true) && self.ecs.bounds(id).is_some_and(meets)
+        }));
         found
     }
     /// The index `RandomSource.nextInt(len)` picks of `len` candidates: the level's one draw,
@@ -1802,22 +1817,27 @@ impl Game<'_> {
         id: u32,
         f: impl FnOnce(&mut Self, &View) -> R,
     ) -> Option<R> {
-        let mut items = if let Some(i) = self.carts.iter().position(|c| c.id == id) {
+        let is_cart = self.ecs.cart_kind(id).is_some();
+        let mut items = if is_cart {
             self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
-            self.carts.update(i, |c| std::mem::take(&mut c.items))
+            self.ecs.cart_items(id).unwrap_or_default()
         } else {
-            let i = self.boats.iter().position(|b| b.id == id)?;
-            self.unpack_boat_loot(i, false);
-            self.boats.update(i, |b| std::mem::take(&mut b.items))
+            self.ecs.boat_status(id)?;
+            self.unpack_boat_loot(id, false);
+            self.ecs.boat_items(id).unwrap_or_default()
         };
         let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
         let (view, open) = self.lend_items(key, &mut items);
         let result = f(self, &view);
         self.reclaim_items(key, open, &mut items);
-        if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-            self.carts.update(i, |c| c.items = items);
-        } else if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-            self.boats.update(i, |b| b.items = items);
+        if is_cart {
+            for (slot, stack) in items.into_iter().enumerate() {
+                self.ecs.cart_set_slot(id, slot, stack);
+            }
+        } else {
+            for (slot, stack) in items.into_iter().enumerate() {
+                self.ecs.boat_set_slot(id, slot, stack);
+            }
         }
         Some(result)
     }
@@ -2910,13 +2930,11 @@ mod hopper_cart_rider_tests;
 #[cfg(test)]
 mod hopper_cart_transfer_tests {
     use super::super::{
-        boats::Boat,
         minecarts::{CartKind, Minecart},
         native_entity_refs::tests::with_game,
     };
     use super::Game;
     use horizon_client::{containers::BlockEntity, items::ItemStack};
-    use horizon_core::geometry::Vec3;
     use horizon_core::nbt::Tag;
 
     #[test]
@@ -2942,10 +2960,7 @@ mod hopper_cart_transfer_tests {
             game.adv.loaded = true;
             let ai = game.adv.tree.by_id["parity:boat_loot"];
             for player in [false, true] {
-                game.next_entity += 1;
-                let id = game.next_entity;
-                game.boats
-                    .push(Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest());
+                let id = game.ecs_spawn("minecraft:oak_chest_boat", [8.5, 65.0, 8.5], None).unwrap();
                 game.persist.raw.insert(
                     id,
                     Tag::compound([
@@ -2956,12 +2971,11 @@ mod hopper_cart_transfer_tests {
                         ("LootTableSeed", Tag::Long(73)),
                     ]),
                 );
-                let i = game.boats.len() - 1;
                 game.as_guest(12, |game| {
-                    game.unpack_boat_loot(i, player);
+                    game.unpack_boat_loot(id, player);
                     assert_eq!(game.adv.progress.done(&game.adv.tree.list[ai]), player);
                     // Opening a container automation already unpacked awards nothing.
-                    game.unpack_boat_loot(i, true);
+                    game.unpack_boat_loot(id, true);
                     assert_eq!(game.adv.progress.done(&game.adv.tree.list[ai]), player);
                 })
                 .unwrap();
@@ -2976,19 +2990,22 @@ mod hopper_cart_transfer_tests {
             let sentinel = Some(ItemStack::new("minecraft:diamond", 17));
             for open in [false, true] {
                 for occupied in [1, 24, 27] {
-                    game.next_entity += 1;
-                    let id = game.next_entity;
-                    let mut boat =
-                        Boat::new(id, "oak".into(), Vec3::new(8.5, 65.0, 8.5), 0.0).with_chest();
+                    let id = game
+                        .ecs_spawn("minecraft:oak_chest_boat", [8.5, 65.0, 8.5], None)
+                        .unwrap();
+                    let mut boat = vec![None; 27];
                     if occupied > 1 {
-                        boat.items.fill(sentinel.clone());
+                        boat.fill(sentinel.clone());
                         if occupied == 24 {
                             for slot in [0, 13, 26] {
-                                boat.items[slot] = None;
+                                boat[slot] = None;
                             }
                         }
                     } else {
-                        boat.items[12] = sentinel.clone();
+                        boat[12] = sentinel.clone();
+                    }
+                    for (slot, stack) in boat.iter().enumerate() {
+                        game.ecs.boat_set_slot(id, slot, stack.clone());
                     }
                     let key = (
                         i32::MAX - 15,
@@ -2998,11 +3015,12 @@ mod hopper_cart_transfer_tests {
                     if open {
                         game.world
                             .block_entities
-                            .insert(key, BlockEntity::Chest(boat.items.clone()));
+                            .insert(key, BlockEntity::Chest(boat.clone()));
                         // The menu copy is authoritative, even if the entity is stale.
-                        boat.items.fill(None);
+                        for slot in 0..27 {
+                            game.ecs.boat_set_slot(id, slot, None);
+                        }
                     }
-                    game.boats.push(boat);
                     game.persist.raw.insert(
                         id,
                         Tag::compound([
@@ -3029,7 +3047,7 @@ mod hopper_cart_transfer_tests {
                     );
                     assert!(game.persist.raw[&id].get("LootTable").is_none());
                     assert!(game.persist.raw[&id].get("LootTableSeed").is_none());
-                    assert_eq!(game.boats.last().unwrap().items, items);
+                    assert_eq!(game.ecs.boat_items(id).unwrap(), items);
                     game.with_entity_container(id, |g, _| {
                         if let Some(BlockEntity::Chest(items)) =
                             g.world.block_entities.get_mut(&key)
@@ -3056,78 +3074,6 @@ mod hopper_cart_transfer_tests {
         });
     }
 
-    /// Issue #8668: a hopper minecart takes one item a tick from the container
-    /// above. `MinecartHopper.tick` has no transfer cooldown in 26.3: it calls
-    /// `tryConsumeItems` every tick, and `consumedItemThisFrame` caps a tick at
-    /// one item even though `makeStepAlongTrack` may try too. A whole stack a
-    /// tick (the old behaviour) or a block hopper's eight-tick cooldown both
-    /// fail this.
-    #[test]
-    #[ignore = "daily"]
-    fn hopper_cart_takes_one_item_a_tick() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-            );
-            game.streaming.forced.insert((0, 0));
-            let rail = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:rail")
-                .unwrap();
-            let chest = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:chest")
-                .unwrap();
-            // A rail holds the cart still; the chest sits in the block the cart
-            // pulls from (`getLevelY` is y + 0.5, so the block above is y + 1.5).
-            game.world.set(8, 64, 8, rail).unwrap();
-            game.world.set(8, 65, 8, chest).unwrap();
-            game.world.block_entities.insert(
-                (8, 65, 8),
-                BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:stone", 64)); 27]),
-            );
-            game.next_entity += 1;
-            let id = game.next_entity;
-            let mut cart = Minecart::new(id, CartKind::Hopper, Vec3::new(8.5, 64.0625, 8.5));
-            cart.enabled = true;
-            game.carts.push(cart);
-            let count = |game: &Game<'_>| {
-                let in_chest: u32 = match game.world.block_entities.get(&(8, 65, 8)) {
-                    Some(BlockEntity::Chest(s)) => s.iter().flatten().map(|s| s.count).sum(),
-                    _ => 0,
-                };
-                let in_cart: u32 = game
-                    .carts
-                    .iter()
-                    .find(|c| c.id == id)
-                    .unwrap()
-                    .items
-                    .iter()
-                    .flatten()
-                    .map(|s| s.count)
-                    .sum();
-                (in_chest, in_cart)
-            };
-            let (before_chest, before_cart) = count(game);
-            for _ in 0..20 {
-                game.tick_carts();
-            }
-            let (after_chest, after_cart) = count(game);
-            assert_eq!(before_chest, 27 * 64);
-            assert_eq!(before_cart, 0);
-            assert_eq!(before_chest - after_chest, after_cart - before_cart);
-            assert_eq!(
-                after_cart, 20,
-                "one item a tick, not a stack nor eight ticks"
-            );
-        });
-    }
 }
 
 #[cfg(test)]

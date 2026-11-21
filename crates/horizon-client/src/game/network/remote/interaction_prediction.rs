@@ -51,7 +51,7 @@ impl Game<'_> {
                 .find(|c| c.id as i32 == hit.id)
                 .map(|c| {
                     let ridden = self.riding == Some(c.id)
-                        || self.mobs.iter().any(|m| m.extra.mount == Some(c.id));
+                        || self.remote_entities.iter().any(|m| m.extra.mount == Some(c.id));
                     (
                         c.kind
                             .interact_passes(sneaking, ridden, self.can_use_game_master_blocks()),
@@ -66,7 +66,7 @@ impl Game<'_> {
                 && (sneaking
                     || self.riding.is_some_and(|r| r as i32 == hit.id)
                     || self
-                        .mobs
+                        .remote_entities
                         .iter()
                         .any(|m| m.extra.mount.is_some_and(|r| r as i32 == hit.id)));
             let passes =
@@ -114,7 +114,7 @@ impl Game<'_> {
         if let Some((i, distance, location)) = self.mob_hit()
             && self.before_block(distance)
         {
-            let id = self.mobs[i].id as i32;
+            let id = self.remote_entities[i].id as i32;
             self.send(S::Interact(play::Interact {
                 id,
                 hand: hand_id(hand),

@@ -5,7 +5,8 @@ impl Game<'_> {
     pub(super) fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
         let name = match target {
             Target::Player | Target::Guest(_) => "minecraft:player",
-            Target::Mob(id) => &self.mobs.iter().find(|mob| mob.id == id)?.kind.id,
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.kind(id)?,
+            Target::Mob(id) => &self.remote_entities.iter().find(|mob| mob.id == id)?.kind.id,
             Target::Item(_) => "minecraft:item",
             Target::Orb(_) => "minecraft:experience_orb",
             Target::Projectile(id) => self

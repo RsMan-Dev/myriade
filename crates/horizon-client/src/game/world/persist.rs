@@ -63,11 +63,10 @@ pub(super) enum PassengerSlot {
 
 /// An entity object retained by passenger links but refused level residency.
 /// Queries and tracking never visit this store; internal topology and saving do.
-/// Boats and minecarts can also be retained as refused transferred riders.
+/// Boats can also be retained as refused transferred riders.
 pub(super) enum OffLevel {
     Mob(Mob),
     Boat(super::boats::Boat),
-    Cart(super::minecarts::Minecart),
 }
 
 /// Formerly resident vehicles kept solely by surviving passenger edges.
@@ -107,28 +106,21 @@ impl OffLevel {
     pub(super) fn as_mob(&self) -> Option<&Mob> {
         match self {
             Self::Mob(mob) => Some(mob),
-            Self::Boat(_) | Self::Cart(_) => None,
+            Self::Boat(_) => None,
         }
     }
 
     fn as_mob_mut(&mut self) -> Option<&mut Mob> {
         match self {
             Self::Mob(mob) => Some(mob),
-            Self::Boat(_) | Self::Cart(_) => None,
+            Self::Boat(_) => None,
         }
     }
 
     fn as_boat(&self) -> Option<&super::boats::Boat> {
         match self {
             Self::Boat(boat) => Some(boat),
-            Self::Mob(_) | Self::Cart(_) => None,
-        }
-    }
-
-    fn as_cart(&self) -> Option<&super::minecarts::Minecart> {
-        match self {
-            Self::Cart(cart) => Some(cart),
-            Self::Mob(_) | Self::Boat(_) => None,
+            Self::Mob(_) => None,
         }
     }
 
@@ -137,7 +129,7 @@ impl OffLevel {
     pub(super) fn is_removed(&self) -> bool {
         match self {
             Self::Mob(mob) => mob.removed,
-            Self::Boat(_) | Self::Cart(_) => false,
+            Self::Boat(_) => false,
         }
     }
 }
@@ -284,7 +276,8 @@ pub(super) struct RestoredVehicleTree {
 enum VehicleTreeKind {
     Mob,
     Boat,
-    Cart,
+    /// Any entity the ECS level holds (mob, item, cart, arrow): it comes back through `ecs_load`.
+    Ecs,
     Other,
 }
 
@@ -1004,11 +997,6 @@ impl Game<'_> {
         self.load_boat_transferred(tag, uuid, k, None);
     }
 
-    /// A saved minecart.
-    pub(super) fn load_cart(&mut self, tag: Tag, uuid: Option<[i32; 4]>, k: &str) {
-        self.load_cart_transferred(tag, uuid, k, None);
-    }
-
     /// A saved armor stand.
     pub(super) fn load_armor_stand(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
         self.load_armor_stand_transferred(tag, uuid, None)
@@ -1292,9 +1280,9 @@ impl Game<'_> {
         // A missing mod's record is opaque, not a vanilla fallback entity to normalize.
         let quarantined = super::general::quarantined_kind(kind).then(|| tag.clone());
         strip_finalize(&mut tag);
-        let id = self.next_entity + 1;
-        let other = Self::other_from_nbt(&mut tag, id, kind)?;
-        self.next_entity = id;
+        let Tag::Compound(c) = &tag else { return None };
+        let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
+        let id = self.ecs_id_of(e);
         let uuid = with_constructor_uuid(entity_nbt::uuid(&tag));
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
@@ -1303,7 +1291,6 @@ impl Game<'_> {
         if let Some(original) = quarantined {
             self.persist.raw.insert(id, original);
         }
-        self.others.push(other);
         Some(id)
     }
     /// The compound of an entity Horizon does not simulate, with its current
@@ -1401,8 +1388,8 @@ impl Game<'_> {
         if let Some(mob) = self.mob_object(id) {
             let v = mob.extra.mount?;
             let there = self.mob_objects().any(|m| m.id == v)
-                || self.boat_object(v).is_some()
-                || self.cart_object(v).is_some()
+                || self.is_boat(v)
+                || self.ecs.cart_kind(v).is_some()
                 || self.passenger_present(v);
             return there.then_some(v);
         }
@@ -1414,7 +1401,7 @@ impl Game<'_> {
         if let Some(object) = self.mob_object_slot(root) {
             return Some(self.mob_object_tree_nbt(object));
         }
-        if self.boat_object(root).is_some() {
+        if self.is_boat(root) {
             if !self.persist.off_level.contains_key(&root)
                 && !self.resident_source_target_visible(
                     self.dim.key(),
@@ -1423,28 +1410,19 @@ impl Game<'_> {
             {
                 return None;
             }
-            let uuid = self.uuid_for(root);
-            let b = self.boat_object(root)?;
-            let mut tag = b.to_nbt(uuid, self.persist.raw.get(&root));
+            let mut tag = match self.boat_object(root) {
+                Some(b) => {
+                    let uuid = self.uuid_for(root);
+                    b.to_nbt(uuid, self.persist.raw.get(&root))
+                }
+                None => Tag::Compound(self.ecs_mob_tree(root)?),
+            };
             self.put_mob_passengers(&mut tag, root);
             write_attachments(&mut tag, root, &self.entity_attachments);
             return Some(tag);
         }
-        if self.cart_object(root).is_some() {
-            if !self.persist.off_level.contains_key(&root)
-                && !self.resident_source_target_visible(
-                    self.dim.key(),
-                    super::commands::Target::Cart(root),
-                )
-            {
-                return None;
-            }
-            let uuid = self.uuid_for(root);
-            let c = self.cart_object(root)?;
-            let mut tag = c.to_nbt(uuid, self.persist.raw.get(&root));
-            self.put_mob_passengers(&mut tag, root);
-            write_attachments(&mut tag, root, &self.entity_attachments);
-            return Some(tag);
+        if self.ecs.cart_kind(root).is_some() {
+            return self.ecs_mob_tree(root).map(Tag::Compound);
         }
         // Any other kind of root vehicle, with its passengers.
         self.saved_passenger_body(root)
@@ -1481,13 +1459,19 @@ impl Game<'_> {
                 gone.push(id);
             }
         }
-        self.mobs.retain(|m| !gone.contains(&m.id));
+        if self.ecs.is_active() {
+            for &g in &gone {
+                if let Some(e) = self.ecs.entity_of(g) {
+                    self.ecs.despawn(e);
+                }
+            }
+        } else {
+            self.mobs.retain(|m| !gone.contains(&m.id));
+        }
         self.persist.off_level.retain(|id, _| !gone.contains(id));
         for &id in &gone {
             self.release_vehicle_container(id);
         }
-        self.boats.retain(|b| !gone.contains(&b.id));
-        self.carts.retain(|c| !gone.contains(&c.id));
         // Entities of the other kinds, the slots and the links of the whole tree.
         self.discard_passenger_entities(&gone);
         for g in gone {
@@ -1498,21 +1482,21 @@ impl Game<'_> {
     pub(super) fn vehicle_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
         self.persist.uuids.iter().find_map(|(&id, &found)| {
             (found == uuid
-                && (self.mobs.iter().any(|mob| mob.id == id && !mob.removed)
-                    || (self.boats.iter().any(|boat| boat.id == id)
+                && (self.mob_present(id)
+                    || (self.ecs.boat_status(id).is_some()
                         && self.resident_source_target_visible(
                             self.dim.key(),
                             super::commands::Target::Boat(id),
                         ))
-                    || (self.carts.iter().any(|cart| cart.id == id)
+                    || (self.ecs.cart_kind(id).is_some()
                         && self.resident_source_target_visible(
                             self.dim.key(),
                             super::commands::Target::Cart(id),
                         ))
                     // A vehicle of another kind (an armor stand, a display...).
-                    || (!(self.mobs.iter().any(|mob| mob.id == id)
-                        || self.boats.iter().any(|boat| boat.id == id)
-                        || self.carts.iter().any(|cart| cart.id == id))
+                    || (!(self.mob_known(id)
+                        || self.ecs.boat_status(id).is_some()
+                        || self.ecs.cart_kind(id).is_some())
                         && self.passenger_present(id))))
             .then_some(id)
         })
@@ -1654,6 +1638,13 @@ impl Game<'_> {
     /// `Entity.isSilent`: mobs model it directly; other entities retain it
     /// in their saved fields, including command changes to `Silent`.
     pub(super) fn entity_silent(&self, id: u32) -> bool {
+        if self.ecs.is_active() {
+            return self
+                .ecs
+                .entity_of(id)
+                .and_then(|e| self.ecs.entity_nbt(e))
+                .is_some_and(|c| entity_nbt::flag(&Tag::Compound(c), "Silent"));
+        }
         self.mobs.iter().find(|m| m.id == id).map_or_else(
             || {
                 self.persist
@@ -1710,7 +1701,8 @@ impl Game<'_> {
         } else {
             None
         };
-        entity_nbt::who_by_uuid(&self.persist.uuids, &self.mobs, player, uuid)
+        let legacy: &[Mob] = if self.ecs.is_active() { &[] } else { &self.mobs };
+        entity_nbt::who_by_uuid(&self.persist.uuids, legacy, player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
     }
     /// The mob that was loaded or saved with a UUID.
     pub(super) fn mob_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
@@ -1923,6 +1915,13 @@ impl Game<'_> {
                 out.entry(key)
                     .or_default()
                     .extend(tags.into_iter().map(|(_, _, tag)| tag));
+            }
+        }
+        if self.ecs.is_active() {
+            for key in keys {
+                let disk = self.ecs_disk_unknown(key.0, key.1);
+                let saved = if remove { self.ecs_unload_chunk(key.0, key.1, disk) } else { self.ecs_save_chunk(key.0, key.1, disk) };
+                out.entry(*key).or_default().extend(saved.into_iter().map(Tag::Compound));
             }
         }
         for key in keys {
@@ -2139,13 +2138,17 @@ impl Game<'_> {
         i: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
+        // The ECS world saves its entities by chunk (`entity_chunks`): no legacy mob is saved then.
+        if self.ecs.is_active() {
+            return None;
+        }
         let m = &self.mobs[i];
         // `Entity.shouldBeSaved`: a passenger saves only under its root, even
         // when that root is a boat or cart retained off-level and never saved.
         let saves = self.mob_root(MobObject::Resident(i)) == MobObject::Resident(i)
             && m.extra
                 .mount
-                .is_none_or(|v| self.boat_object(v).is_none() && self.cart_object(v).is_none())
+                .is_none_or(|v| !self.is_boat(v) && self.ecs.cart_kind(v).is_none())
             && keys.contains(&chunk_of(m.position))
             && !m.removed;
         saves.then(|| (chunk_of(self.mobs[i].position), self.mob_tree_nbt(i)))
@@ -2230,39 +2233,17 @@ impl Game<'_> {
     /// which answers the UUID the entity was loaded or saved with. A mob the
     /// level has none for writes nothing.
     pub(in crate::game) fn save_who_uuid(&self, who: Who) -> Option<[i32; 4]> {
-        entity_nbt::who_uuid(who, &mut |id| self.persist.uuid_of(id))
+        entity_nbt::who_uuid(who, &mut |id| {
+            if self.ecs.is_active() { self.ecs.uuid_words(id) } else { self.persist.uuid_of(id) }
+        })
     }
+    /// A falling block is saved by P (the ECS level): the host writes none.
     pub(super) fn save_falling(
         &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
+        _i: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        let f = &self.falling[i];
-        if !keys.contains(&chunk_of(f.position)) {
-            return None;
-        }
-        let raw = match &f.saved {
-            Some(saved) => Some(saved.1.clone()),
-            None => anon_raw(&self.persist, "minecraft:falling_block", f.position),
-        };
-        let uuid = saved_uuid(&self.persist, f.id);
-        let tag = entity_nbt::falling_block_to_nbt(
-            self.state_to_nbt(f.state),
-            f.position,
-            f.velocity,
-            f.age,
-            f.drop_item,
-            f.damage,
-            f.fall_distance,
-            f.on_ground,
-            f.rotation,
-            uuid,
-        );
-        let mut tag = with_raw(tag, raw.as_ref());
-        if let Tag::Compound(fields) = &mut tag {
-            fields.insert("PortalCooldown".into(), Tag::Int(f.portal.cooldown));
-        }
-        Some((chunk_of(f.position), tag))
+        None
     }
     pub(super) fn save_rocket(
         &mut self,
@@ -2291,45 +2272,19 @@ impl Game<'_> {
     }
     pub(super) fn save_tnt(
         &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
+        _i: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        let at = self.tnts[i].position;
-        keys.contains(&chunk_of(at))
-            .then(|| (chunk_of(at), self.tnt_nbt(i)))
+        // Primed TNT is saved by the ECS (`save_chunk`): no host TNT is left to save.
+        None
     }
     pub(super) fn save_boat(
         &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
+        _i: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        let b = &self.boats[i];
-        let (id, at) = (b.id, b.position);
-        if !keys.contains(&chunk_of(at)) {
-            return None;
-        }
-        let uuid = self.saved_uuid_or_random(id);
-        let mut tag = b.to_nbt(uuid, self.persist.raw.get(&id));
-        self.put_mob_passengers(&mut tag, id);
-        // AbstractBoat.addAdditionalSaveData: the lead's holder.
-        self.write_boat_leash(&mut tag, i);
-        self.save_portal_cooldown(id, &mut tag);
-        Some((chunk_of(at), tag))
-    }
-    pub(super) fn save_cart(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let (id, at) = (self.carts[i].id, self.carts[i].position);
-        if !keys.contains(&chunk_of(at)) {
-            return None;
-        }
-        let uuid = self.saved_uuid_or_random(id);
-        let mut tag = self.carts[i].to_nbt(uuid, self.persist.raw.get(&id));
-        self.put_mob_passengers(&mut tag, id);
-        self.save_portal_cooldown(id, &mut tag);
-        Some((chunk_of(at), tag))
+        // Boats are saved by the ECS (`save_chunk`): no host boat is left to save.
+        None
     }
     pub(super) fn save_armor_stand(
         &mut self,
@@ -4649,12 +4604,21 @@ mod summoned_knot_tests {
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
+    /// The network ids of the ECS entities of `kind`, in id order.
+    fn ecs_ids(game: &Game<'_>, kind: &str) -> Vec<u32> {
+        let Some(w) = game.ecs.world() else { return Vec::new() };
+        let q = horizon_ecs_proto::bridge::host::Select { kind: Some(kind.into()), tag: None, near: None, limit: usize::MAX };
+        let mut ids: Vec<u32> = game.ecs.select(&q).into_iter().filter_map(|e| horizon_ecs_proto::bridge::ids::id_of(w, e)).collect();
+        ids.sort_unstable();
+        ids
+    }
+    /// The UUID the ECS entity `id` saves.
+    fn ecs_uuid(game: &Game<'_>, id: u32) -> Option<[i32; 4]> {
+        let c = game.ecs.entity_nbt(game.ecs.entity_of(id)?)?;
+        horizon_client::entity_nbt::uuid(&Tag::Compound(c))
+    }
     fn knot_id(game: &Game<'_>, n: i32) -> u32 {
-        game.others
-            .iter()
-            .find(|o| game.persist.uuid_of(o.id) == Some([129, 0, 0, n]))
-            .unwrap()
-            .id
+        ecs_ids(game, "minecraft:leash_knot").into_iter().find(|&id| ecs_uuid(game, id) == Some([129, 0, 0, n])).unwrap()
     }
     fn summon_knots(game: &mut Game<'_>) -> [u32; 3] {
         for x in [6, 14] {
@@ -4672,12 +4636,11 @@ mod summoned_knot_tests {
             let clock = game.world.game_time;
             let ids = summon_knots(game);
             for (i, id) in ids.into_iter().enumerate() {
-                let o = game.others.iter().find(|o| o.id == id).unwrap();
-                assert_eq!(o.kind, "minecraft:leash_knot");
-                assert_eq!(game.persist.uuid_of(id), Some([129, 0, 0, i as i32 + 1]));
+                assert_eq!(game.ecs.kind(id), Some("minecraft:leash_knot"));
+                assert_eq!(ecs_uuid(game, id), Some([129, 0, 0, i as i32 + 1]));
                 let expected = Vec3::new(6.5 + 4.0 * i as f64, 200.375, 6.5);
                 assert_eq!(
-                    o.position, expected,
+                    game.ecs.position(id).map(|p| Vec3::new(p[0], p[1], p[2])), Some(expected),
                     "actual loaded model, not a getter-only answer"
                 );
                 let tag = game.command_target_nbt(Target::Other(id)).unwrap();
@@ -4703,12 +4666,9 @@ mod summoned_knot_tests {
                     tag.get("Tags"),
                     Some(&Tag::List(vec![Tag::String("h129".into())]))
                 );
-                // The same real model, with no raw source, must still save defaults.
-                let raw = game.persist.raw.remove(&id).unwrap();
                 let fresh = game.command_target_nbt(Target::Other(id)).unwrap();
                 assert_eq!(fresh.get("Air"), Some(&Tag::Short(300)));
                 assert_eq!(fresh.get("Pos"), tag.get("Pos"));
-                game.persist.raw.insert(id, raw);
             }
             assert_eq!(game.world.game_time, clock);
         });
@@ -4724,12 +4684,7 @@ mod summoned_knot_tests {
                     "summon marker 8.2 200.8 10.9 {UUID:[I;129,0,0,4],data:{audit:7}}"
                 )
             );
-            let marker = game
-                .others
-                .iter()
-                .find(|o| o.kind == "minecraft:marker")
-                .unwrap()
-                .id;
+            let marker = ecs_ids(game, "minecraft:marker")[0];
             let marker_before = game.command_target_nbt(Target::Other(marker)).unwrap();
             for tick in 1..=101 {
                 game.tick().unwrap();
@@ -4739,21 +4694,21 @@ mod summoned_knot_tests {
                 }
                 if tick <= 100 {
                     assert!(
-                        ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)),
+                        ids.iter().all(|&id| game.ecs.exists(id)),
                         "alive through tick{tick}"
                     );
                 }
             }
             assert!(
-                game.others.iter().any(|o| o.id == ids[0]),
+                game.ecs.exists(ids[0]),
                 "actual fence survives"
             );
             assert!(
-                !game.others.iter().any(|o| o.id == ids[1]),
+                !game.ecs.exists(ids[1]),
                 "unsupported actual entity gone at101"
             );
             assert!(
-                !game.others.iter().any(|o| o.id == ids[2]),
+                !game.ecs.exists(ids[2]),
                 "removed support actual entity gone at101"
             );
             assert_eq!(
@@ -4770,7 +4725,7 @@ mod summoned_knot_tests {
             );
             assert!(game.command_target_nbt(Target::Other(ids[1])).is_none());
             assert!(game.run_command("kill @e[type=leash_knot]"));
-            assert!(!game.others.iter().any(|o| o.kind == "minecraft:leash_knot"));
+            assert!(ecs_ids(game, "minecraft:leash_knot").is_empty());
         });
     }
     #[test]
@@ -4783,10 +4738,7 @@ mod summoned_knot_tests {
             assert!(game.run_command("setblock -2 200 -3 oak_fence strict"));
             assert!(game.run_command("summon leash_knot -1.2 200.8 -2.1 {UUID:[I;129,0,0,5]}"));
             let id = knot_id(game, 5);
-            assert_eq!(
-                game.others.iter().find(|o| o.id == id).unwrap().position,
-                Vec3::new(-1.5, 200.375, -2.5)
-            );
+            assert_eq!(game.ecs.position(id), Some([-1.5, 200.375, -2.5]));
         });
     }
     #[test]
@@ -4798,13 +4750,13 @@ mod summoned_knot_tests {
             for _ in 0..100 {
                 game.tick().unwrap();
             }
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(ids.iter().all(|&id| game.ecs.exists(id)));
             assert!(game.run_command("tick freeze"));
             for _ in 0..3 {
                 game.tick().unwrap();
             }
             assert_eq!(game.world.game_time, clock + 100);
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(ids.iter().all(|&id| game.ecs.exists(id)));
             assert!(game.run_command("gamerule spectators_generate_chunks false"));
             assert!(game.run_command("gamemode spectator @s"));
             assert!(game.run_command("forceload remove all"));
@@ -4814,14 +4766,14 @@ mod summoned_knot_tests {
                 assert!(!game.entity_ticking_area()(10, 6));
             }
             assert_eq!(game.world.game_time, clock + 103);
-            assert!(ids.iter().all(|id| game.others.iter().any(|o| o.id == *id)));
+            assert!(ids.iter().all(|&id| game.ecs.exists(id)));
             assert!(game.run_command("gamemode creative @s"));
             assert!(game.run_command("forceload add 0 0"));
             game.tick().unwrap();
             assert!(game.entity_ticking_area()(10, 6));
-            assert!(game.others.iter().any(|o| o.id == ids[0]));
+            assert!(game.ecs.exists(ids[0]));
             assert!(
-                !game.others.iter().any(|o| o.id == ids[1]),
+                !game.ecs.exists(ids[1]),
                 "101 eligible ticks, not elapsed world time"
             );
         });
@@ -4856,7 +4808,7 @@ mod summoned_knot_tests {
                 .find(|m| game.persist.uuid_of(m.id) == Some([129, 0, 0, 99]))
                 .unwrap();
             assert_eq!(pig.extra.leash, Some(Holder::Knot([14, 200, 2])));
-            assert!(!game.others.iter().any(|o| o.id == ids[1]));
+            assert!(!game.ecs.exists(ids[1]));
         });
     }
 }

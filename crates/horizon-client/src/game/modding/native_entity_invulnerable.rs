@@ -66,7 +66,8 @@ impl Game<'_> {
     /// already refuses by.
     pub(super) fn entity_permanently_invulnerable(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable_flag),
+            Target::Mob(id) if self.ecs_has(id) => self.ecs_flag(id, "Invulnerable"),
+            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable_flag),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.permanently_invulnerable)
             }
@@ -83,7 +84,8 @@ impl Game<'_> {
         invulnerable: bool,
     ) -> bool {
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => match self.mobs.iter_mut().find(|m| m.id == id) {
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put_flag(id, "Invulnerable", invulnerable),
+            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.invulnerable_flag = invulnerable;
                     true
@@ -135,7 +137,9 @@ impl Game<'_> {
     /// zero. None for a stale handle or a kind that keeps none.
     pub(super) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
+            // The ECS mob's window is read by the bridge (`invulnerable_time`, listed in the report).
+            Target::Mob(id) if self.ecs_has(id) => self.ecs.invulnerable_time(id),
+            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.invulnerable_time)
             }
@@ -148,7 +152,8 @@ impl Game<'_> {
     pub(super) fn entity_set_invulnerable_time(&mut self, entity: EntityRef, ticks: i32) -> bool {
         let ticks = ticks.max(0);
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => match self.mobs.iter_mut().find(|m| m.id == id) {
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs.set_invulnerable_time(id, ticks),
+            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.invulnerable_time = ticks;
                     true
@@ -303,7 +308,11 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(entity)? else {
             return None;
         };
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        if self.ecs_has(id) {
+            // The bridge answers the vanilla query for the ECS mob (`query_invulnerable`, listed in the report).
+            return self.ecs.query_invulnerable(id, damage_type);
+        }
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(self.mob_query_invulnerable(m, damage_type))
     }
 
@@ -382,7 +391,11 @@ impl Game<'_> {
     /// handle.
     pub(super) fn entity_invulnerable_to_piercing_weapon(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.is_invulnerable()),
+            Target::Mob(id) if self.ecs_has(id) => {
+                let window = self.ecs.invulnerable_time(id).unwrap_or(0);
+                Some(self.ecs_flag(id, "Invulnerable")? || window > 0)
+            }
+            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.is_invulnerable()),
             t @ (Target::Player | Target::Guest(_)) => {
                 let p = self.native_player_body(t)?;
                 Some(p.health.permanently_invulnerable || p.health.invulnerable_time > 0)
@@ -403,7 +416,8 @@ impl Game<'_> {
     /// one. Mobs and players.
     pub(super) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.mobs.iter().find(|m| m.id == id)?.invulnerable),
+            Target::Mob(id) if self.ecs_has(id) => self.ecs.damage_cooldown(id),
+            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
         }
     }
@@ -418,7 +432,8 @@ impl Game<'_> {
             return false;
         };
         match t {
-            Target::Mob(id) => match self.mobs.iter_mut().find(|m| m.id == id) {
+            Target::Mob(id) if self.ecs_has(id) => self.ecs.set_damage_cooldown(id, ticks),
+            Target::Mob(id) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.invulnerable = ticks;
                     true

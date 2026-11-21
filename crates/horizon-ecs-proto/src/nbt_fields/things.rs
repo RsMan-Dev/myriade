@@ -1,21 +1,22 @@
 //! The NBT keys of the objects and projectiles the origin saves with their chunk (`persist.rs` `save_item`, `save_orb`, `save_tnt`,
 //! `save_trident`, `save_projectile`, and `entity_chunks` for the end crystal). Each key is declared by the component that holds its
-//! state (`FIELDS`); a key with no component to hold it (the owners by UUID, `Health`, `Fire`, `Thrower`) stays a free key.
+//! state (`FIELDS`); a key with no component to hold it (`Health`, `Fire`) stays a free key. The owners by UUID (`Owner`, `Thrower`) are in `owners.rs`.
 //! Ticks become durations here: `Age` and `PickupDelay` are read against the entity's own clock (`now_of`), not stored.
 use crate::behaviours::homing_projectile::Homing;
 use crate::blocks::world_of;
 use crate::cow::now_of;
-use crate::effect_cloud::EffectCloud;
 use crate::end_crystal::{self, EndCrystal};
 use crate::falling_block::{self, FallingBlock};
 use crate::firework::Rocket;
 use crate::item::{drop_item, rearm_expiry, Item};
 use crate::nbt::{accept, owner, Field};
+use crate::nbt_fields::owners;
 use crate::ominous_spawner::{self, OminousSpawner};
 use crate::orb::{spawn_orb, Orb};
 use crate::projectile::{Flight, OnHit, Order, Projectile};
 use crate::tnt::{spawn_primed, Primed};
 use crate::trident::{self, Pickup, Trident};
+use crate::arrow_more::{FiredFrom, PierceLevel, ThrownItem};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
@@ -28,7 +29,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Item>) },
     Field { key: Cow::Borrowed("Age"), write: write_item_age, read: read_item_age, accepts: accept::short, owner: Some(owner::<Item>) },
     Field { key: Cow::Borrowed("PickupDelay"), write: write_pickup_delay, read: read_pickup_delay, accepts: accept::short, owner: Some(owner::<Item>) },
-    Field { key: Cow::Borrowed("Owner"), write: write_item_owner, read: read_item_owner, accepts: int_array, owner: Some(owner::<Item>) },
+    Field { key: Cow::Borrowed("Owner"), write: owners::write_owner, read: owners::read_owner, accepts: owners::uuid_tag, owner: None },
     Field { key: Cow::Borrowed("Value"), write: write_value, read: read_value, accepts: accept::short, owner: Some(owner::<Orb>) },
     Field { key: Cow::Borrowed("Count"), write: write_count, read: read_count, accepts: accept::int, owner: Some(owner::<Orb>) },
     Field { key: Cow::Borrowed("Age"), write: write_orb_age, read: read_orb_age, accepts: accept::short, owner: Some(owner::<Orb>) },
@@ -38,6 +39,9 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("DealtDamage"), write: write_dealt, read: read_dealt, accepts: byte, owner: Some(owner::<Trident>) },
     Field { key: Cow::Borrowed("pickup"), write: write_pickup, read: read_pickup, accepts: byte, owner: Some(owner::<Trident>) },
     Field { key: Cow::Borrowed("item"), write: write_trident_item, read: read_trident_item, accepts: compound, owner: Some(owner::<Trident>) },
+    Field { key: Cow::Borrowed("PierceLevel"), write: write_pierce_level, read: read_pierce_level, accepts: byte, owner: Some(owner::<PierceLevel>) },
+    Field { key: Cow::Borrowed("Item"), write: write_thrown_item, read: read_thrown_item, accepts: compound, owner: Some(owner::<ThrownItem>) },
+    Field { key: Cow::Borrowed("weapon"), write: write_weapon, read: read_weapon, accepts: compound, owner: Some(owner::<FiredFrom>) },
     Field { key: Cow::Borrowed("ExplosionPower"), write: write_explosion_power, read: read_explosion_power, accepts: byte, owner: Some(owner::<Flight>) },
     Field { key: Cow::Borrowed("acceleration_power"), write: write_acceleration, read: read_acceleration, accepts: double, owner: Some(owner::<Flight>) },
     Field { key: Cow::Borrowed("dangerous"), write: write_dangerous, read: read_dangerous, accepts: byte, owner: Some(owner::<Flight>) },
@@ -50,9 +54,6 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("TYD"), write: write_delta::<1>, read: read_delta::<1>, accepts: double, owner: Some(owner::<Homing>) },
     Field { key: Cow::Borrowed("TZD"), write: write_delta::<2>, read: read_delta::<2>, accepts: double, owner: Some(owner::<Homing>) },
     Field { key: Cow::Borrowed("Dir"), write: write_dir, read: read_dir, accepts: byte, owner: Some(owner::<Homing>) },
-    Field { key: Cow::Borrowed("Age"), write: write_cloud_age, read: read_cloud_age, accepts: accept::int, owner: Some(owner::<EffectCloud>) },
-    Field { key: Cow::Borrowed("Duration"), write: write_cloud_duration, read: read_cloud_duration, accepts: accept::int, owner: Some(owner::<EffectCloud>) },
-    Field { key: Cow::Borrowed("Radius"), write: write_radius, read: read_radius, accepts: accept::float, owner: Some(owner::<EffectCloud>) },
     Field { key: Cow::Borrowed("item"), write: write_ominous_item, read: read_ominous_item, accepts: compound, owner: Some(owner::<OminousSpawner>) },
     Field { key: Cow::Borrowed("spawn_item_after_ticks"), write: write_after, read: read_after, accepts: accept::long, owner: Some(owner::<OminousSpawner>) },
     Field { key: Cow::Borrowed("BlockState"), write: write_block_state, read: read_block_state, accepts: accept::any, owner: Some(owner::<FallingBlock>) },
@@ -83,10 +84,6 @@ fn double(t: &Tag) -> bool {
 
 fn byte(t: &Tag) -> bool {
     matches!(t, Tag::Byte(_))
-}
-
-fn int_array(t: &Tag) -> bool {
-    matches!(t, Tag::IntArray(_))
 }
 
 /// The dropped stack, saved as `ItemStack.CODEC` writes it (its components without the prototype's).
@@ -133,21 +130,6 @@ fn read_pickup_delay(w: &mut World, e: Entity, t: &Tag) -> bool {
     let now = now_of(w, e);
     let Some(mut it) = w.get_mut::<Item>(e) else { return false };
     it.ready_at = (*v != i16::MAX).then(|| now + i64::from(*v).max(0) as u64);
-    true
-}
-
-/// `ItemEntity.target`: the UUID of the only player who may pick the stack up.
-fn write_item_owner(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(Some(target)) = w.get::<Item>(e).map(|it| it.target) {
-        c.insert("Owner".into(), Tag::IntArray(target.to_vec()));
-    }
-}
-
-fn read_item_owner(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::IntArray(v) = t else { return false };
-    let Ok(uuid) = <[i32; 4]>::try_from(v.as_slice()) else { return false };
-    let Some(mut it) = w.get_mut::<Item>(e) else { return false };
-    it.target = Some(uuid);
     true
 }
 
@@ -265,6 +247,48 @@ fn read_pickup(w: &mut World, e: Entity, t: &Tag) -> bool {
     };
     let Some(mut tr) = w.get_mut::<Trident>(e) else { return false };
     tr.pickup = pickup;
+    true
+}
+
+/// `AbstractArrow.PierceLevel`: the level only; the creatures met are not saved.
+fn write_pierce_level(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<PierceLevel>(e) {
+        c.insert("PierceLevel".into(), Tag::Byte(p.level as i8));
+    }
+}
+
+fn read_pierce_level(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Ok(mut m) = w.get_entity_mut(e) else { return false };
+    m.insert(PierceLevel { level: *v as u8, hit: Vec::new() });
+    true
+}
+
+/// `ThrowableItemProjectile.Item`: the stack the projectile carries.
+fn write_thrown_item(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(t) = w.get::<ThrownItem>(e) {
+        c.insert("Item".into(), item_to_nbt(&t.0));
+    }
+}
+
+fn read_thrown_item(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(stack): Option<ItemStack> = item_from_nbt(t) else { return false };
+    let Ok(mut m) = w.get_entity_mut(e) else { return false };
+    m.insert(ThrownItem(stack));
+    true
+}
+
+/// `AbstractArrow.firedFromWeapon`: the stack of the weapon the arrow was shot from.
+fn write_weapon(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(f) = w.get::<FiredFrom>(e) {
+        c.insert("weapon".into(), item_to_nbt(&f.0));
+    }
+}
+
+fn read_weapon(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(stack): Option<ItemStack> = item_from_nbt(t) else { return false };
+    let Ok(mut m) = w.get_entity_mut(e) else { return false };
+    m.insert(FiredFrom(stack));
     true
 }
 
@@ -438,47 +462,6 @@ fn read_dir(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `AreaEffectCloud`: its age, its duration and its radius.
-fn write_cloud_age(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(k) = w.get::<EffectCloud>(e) {
-        c.insert("Age".into(), Tag::Int(k.age));
-    }
-}
-
-fn read_cloud_age(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Int(v) = t else { return false };
-    let Some(mut k) = w.get_mut::<EffectCloud>(e) else { return false };
-    k.age = *v;
-    true
-}
-
-fn write_cloud_duration(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(k) = w.get::<EffectCloud>(e) {
-        c.insert("Duration".into(), Tag::Int(k.duration));
-    }
-}
-
-fn read_cloud_duration(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Int(v) = t else { return false };
-    let Some(mut k) = w.get_mut::<EffectCloud>(e) else { return false };
-    k.duration = *v;
-    true
-}
-
-fn write_radius(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(k) = w.get::<EffectCloud>(e) {
-        c.insert("Radius".into(), Tag::Float(k.radius.to_bits()));
-    }
-}
-
-fn read_radius(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Float(bits) = t else { return false };
-    let Some(mut k) = w.get_mut::<EffectCloud>(e) else { return false };
-    k.radius = f32::from_bits(*bits);
-    true
-}
-
-/// `ominous_item_spawner`: the item it drops (`item`) and the ticks before the drop (`spawn_item_after_ticks`).
 fn write_ominous_item(w: &World, e: Entity, c: &mut Compound) {
     if let Some(o) = w.get::<OminousSpawner>(e) {
         c.insert("item".into(), item_to_nbt(&o.item));
@@ -521,19 +504,17 @@ fn read_block_state(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `FallingBlockEntity.dropItem`: a drop is made when the item is set; `DropItem` 0 removes it.
+/// `FallingBlockEntity.dropItem`: the item drops when the block cannot land, as `settings.drop_item` says.
 fn write_drop_item(w: &World, e: Entity, c: &mut Compound) {
     if let Some(f) = w.get::<FallingBlock>(e) {
-        c.insert("DropItem".into(), Tag::Byte(i8::from(f.drop.is_some())));
+        c.insert("DropItem".into(), Tag::Byte(i8::from(f.settings.drop_item)));
     }
 }
 
 fn read_drop_item(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Byte(v) = t else { return false };
     let Some(mut f) = w.get_mut::<FallingBlock>(e) else { return false };
-    if *v == 0 {
-        f.drop = None;
-    }
+    f.settings.drop_item = *v != 0;
     true
 }
 
@@ -566,7 +547,7 @@ fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 fn build_falling_block(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let state = world_of(w).registry.saved_state_id(tag(c, "BlockState")?)?;
     let cell = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
-    // `DropItem` defaults to true: the block's own item is what it drops when it cannot land (`read_drop_item` clears it for 0).
+    // `DropItem` defaults to true: the block's own item is what it drops when it cannot land (`read_drop_item` sets it from the key).
     let name = world_of(w).registry.state(state).map(|s| s.name.clone())?;
     Some(falling_block::fall(w, cell, state, Some(ItemStack::new(&name, 1))))
 }

@@ -16,7 +16,7 @@ use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
     Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob, boats, commands,
-    creaking::CreakingState, dragon, fireworks, lightning, machines, minecarts,
+    creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
 use horizon_client::join_seq::{
@@ -50,39 +50,29 @@ use std::{
 pub(super) struct EntityCountView<'a> {
     pub(super) fixed: [(&'static str, usize); 19],
     pub(super) mobs: &'a [Mob],
-    pub(super) projectiles: &'a [horizon_client::projectiles::Projectile],
-    pub(super) general: &'a super::general::GeneralRows,
+    /// The entities the level's ECS world holds (`EcsLevel::count`), beside the remote list.
+    pub(super) ecs: usize,
     pub(super) others: &'a [commands::OtherEntity],
 }
 impl EntityCountView<'_> {
     pub(super) fn total(&self) -> usize {
         self.fixed.iter().map(|(_, n)| n).sum::<usize>()
-            + self.projectiles.len()
             + self.mobs.len()
-            + self.general.len()
+            + self.ecs
             + self.others.len()
     }
-    pub(super) fn registry_counts(&self) -> Vec<(String, u32)> {
+    pub(super) fn registry_counts(&self, ecs_kinds: &[(&'static str, usize)]) -> Vec<(String, u32)> {
         let mut counts = std::collections::BTreeMap::<String, u32>::new();
+        for &(kind, n) in ecs_kinds {
+            *counts.entry(kind.to_owned()).or_default() += n as u32;
+        }
         for &(id, n) in &self.fixed {
             if n > 0 {
                 *counts.entry(id.to_owned()).or_default() += n as u32;
             }
         }
-        for projectile in self.projectiles {
-            *counts.entry(projectile.kind.id().to_owned()).or_default() += 1;
-        }
         for mob in self.mobs.iter().filter(|mob| !mob.removed) {
             *counts.entry(mob.kind.id.clone()).or_default() += 1;
-        }
-        for row in self.general.iter() {
-            *counts
-                .entry(
-                    super::general::general_type_catalog()
-                        .key(row.type_slot)
-                        .to_owned(),
-                )
-                .or_default() += 1;
         }
         for row in self.others {
             *counts.entry(row.kind.clone()).or_default() += 1;
@@ -93,12 +83,11 @@ impl EntityCountView<'_> {
 
 // Both Game and Parked own these typed families. Keep their instrumentation in one list.
 macro_rules! entity_count_view {
-    ($level:expr, $projectiles:expr, $general:expr, $knots:expr) => {
+    ($level:expr, $knots:expr) => {
         crate::game::levels::EntityCountView {
             fixed: [
                 ("minecraft:item", $level.dropped.len()),
                 ("minecraft:experience_orb", $level.orbs.len()),
-                ("minecraft:minecart", $level.carts.len()),
                 ("minecraft:boat", $level.boats.len()),
                 ("minecraft:falling_block", $level.falling.len()),
                 ("minecraft:painting", $level.paintings.len()),
@@ -123,9 +112,8 @@ macro_rules! entity_count_view {
                     usize::from($level.dragon.as_ref().is_some()),
                 ),
             ],
-            mobs: &$level.mobs,
-            projectiles: $projectiles,
-            general: $general,
+            mobs: &$level.remote_entities,
+            ecs: $level.ecs.entity_count(),
             others: &$level.others,
         }
     };
@@ -161,7 +149,6 @@ pub(super) struct Parked {
     others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     fangs: super::fangs::FangState,
     pub(super) boats: horizon_client::join_seq::JoinList<boats::Boat, false>,
-    pub(super) carts: horizon_client::join_seq::JoinList<minecarts::Minecart, false>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: Vec<lightning::Bolt>,
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
@@ -175,13 +162,12 @@ pub(super) struct Parked {
     /// Its orbs', TNT's and falling blocks' place in the tick order beyond
     /// their joins (`ordered_tick::TickRestarts`).
     tick_restarts: super::ordered_tick::TickRestarts,
-    general: super::general::GeneralStore,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
-    pub(super) mobs: horizon_client::join_seq::JoinList<Mob>,
+    pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
+    pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     knots: horizon_client::join_seq::JoinList<super::leads::Knot>,
-    projectiles: horizon_client::join_seq::JoinList<horizon_client::projectiles::Projectile, false>,
     dropped: horizon_client::join_seq::JoinList<ItemEntity>,
     orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
     persist: persist::EntityMemory,
@@ -213,9 +199,7 @@ impl Parked {
     resident_owners!(
         define_resident_access,
         self,
-        projectiles,
-        knots,
-        general.rows
+        knots
     );
 }
 
@@ -629,21 +613,17 @@ impl Levels {
             .map(|(_, level)| level)
     }
 
-    /// Whether a parked level's general rows hold any of these UUIDs (arismoko/horizon#792's
+    /// Whether a parked level's ECS entities hold any of these UUIDs (arismoko/horizon#792's
     /// dimension-transfer check: a destination may not already hold a row
-    /// of the travelling tree's UUIDs).
+    /// of the travelling tree's UUIDs). Missing on the bridge: `EcsLevel::holds_any_uuid`.
     pub(in crate::game) fn parked_general_holds_any_uuid(
         &self,
         dim: Dim,
         uuids: &std::collections::HashSet<[i32; 4]>,
     ) -> bool {
-        self.parked.get(&dim).is_some_and(|parked| {
-            parked
-                .general
-                .rows
-                .iter()
-                .any(|row| uuids.contains(&row.uuid))
-        })
+        self.parked
+            .get(&dim)
+            .is_some_and(|parked| parked.ecs.holds_any_uuid(uuids))
     }
 
     /// The entities of a parked level, counted as `Game::entity_count` counts the one in place.
@@ -653,8 +633,7 @@ impl Levels {
             l.mobs.iter().filter(|m| !m.removed).count()
                 + l.dropped.len()
                 + l.orbs.len()
-                + l.projectiles.len()
-                + l.carts.len()
+                + l.ecs_cart_count()
                 + l.boats.len()
                 + l.falling.len()
                 + l.paintings.len()
@@ -667,6 +646,11 @@ impl Levels {
         )
     }
 
+    /// The minecarts of a parked level's ECS world, every cart kind (a scan for the reports).
+    fn ecs_cart_count(&self) -> usize {
+        self.ecs.count_by_kind().iter().filter(|(k, _)| k.ends_with("minecart")).map(|(_, n)| n).sum()
+    }
+
     /// The mobs of a parked level.
     pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
         self.parked.get(&dim).map(|level| &*level.mobs)
@@ -674,25 +658,25 @@ impl Levels {
 
     pub(super) fn parked_perf_views(
         &self,
-    ) -> impl Iterator<Item = (Dim, &World, EntityCountView<'_>)> {
+    ) -> impl Iterator<Item = (Dim, &World, EntityCountView<'_>, Vec<(&'static str, usize)>)> {
         self.parked.iter().map(|(&dim, level)| {
             (
                 dim,
                 &level.world,
-                entity_count_view!(level, &level.projectiles, &level.general.rows, &level.knots),
+                entity_count_view!(level, &level.knots),
+                level.ecs.count_by_kind(),
             )
         })
     }
 
     /// A parked level's loose entities, for `horizon-report`: items, experience orbs,
-    /// projectiles, minecarts and boats.
-    pub(super) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 5]> {
+    /// minecarts and boats.
+    pub(super) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 4]> {
         self.parked.get(&dim).map(|l| {
             [
                 l.dropped.len(),
                 l.orbs.len(),
-                l.projectiles.len(),
-                l.carts.len(),
+                l.ecs_cart_count(),
                 l.boats.len(),
             ]
         })
@@ -765,7 +749,6 @@ impl Game<'_> {
             others: Default::default(),
             fangs: Default::default(),
             boats: Default::default(),
-            carts: Default::default(),
             jukebox_sounds: HashMap::new(),
             bolts: Vec::new(),
             crystals: Default::default(),
@@ -776,12 +759,11 @@ impl Game<'_> {
             ominous_spawners: Default::default(),
             tnts: Default::default(),
             tick_restarts: Default::default(),
-            general: Default::default(),
             hoppers: HashMap::new(),
-            mobs: Default::default(),
+            ecs: self.new_ecs_level(dim, seed),
+            remote_entities: Default::default(),
             knot_ids: HashMap::new(),
             knots: Default::default(),
-            projectiles: Default::default(),
             dropped: Default::default(),
             orbs: Default::default(),
             persist: Default::default(),
@@ -921,7 +903,6 @@ impl Game<'_> {
         swap(&mut self.others, &mut p.others);
         swap(&mut self.fangs, &mut p.fangs);
         swap(&mut self.boats, &mut p.boats);
-        swap(&mut self.carts, &mut p.carts);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.bolts, &mut p.bolts);
         swap(&mut self.crystals, &mut p.crystals);
@@ -933,11 +914,10 @@ impl Game<'_> {
         swap(&mut self.tnts, &mut p.tnts);
         swap(&mut self.ordered.restarts, &mut p.tick_restarts);
         swap(&mut self.hoppers, &mut p.hoppers);
-        swap(&mut self.mobs, &mut p.mobs);
+        swap(&mut self.remote_entities, &mut p.remote_entities);
+        swap(&mut self.ecs, &mut p.ecs);
         swap(&mut self.knot_ids, &mut p.knot_ids);
         swap(&mut self.resident_entities.knots, &mut p.knots);
-        swap(&mut self.resident_entities.general, &mut p.general);
-        swap(&mut self.creatures.projectiles, &mut p.projectiles);
         swap(&mut self.dropped, &mut p.dropped);
         swap(&mut self.orbs, &mut p.orbs);
         swap(&mut self.persist, &mut p.persist);
@@ -1044,7 +1024,7 @@ impl Game<'_> {
             }
             let present = mob.is_some()
                 || p.boats.iter().any(|b| b.id == id)
-                || p.carts.iter().any(|c| c.id == id);
+                || p.ecs.cart_kind(id).is_some();
             let removed = p.persist.removals.iter().chain(p.persist.destroying_vehicles.iter()).any(|target| matches!(
                 target, commands::Target::Mob(n) | commands::Target::Boat(n) | commands::Target::Cart(n) if *n == id
             ));
@@ -1131,10 +1111,6 @@ impl Game<'_> {
                 self.rebind_transferred_entity(boat.id, boat);
                 boat.id
             }
-            persist::OffLevel::Cart(cart) => {
-                self.rebind_transferred_entity(cart.id, cart);
-                cart.id
-            }
         };
         self.journal_arrival(id);
         if self.uuid_admission_refused(self.persist.uuids.get(&id).copied()) {
@@ -1144,7 +1120,6 @@ impl Game<'_> {
         match object {
             persist::OffLevel::Mob(mob) => self.mobs.push(mob),
             persist::OffLevel::Boat(boat) => self.boats.push(boat),
-            persist::OffLevel::Cart(cart) => self.carts.push(cart),
         }
     }
 
@@ -1438,7 +1413,11 @@ impl Game<'_> {
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::ADVANCE_WEATHER)
             {
+                let before = (self.world.weather.raining, self.world.weather.thundering);
                 self.world.weather.tick_timers(&mut self.world.random);
+                if before != (self.world.weather.raining, self.world.weather.thundering) {
+                    self.ecs_weather_changed();
+                }
             }
             self.world.weather.tick_levels();
         } else if self.clock.still() {

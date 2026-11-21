@@ -16,6 +16,7 @@ use horizon_core::geometry::Vec3;
 use horizon_core::position::BlockPos;
 use horizon_world::climbing::{self, ClimbingWorld};
 use horizon_world::registry::BlockStateId;
+use horizon_ecs_proto::bridge::host::Flag;
 use mod_api::LivingRef;
 
 impl Game<'_> {
@@ -58,10 +59,9 @@ impl Game<'_> {
                     .as_ref()
                     .map_or(0, |m| m.fall_fly_ticks),
             ),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.fall_fly_ticks(id),
             Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
+                self.remote_mob(id)?
                     .extra
                     .fall_fly_ticks,
             ),
@@ -76,10 +76,9 @@ impl Game<'_> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.fall_flying),
             Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.flag(id, Flag::Gliding),
             Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
+                self.remote_mob(id)?
                     .extra
                     .fall_flying,
             ),
@@ -105,8 +104,9 @@ impl Game<'_> {
                 .as_mut()
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = false))
                 .is_some(),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_flag(id, Flag::Gliding, false),
             Some(Target::Mob(id)) => {
-                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self.remote_mob_mut(id) else {
                     return false;
                 };
                 m.extra.fall_flying = false;
@@ -124,10 +124,9 @@ impl Game<'_> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.sleeping.is_some()),
             Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.flag(id, Flag::Sleeping),
             Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
+                self.remote_mob(id)
                     .map(villager::sleeping)
                     .unwrap_or(false),
             ),
@@ -145,8 +144,9 @@ impl Game<'_> {
                 let g = self.command_guest(conn)?;
                 g.bed.filter(|_| g.sleeping)
             }
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.sleeping_pos(id),
             Target::Mob(id) => {
-                villager::sleeping_pos(self.mobs.iter().find(|m| m.id == id && !m.removed)?)
+                villager::sleeping_pos(self.remote_mob(id)?)
             }
             _ => None,
         }
@@ -164,8 +164,14 @@ impl Game<'_> {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| game.lie_in_bed(pos))
             }
+            Some(Target::Mob(id)) if self.ecs.is_active() => {
+                let Some(at) = self.sleeping_position(pos) else {
+                    return false;
+                };
+                self.ecs.start_sleeping(id, pos, at)
+            }
             Some(Target::Mob(id)) => {
-                let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self.remote_mob(id) else {
                     return false;
                 };
                 if !matches!(
@@ -180,7 +186,7 @@ impl Game<'_> {
                 let Some(at) = self.sleeping_position(pos) else {
                     return false;
                 };
-                let mut mobs = self.mobs.lift();
+                let mut mobs = self.remote_lift();
                 #[cfg(test)]
                 super::entity::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
@@ -192,8 +198,7 @@ impl Game<'_> {
                     }
                     slept
                 });
-                self.mobs
-                    .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
+                self.remote_restore(mobs);
                 let _ = self.handle_mob_events(events);
                 slept
             }
@@ -216,14 +221,15 @@ impl Game<'_> {
                     slept
                 })
             }
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.stop_sleeping(id),
             Some(Target::Mob(id)) => {
-                let Some(m) = self.mobs.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self.remote_mob(id) else {
                     return false;
                 };
                 if !villager::sleeping(m) {
                     return false;
                 }
-                let mut mobs = self.mobs.lift();
+                let mut mobs = self.remote_lift();
                 #[cfg(test)]
                 super::entity::taken_pass_tests::after_take(self);
                 let w = self.mob_world_base(&[]);
@@ -231,8 +237,7 @@ impl Game<'_> {
                 if let Some(m) = mobs.iter_mut().find(|m| m.id == id) {
                     villager::stop_sleeping(m, &w, &mut events);
                 }
-                self.mobs
-                    .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
+                self.remote_restore(mobs);
                 let _ = self.handle_mob_events(events);
                 true
             }
@@ -328,7 +333,7 @@ impl Game<'_> {
                 )
             }
             Target::Mob(id) => {
-                let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+                let m = self.remote_mob(id)?;
                 (m.position, false, m.extra.fall_flying)
             }
             _ => return None,
@@ -362,9 +367,7 @@ impl Game<'_> {
     pub(super) fn living_baby(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) => Some(
-                self.mobs
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)?
+                self.remote_mob(id)?
                     .extra
                     .age
                     < 0,
@@ -450,7 +453,7 @@ pub(in crate::game) mod tests {
     /// A live cow `id` at `(5.5, 64, 5.5)`, with its handle.
     fn cow(game: &mut Game<'_>, id: u32) -> LivingRef {
         let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-        game.mobs
+        game.remote_entities
             .push(Mob::new(id, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
         game.living(game.entity(id).unwrap()).unwrap()
     }
@@ -466,35 +469,35 @@ pub(in crate::game) mod tests {
             let mob_ref = game.mob(game.entity(12).unwrap()).unwrap();
             assert_eq!(game.mob_no_ai(mob_ref), Some(false));
             assert!(game.mob_set_no_ai(mob_ref, true));
-            assert!(game.mobs[0].no_ai);
+            assert!(game.remote_entities[0].no_ai);
             assert_eq!(game.mob_no_ai(mob_ref), Some(true));
             assert_eq!(game.mob_persistence_required(mob_ref), Some(false));
             assert_eq!(game.mob_requires_custom_persistence(mob_ref), Some(false));
             assert!(game.mob_set_persistence_required(mob_ref));
-            assert!(game.mobs[0].persistent);
+            assert!(game.remote_entities[0].persistent);
             assert_eq!(game.mob_persistence_required(mob_ref), Some(true));
             // The baby age: a full day of growing up, and grown on the spot.
             assert_eq!(game.living_baby(mob), Some(false));
             assert!(game.mob_set_baby(mob_ref, true));
-            assert_eq!(game.mobs[0].extra.age, -24000);
+            assert_eq!(game.remote_entities[0].extra.age, -24000);
             assert_eq!(game.living_baby(mob), Some(true));
             let _ = &mob_ref;
             // The glide flag clears the way the game's own glide end does.
-            game.mobs[0].extra.fall_flying = true;
-            game.mobs[0].extra.fall_fly_ticks = 9;
+            game.remote_entities[0].extra.fall_flying = true;
+            game.remote_entities[0].extra.fall_fly_ticks = 9;
             assert_eq!(game.living_is_gliding(mob), Some(true));
             assert_eq!(game.living_gliding_ticks(mob), Some(9));
             assert!(game.living_stop_gliding(mob));
-            assert!(!game.mobs[0].extra.fall_flying);
+            assert!(!game.remote_entities[0].extra.fall_flying);
             // A villager's bed helpers answer for an awake cow.
-            assert!(!villager::sleeping(&game.mobs[0]));
+            assert!(!villager::sleeping(&game.remote_entities[0]));
             assert_eq!(game.living_is_sleeping(mob), Some(false));
             assert_eq!(game.living_sleeping_pos(mob), None);
             assert!(!game.living_start_sleeping(mob, [5, 64, 5]));
             assert!(!game.living_stop_sleeping(mob));
             // NoAI, PersistenceRequired and Age are the save's own tags.
             let tag = horizon_client::entity_nbt::mob_to_nbt(
-                &game.mobs[0],
+                &game.remote_entities[0],
                 [1, 2, 3, 4],
                 None,
                 Some(game.pack.assets.registry),
@@ -517,13 +520,13 @@ pub(in crate::game) mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(13, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
             let zombie_ref = game.mob(game.entity(13).unwrap()).unwrap();
             assert!(game.mob_set_persistence_required(zombie_ref));
             assert!(game.mob_set_no_ai(zombie_ref, true));
             let tag = horizon_client::entity_nbt::mob_to_nbt(
-                &game.mobs[1],
+                &game.remote_entities[1],
                 [5, 6, 7, 8],
                 None,
                 Some(game.pack.assets.registry),
@@ -539,7 +542,7 @@ pub(in crate::game) mod tests {
             assert!(restored.persistent && restored.no_ai);
             // A grown-up cow reads back as one, too.
             assert!(game.mob_set_baby(mob_ref, false));
-            assert_eq!(game.mobs[0].extra.age, 0);
+            assert_eq!(game.remote_entities[0].extra.age, 0);
             assert_eq!(game.living_baby(mob), Some(false));
             // A stale handle reads None and writes false.
             let stale = LivingRef::new(EntityRef::new(
@@ -578,7 +581,7 @@ pub(in crate::game) mod tests {
             vec![ModEntry::new("join_persist", Box::new(Joiner))].into(),
             || {
                 with_game(|game| {
-                    let before = game.mobs.len();
+                    let before = game.remote_entities.len();
                     game.spawn_mob_spawned(
                         "zombie",
                         [5.0, 64.0, 5.0],
@@ -587,7 +590,7 @@ pub(in crate::game) mod tests {
                         ),
                     )
                     .unwrap();
-                    let m = &game.mobs[before];
+                    let m = &game.remote_entities[before];
                     assert!(m.persistent, "the join hook's write survives");
                     assert!(m.no_ai && m.is_baby());
                 });
@@ -596,7 +599,7 @@ pub(in crate::game) mod tests {
         // Without a mod the summoned mob stays plain vanilla: not
         // persistent, as SummonCommand never calls setPersistenceRequired.
         with_game(|game| {
-            let before = game.mobs.len();
+            let before = game.remote_entities.len();
             game.spawn_mob_spawned(
                 "zombie",
                 [5.0, 64.0, 5.0],
@@ -605,7 +608,7 @@ pub(in crate::game) mod tests {
                 ),
             )
             .unwrap();
-            assert!(!game.mobs[before].persistent, "a summon stays vanilla");
+            assert!(!game.remote_entities[before].persistent, "a summon stays vanilla");
         });
     }
 
@@ -1122,9 +1125,9 @@ pub(in crate::game) mod tests {
             assert_eq!(game.living_gliding_ticks(living), Some(0));
             // A mob uses the same adapter with its own, not the player's flag.
             let mob = cow(game, 20);
-            game.mobs[0].position = Vec3::new(3.0, 64.0, 5.0);
+            game.remote_entities[0].position = Vec3::new(3.0, 64.0, 5.0);
             assert_eq!(game.living_is_climbing(mob), Some(true));
-            game.mobs[0].extra.fall_flying = true;
+            game.remote_entities[0].extra.fall_flying = true;
             assert_eq!(game.living_is_climbing(mob), Some(false));
             let ladder = game
                 .pack
@@ -1218,7 +1221,7 @@ pub(in crate::game) mod tests {
                 .get("minecraft:villager")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(20, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
             let living = game.living(game.entity(20).unwrap()).unwrap();
             let stone = game
@@ -1232,7 +1235,7 @@ pub(in crate::game) mod tests {
             balance.drain_balanced();
             for pos in [[5, 64, 5], [4, 64, 4], [1600, 64, 1600], [6, 64, 6]] {
                 let before = horizon_client::entity_nbt::mob_to_nbt(
-                    &game.mobs[0],
+                    &game.remote_entities[0],
                     [1, 2, 3, 4],
                     None,
                     Some(game.pack.assets.registry),
@@ -1241,7 +1244,7 @@ pub(in crate::game) mod tests {
                 assert!(!game.living_start_sleeping(living, pos), "{pos:?}");
                 assert_eq!(
                     horizon_client::entity_nbt::mob_to_nbt(
-                        &game.mobs[0],
+                        &game.remote_entities[0],
                         [1, 2, 3, 4],
                         None,
                         Some(game.pack.assets.registry),
@@ -1249,7 +1252,7 @@ pub(in crate::game) mod tests {
                     ),
                     before
                 );
-                assert_eq!(game.mobs[0].position, Vec3::new(3.0, 64.0, 5.0));
+                assert_eq!(game.remote_entities[0].position, Vec3::new(3.0, 64.0, 5.0));
                 assert_eq!(game.living_sleeping_pos(living), None);
                 assert_eq!(balance.drain_balanced(), 0, "rejected bed opened a pass");
             }
@@ -1262,7 +1265,7 @@ pub(in crate::game) mod tests {
                 },
             );
             assert_eq!(game.living_sleeping_pos(living), Some([5, 64, 5]));
-            assert_eq!(game.mobs[0].position, Vec3::new(5.5, 64.6875, 5.5));
+            assert_eq!(game.remote_entities[0].position, Vec3::new(5.5, 64.6875, 5.5));
             assert_eq!(
                 game.pack
                     .assets
@@ -1316,7 +1319,7 @@ pub(in crate::game) mod tests {
                 state("minecraft:stone"),
             );
             let at = |game: &Game<'_>, id: u32| {
-                let mob = game.mobs.iter().find(|m| m.id == id).unwrap();
+                let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
                 mob.on_climbable(&game.mob_world_base(&[]))
             };
             let even = cow(game, 20);
@@ -1483,7 +1486,7 @@ pub(in crate::game) mod tests {
                     game.world.set(5, 64, 5, trapdoor).unwrap();
                     // The flag a mod reads, the cow's own climbing and the player's motion agree.
                     assert_eq!(game.living_is_climbing(living), Some(climbs));
-                    let mob = game.mobs.iter().find(|m| m.id == 40).unwrap();
+                    let mob = game.remote_entities.iter().find(|m| m.id == 40).unwrap();
                     assert_eq!(mob.on_climbable(&game.mob_world_base(&[])), climbs);
                     let remembered = climbs.then_some(BlockPos::new(5, 64, 5));
                     assert_eq!(player_climbs(game, 41), (climbs, remembered));

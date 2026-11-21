@@ -131,13 +131,31 @@ impl Game<'_> {
     }
     /// A mob leaves the level: its effects act first when it was killed.
     fn remove_mob_now(&mut self, id: u32, killed: bool) {
-        if !self.mobs.iter().any(|m| m.id == id && !m.removed) {
+        // An ECS mob leaves its world. A killed one is killed by the bridge, which names the removal effects
+        // it gives; the host runs them as `mob_removal_effects` does, with no mob random to spend.
+        if self.ecs_has(id) {
+            let bounds = self.ecs.bounds(id);
+            let effects = if killed {
+                self.with_ecs(|ecs, mw| ecs.kill(mw, id))
+            } else {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+                Vec::new()
+            };
+            if let Some(bounds) = bounds.filter(|_| !effects.is_empty()) {
+                self.effects_on_death(&effects, bounds, false, Some(id), None);
+            }
+            self.native_entity_left(id);
+            return;
+        }
+        if !self.remote_entities.iter().any(|m| m.id == id && !m.removed) {
             return;
         }
         if killed {
             self.mob_removal_effects(id);
         }
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.removed = true;
         }
         self.native_entity_left(id);
@@ -145,11 +163,11 @@ impl Game<'_> {
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind
     /// Charged's burst).
     pub(in crate::game) fn mob_removal_effects(&mut self, id: u32) {
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
             return;
         };
-        if !self.mobs[i].extra.effects.is_empty() {
-            let m = &self.mobs[i];
+        if !self.remote_entities[i].extra.effects.is_empty() {
+            let m = &self.remote_entities[i];
             let names: Vec<&'static str> = m
                 .extra
                 .effects
@@ -158,7 +176,7 @@ impl Game<'_> {
                 .collect();
             let (bounds, mut random) = (m.bounds(), m.random.clone());
             self.effects_on_death(&names, bounds, false, Some(id), Some(&mut random));
-            if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                 m.random = random;
             }
         }
@@ -292,34 +310,19 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn selectors_stop_matching_a_discarded_entity_before_the_sweep() {
-        use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
-        use horizon_core::geometry::Vec3;
+        use super::super::native_entity_refs::tests::with_game;
 
         with_game(|game| {
-            game.others.push(OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:marker".into(),
-                position: Vec3::ZERO,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(12, "minecraft:marker", [0.0; 3]);
             game.ui.registries.permission = 4;
             let selector = "execute if entity @e[type=minecraft:marker]";
             assert!(game.run_command(selector));
             let entity = game.entity(12).unwrap();
             assert!(entity.discard(game));
             // No sweep has run, as in the hook that discarded it.
-            assert_eq!(game.others.len(), 1);
             assert!(!game.run_command(selector));
             assert!(game.level_entity(12).is_none());
             game.native_removals_flush();
-            assert!(game.others.is_empty());
         });
     }
 
@@ -364,7 +367,7 @@ mod tests {
                 ));
                 let mob_id = game.take_entity_id();
                 let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-                game.mobs
+                game.remote_entities
                     .push(Mob::new(mob_id, cow, Vec3::new(0.0, 64.0, 0.0), 0.0));
                 game.native_joins_flush(false, 0);
                 let boat = game.entity(boat_id).unwrap();
@@ -377,7 +380,7 @@ mod tests {
                 assert!(game.boats.iter().any(|b| b.id == boat_id));
                 assert_eq!(*observer.0.lock().unwrap(), vec![(boat_id, true)]);
                 assert_eq!(game.entity_vehicle(mob), None);
-                assert!(!game.mobs.iter().any(|m| m.extra.mount == Some(boat_id)));
+                assert!(!game.remote_entities.iter().any(|m| m.extra.mount == Some(boat_id)));
 
                 game.native_leaves_flush();
                 assert!(!game.boats.iter().any(|b| b.id == boat_id));
@@ -389,9 +392,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn discard_other_clears_nbt_and_saved_entity() {
-        use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
+        use super::super::native_entity_refs::tests::with_game;
         use horizon_client::{chunk::Chunk, save::SaveDir};
-        use horizon_core::geometry::Vec3;
         use horizon_core::nbt::{Compound, Tag};
         use std::sync::Arc;
 
@@ -406,19 +408,7 @@ mod tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.others.push(OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:text_display".into(),
-                position: Vec3::new(1.0, 70.0, 1.0),
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(12, "minecraft:text_display", [1.0, 70.0, 1.0]);
             let mut tag = Compound::new();
             tag.insert("teleport_duration".into(), Tag::Int(4));
             game.persist.raw.insert(12, Tag::Compound(tag));
@@ -456,10 +446,10 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
             let mob = game.entity(12).unwrap();
             assert!(mob.discard(game));
-            assert!(game.mobs[0].removed);
+            assert!(game.remote_entities[0].removed);
             assert!(!mob.discard(game));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -483,7 +473,7 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(12, kind, Vec3::new(3.5, 70.0, -2.5), 0.0));
             let mob = game.entity(12).unwrap();
             let item = mob
@@ -587,28 +577,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn kill_command_forgets_other_entity_data() {
-        use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
-        use horizon_core::geometry::Vec3;
+        use super::super::native_entity_refs::tests::with_game;
         use horizon_core::nbt::{Compound, Tag};
 
         with_game(|game| {
-            game.others.push(OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:marker".into(),
-                position: Vec3::ZERO,
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(12, "minecraft:marker", [0.0; 3]);
             game.persist.raw.insert(12, Tag::Compound(Compound::new()));
             game.ui.registries.permission = 4;
             assert!(game.run_command("kill @e[type=minecraft:marker]"));
-            assert!(game.others.is_empty());
             assert!(!game.persist.raw.contains_key(&12));
         });
     }

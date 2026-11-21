@@ -51,9 +51,7 @@ impl Game<'_> {
             .iter()
             .find(|g| g.conn == conn && g.placed)?;
         let id = gm.merchant.mob?;
-        self.mobs
-            .iter()
-            .find(|m| m.id == id && m.alive() && !m.removed)?;
+        self.mob_alive(id).then_some(())?;
         let stack = |s: &Option<ItemStack>| s.as_ref().map(|s| json!([s.item.as_ref(), s.count]));
         let session = &gm.merchant.session;
         Some((
@@ -88,7 +86,11 @@ impl Game<'_> {
             state.session.reputation = self.villager_reputation_of(id, uuid);
             state.session.update_special_prices();
         }
-        if let Some(mob) = state.mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+        if self.ecs.is_active() {
+            if let Some(id) = state.mob {
+                self.ecs.set_trade_offers(id, state.session.offers.clone());
+            }
+        } else if let Some(mob) = state.mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
             mob.extra.trade.get_or_insert_default().offers = state.session.offers.clone();
         }
         let title = self.merchant_display_name(&state);
@@ -360,14 +362,7 @@ impl Game<'_> {
                 }
             });
         }
-        let opaque = gm
-            .merchant
-            .mob
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
-            .is_some_and(|m| {
-                m.species() == horizon_client::mobs::Species::Villager
-                    && m.extra.profession.index().is_none()
-            });
+        let opaque = gm.merchant.mob.is_some_and(|id| self.trader_opaque(id));
         let offers_refreshed = session
             .events
             .iter()
@@ -503,12 +498,9 @@ impl Game<'_> {
         g: &horizon_client::lan::guest::Guest,
         id: u32,
     ) -> bool {
-        self.mobs.iter().find(|m| m.id == id).is_some_and(|m| {
-            m.alive()
-                && (m.species() != horizon_client::mobs::Species::Villager
-                    || m.extra.profession.index().is_some())
-                && guest_within_entity_range(g, &m.bounds(), 4.0)
-        })
+        self.mob_alive(id)
+            && !self.trader_opaque(id)
+            && self.mob_box(id).is_some_and(|b| guest_within_entity_range(g, &b, 4.0))
     }
     /// `AbstractVillager.stillValid`: close invalid guest merchant screens.
     pub(super) fn lan_merchant_tick(&mut self) {

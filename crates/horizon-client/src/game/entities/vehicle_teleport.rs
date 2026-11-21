@@ -45,6 +45,19 @@ pub(super) fn absolute_pitch(pitch: f32) -> Option<f32> {
     (!clamped.is_nan()).then(|| (clamped % 360.0).clamp(-90.0, 90.0))
 }
 
+/// The saved form of a carried entity, placed at `at` as a teleport places it (`set_arrival_pose`), turned to `rotation` (NaN axes
+/// keep the entity's own), keeping its motion when `keep`; then a fresh add (`mark_fresh`).
+fn arrival_pose(tag: &mut Tag, at: [f64; 3], rotation: Option<[f32; 2]>, keep: bool) {
+    let [yaw, pitch] = horizon_client::entity_nbt::rotation(tag);
+    let [yaw, pitch] = rotation.map_or([yaw, pitch], |[y, p]| {
+        [if y.is_finite() { y } else { yaw }, absolute_pitch(p).unwrap_or(pitch)]
+    });
+    let kept = if keep { horizon_client::entity_nbt::motion(tag) } else { Vec3::ZERO };
+    let to = Vec3::new(at[0], at[1], at[2]);
+    super::nether_portal::set_arrival_pose(tag, to, kept, [yaw, pitch], 0.0);
+    super::persist::mark_fresh(tag);
+}
+
 /// `Entity.calculatePassengerTransition` for the angles: a rider turns by what
 /// the vehicle turned, keeping `passenger.getYRot() - getYRot()`. An absolute
 /// angle adds that offset to the vehicle's new one; a relative one (`~`) is a
@@ -107,7 +120,7 @@ mod teleport_cross_tests;
 impl Game<'_> {
     /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
     pub(super) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
-        self.cart_dismount_point_from(self.cart_object(vehicle)?, self.mob_object(rider)?)
+        self.cart_dismount_point_from(vehicle, self.mob_object(rider)?)
     }
 
     pub(super) fn cart_dismount_mob(
@@ -115,18 +128,21 @@ impl Game<'_> {
         vehicle: u32,
         rider: &horizon_client::mobs::Mob,
     ) -> Option<Vec3> {
-        self.cart_dismount_point_from(self.cart_object(vehicle)?, rider)
+        self.cart_dismount_point_from(vehicle, rider)
     }
 
-    /// The live tick snapshot may have moved beyond the cart's owning slot.
+    /// The cart `vehicle` as the ECS holds it: its position, yaw and flip, read through the bridge.
     pub(super) fn cart_dismount_point_from(
         &self,
-        cart: &super::minecarts::Minecart,
+        vehicle: u32,
         rider: &horizon_client::mobs::Mob,
     ) -> Option<Vec3> {
         use horizon_core::geometry::Aabb;
+        let [px, py, pz] = self.ecs.position(vehicle)?;
+        let yaw = self.ecs.yaw(vehicle)?;
+        let flipped = self.ecs.cart_flipped(vehicle)?;
         let direction =
-            (f64::from(cart.yaw) / 90.0 + 0.5).floor() as i32 + if cart.flipped { 3 } else { 1 };
+            (f64::from(yaw) / 90.0 + 0.5).floor() as i32 + if flipped { 3 } else { 1 };
         let (fx, fz) = [(0, 1), (-1, 0), (0, -1), (1, 0)][(direction & 3) as usize];
         let (rx, rz) = (-fz, fx);
         let offsets = [
@@ -139,8 +155,7 @@ impl Game<'_> {
             (-fx, -fz),
             (fx, fz),
         ];
-        let [bx, by, bz] =
-            [cart.position.x, cart.position.y, cart.position.z].map(|v| v.floor() as i32);
+        let [bx, by, bz] = [px, py, pz].map(|v| v.floor() as i32);
         let half = f64::from(rider.width().min(1.0) / 2.0);
         for dy in [0, 1, -1] {
             for (dx, dz) in offsets {
@@ -164,11 +179,7 @@ impl Game<'_> {
                 }
             }
         }
-        Some(Vec3::new(
-            cart.position.x,
-            cart.position.y + super::minecarts::HEIGHT,
-            cart.position.z,
-        ))
+        Some(Vec3::new(px, py + super::minecarts::HEIGHT, pz))
     }
 
     /// `AbstractHorse.getDismountLocationForPassenger`: try either side
@@ -393,8 +404,8 @@ impl Game<'_> {
             // Entity.teleportCrossDimension carries the riders; nothing rides
             // these kinds but a mob a server seats on a primed TNT.
             if source == destination
-                || game.lone_traveller_box(id).is_none()
-                || game.mobs.iter().any(|m| m.extra.mount == Some(id))
+                || game.ecs.entity_of(id).is_none()
+                || game.ecs.entity_of(id).and_then(|e| game.ecs.rider_of(e)).is_some()
             {
                 return Ok(Some(false));
             }
@@ -402,48 +413,22 @@ impl Game<'_> {
             {
                 return Ok(Some(true));
             }
-            // Open the destination before removing the entity.
-            game.enter_level(destination)?;
-            game.enter_level(source)?;
-            let cooldown = game.portals.entities.get(&id).map_or(0, |s| s.cooldown);
-            let Some((mut tag, state)) = game.take_lone_traveller(id) else {
-                return Ok(Some(false));
-            };
-            game.native_leaves_flush();
-            let [yaw, pitch] = horizon_client::entity_nbt::rotation(&tag);
-            // PositionMoveRotation.calculateAbsolute: an axis the teleport
-            // does not set keeps the entity's own, the pitch is clamped.
-            let [yaw, pitch] = rotation.map_or([yaw, pitch], |[y, p]| {
-                [
-                    if y.is_finite() { y } else { yaw },
-                    absolute_pitch(p).unwrap_or(pitch),
-                ]
-            });
-            let kept = match motion {
-                TeleportMotion::Keep => horizon_client::entity_nbt::motion(&tag),
-                TeleportMotion::Stop => Vec3::ZERO,
-            };
-            let to = Vec3::new(at[0], at[1], at[2]);
-            super::nether_portal::set_arrival_pose(&mut tag, to, kept, [yaw, pitch], 0.0);
-            if matches!(
-                target,
-                Target::Frame(_) | Target::Painting(_) | Target::Cushion(_)
-            ) && let Tag::Compound(c) = &mut tag
-            {
-                c.insert(
-                    "block_pos".into(),
-                    Tag::IntArray(at.map(|v| v.floor() as i32).to_vec()),
-                );
-            }
-            if let Tag::Compound(c) = &mut tag {
-                c.insert("PortalCooldown".into(), Tag::Int(cooldown));
-            }
-            // ServerLevel.addDuringTeleport: a fresh add, not loaded from disk.
-            super::persist::mark_fresh(&mut tag);
-            game.enter_level(destination)?;
-            game.spawn_teleported_entity(Self::chunk_of(to), tag.into(), Some(state));
-            game.enter_level(source)?;
-            Ok(Some(true))
+            let keep = matches!(motion, TeleportMotion::Keep);
+            // The entity's ECS form arrives in `destination` (`ServerLevel.addDuringTeleport`: a fresh add).
+            let carried = game.ecs_carry(id, destination, |tag| {
+                arrival_pose(tag, at, rotation, keep);
+                if matches!(
+                    target,
+                    Target::Frame(_) | Target::Painting(_) | Target::Cushion(_)
+                ) && let Tag::Compound(c) = tag
+                {
+                    c.insert(
+                        "block_pos".into(),
+                        Tag::IntArray(at.map(|v| v.floor() as i32).to_vec()),
+                    );
+                }
+            })?;
+            Ok(Some(carried.is_some()))
         })
         .unwrap_or(Ok(Some(false)))
     }
@@ -475,34 +460,14 @@ impl Game<'_> {
             // Open the destination before changing or removing any entity.
             game.enter_level(destination)?;
             game.enter_level(source)?;
-            if game
-                .mobs
-                .iter()
-                .any(|m| m.id == root && m.extra.mount.is_some())
-            {
-                game.dismount_mob(root);
+            if game.ecs_vehicle_of(root).is_some() {
+                let _ = game.ecs_with(|ecs, mw| ecs.leave(mw, root));
             }
             game.prepare_vehicle_transition(root);
-            let kept = match motion {
-                TeleportMotion::Keep => game.transition_motion(target),
-                TeleportMotion::Stop => None,
-            };
-            let from = game.place_teleport_in_level(target, at, rotation, [false; 3], turn_riders);
-            if let Some(from) = from
-                && game.options.dedicated.is_some()
-            {
-                game.native_entity_teleport(game.dim.id(), root, from, at);
-            }
-            match kept {
-                Some(kept) => game.restore_transition_motion(target, kept),
-                None => game.teleport_stops(target),
-            }
-            let tree = game.passenger_tree(root);
-            // NBT and runtime ownership come from the same ordered object walk,
-            // including off-level mobs and riders of every other live kind.
-            let (tag, state) = game
-                .take_vehicle_tree_transfer(root)
-                .ok_or("missing vehicle object tree")?;
+            // The riders are the ECS tree's (`riders_of`); the arrival turns them with the root (`set_arrival_pose`).
+            let tree = game.ecs_tree(root);
+            let keep = matches!(motion, TeleportMotion::Keep);
+            let _ = turn_riders;
             let mut players = Vec::new();
             // A command runs with its source player swapped out of the hub.
             if game.riding.is_some_and(|id| tree.contains(&id))
@@ -529,42 +494,18 @@ impl Game<'_> {
                     }
                 }
             }
-            game.mobs.retain(|m| !tree.contains(&m.id));
             game.persist.off_level.retain(|id, _| !tree.contains(id));
-            game.boats.retain(|b| !tree.contains(&b.id));
-            game.carts.retain(|c| !tree.contains(&c.id));
-            // Mobs, boats and carts above, the other riders and every id's
-            // container, lead and identity here.
+            // Mobs and the other riders and every id's container, lead and identity here.
             game.take_passenger_entities(&tree, true);
             game.native_leaves_flush();
+            // The tree leaves this level and its root is loaded in the destination, riders by its `Passengers`.
+            let Some(new_root) = game.ecs_carry(root, destination, |tag| {
+                arrival_pose(tag, at, rotation, keep);
+            })?
+            else {
+                return Ok(false);
+            };
             game.enter_level(destination)?;
-            // restoreFrom reloads saved state into fresh entities, rather than
-            // retaining navigation paths or goals from the old level.
-            let restored_objects = game
-                .restore_vehicle_tree_state(tag, state)
-                .ok_or("could not restore vehicle tree")?;
-            // AbstractHorse.addPassenger snaps a reattached passenger to the
-            // new horse's getViewYRot(0) / getViewXRot(0). A fresh living
-            // entity's previous head yaw is still zero, before its first tick.
-            let new_root = restored_objects.root;
-            let mounts: Vec<_> = game.mob_objects().map(|m| (m.id, m.extra.mount)).collect();
-            let restored = super::persist::vehicle_tree(new_root, &mounts);
-            let horses: Vec<_> = game
-                .mob_objects()
-                .filter(|m| restored.contains(&m.id) && is_horse(m.species()))
-                .map(|m| (m.id, m.head_pitch))
-                .collect();
-            for (horse, pitch) in horses {
-                for id in game.mob_passenger_ids(horse) {
-                    let Some(rider) = game.mob_object_mut(id) else {
-                        continue;
-                    };
-                    rider.yaw = 0.0;
-                    rider.previous_yaw = 0.0;
-                    rider.head_pitch = pitch;
-                    rider.previous_head_pitch = pitch;
-                }
-            }
             for (conn, at, rotation, mount) in players {
                 game.level_teleports
                     .push(super::server_travel::LevelTeleport {
@@ -572,7 +513,7 @@ impl Game<'_> {
                         dim: destination,
                         at,
                         rotation: Some(rotation),
-                        vehicle: restored_objects.by_source.get(&mount).copied(),
+                        vehicle: (mount == root).then_some(new_root),
                     });
             }
             game.native_joins_flush(false, 0);
@@ -596,19 +537,11 @@ impl Game<'_> {
     /// `BlockAttachedEntity.setPos`: a frame or painting moves to the block
     /// holding the position; its bounds follow from it.
     pub(super) fn teleport_hanging(&mut self, t: Target, v: Vec3) {
-        let pos = [v.x.floor() as i32, v.y.floor() as i32, v.z.floor() as i32];
-        match t {
-            Target::Frame(id) => {
-                if let Some(f) = self.item_frames.iter_mut().find(|f| f.id == id) {
-                    f.pos = pos;
-                }
-            }
-            Target::Painting(id) => {
-                if let Some(p) = self.paintings.iter_mut().find(|p| p.id == id) {
-                    p.pos = pos;
-                }
-            }
-            _ => {}
+        let pos = [v.x.floor(), v.y.floor(), v.z.floor()];
+        if let Target::Frame(id) | Target::Painting(id) = t
+            && let Some(e) = self.ecs.entity_of(id)
+        {
+            self.ecs_with(|ecs, mw| ecs.teleport(mw, e, pos));
         }
     }
 
@@ -641,63 +574,22 @@ impl Game<'_> {
         new: Vec3,
         rotation: Option<PlacedRotation>,
     ) {
-        let mut riders = self.ordered_live_passengers(vehicle);
-        for id in self.mob_passenger_ids(vehicle) {
-            if !riders.contains(&id) {
-                riders.push(id);
-            }
-        }
-        let mut guest_steps = Vec::new();
-        for id in riders {
-            let mut carried = None;
-            if self.mob_object(id).is_none() {
-                // A rider that is not a mob: moved by its own kind's writer.
-                if let Some(target) = self.level_entity(id as i32)
-                    && let Some(at) = self.target_position(target)
-                {
-                    let at = passenger_destination(old, new, Vec3::new(at[0], at[1], at[2]));
-                    let turn = rotation.map(|placed| {
-                        passenger_rotation(
-                            placed.before,
-                            placed.after,
-                            self.target_rotation(target),
-                        )
-                    });
-                    if matches!(target, Target::Frame(_) | Target::Painting(_)) {
-                        self.place_saved_passenger(target, at);
-                        self.move_riders(id, old, new, rotation);
-                    } else {
-                        // This existing writer also carries this rider's descendants.
-                        self.teleport_to_in_level(target, [at.x, at.y, at.z], turn, [false; 3], true);
-                    }
-                }
+        // The creatures riding `vehicle` are the ECS's (seat order); each one moves by the same offset and turns with the vehicle.
+        for id in self.ecs.riders_of(vehicle) {
+            let (Some(e), Some(at)) = (self.ecs.entity_of(id), self.ecs.position(id)) else {
                 continue;
-            }
-            if let Some(m) = self.mob_object_mut(id) {
-                let from = m.position;
-                m.position = passenger_destination(old, new, m.position);
-                m.previous = m.position;
-                carried = Some((from, m.position));
-                // Entity.calculatePassengerTransition turns the rider with the
-                // vehicle, then Entity.teleportSetPosition keeps the old angles
-                // for the interpolation.
-                if let Some(placed) = rotation {
-                    let [yaw, pitch] =
-                        passenger_rotation(placed.before, placed.after, [m.yaw, m.head_pitch]);
-                    m.yaw = yaw;
-                    m.body_yaw = yaw;
-                    m.head_yaw = yaw;
-                    m.head_pitch = pitch;
-                    m.previous_yaw = yaw;
-                    m.previous_head_pitch = pitch;
-                }
-            }
-            // Each rider's `teleportSetPosition` is a position update of its own.
-            if let Some((from, to)) = carried {
-                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            };
+            let at = passenger_destination(old, new, Vec3::new(at[0], at[1], at[2]));
+            let turn = rotation.map(|placed| {
+                passenger_rotation(placed.before, placed.after, self.vehicle_rotation(id))
+            });
+            self.ecs_with(|ecs, mw| ecs.teleport(mw, e, [at.x, at.y, at.z]));
+            if let Some([yaw, pitch]) = turn {
+                self.ecs.set_rotation(e, yaw, pitch);
             }
             self.move_riders(id, old, new, rotation);
         }
+        let mut guest_steps = Vec::new();
         if self.riding == Some(vehicle)
             && let Some(p) = self.player.as_mut()
         {
@@ -770,15 +662,15 @@ impl Game<'_> {
 
     /// A vehicle's yaw and pitch, for the riders' teleport packet.
     fn vehicle_rotation(&self, id: u32) -> [f32; 2] {
-        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            [b.yaw, b.pitch]
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-            [c.yaw, c.pitch]
-        } else if let Some(m) = self.mob_object(id) {
-            [m.yaw, m.head_pitch]
-        } else {
-            [0.0, 0.0]
-        }
+        self.ecs.rotation(id).unwrap_or([0.0, 0.0])
+    }
+
+    /// `Entity.forceSetRotation` on the ECS entity `id`: a yaw that is not finite and an absent pitch keep its own angles.
+    fn ecs_set_rotation(&mut self, id: u32, yaw: f32, pitch: Option<f32>) {
+        let (Some(e), [own_yaw, own_pitch]) = (self.ecs.entity_of(id), self.vehicle_rotation(id)) else {
+            return;
+        };
+        self.ecs.set_rotation(e, if yaw.is_finite() { yaw } else { own_yaw }, pitch.unwrap_or(own_pitch));
     }
 
     /// `Entity.forceSetRotation`: yaw, head yaw, pitch and their old values
@@ -804,64 +696,9 @@ impl Game<'_> {
                 // A server's player hears the turn alone when its turn ends.
                 self.rotation_forced = self.lan_acting.is_some();
             }
-            Target::Mob(id) => {
-                if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
-                    if yaw.is_finite() {
-                        m.yaw = yaw;
-                        m.body_yaw = yaw;
-                        m.head_yaw = yaw;
-                    }
-                    if let Some(pitch) = pitch {
-                        m.head_pitch = pitch;
-                    }
-                    m.previous_yaw = m.yaw;
-                    m.previous_head_pitch = m.head_pitch;
-                }
-            }
-            Target::Other(id) => {
-                if let Some(i) = self.others.iter().position(|e| e.id == id) {
-                    self.others.update(i, |o| {
-                        if yaw.is_finite() {
-                            o.yaw = yaw;
-                        }
-                        if let Some(pitch) = pitch {
-                            o.pitch = pitch;
-                        }
-                    });
-                }
-            }
-            Target::Stand(id) if yaw.is_finite() => {
-                if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-                    a.yaw = yaw;
-                }
-            }
-            Target::Boat(id) if yaw.is_finite() => {
-                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                    self.boats.update(i, |b| {
-                        b.yaw = yaw;
-                        if let Some(pitch) = pitch {
-                            b.pitch = pitch;
-                        }
-                    });
-                }
-            }
-            Target::Cart(id) if yaw.is_finite() => {
-                if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-                    self.carts.update(i, |c| {
-                        c.yaw = yaw;
-                        if let Some(pitch) = pitch {
-                            c.pitch = pitch;
-                        }
-                    });
-                }
-            }
-            Target::Fangs(id) if yaw.is_finite() => {
-                if let Some(i) = self.fangs.list.iter().position(|e| e.id == id) {
-                    self.fangs.list.update(i, |f| {
-                        f.yaw = yaw;
-                    });
-                }
-            }
+            Target::Mob(id) | Target::Other(id) => self.ecs_set_rotation(id, yaw, pitch),
+            Target::Boat(id) | Target::Cart(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, pitch),
+            Target::Stand(id) | Target::Fangs(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, None),
             _ => {}
         }
     }

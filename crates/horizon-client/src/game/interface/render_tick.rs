@@ -638,7 +638,7 @@ impl Game<'_> {
             let player = self.player.as_ref()?;
             return Some((TrackingTarget::LocalPlayer, player_tracking_body(player)));
         }
-        let mob = self.mob_index.get(&self.mobs, id as u32)?;
+        let mob = self.remote_index.get(&self.remote_entities, id as u32)?;
         Some((TrackingTarget::Entity(id), mob_tracking_body(mob)))
     }
 
@@ -899,8 +899,8 @@ impl Game<'_> {
                 .polytone_entity(&level, "minecraft:player", feet);
         }
         let player = self.player.as_ref();
-        let mobs = &self.mobs;
-        let mob_index = &mut self.mob_index;
+        let mobs = &self.remote_entities;
+        let remote_index = &mut self.remote_index;
         let lan = self.lan.as_ref();
         let dimension = self.dim.id();
         self.particles.tick_tracking(&level, |target| match target {
@@ -919,7 +919,7 @@ impl Game<'_> {
                         height: f64::from(dimensions.height),
                     });
                 }
-                mob_index.get(mobs, id as u32).map(mob_tracking_body)
+                remote_index.get(mobs, id as u32).map(mob_tracking_body)
             }
         });
         laps.lap("tp_engine");

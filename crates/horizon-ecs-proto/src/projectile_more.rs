@@ -22,7 +22,9 @@ pub const PEARL_DAMAGE: f32 = 5.0;
 pub const BOTTLE_XP: (i32, i32) = (3, 5);
 
 /// `ThrownEgg`: a thrown item, gravity 0.03, no damage.
-pub const EGG: Flight = Flight { id: crate::species::lists::EGG, ..Flight::SNOWBALL };
+pub const SPECTRAL_ARROW: Flight = Flight { id: crate::species::lists::SPECTRAL_ARROW, ..Flight::ARROW };
+
+pub const EGG: Flight =Flight { id: crate::species::lists::EGG, ..Flight::SNOWBALL };
 /// The egg's end, its hatchling being the species `into`.
 pub const fn egg_hit(into: &'static str) -> OnHit {
     OnHit::Hatch { into, one_in: EGG_HATCH.0, many_in: EGG_HATCH.1, many: EGG_HATCH.2, baby: 24_000 }

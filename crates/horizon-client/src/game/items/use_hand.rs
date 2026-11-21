@@ -725,11 +725,15 @@ impl Game<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.mobs
-                            .iter_mut()
-                            .find(|m| m.id == id)?
-                            .random
-                            .next_float()
+                        if self.ecs.is_active() {
+                            self.ecs_next_float(id)?
+                        } else {
+                            self.remote_entities
+                                .iter_mut()
+                                .find(|m| m.id == id)?
+                                .random
+                                .next_float()
+                        }
                     }
                     None => self.world.random.next_float(),
                 };
@@ -795,7 +799,11 @@ impl Game<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.mobs.iter().find(|m| m.id == id).map(|m| m.position)?
+                        if self.ecs.is_active() {
+                            self.ecs_vec3(id)?
+                        } else {
+                            self.remote_entities.iter().find(|m| m.id == id).map(|m| m.position)?
+                        }
                     }
                     None => self.player.as_ref()?.position,
                 };
@@ -895,11 +903,13 @@ impl Game<'_> {
                 velocity,
                 on_ground,
             );
-            self.spawn_projectile(arrow, &ammo);
-            let (player, name, projectile) = (
+            let shot = self.arrow_shot_of(arrow.arrow.as_deref().expect("an arrow has its state"), effect);
+            let (pos, vel) = (arrow.position, arrow.velocity);
+            let owner = self.ecs_owner(Some(horizon_client::mobs::Who::Player));
+            let projectile = self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, weapon.clone());
+            let (player, name) = (
                 horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid()),
                 self.acting_player_name().to_owned(),
-                self.next_entity,
             );
             self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a

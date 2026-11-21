@@ -21,6 +21,7 @@ use horizon_core::{
     position::BlockPos,
     random::RandomSource,
 };
+use horizon_ecs_proto::goals;
 use horizon_world::{
     fluid::FluidKind,
     level::{PlaceContext, PlaceOutcome},
@@ -144,6 +145,8 @@ enum Target {
     Guest(u32),
     Mob(usize),
     Stand(usize),
+    /// An entity of the ECS level, by network id.
+    Ecs(u32),
 }
 
 /// `EquipmentSlot`.
@@ -183,6 +186,19 @@ impl Slot {
             "saddle" => Self::Saddle,
             _ => return None,
         })
+    }
+    /// The same slot in P's `goals::Slot`.
+    pub(super) fn goal(self) -> goals::Slot {
+        match self {
+            Self::MainHand => goals::Slot::Main,
+            Self::OffHand => goals::Slot::Off,
+            Self::Feet => goals::Slot::Feet,
+            Self::Legs => goals::Slot::Legs,
+            Self::Chest => goals::Slot::Chest,
+            Self::Head => goals::Slot::Head,
+            Self::Body => goals::Slot::Body,
+            Self::Saddle => goals::Slot::Saddle,
+        }
     }
     /// The player's armour array index (head, chest, legs, feet).
     fn armor_index(self) -> Option<usize> {
@@ -239,10 +255,8 @@ pub(super) fn mob_slot_item(m: &Mob, slot: Slot) -> Option<Arc<str>> {
         Slot::Saddle => m.saddle_item().map(|s| s.item),
     }
 }
-/// `LivingEntity.canUseSlot` and its overrides.
-fn mob_can_use_slot(m: &Mob, slot: Slot) -> bool {
-    let s = m.species();
-    let grown = m.alive() && !m.is_baby();
+/// `LivingEntity.canUseSlot` and its overrides, from the species, whether it is grown and whether it is tame.
+fn can_use_slot(s: Species, grown: bool, tame: bool, slot: Slot) -> bool {
     match s {
         Species::Pig | Species::Strider if slot == Slot::Saddle => grown,
         Species::Horse
@@ -250,23 +264,21 @@ fn mob_can_use_slot(m: &Mob, slot: Slot) -> bool {
         | Species::ZombieHorse
         | Species::Llama
         | Species::TraderLlama => true,
-        _ if equine(s) && slot == Slot::Saddle => grown && m.extra.tame,
+        _ if equine(s) && slot == Slot::Saddle => grown && tame,
         _ if horizon_client::mobs::nautilus::is_nautilus(s)
             && matches!(slot, Slot::Saddle | Slot::Body) =>
         {
-            grown && m.extra.tame
+            grown && tame
         }
         Species::SulfurCube | Species::HappyGhast if slot == Slot::Body => grown,
         _ => true,
     }
 }
-/// `Mob.canDispenserEquipIntoSlot` and its overrides.
-fn mob_can_dispenser_equip(m: &Mob, slot: Slot) -> bool {
-    let s = m.species();
-    let loot = m.extra.pick_up_loot;
+/// `Mob.canDispenserEquipIntoSlot` and its overrides, from the species, the loot pickup and whether it is tame.
+fn can_dispenser_equip(s: Species, loot: bool, tame: bool, slot: Slot) -> bool {
     match s {
         Species::Pig | Species::Strider => slot == Slot::Saddle || loot,
-        _ if equine(s) => matches!(slot, Slot::Body | Slot::Saddle) && m.extra.tame || loot,
+        _ if equine(s) => matches!(slot, Slot::Body | Slot::Saddle) && tame || loot,
         _ if horizon_client::mobs::nautilus::is_nautilus(s) => {
             matches!(slot, Slot::Body | Slot::Saddle) || loot
         }
@@ -278,10 +290,13 @@ fn mob_can_dispenser_equip(m: &Mob, slot: Slot) -> bool {
 }
 /// `getEquipSound`: the saddle overrides of pigs, striders, horses, camels and nautili.
 pub(super) fn equip_sound(m: &Mob, slot: Slot, default: Option<String>) -> Option<String> {
+    equip_sound_of(m.species(), m.fluids.eye_in_water, slot, default)
+}
+/// `getEquipSound` from the species and whether the eyes are under water.
+pub(super) fn equip_sound_of(s: Species, underwater: bool, slot: Slot, default: Option<String>) -> Option<String> {
     if slot != Slot::Saddle {
         return default;
     }
-    let s = m.species();
     Some(match s {
         Species::Pig => "minecraft:entity.pig.saddle".into(),
         Species::Strider => "minecraft:entity.strider.saddle".into(),
@@ -289,7 +304,7 @@ pub(super) fn equip_sound(m: &Mob, slot: Slot, default: Option<String>) -> Optio
         Species::CamelHusk => "minecraft:entity.camel_husk.saddle".into(),
         _ if equine(s) => "minecraft:entity.horse.saddle".into(),
         _ if horizon_client::mobs::nautilus::is_nautilus(s) => {
-            if m.fluids.eye_in_water {
+            if underwater {
                 "minecraft:item.nautilus_saddle_underwater_equip".into()
             } else {
                 "minecraft:item.nautilus_saddle_equip".into()
@@ -769,12 +784,21 @@ impl Game<'_> {
         let block = block_box(p);
         let key = |at: Vec3, id: u32| (section_order(at), id);
         let mut found: Vec<(_, Target)> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, m)| !m.removed && overlaps(m.bounds(), block))
             .map(|(i, m)| (key(m.position, m.id), Target::Mob(i)))
             .collect();
+        // The ECS level's entities, found by its spatial index near the block, then the strict overlap.
+        if self.ecs.is_active() {
+            found.extend(
+                self.ecs_in_box(block)
+                    .into_iter()
+                    .filter(|(_, _, bounds)| overlaps(*bounds, block))
+                    .map(|(at, id, _)| (key(at, id), Target::Ecs(id))),
+            );
+        }
         found.extend(
             self.armor_stands
                 .iter()
@@ -927,6 +951,10 @@ impl Game<'_> {
             f64::from(p.1) + y_off,
             f64::from(p.2) + 0.5,
         ];
+        // Every entity but the players is an ECS entity: the level spawns it (its yaw and the bucket's data are not drawn here).
+        if self.ecs.is_active() {
+            return self.ecs_spawn(&name, at, None);
+        }
         let site = super::creatures::SpawnSite::Finalizing(reason);
         // EntityType.create: `snapTo(.., Mth.wrapDegrees(level.random.nextFloat() * 360), 0)`.
         let id = if reason == horizon_client::mobs::spawn_rules::Reason::Bucket {
@@ -988,7 +1016,8 @@ impl Game<'_> {
             targets
                 .iter()
                 .map(|target| match target {
-                    Target::Mob(i) => self.mobs[*i].kind.id.as_str(),
+                    Target::Mob(i) => self.remote_entities[*i].kind.id.as_str(),
+                    Target::Ecs(id) => self.ecs_mob(*id).map_or("", |m| m.kind),
                     Target::Stand(_) => "minecraft:armor_stand",
                     _ => "minecraft:player",
                 })
@@ -1008,7 +1037,8 @@ impl Game<'_> {
                         .guest(*conn)
                         .map(|guest| guest.entity_id as u32),
                     Target::Stand(i) => Some(self.armor_stands[*i].id),
-                    Target::Mob(i) => Some(self.mobs[*i].id),
+                    Target::Mob(i) => Some(self.remote_entities[*i].id),
+                    Target::Ecs(id) => Some(*id),
                 })
                 .collect::<Vec<_>>()
         } else {
@@ -1055,13 +1085,23 @@ impl Game<'_> {
                     && stand.equipment[s].is_none()
             }),
             Target::Mob(i) => {
-                let m = &self.mobs[i];
+                let m = &self.remote_entities[i];
                 m.alive()
-                    && mob_can_use_slot(m, slot)
+                    && can_use_slot(m.species(), m.alive() && !m.is_baby(), m.extra.tame, slot)
                     && allows(m.id, &m.kind.id)
                     && mob_slot_item(m, slot).is_none()
-                    && mob_can_dispenser_equip(m, slot)
+                    && can_dispenser_equip(m.species(), m.extra.pick_up_loot, m.extra.tame, slot)
             }
+            // The same rules read from the components: `Health`, `GrowAt`, `Owner`, `Equipment`.
+            Target::Ecs(id) => self.ecs_mob(id).is_some_and(|m| {
+                m.alive
+                    && m.species.is_some_and(|s| {
+                        can_use_slot(s, m.alive && !m.baby, m.tame, slot)
+                            && allows(id, m.kind)
+                            && self.ecs_item(id, slot.goal()).is_none()
+                            && can_dispenser_equip(s, self.ecs.can_pick_up_loot(id), m.tame, slot)
+                    })
+            }),
         });
         let Some(target) = target else {
             return false;
@@ -1074,10 +1114,17 @@ impl Game<'_> {
                 .and_then(|lan| lan.hub.guest(conn))
                 .map(|guest| guest.entity_id as u32),
             Target::Stand(i) => Some(self.armor_stands[i].id),
-            Target::Mob(i) => Some(self.mobs[i].id),
+            Target::Mob(i) => Some(self.remote_entities[i].id),
+            Target::Ecs(id) => Some(id),
         };
         if !entity.is_some_and(|id| self.equip_can_apply(&prepared, id)) {
             return false;
+        }
+        // An ECS entity is checked before the stack goes down: the stack only loses its piece once the slot can be set.
+        if let Target::Ecs(id) = target {
+            if self.ecs_mob(id).is_none() {
+                return false;
+            }
         }
         if let Some(source) = source.as_mut() {
             if !stamp.is_some_and(|stamp| source.matches(stamp)) {
@@ -1130,7 +1177,7 @@ impl Game<'_> {
                 (Some(stand.position), sound)
             }
             Target::Mob(i) => {
-                let m = &mut self.mobs[i];
+                let m = &mut self.remote_entities[i];
                 mob_set_slot(m, slot, one);
                 // setGuaranteedDrop / setPersistenceRequired.
                 m.persistent = true;
@@ -1144,13 +1191,22 @@ impl Game<'_> {
                 let sound = self.mod_equip_sound(&hook_stack, slot.name(), sound);
                 (Some(at), sound)
             }
+            Target::Ecs(id) => {
+                // The slot and the persistence go by the bridge; the sound and the game event stay here.
+                let Some(m) = self.ecs_mob(id) else { return false };
+                self.ecs_set_slot(id, slot.goal(), &one);
+                let sound = m.species.and_then(|s| equip_sound_of(s, false, slot, sound));
+                let sound = self.mod_equip_sound(&hook_stack, slot.name(), sound);
+                (Some(m.at), sound)
+            }
         };
         if let Some(at) = at {
             if let Some(sound) = sound {
                 self.audio.play(&sound, Some([at.x, at.y, at.z]), 1.0, 1.0);
             }
             let who = match target {
-                Target::Mob(i) => Some(horizon_client::mobs::Who::Mob(self.mobs[i].id)),
+                Target::Mob(i) => Some(horizon_client::mobs::Who::Mob(self.remote_entities[i].id)),
+                Target::Ecs(id) => Some(horizon_client::mobs::Who::Mob(id)),
                 Target::Player | Target::Guest(_) | Target::Stand(_) => None,
             };
             let ctx = self.who_context(who, None);
@@ -1162,7 +1218,7 @@ impl Game<'_> {
             &stack.item,
             match target {
                 Target::Stand(_) => "armor_stand",
-                Target::Mob(_) => "mob",
+                Target::Mob(_) | Target::Ecs(_) => "mob",
                 Target::Player | Target::Guest(_) => "player",
             },
         );
@@ -1173,17 +1229,21 @@ impl Game<'_> {
         if self.dragon_spawn_ambient(id) {
             return Ok(());
         }
-        let Some(i) = self.mobs.iter().position(|m| m.id == id) else {
+        if self.ecs.is_active() {
+            self.ecs_ambient(id);
+            return Ok(());
+        }
+        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
             return Ok(());
         };
         let _save_lease = horizon_client::join_seq::visibility::PassLease::enter();
-        let mut m = self.mobs.extract(self.mobs[i].join).unwrap();
+        let mut m = self.remote_entities.extract(self.remote_entities[i].join).unwrap();
         let mut events = Vec::new();
         {
             let w = self.mob_world_base(&[]);
             horizon_client::mobs::ai::ambient_sound(&mut m, &w, &mut events);
         }
-        self.mobs.put_back(i, m);
+        self.remote_entities.put_back(i, m);
         self.handle_mob_events(events)
     }
     /// A mob a bucket emptied (`MobBucketItem.spawn`): the bucket's components
@@ -1193,11 +1253,15 @@ impl Game<'_> {
     /// persistent mob. A tadpole's setter does nothing: its `fromBucket` is
     /// always true.
     pub(super) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if self.ecs.is_active() {
+            self.ecs.set_from_bucket(id);
+            return self.mob_ambient(id);
+        }
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.persistent = false;
         }
         self.apply_bucket_stack_config(id, stack);
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             match m.species() {
                 Species::Cod
                 | Species::Salmon
@@ -1234,12 +1298,18 @@ impl Game<'_> {
             return Ok((Some(stack), CLICK));
         };
         // EntityType.create: `finalizeSpawn` first, the egg's components after.
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             // SpawnEggItemBehavior's `EntityType.spawn` never calls
             // `setPersistenceRequired`, as a spawn egg used by hand doesn't;
             // only the elder guardian's and copper golem's constructors do.
             m.persistent = matches!(m.species(), Species::ElderGuardian | Species::CopperGolem);
             horizon_client::entity_nbt::apply_item_components(m, &stack);
+        } else if let Some(s) = self.ecs_mob(id).and_then(|m| m.species) {
+            // The same constructors' persistence on the ECS level, then the egg's components by the bridge.
+            if matches!(s, Species::ElderGuardian | Species::CopperGolem) {
+                self.ecs_persist(id);
+            }
+            self.ecs.apply_egg_components(id, &stack);
         }
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
@@ -1328,7 +1398,13 @@ impl Game<'_> {
             | "minecraft:lingering_potion" => {
                 let mut shot = super::potions::thrown_projectile(one, at, false);
                 shot.shoot_own(dir, power, uncertainty);
-                self.add_projectile(shot);
+                self.ecs_launch_item(
+                    shot.entity_type(),
+                    [shot.position.x, shot.position.y, shot.position.z],
+                    [shot.velocity.x, shot.velocity.y, shot.velocity.z],
+                    self.ecs_owner(shot.owner),
+                    shot.item.clone(),
+                );
             }
             _ => {
                 let kind = match item.as_str() {
@@ -1413,8 +1489,23 @@ impl Game<'_> {
     fn dispense_chest(&mut self, pos: Pos, facing: Direction, stack: ItemStack) -> Dispensed {
         let front = offset(pos, facing);
         for target in self.targets_at(front) {
+            if let Target::Ecs(id) = target {
+                // `ChestedHorse` is the saved flag; the level's entity keeps it, the host only writes it.
+                let Some(m) = self.ecs_mob(id) else { continue };
+                if m.species.is_some_and(|s| {
+                    matches!(s, Species::Donkey | Species::Mule | Species::Llama | Species::TraderLlama)
+                }) && m.alive
+                    && m.tame
+                    && self.ecs_flag(id, "ChestedHorse") == Some(false)
+                {
+                    self.ecs_put_flag(id, "ChestedHorse", true);
+                    set_success("chest", true);
+                    return (shrink(stack), CLICK);
+                }
+                continue;
+            }
             let Target::Mob(i) = target else { continue };
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             if matches!(
                 m.species(),
                 Species::Donkey | Species::Mule | Species::Llama | Species::TraderLlama
@@ -1515,23 +1606,17 @@ impl Game<'_> {
                 -0.9
             }
         };
-        self.next_entity += 1;
-        let cart = super::minecarts::Minecart::new(
-            self.next_entity,
-            kind,
-            Vec3::new(x, base_y + y_offset, z),
-        );
+        let at = [x, base_y + y_offset, z];
+        let next = self.next_entity + 1;
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
-        self.carts.push(cart);
+        let Some(id) = self.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, kind.id(), at, 0.0, &mut || next)) else {
+            return (self.dispense_default_in_level(pos, facing, stack), CLICK);
+        };
+        self.next_entity = next;
         // AbstractMinecart.createMinecart: createDefaultStackConfig with no user.
-        let id = self.next_entity;
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), &stack, false);
         if self.serving.is_some() || self.options.dedicated.is_some() {
-            let cart = self.carts.last().unwrap();
-            self.native_vehicle_create(
-                cart.kind.id(),
-                [cart.position.x, cart.position.y, cart.position.z],
-            );
+            self.native_vehicle_create(kind.id(), at);
         }
         (shrink(stack), CLICK)
     }
@@ -1583,7 +1668,7 @@ impl Game<'_> {
         // tryIgniteExplosiveEntities: the first sulfur cube that can explode is primed.
         let cube = self.targets_at(target).into_iter().find_map(|t| match t {
             Target::Mob(i) => {
-                let m = &self.mobs[i];
+                let m = &self.remote_entities[i];
                 (m.species() == Species::SulfurCube
                     && m.alive()
                     && !sulfur_cube::primed(m)
@@ -1599,15 +1684,29 @@ impl Game<'_> {
                 .ui
                 .rules
                 .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
-                && sulfur_cube::prime(&mut self.mobs[i], false)
+                && sulfur_cube::prime(&mut self.remote_entities[i], false)
             {
-                let m = &mut self.mobs[i];
+                let m = &mut self.remote_entities[i];
                 let (at, id) = (m.position, m.id);
                 let mut events = Vec::new();
                 m.voice("entity.tnt.primed", &mut events);
                 self.handle_mob_events(events)?;
                 let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
                 self.post_game_event("minecraft:prime_fuse", [at.x, at.y, at.z], ctx);
+            }
+            return Ok((self.hurt_and_break(stack, 1), CLICK));
+        }
+        // The same ignition on an ECS sulfur cube: `prime(false)` by the bridge, the sound and the game event here.
+        let ecs_cube = self.targets_at(target).into_iter().find_map(|t| match t {
+            Target::Ecs(id) if self.ecs_mob(id).is_some_and(|m| m.species == Some(Species::SulfurCube) && m.alive) => Some(id),
+            _ => None,
+        });
+        if let Some(id) = ecs_cube {
+            if self.ui.rules.bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES) && self.ecs.prime(id, false) {
+                let at = self.ecs_mob(id).map_or([0.0; 3], |m| [m.at.x, m.at.y, m.at.z]);
+                self.audio.play("entity.tnt.primed", Some(at), 1.0, 1.0);
+                let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
+                self.post_game_event("minecraft:prime_fuse", at, ctx);
             }
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
@@ -2064,8 +2163,117 @@ impl Game<'_> {
         self.spawn_item_own(stack, [at.x, at.y + y_offset, at.z], 10)
     }
     /// `MushroomCow.shear`: `player` is who sheared it, none for a dispenser.
+    /// `shear` on an ECS entity: the sheep's wool through `farm::shear`, the sulfur cube's body and the copper golem's antenna
+    /// through the equipment, the mooshroom through its conversion. None when it is not shorn now; the kind it returns is the
+    /// one the native hook reads.
+    fn shear_ecs(&mut self, id: u32, shears: &ItemStack) -> Option<&'static str> {
+        let m = self.ecs_mob(id)?;
+        let at = m.at;
+        let at_arr = [at.x, at.y, at.z];
+        match m.species? {
+            Species::Sheep if !m.baby => {
+                let color = self.ecs_shear_wool(id)?;
+                let dye = horizon_client::mobs::render::DYE_NAMES[color as usize & 15];
+                self.audio.play("minecraft:entity.sheep.shear", Some(at_arr), 1.0, 1.0);
+                let drops = self.sequence_loot(
+                    "minecraft:shearing/sheep",
+                    &format!("minecraft:shearing/sheep/{dye}"),
+                    Some(shears),
+                );
+                for stack in drops {
+                    for _ in 0..stack.count {
+                        self.spawn_at_location(at, 1.0, ItemStack { count: 1, ..stack.clone() });
+                        // Sheep.shear nudges each item with the sheep's own random, drawn by the bridge.
+                        let base = self.just_spawned_item().map(|i| [i.velocity.x, i.velocity.y, i.velocity.z]);
+                        if let Some(base) = base {
+                            let v = self.ecs.nudge(id, base);
+                            if let Some(item) = self.just_spawned_item() {
+                                item.velocity = Vec3::new(v[0], v[1], v[2]);
+                            }
+                        }
+                    }
+                }
+            }
+            Species::Bogged => {
+                if !self.ecs.set_sheared(id, true) {
+                    return None;
+                }
+                self.audio.play("minecraft:entity.bogged.shear", Some(at_arr), 1.0, 1.0);
+                let drops = self.sequence_loot(
+                    "minecraft:shearing/bogged",
+                    "minecraft:shearing/bogged",
+                    Some(shears),
+                );
+                for stack in drops {
+                    self.spawn_at_location(at, m.height, stack);
+                }
+            }
+            // SnowGolem.shear: sheared first, then the pumpkin drops at the eye height.
+            Species::SnowGolem => {
+                if !self.ecs.set_sheared(id, true) {
+                    return None;
+                }
+                let eye = self.ecs.eye_height(id);
+                self.audio.play("minecraft:entity.snow_golem.shear", Some(at_arr), 1.0, 1.0);
+                let drops = self.sequence_loot(
+                    "minecraft:shearing/snow_golem",
+                    "minecraft:shearing/snow_golem",
+                    Some(shears),
+                );
+                for stack in drops {
+                    self.spawn_at_location(at, eye, stack);
+                }
+            }
+            Species::SulfurCube => {
+                let body = self.ecs_take(id, goals::Slot::Body)?;
+                self.spawn_at_location(at, m.height, body);
+                let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
+                self.post_game_event("minecraft:unequip", at_arr, ctx);
+                self.audio.play("minecraft:entity.sulfur_cube.eject", Some(at_arr), 1.0, 1.0);
+            }
+            // CopperGolem.shear: the antenna's flower drops 1.5 up.
+            Species::CopperGolem => {
+                let antenna = self.ecs_take(id, goals::Slot::Saddle)?;
+                self.audio.play("minecraft:entity.copper_golem.shear", Some(at_arr), 1.0, 1.0);
+                let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
+                self.post_game_event("minecraft:unequip", at_arr, ctx);
+                self.spawn_at_location(at, 1.5, antenna);
+            }
+            Species::Mooshroom if !m.baby => self.shear_mooshroom_ecs(id, shears)?,
+            _ => return None,
+        }
+        Some(m.kind)
+    }
+    /// `MushroomCow.shear` on an ECS entity: it becomes a cow (`conversion::convert`), and the drops come out where it stood.
+    /// The variant is not read on the ECS level yet, so the red table is always taken.
+    fn shear_mooshroom_ecs(&mut self, id: u32, tool: &ItemStack) -> Option<()> {
+        let m = self.ecs_mob(id)?;
+        let e = self.ecs.entity_of(id)?;
+        let (at, height) = (m.at, m.height);
+        let table = "minecraft:shearing/mooshroom/red";
+        self.audio.play("minecraft:entity.mooshroom.shear", Some([at.x, at.y, at.z]), 1.0, 1.0);
+        let w = self.ecs.world_mut()?;
+        horizon_ecs_proto::conversion::convert(w, e, "minecraft:cow", horizon_ecs_proto::conversion::ConvertKeep::NONE)?;
+        self.mooshroom_shear_puff([at.x, at.y, at.z], height);
+        let mut drops = self.sequence_loot("minecraft:shearing/mooshroom", table, Some(tool));
+        self.native_use_drops(
+            table,
+            [at.x, at.y, at.z],
+            None,
+            Some((id, "minecraft:mooshroom")),
+            None,
+            Some(tool),
+            &mut drops,
+        );
+        for stack in drops {
+            for _ in 0..stack.count {
+                self.spawn_item_own(ItemStack { count: 1, ..stack.clone() }, [at.x, at.y + height, at.z], 0);
+            }
+        }
+        Some(())
+    }
     pub(super) fn shear_mooshroom(&mut self, index: usize, player: Option<u128>, tool: &ItemStack) {
-        let old = self.mobs[index].clone();
+        let old = self.remote_entities[index].clone();
         let at = old.position;
         let height = f64::from(old.height());
         let table = if old.extra.variant == 1 {
@@ -2133,9 +2341,15 @@ impl Game<'_> {
             if self.shear_off_leashes(t) {
                 return Ok(true);
             }
+            if let Target::Ecs(id) = t {
+                let Some(kind) = self.shear_ecs(id, &shears) else { continue };
+                self.native_block_shear_entity(self.dim.id(), [target.0, target.1, target.2], id, kind);
+                self.post_block_game_event("minecraft:shear", [target.0, target.1, target.2], None, None);
+                return Ok(true);
+            }
             let Target::Mob(i) = t else { continue };
             let part = self.part_shearable(i, None, &shears);
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             if !m.alive() || part.is_some_and(|(_, shearable)| !shearable) {
                 continue;
             }
@@ -2152,13 +2366,13 @@ impl Game<'_> {
                     // passenger attachment, and nothing is swallowed for 5 s.
                     let height = f64::from(m.height());
                     let id = m.id;
-                    if let Some(body) = self.mobs[i].take_body_equipment() {
+                    if let Some(body) = self.remote_entities[i].take_body_equipment() {
                         self.spawn_at_location(at, height, body);
                     }
                     // setItemSlot(BODY, EMPTY): an unequip.
                     let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
-                    self.mobs[i].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
+                    self.remote_entities[i].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
                     self.audio
                         .play("minecraft:entity.sulfur_cube.eject", sound_at, 1.0, 1.0);
                 }
@@ -2183,7 +2397,7 @@ impl Game<'_> {
                             };
                             self.spawn_at_location(at, 1.0, one);
                             // Sheep.shear nudges each item with the sheep's own random.
-                            let r = &mut self.mobs[i].random;
+                            let r = &mut self.remote_entities[i].random;
                             let push = [
                                 f64::from((r.next_float() - r.next_float()) * 0.1),
                                 f64::from(r.next_float() * 0.05),
@@ -2198,7 +2412,7 @@ impl Game<'_> {
                             }
                         }
                     }
-                    self.mobs[i].extra.sheared = true;
+                    self.remote_entities[i].extra.sheared = true;
                 }
                 Species::Bogged if !m.extra.sheared => {
                     let height = f64::from(m.height());
@@ -2215,7 +2429,7 @@ impl Game<'_> {
                     for stack in drops {
                         self.spawn_at_location(at, height, stack);
                     }
-                    self.mobs[i].extra.sheared = true;
+                    self.remote_entities[i].extra.sheared = true;
                 }
                 Species::SnowGolem if !m.extra.sheared => {
                     let eye = m.eye_height();
@@ -2224,7 +2438,7 @@ impl Game<'_> {
                         entity_id,
                         None,
                     );
-                    self.mobs[i].extra.sheared = true;
+                    self.remote_entities[i].extra.sheared = true;
                     let drops = self.sequence_loot(
                         "minecraft:shearing/snow_golem",
                         "minecraft:shearing/snow_golem",
@@ -2241,10 +2455,10 @@ impl Game<'_> {
                         entity_id,
                         None,
                     );
-                    let antenna = self.mobs[i].saddle_item();
-                    let id = self.mobs[i].id;
+                    let antenna = self.remote_entities[i].saddle_item();
+                    let id = self.remote_entities[i].id;
                     // setItemSlot(EQUIPMENT_SLOT_ANTENNA, EMPTY): an unequip.
-                    self.mobs[i].set_saddle(None);
+                    self.remote_entities[i].set_saddle(None);
                     let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
                     self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
                     if let Some(antenna) = antenna {
@@ -2279,7 +2493,7 @@ impl Game<'_> {
         use horizon_client::mobs::{Who, leash::Holder};
         let (holder, centre, own) = match t {
             Target::Mob(i) => {
-                let m = &self.mobs[i];
+                let m = &self.remote_entities[i];
                 let b = m.bounds();
                 (Holder::Mob(m.id), b.center(), Some(i))
             }
@@ -2289,11 +2503,12 @@ impl Game<'_> {
                 };
                 (Holder::Player, v.bounds.center(), None)
             }
+            Target::Ecs(id) => return self.shear_ecs_leashes(id),
             Target::Guest(_) | Target::Stand(_) => return false,
         };
         let area = Aabb::new(centre, centre).inflate(Vec3::new(16.0, 16.0, 16.0));
         let mut leashed: Vec<(u32, usize)> = self
-            .mobs
+            .remote_entities
             .iter()
             .enumerate()
             .filter(|(_, m)| {
@@ -2302,14 +2517,24 @@ impl Game<'_> {
             .map(|(j, m)| (m.id, j))
             .collect();
         leashed.sort_unstable();
-        let own_leashed = own.is_some_and(|i| self.mobs[i].extra.leash.is_some());
-        if leashed.is_empty() && !own_leashed {
+        let own_leashed = own.is_some_and(|i| self.remote_entities[i].extra.leash.is_some());
+        // The player's leashes on the ECS level, by the bridge's holder index.
+        let ecs_drops = if let Target::Player = t {
+            let id = self.own_entity_id() as u32;
+            self.ecs_unleash(None, Some(horizon_ecs_proto::leash::Holder::Player(id)), area)
+        } else {
+            Vec::new()
+        };
+        if leashed.is_empty() && !own_leashed && ecs_drops.is_empty() {
             return false;
+        }
+        for at in ecs_drops {
+            self.spawn_at_location(at, 0.0, ItemStack::new("minecraft:lead", 1));
         }
         // Leashable.dropLeash: a lead item at the leashed entity's feet.
         let drop = |game: &mut Self, j: usize| {
-            if horizon_client::mobs::leash::remove(&mut game.mobs[j]).is_some() {
-                let at = game.mobs[j].position;
+            if horizon_client::mobs::leash::remove(&mut game.remote_entities[j]).is_some() {
+                let at = game.remote_entities[j].position;
                 game.spawn_at_location(at, 0.0, ItemStack::new("minecraft:lead", 1));
             }
         };
@@ -2321,7 +2546,7 @@ impl Game<'_> {
         }
         let (at, who) = match t {
             Target::Mob(i) => {
-                let m = &self.mobs[i];
+                let m = &self.remote_entities[i];
                 (m.position, Who::Mob(m.id))
             }
             _ => (
@@ -2336,22 +2561,56 @@ impl Game<'_> {
             .play("minecraft:item.shears.snip", Some(block), 1.0, 1.0);
         true
     }
+    /// `shearOffAllLeashedEntities` for an ECS entity: its own leash and the ones it holds within 16 blocks drop.
+    fn shear_ecs_leashes(&mut self, id: u32) -> bool {
+        let Some(m) = self.ecs_mob(id) else { return false };
+        let Some(e) = self.ecs.entity_of(id) else { return false };
+        let area = Aabb::new(m.at, m.at).inflate(Vec3::new(16.0, 16.0, 16.0));
+        let drops = self.ecs_unleash(Some(id), Some(horizon_ecs_proto::leash::Holder::Entity(e)), area);
+        if drops.is_empty() {
+            return false;
+        }
+        for at in drops {
+            self.spawn_at_location(at, 0.0, ItemStack::new("minecraft:lead", 1));
+        }
+        let at = m.at;
+        let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
+        self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
+        let block = [at.x.floor() + 0.5, at.y.floor() + 0.5, at.z.floor() + 0.5];
+        self.audio.play("minecraft:item.shears.snip", Some(block), 1.0, 1.0);
+        true
+    }
     /// The brush behaviour: the first armadillo in front that `brushOffScute`s.
     fn dispense_brush(&mut self, pos: Pos, facing: Direction, stack: ItemStack) -> Dispensed {
         let target = offset(pos, facing);
-        let armadillos: Vec<usize> = self
+        let armadillos: Vec<Target> = self
             .targets_at(target)
             .into_iter()
-            .filter_map(|t| match t {
-                Target::Mob(i) if self.mobs[i].species() == Species::Armadillo => Some(i),
-                _ => None,
+            .filter(|t| match *t {
+                Target::Mob(i) => self.remote_entities[i].species() == Species::Armadillo,
+                Target::Ecs(id) => self.ecs_mob(id).is_some_and(|m| m.species == Some(Species::Armadillo)),
+                _ => false,
             })
             .collect();
-        for i in armadillos {
-            if self.mobs[i].is_baby() {
+        for t in armadillos {
+            // The brush has no state here: the armadillo's position, id and age are all it reads; the ECS one is brushed by the bridge.
+            let (at, id, baby) = match t {
+                Target::Mob(i) => {
+                    let m = &self.remote_entities[i];
+                    (m.position, m.id, m.is_baby())
+                }
+                Target::Ecs(id) => {
+                    let Some(m) = self.ecs_mob(id) else { continue };
+                    (m.at, id, m.baby)
+                }
+                _ => continue,
+            };
+            if baby {
                 continue;
             }
-            let at = self.mobs[i].position;
+            if matches!(t, Target::Ecs(_)) {
+                self.ecs.brush(id);
+            }
             let drops = self.sequence_loot(
                 "minecraft:brush/armadillo",
                 "minecraft:brush/armadillo",
@@ -2366,7 +2625,7 @@ impl Game<'_> {
                 1.0,
                 1.0,
             );
-            let who = horizon_client::mobs::Who::Mob(self.mobs[i].id);
+            let who = horizon_client::mobs::Who::Mob(id);
             let ctx = self.who_context(Some(who), None);
             self.post_game_event("minecraft:entity_interact", [at.x, at.y, at.z], ctx);
             return (self.hurt_and_break(stack, 16), optional_event("brush"));
@@ -2376,26 +2635,60 @@ impl Game<'_> {
     }
     /// `SulfurCubeBlockDispenseItemBehavior.dispenseBlock`: the first sulfur
     /// cube in the block that `equipItem`s the stack swallows one.
+    /// The swallow of an ECS cube: the body item goes in its `Body` slot, the one it held drops on top.
+    fn sulfur_swallow_ecs(&mut self, id: u32, stack: &ItemStack) -> bool {
+        let Some(m) = self.ecs_mob(id) else { return false };
+        if m.baby || self.ecs_item(id, goals::Slot::Body).as_deref() == Some(&*stack.item) {
+            return false;
+        }
+        // The swallowed block comes out on top (the passenger attachment).
+        if let Some(old) = self.ecs_take(id, goals::Slot::Body) {
+            self.spawn_at_location(m.at, m.height, old);
+        }
+        self.ecs_set_slot(id, goals::Slot::Body, &ItemStack { count: 1, ..stack.clone() });
+        // setItemSlot: a body item without `equippable` posts UNEQUIP.
+        let at = m.at;
+        let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
+        self.post_game_event("minecraft:unequip", [at.x, at.y, at.z], ctx);
+        self.audio.play(
+            "minecraft:entity.sulfur_cube.absorb",
+            Some([at.x, at.y, at.z]),
+            1.0,
+            1.0,
+        );
+        true
+    }
     fn sulfur_cube_swallow(&mut self, target: Pos, stack: &ItemStack) -> bool {
-        let cubes: Vec<usize> = self
+        let cubes: Vec<Target> = self
             .targets_at(target)
             .into_iter()
-            .filter_map(|t| match t {
-                Target::Mob(i) if self.mobs[i].species() == Species::SulfurCube => Some(i),
-                _ => None,
+            .filter(|t| match *t {
+                Target::Mob(i) => self.remote_entities[i].species() == Species::SulfurCube,
+                Target::Ecs(id) => self.ecs_mob(id).is_some_and(|m| m.species == Some(Species::SulfurCube)),
+                _ => false,
             })
             .collect();
-        for i in cubes {
-            let m = &self.mobs[i];
+        for t in cubes {
+            let i = match t {
+                Target::Mob(i) => i,
+                Target::Ecs(id) => {
+                    if self.sulfur_swallow_ecs(id, stack) {
+                        return true;
+                    }
+                    continue;
+                }
+                _ => continue,
+            };
+            let m = &self.remote_entities[i];
             if m.is_baby() || m.extra.body_id() == Some(&*stack.item) {
                 continue;
             }
             let (at, height) = (m.position, f64::from(m.height()));
             // The swallowed block comes out on top (the passenger attachment).
-            if let Some(old) = self.mobs[i].take_body_equipment() {
+            if let Some(old) = self.remote_entities[i].take_body_equipment() {
                 self.spawn_at_location(at, height, old);
             }
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             m.extra.set_body_stack(Some(ItemStack {
                 count: 1,
                 ..stack.clone()
@@ -2734,12 +3027,12 @@ mod tests {
         let at = Vec3::new(6.5, 64.0, f64::from(z) + 0.5);
         let mut zombie = horizon_client::mobs::Mob::new(10 + row, kind, at, 0.0);
         zombie.extra.pick_up_loot = true;
-        game.mobs.push(zombie);
+        game.remote_entities.push(zombie);
         game.armor_stands
             .push(horizon_client::entities::ArmorStand::new(20 + row, at, 0.0));
         let mut stack = stack;
         let done = game.dispense_equipment((5, 64, z), Direction::East, &mut stack);
-        let zombie = game.mobs.iter().find(|m| m.id == 10 + row).unwrap();
+        let zombie = game.remote_entities.iter().find(|m| m.id == 10 + row).unwrap();
         let worn = [Slot::Head, Slot::Chest, Slot::Legs, Slot::Feet]
             .into_iter()
             .find(|slot| mob_slot_item(zombie, *slot).is_some());
@@ -2928,14 +3221,14 @@ mod tests {
         super::super::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:cod").unwrap().clone();
             for id in [70, 71, 72] {
-                game.mobs
+                game.remote_entities
                     .push(Mob::new(id, kind.clone(), Vec3::new(0.5, 70.0, 0.5), 0.0));
             }
             let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 71);
             let index = Arc::new(Mutex::new(AttachmentIndex::default()));
             let mut values = Attachments::default();
             VALUE.set(&mut values, Holder::Entity(71), 10).unwrap();
-            let original = game.mobs.update(1, |mob| {
+            let original = game.remote_entities.update(1, |mob| {
                 mob.attachment_lifetime().bind(&mut values, &index, holder);
                 mob.attachment_lifetime().registration().unwrap()
             });
@@ -2943,17 +3236,17 @@ mod tests {
             let before = index.lock().unwrap().snapshot(&key);
             game.mob_placed(71, &ItemStack::new("minecraft:axolotl_bucket", 1))
                 .unwrap();
-            assert!(game.mobs[1].extra.from_bucket);
+            assert!(game.remote_entities[1].extra.from_bucket);
             assert_eq!(
-                game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(),
+                game.remote_entities.iter().map(|m| m.id).collect::<Vec<_>>(),
                 [70, 71, 72]
             );
             let current = game
-                .mobs
+                .remote_entities
                 .update(1, |m| m.attachment_lifetime().registration().unwrap());
             assert!(original.same_registration(&current));
             assert_eq!(index.lock().unwrap().snapshot(&key).len(), 1);
-            game.mobs.remove(1);
+            game.remote_entities.remove(1);
             assert!(index.lock().unwrap().snapshot(&key).is_empty());
             assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
         });
@@ -3015,12 +3308,12 @@ mod tests {
             old.damage = 7;
             old.data_mut().custom_name = Some(horizon_core::nbt::Tag::String("kept".into()));
             mob.extra.set_body_stack(Some(old.clone()));
-            game.mobs.push(mob);
+            game.remote_entities.push(mob);
             let incoming = ItemStack::new("minecraft:dirt", 5);
             assert!(game.sulfur_cube_swallow((0, 0, 0), &incoming));
             assert!(game.dropped.iter().any(|drop| drop.stack == old));
             assert_eq!(
-                game.mobs[0].equipment_stacks()[6],
+                game.remote_entities[0].equipment_stacks()[6],
                 Some(ItemStack::new("minecraft:dirt", 1))
             );
         });

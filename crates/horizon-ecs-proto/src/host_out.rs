@@ -4,6 +4,7 @@
 //! the `Mob`'s: the host's refusal of a block is not reported back.
 use horizon_client_lib::items::ItemStack;
 use horizon_world::registry::BlockStateId;
+use crate::targeting::Who;
 
 /// One output, one for one with the `MobEvent` of the same name.
 #[derive(Clone, Debug, PartialEq)]
@@ -28,22 +29,63 @@ pub enum HostEvent {
     LevelEvent { event: i32, at: [i32; 3], data: i32 },
     /// A game event (vibration source), by name.
     GameEvent { name: &'static str, at: [f64; 3] },
+    /// A game event the entity makes while it moves (`Entity.gameEvent`: the source is the context): `ground` adds the block under it as the
+    /// affected state (step, hit_ground), `sneaking` is `isSteppingCarefully`, `dampens` is `dampensVibrations`.
+    GameEventBy { entity: bevy_ecs::entity::Entity, name: &'static str, at: [f64; 3], ground: bool, sneaking: bool, dampens: bool },
     /// Experience dropped as orbs.
     Xp { at: [f64; 3], amount: u32 },
     /// A player's ender pearl landed: teleport the player to `to`, hurt it by `damage` (a fall), and spawn an endermite where it stood if `endermite`.
     Pearl { player: u32, to: [f64; 3], damage: f32, endermite: bool },
-    /// A hook reeled in a bite: the host rolls the loot (treasure in open water, `luck` added) and the `xp` orbs for `owner`.
-    FishingCatch { owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32 },
     /// A creature pulled by a hook: its velocity is added by the host.
     PullEntity { entity: bevy_ecs::entity::Entity, velocity: [f64; 3] },
-    /// A hook taken back: `damage` to the rod of `owner`.
-    HookRetrieved { owner: u32, damage: i32 },
     /// `MobEvent::ChestOpen`: a chest's lid moves for the mob `entity`.
     ChestOpen { chest: [i32; 3], open: bool, entity: bevy_ecs::entity::Entity },
     /// `MobEvent::ChestSlot`: a chest's slot now holds `stack` (none: empty).
     ChestSlot { chest: [i32; 3], slot: usize, stack: Option<ItemStack> },
     /// `copper_golem` animation state of a golem (`IDLE`, `GETTING_ITEM`...): the `Mob`'s `variant3`.
     GolemState { entity: bevy_ecs::entity::Entity, state: u8 },
+    /// A lethal hit: `cause` is the vanilla damage type's name, `attacker` the entity that struck, if any.
+    /// `at` is where it died. While the host listens (`DeathPolicy`) the entity is still in the world, `Dying`, when the host reads
+    /// this: it calls `loot_dying`, its hook, then `despawn`; else P has removed it already.
+    Death { entity: bevy_ecs::entity::Entity, cause: &'static str, attacker: Option<Who>, at: [f64; 3] },
+    /// `Mob.convertTo` is about to replace `entity` by a new one of the species `into`; only while the host listens
+    /// (`ConversionWatched`). The host answers with `resolve_conversion`.
+    ConversionAsk { entity: bevy_ecs::entity::Entity, into: &'static str },
+    /// The target of `entity` is now `target` (`None`: no target); `previous` is the one it had.
+    TargetChanged { entity: bevy_ecs::entity::Entity, target: Option<Who>, previous: Option<Who> },
+    /// A creature appeared in the world.
+    /// `natural` is set only by the host's natural spawning pass (`spawn_natural`).
+    Spawned { entity: bevy_ecs::entity::Entity, natural: bool },
+    /// `TamableAnimal.tame`: the player `owner` owns `entity`.
+    Tamed { entity: bevy_ecs::entity::Entity, owner: Who },
+    /// A blow of `attacker` that landed on `victim` for `damage`.
+    HitDealt { attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32 },
+    /// The lead came off `entity`.
+    Unleashed { entity: bevy_ecs::entity::Entity },
+    /// A lethal hit on `entity`, which holds a totem: the host asks `living_use_totem` (only while a mod listens,
+    /// `TotemWatched`) and answers with `resolve_totem`. `cause` and `attacker` are the hit's.
+    TotemAsk { entity: bevy_ecs::entity::Entity, off_hand: bool, cause: &'static str, attacker: Option<Who> },
+    // One variant per lot: the bridge `step` moves each lot resource here.
+    Arrow(crate::host_out_arrows::ArrowEvent),
+    BoatEffect(crate::host_out_boat_effects::BoatEffectEvent),
+    BoatHurt(crate::host_out_boat_hurt::BoatHurtEvent),
+    Boat(crate::host_out_boats::BoatEvent),
+    CartMove(crate::host_out_cart_move::CartMoveEvent),
+    Cart(crate::host_out_cart_variants::CartEvent),
+    Equipment(crate::host_out_equipment::EquipmentEvent),
+    Falling(crate::host_out_falling::FallingEvent),
+    Firework(crate::host_out_firework::FireworkEvent),
+    Frame(crate::host_out_frames::FrameEvent),
+    General(crate::host_out_general::GeneralEvent),
+    Hook(crate::host_out_hook::HookEvent),
+    Inside(crate::host_out_inside::InsideEvent),
+    Item(crate::host_out_items::ItemEvent),
+    Misc(crate::host_out_misc::MiscEvent),
+    Seat(crate::host_out_seat::SeatEvent),
+    Tnt(crate::host_out_tnt::TntEvent),
+    Trident(crate::host_out_trident::TridentEvent),
+    Using(crate::host_out_using::UsingEvent),
+    VehiclePush(crate::host_out_vehicle_push::VehiclePushEvent),
 }
 
 #[derive(Default)]
@@ -104,20 +146,47 @@ impl HostOut {
     pub fn game_event(&mut self, name: &'static str, at: [f64; 3]) {
         self.out.push(HostEvent::GameEvent { name, at });
     }
+    pub fn game_event_by(&mut self, entity: bevy_ecs::entity::Entity, name: &'static str, at: [f64; 3], ground: bool, sneaking: bool, dampens: bool) {
+        self.out.push(HostEvent::GameEventBy { entity, name, at, ground, sneaking, dampens });
+    }
     pub fn pearl(&mut self, player: u32, to: [f64; 3], damage: f32, endermite: bool) {
         self.out.push(HostEvent::Pearl { player, to, damage, endermite });
     }
     pub fn xp(&mut self, at: [f64; 3], amount: u32) {
         self.out.push(HostEvent::Xp { at, amount });
     }
-    pub fn fishing_catch(&mut self, owner: u32, at: [f64; 3], on_ground: bool, open_water: bool, luck: u8, xp: u32) {
-        self.out.push(HostEvent::FishingCatch { owner, at, on_ground, open_water, luck, xp });
-    }
     pub fn pull_entity(&mut self, entity: bevy_ecs::entity::Entity, velocity: [f64; 3]) {
         self.out.push(HostEvent::PullEntity { entity, velocity });
     }
-    pub fn hook_retrieved(&mut self, owner: u32, damage: i32) {
-        self.out.push(HostEvent::HookRetrieved { owner, damage });
+    pub fn falling(&mut self, ev: crate::host_out_falling::FallingEvent) {
+        self.out.push(HostEvent::Falling(ev));
+    }
+    pub fn frame(&mut self, ev: crate::host_out_frames::FrameEvent) {
+        self.out.push(HostEvent::Frame(ev));
+    }
+    pub fn death(&mut self, entity: bevy_ecs::entity::Entity, cause: &'static str, attacker: Option<Who>, at: [f64; 3]) {
+        self.out.push(HostEvent::Death { entity, cause, attacker, at });
+    }
+    pub fn conversion_ask(&mut self, entity: bevy_ecs::entity::Entity, into: &'static str) {
+        self.out.push(HostEvent::ConversionAsk { entity, into });
+    }
+    pub fn target_changed(&mut self, entity: bevy_ecs::entity::Entity, target: Option<Who>, previous: Option<Who>) {
+        self.out.push(HostEvent::TargetChanged { entity, target, previous });
+    }
+    pub fn spawned(&mut self, entity: bevy_ecs::entity::Entity, natural: bool) {
+        self.out.push(HostEvent::Spawned { entity, natural });
+    }
+    pub fn tamed(&mut self, entity: bevy_ecs::entity::Entity, owner: Who) {
+        self.out.push(HostEvent::Tamed { entity, owner });
+    }
+    pub fn hit_dealt(&mut self, attacker: Who, victim: bevy_ecs::entity::Entity, damage: f32) {
+        self.out.push(HostEvent::HitDealt { attacker, victim, damage });
+    }
+    pub fn unleashed(&mut self, entity: bevy_ecs::entity::Entity) {
+        self.out.push(HostEvent::Unleashed { entity });
+    }
+    pub fn totem_ask(&mut self, entity: bevy_ecs::entity::Entity, off_hand: bool, cause: &'static str, attacker: Option<Who>) {
+        self.out.push(HostEvent::TotemAsk { entity, off_hand, cause, attacker });
     }
     /// What was written since the last call, in order; the queue keeps its capacity.
     pub fn drain(&mut self) -> std::vec::Drain<'_, HostEvent> {

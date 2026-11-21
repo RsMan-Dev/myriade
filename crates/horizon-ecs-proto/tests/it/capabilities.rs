@@ -20,7 +20,7 @@ fn inert(h: &mut Herd, x: f64, y: f64, z: f64) -> Entity {
             Body { width: w, height: hgt, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
             Bounds(box_at(p, w, hgt)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
-            Contact { on_ground: false, horizontal: false, fall_distance: 0.0 },
+            Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
             FluidState::default(),
             Moving,
         ))

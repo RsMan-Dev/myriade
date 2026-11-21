@@ -2717,6 +2717,8 @@ impl Game<'_> {
         if !self.started_riding.is_empty() {
             self.flush_started_riding();
         }
+        // The ECS's modified entities, tracked by event (game/ecs/tracking.rs); nothing when no ECS runs.
+        self.tick_lan_ecs();
         {
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -2936,8 +2938,6 @@ impl Game<'_> {
         let _ = self.flush_wind_bursts();
         // A sweep attack's reach to the other players from a guest's attack.
         self.flush_sweeps();
-        // A reeled-in hook pulling a player.
-        self.flush_hook_pulls();
         // Particles a guest's turn sent (sweep attack, damage indicator, a hook's splashes).
         self.flush_lan_particles();
         self.lan_flush_effects();
@@ -3163,7 +3163,7 @@ impl Game<'_> {
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
-    pub(super) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
+    pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
         if self.audio.capture.is_some() {
             self.lan_entity_events.push((id, event));
         }

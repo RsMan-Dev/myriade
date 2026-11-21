@@ -7,6 +7,7 @@ use crate::locomotion::{walk, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:cave_spider",
+    caps: Some(super::POISON_IMMUNE_CAPS),
     targets: spider::TARGETS,
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),

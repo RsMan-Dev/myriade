@@ -118,7 +118,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
             "armor_stand",
             "item_frame",
             "oak_boat",
-            "minecart",
             "arrow",
             "small_fireball",
             "snowball",
@@ -166,7 +165,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 "armor_stand" => game.load_armor_stand(tag, Some(uuid)),
                 "item_frame" => game.load_item_frame(tag, Some(uuid)),
                 "oak_boat" => game.load_boat(tag, Some(uuid), "minecraft:oak_boat"),
-                "minecart" => game.load_cart(tag, Some(uuid), "minecraft:minecart"),
                 "arrow" => game.load_arrow(tag, Some(uuid), None),
                 "small_fireball" => game.load_fireball(tag, Some(uuid), None),
                 "snowball" => game.load_throwable(tag, Some(uuid), None),
@@ -189,10 +187,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 "oak_boat" => {
                     let copy = game.boats[0].clone();
                     assert!(game.boats.store_back(0, copy));
-                }
-                "minecart" => {
-                    let copy = game.carts[0].clone();
-                    assert!(game.carts.store_back(0, copy));
                 }
                 "arrow" | "small_fireball" | "snowball" => {
                     let copy = game.creatures.projectiles[0].clone();

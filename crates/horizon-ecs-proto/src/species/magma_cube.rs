@@ -6,6 +6,7 @@ use crate::locomotion::{hop, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:magma_cube",
+    caps: Some(super::FIRE_IMMUNE_CAPS),
     targets: &[
         Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { interval: 10, max_dy: Some(4.0), ..nearest_target::Params::PLAYER }),
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT }),

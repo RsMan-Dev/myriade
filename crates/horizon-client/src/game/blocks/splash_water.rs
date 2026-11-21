@@ -154,37 +154,41 @@ impl Game<'_> {
         if hurts || extinguishes {
             let source =
                 Damage::indirect_magic(by_player.then_some(Who::Player), [at.x, at.y, at.z]);
-            for m in self.mobs.iter_mut().filter(|m| !m.removed) {
-                // WATER_SENSITIVE_OR_ON_FIRE.
-                let sensitive = m.kind.flags.water_sensitive;
-                if !(sensitive || m.is_on_fire())
-                    || !reach.intersects(m.bounds())
-                    || !near(m.position)
-                {
-                    continue;
-                }
-                if hurts && sensitive {
-                    let invulnerable = m.invulnerable_flag;
-                    m.damage(
-                        crate::game::entity::damage_level_of!(self, scoped),
-                        1.0,
-                        source,
-                    );
-                    // `Enderman.hurtServer` for a thrown potion: the hit is
-                    // `Enderman.hurtWithCleanWater`, then
-                    // `Enderman.repeatedlyTryToTeleport`, which does nothing
-                    // while it rides or once it is dead (`teleport` needs
-                    // `isAlive`) and which the AI step runs.
-                    if m.species() == Species::Enderman
-                        && !invulnerable
-                        && m.alive()
-                        && !m.extra.passenger
+            if self.ecs.is_active() {
+                self.splash_mobs_ecs(reach, at, hurts, extinguishes);
+            } else {
+                for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
+                    // WATER_SENSITIVE_OR_ON_FIRE.
+                    let sensitive = m.kind.flags.water_sensitive;
+                    if !(sensitive || m.is_on_fire())
+                        || !reach.intersects(m.bounds())
+                        || !near(m.position)
                     {
-                        m.extra.counter2 = 64;
+                        continue;
                     }
-                }
-                if extinguishes && m.is_on_fire() && m.alive() {
-                    m.extinguish_fire();
+                    if hurts && sensitive {
+                        let invulnerable = m.invulnerable_flag;
+                        m.damage(
+                            crate::game::entity::damage_level_of!(self, scoped),
+                            1.0,
+                            source,
+                        );
+                        // `Enderman.hurtServer` for a thrown potion: the hit is
+                        // `Enderman.hurtWithCleanWater`, then
+                        // `Enderman.repeatedlyTryToTeleport`, which does nothing
+                        // while it rides or once it is dead (`teleport` needs
+                        // `isAlive`) and which the AI step runs.
+                        if m.species() == Species::Enderman
+                            && !invulnerable
+                            && m.alive()
+                            && !m.extra.passenger
+                        {
+                            m.extra.counter2 = 64;
+                        }
+                    }
+                    if extinguishes && m.is_on_fire() && m.alive() {
+                        m.extinguish_fire();
+                    }
                 }
             }
         }
@@ -212,10 +216,21 @@ impl Game<'_> {
                 [at.x - 0.125 - 4.0, at.y - 2.0, at.z - 0.125 - 4.0],
                 [at.x + 0.125 + 4.0, at.y + 0.25 + 2.0, at.z + 0.125 + 4.0],
             );
+            if self.ecs.is_active() {
+                for id in self.ecs_entities_meeting(Aabb::new(
+                    Vec3::new(lo[0], lo[1], lo[2]),
+                    Vec3::new(hi[0], hi[1], hi[2]),
+                )) {
+                    if self.ecs.kind(id) == Some("minecraft:axolotl") && self.mob_exists(id) {
+                        let air = self.ecs.air(id);
+                        self.ecs.set_air(id, (air + 1800).min(horizon_client::mobs::axolotl::MAX_AIR));
+                    }
+                }
+            }
             for m in self
-                .mobs
+                .remote_entities
                 .iter_mut()
-                .filter(|m| m.species() == Species::Axolotl && !m.removed)
+                .filter(|m| !self.ecs.is_active() && m.species() == Species::Axolotl && !m.removed)
             {
                 let (w, h, _) = m.dims();
                 let half = w / 2.0;

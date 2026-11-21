@@ -31,6 +31,10 @@ pub enum Kind {
     Blindness,
     /// `MobEffects.JUMP_BOOST`: the long jump's velocity grows by 0.1 x (level + 1) (`Frog`, `Goat`); not periodic.
     JumpBoost,
+    /// `MobEffects.GLOWING` (`minecraft:glowing`): what a spectral arrow gives, at amplifier 0 and 200 ticks.
+    Glowing,
+    /// `MobEffects.WEAVING`: a cobweb it stands in slows it less (`WebBlock.entityInside`: 0.5, 0.25, 0.5).
+    Weaving,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).
@@ -74,6 +78,20 @@ pub struct Invisible;
 
 /// Fire resistance: no fire damage (`Immune` bit read by the burn).
 pub const IMMUNE_FIRE: u32 = 8;
+/// `canBeAffected` false for `WITHER` (the wither and the wither skeleton): a base bit of `Immune`, set at creation.
+pub const IMMUNE_WITHER: u32 = 16;
+/// `canBeAffected` false for `POISON` (`Spider`, `CaveSpider`, `AbstractNautilus`) and for `WEAKNESS` (`Parched`): base bits, set at creation.
+pub const IMMUNE_POISON: u32 = 32;
+pub const IMMUNE_WEAKNESS: u32 = 64;
+/// The base `Immune` bit that makes `canBeAffected` refuse the effect `kind` (0: none).
+fn refusing_bit(kind: Kind) -> u32 {
+    match kind {
+        Kind::Wither => IMMUNE_WITHER,
+        Kind::Poison => IMMUNE_POISON,
+        Kind::Weakness => IMMUNE_WEAKNESS,
+        _ => 0,
+    }
+}
 
 fn period(kind: Kind, amp: i32) -> Option<i32> {
     kind.base().map(|b| rule::period(b, amp))
@@ -87,7 +105,9 @@ pub fn add(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32) -> bool {
 }
 /// `add` with the `HIDDEN` and `AMBIENT` flags of the effect.
 pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, flags: u8) -> bool {
-    if w.get::<Health>(e).is_none() {
+    // `LivingEntity.canBeAffected`: the tag `ignores_poison_and_regen` refuses poison and regeneration; the species' own refusals are `Immune` bits.
+    let tagged = matches!(kind, Kind::Poison | Kind::Regeneration) && type_tags::is::<IgnoresPoisonAndRegen>(w, e);
+    if w.get::<Health>(e).is_none() || tagged || w.get::<Immune>(e).is_some_and(|i| i.has(refusing_bit(kind))) {
         return false;
     }
     let first = now_of(w, e) + 1;
@@ -358,13 +378,12 @@ pub fn player_has(w: &World, id: u32, kind: Kind) -> bool {
 pub enum Brew {
     /// A timed effect of this level and length (before the 0.75 and the nearness of a splash).
     Timed(Kind, i32, i32),
+    /// A custom effect of a potion item, with its `HIDDEN` and `AMBIENT` flags (only the splash and the save read them).
+    Flagged(Kind, i32, i32, u8),
     /// `InstantenousMobEffect`: harming deals `6 << level`, healing gives `4 << level` (the jar shifts, it does not multiply), scaled by the nearness.
     Harm(i32),
     Heal(i32),
 }
-/// A thrown potion's id (`PotionType` key): its brews are `POTIONS`' when it splashes (`OnHit::Potion`).
-#[derive(Component, Clone, Copy, Debug)]
-pub struct PotionId(pub &'static str);
 /// The base potions (level I, `Potions`): id and brews. Slowness 1 800 ticks, poison 900, weakness 1 800, harming instant.
 pub const POTIONS: &[(&str, &[Brew])] = &[
     ("minecraft:harming", &[Brew::Harm(0)]),
@@ -375,13 +394,55 @@ pub const POTIONS: &[(&str, &[Brew])] = &[
 pub fn potion_brews(id: &str) -> Option<&'static [Brew]> {
     POTIONS.iter().find(|(n, _)| *n == id).map(|(_, b)| *b)
 }
-/// The `PotionId` of a potion name the table knows.
-pub fn potion_id(name: &str) -> Option<PotionId> {
-    POTIONS.iter().find(|(n, _)| *n == name).map(|(n, _)| PotionId(*n))
+/// The table's name of a potion (`PotionType` key), when the table knows it.
+pub fn potion_name(name: &str) -> Option<&'static str> {
+    POTIONS.iter().find(|(n, _)| *n == name).map(|(n, _)| *n)
+}
+
+/// The mob effect of a jar id (`minecraft:speed`…), when the cloud and the splash know it.
+pub fn kind_of(name: &str) -> Option<Kind> {
+    crate::nbt_fields::effect_cloud::KINDS.iter().find(|(n, _)| *n == name).map(|(_, k)| *k)
+}
+
+/// The jar's `custom_effects` of a potion item, one timed brew each; an id the mob effects do not know is skipped.
+pub fn custom_brews(stack: &horizon_client_lib::items::ItemStack) -> Vec<Brew> {
+    let Some((_, horizon_core::nbt::Tag::List(list))) = stack.data().and_then(|d| d.potion_extra.iter().find(|(k, _)| k == "custom_effects")) else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|e| {
+            let Some(horizon_core::nbt::Tag::String(id)) = e.get("id") else { return None };
+            let id = id.to_string_lossy();
+            let kind = crate::nbt_fields::effect_cloud::KINDS.iter().find(|(n, _)| *n == id.as_str())?.1;
+            let int = |k: &str| match e.get(k) {
+                Some(horizon_core::nbt::Tag::Int(v)) => *v,
+                _ => 0,
+            };
+            let ambient = matches!(e.get("ambient"), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0);
+            let hidden = matches!(e.get("show_particles"), Some(horizon_core::nbt::Tag::Byte(0)));
+            let flags = if ambient { AMBIENT } else { 0 } | if hidden { HIDDEN } else { 0 };
+            Some(Brew::Flagged(kind, int("amplifier").clamp(0, 255), int("duration"), flags))
+        })
+        .collect()
+}
+
+/// All the brews a potion item gives: its named potion's, then its custom effects.
+pub fn contents_brews(stack: &horizon_client_lib::items::ItemStack) -> Vec<Brew> {
+    let mut brews = stack.potion().and_then(potion_brews).map_or_else(Vec::new, <[Brew]>::to_vec);
+    brews.extend(custom_brews(stack));
+    brews
+}
+
+/// The `custom_color` of a potion item, when it has one.
+pub fn custom_color(stack: &horizon_client_lib::items::ItemStack) -> Option<i32> {
+    stack.data()?.potion_extra.iter().find(|(k, _)| k == "custom_color").and_then(|(_, t)| match t {
+        horizon_core::nbt::Tag::Int(c) => Some(*c),
+        _ => None,
+    })
 }
 /// `ThrownSplashPotion.onHit` / `applySplash`: the creatures within 4 blocks (2 up and down) of `at` and nearer than 4 take the brews, scaled
 /// by `1 - distance / 4` (the creature hit itself takes them whole); a timed effect lasts `(int)(scale * ticks * 0.75 + 0.5)`.
-pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entity>, brews: &'static [Brew], owner: Option<crate::targeting::Who>) {
+pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entity>, brews: &[Brew], owner: Option<crate::targeting::Who>) {
     let mut near: Vec<Entity> = Vec::new();
     {
         let idx = w.resource::<Index>();
@@ -400,11 +461,15 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
         }
         let scale = rule::splash_scale(d2, direct);
         for &brew in brews {
+            let (brew, flags) = match brew {
+                Brew::Flagged(kind, amp, ticks, flags) => (Brew::Timed(kind, amp, ticks), flags),
+                b => (b, 0),
+            };
             match brew {
                 Brew::Timed(kind, amp, ticks) => {
                     let t = rule::timed_ticks(scale, ticks);
                     if t > 0 {
-                        add(w, c, kind, amp, t);
+                        add_flagged(w, c, kind, amp, t, flags);
                     }
                 }
                 Brew::Harm(amp) | Brew::Heal(amp) => {

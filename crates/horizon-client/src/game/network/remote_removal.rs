@@ -25,7 +25,7 @@ impl Game<'_> {
         }
         // Shared/server riding paths can also set these links without a
         // SetPassengers entry. Preserve their cleanup, scanning once per packet.
-        for m in &self.mobs {
+        for m in &self.remote_entities {
             if let Some(id) = m.extra.mount {
                 include(id);
             }
@@ -84,7 +84,7 @@ impl Game<'_> {
                 ids.first().is_none_or(|&removed| id != removed as u32)
             }
         };
-        self.mobs.retain(|m| keep(m.id));
+        self.remote_entities.retain(|m| keep(m.id));
         self.orbs.retain(|o| keep(o.id));
         self.dropped.retain(|d| keep(d.id));
         self.falling.retain(|f| keep(f.id));
@@ -180,7 +180,7 @@ mod tests {
         game.remote_set_passengers(40, &[42]);
         game.remote_set_passengers(41, &[43]);
         assert_eq!(game.armor_stands[0].vehicle, Some(40));
-        assert_eq!(game.mobs[0].extra.mount, Some(41));
+        assert_eq!(game.remote_entities[0].extra.mount, Some(41));
         game.handle_packet(C::RemoveEntities(play::RemoveEntities {
             ids: vec![44, 40, 46],
         }))
@@ -189,8 +189,8 @@ mod tests {
         assert_eq!(r.entities[&42].vehicle, None);
         assert_eq!(game.armor_stands[0].vehicle, None);
         assert_eq!(r.entities[&43].vehicle, Some(41));
-        assert_eq!(game.mobs[0].extra.mount, Some(41));
-        assert!(game.mobs[0].extra.passenger);
+        assert_eq!(game.remote_entities[0].extra.mount, Some(41));
+        assert!(game.remote_entities[0].extra.passenger);
         assert_eq!(r.passenger_vehicles.get(&42), None);
         assert_eq!(r.passenger_vehicles.get(&43), Some(&41));
         assert_eq!(game.falling.iter().map(|e| e.id).collect::<Vec<_>>(), [45]);
@@ -373,7 +373,7 @@ mod tests {
         assert_eq!(game.falling.iter().map(|e| e.id).collect::<Vec<_>>(), [41]);
         assert_eq!(game.tnts.iter().map(|e| e.id).collect::<Vec<_>>(), [44]);
         assert_eq!(game.orbs.iter().map(|e| e.id).collect::<Vec<_>>(), [46]);
-        assert_eq!(game.mobs.iter().map(|e| e.id).collect::<Vec<_>>(), [48]);
+        assert_eq!(game.remote_entities.iter().map(|e| e.id).collect::<Vec<_>>(), [48]);
         assert_eq!(game.dropped.iter().map(|e| e.id).collect::<Vec<_>>(), [50]);
     }
 }

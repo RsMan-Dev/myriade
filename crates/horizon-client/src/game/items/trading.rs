@@ -247,23 +247,23 @@ impl Game<'_> {
     }
     /// `AbstractVillager.getOffers`: generated on first use.
     pub(super) fn ensure_offers(&mut self, index: usize) {
-        let species = self.mobs[index].species();
+        let species = self.remote_entities[index].species();
         if species == Species::Villager
             && self
                 .stations()
                 .professions
-                .state_index(&self.mobs[index].extra.profession)
+                .state_index(&self.remote_entities[index].extra.profession)
                 .is_none()
         {
             return;
         }
-        let unset = self.mobs[index]
+        let unset = self.remote_entities[index]
             .extra
             .trade
             .as_ref()
             .is_none_or(|t| t.unset);
         if unset {
-            let m = &self.mobs[index];
+            let m = &self.remote_entities[index];
             let variant = format!(
                 "minecraft:{}",
                 VILLAGER_TYPES[m.extra.variant as usize % VILLAGER_TYPES.len()]
@@ -289,7 +289,7 @@ impl Game<'_> {
                     Vec::new()
                 }
             };
-            let trade = self.mobs[index].extra.trade.get_or_insert_default();
+            let trade = self.remote_entities[index].extra.trade.get_or_insert_default();
             trade.offers = offers;
             trade.unset = false;
         }
@@ -301,7 +301,7 @@ impl Game<'_> {
         index: usize,
         item: &str,
     ) -> horizon_client::Result<bool> {
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let species = m.species();
         if !matches!(species, Species::Villager | Species::WanderingTrader)
             || !m.alive()
@@ -319,7 +319,7 @@ impl Game<'_> {
                 return Ok(false);
             }
             let mut events = Vec::new();
-            villager::set_unhappy(&mut self.mobs[index], &mut events);
+            villager::set_unhappy(&mut self.remote_entities[index], &mut events);
             self.handle_mob_events(events)?;
             return Ok(true);
         }
@@ -332,17 +332,17 @@ impl Game<'_> {
         self.award_custom_stat("talked_to_villager", 1);
         if unresolved {
             let mut events = Vec::new();
-            villager::set_unhappy(&mut self.mobs[index], &mut events);
+            villager::set_unhappy(&mut self.remote_entities[index], &mut events);
             self.handle_mob_events(events)?;
             return Ok(true);
         }
         self.ensure_offers(index);
-        let m = &self.mobs[index];
+        let m = &self.remote_entities[index];
         let trade = m.extra.trade.as_deref().cloned().unwrap_or_default();
         if trade.offers.is_empty() {
             if species == Species::Villager {
                 let mut events = Vec::new();
-                villager::set_unhappy(&mut self.mobs[index], &mut events);
+                villager::set_unhappy(&mut self.remote_entities[index], &mut events);
                 self.handle_mob_events(events)?;
             }
             return Ok(true);
@@ -393,13 +393,13 @@ impl Game<'_> {
         session.update_special_prices();
         // The mob owns the live offers even while a menu is open.
         {
-            let trade = self.mobs[index].extra.trade.get_or_insert_default();
+            let trade = self.remote_entities[index].extra.trade.get_or_insert_default();
             trade.offers = session.offers.clone();
         }
         // setTradingPlayer: a wandering trader stands still while trading, a
         // villager's brain follows and looks at the player
         // (LookAndFollowTradingPlayerSink).
-        self.mobs[index].extra.flag2 = true;
+        self.remote_entities[index].extra.flag2 = true;
         self.open_merchant_state(MerchantState {
             session: Box::new(session),
             scroll: 0,
@@ -410,9 +410,161 @@ impl Game<'_> {
         });
         Ok(true)
     }
+    /// `ensure_offers` for the ECS trader `id`: P's `trade_offers::ensure_offers` decides and draws the offers.
+    pub(super) fn ensure_offers_ecs(&mut self, id: u32) {
+        self.ecs.ensure_offers(id);
+    }
+    /// `interact_trader` for the ECS trader `id`: the screen is P's `trade_session::open`, the session is built from the bridge's trade state.
+    pub(super) fn interact_trader_ecs(&mut self, id: u32, item: &str) -> horizon_client::Result<bool> {
+        let Some(villager) = self.ecs.is_villager(id) else { return Ok(false) };
+        if !self.ecs.is_trader(id)
+            || !self.mob_alive(id)
+            || item == "minecraft:villager_spawn_egg"
+            || self.station.is_some()
+            || self.ecs.trade_busy(id)
+            || (villager && self.ecs.is_sleeping(id))
+        {
+            return Ok(false);
+        }
+        if self.ecs.is_baby(id) {
+            if !villager {
+                return Ok(false);
+            }
+            self.ecs.set_unhappy(id);
+            return Ok(true);
+        }
+        if villager && !self.ecs.profession_known(id) {
+            self.ecs.set_unhappy(id);
+            return Ok(true);
+        }
+        self.award_custom_stat("talked_to_villager", 1);
+        self.ensure_offers_ecs(id);
+        if self.ecs.trade_offers(id).is_none_or(|(offers, _)| offers.is_empty()) {
+            if villager {
+                self.ecs.set_unhappy(id);
+            }
+            return Ok(true);
+        }
+        let Some(session) = self.ecs.merchant_session(id, self.lan_acting) else { return Ok(false) };
+        let name = self.ecs.custom_name_text(id);
+        self.ecs.trade_open(id, self.lan_acting);
+        self.open_merchant_state(MerchantState {
+            session: Box::new(session),
+            scroll: 0,
+            dragging: false,
+            focused: None,
+            mob: Some(id),
+            name,
+        });
+        Ok(true)
+    }
+    /// `merchant_offers_generated` for the ECS trader `id`.
+    pub(super) fn merchant_offers_generated_ecs(&mut self, id: u32) {
+        self.ensure_offers_ecs(id);
+    }
+    /// `merchant_closed` for a session whose mob is the ECS trader `state.mob`: the mob keeps the special prices and the level.
+    pub(super) fn merchant_closed_ecs(&mut self, state: &mut MerchantState) {
+        self.merchant_sync_in_ecs(&mut state.session, state.mob);
+        for (id, r) in std::mem::take(&mut state.session.sequences) {
+            self.rand_sequences.give_back(id, r);
+        }
+        let Some(id) = state.mob else { return };
+        self.ecs.trade_close(id);
+        if state.session.villager && self.ecs.profession_known(id) {
+            self.ecs.set_trade_level(id, state.session.level.max(1));
+        }
+    }
+    /// `merchant_sync_in` for an ECS trader: the offers, the xp, the random and the origin come from the bridge.
+    pub(super) fn merchant_sync_in_ecs(&self, session: &mut merchant::Session, mob: Option<u32>) {
+        let Some(id) = mob.filter(|id| self.ecs.is_active() && self.ecs.kind(*id).is_some()) else { return };
+        if let Some((offers, xp)) = self.ecs.trade_offers(id) {
+            session.offers = offers;
+            session.xp = xp;
+        }
+        session.random = self.ecs.trade_random(id);
+        session.ambient_sound_time = self.ecs.ambient_timer(id);
+        session.origin = self.ecs.position(id).unwrap_or(session.origin);
+    }
+    /// `merchant_sync_out` for an ECS trader: the session goes back to the station, its random and its level to the bridge.
+    pub(super) fn merchant_sync_out_ecs(&mut self, session: Box<merchant::Session>) {
+        let mob = self.station.as_ref().and_then(|s| s.merchant.as_ref()).and_then(|m| m.mob);
+        let villager_unknown = mob.is_some_and(|id| self.ecs.is_villager(id) == Some(true) && !self.ecs.profession_known(id));
+        if villager_unknown {
+            if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+                m.session = session;
+            }
+            return;
+        }
+        let (mut session, traded) = self.merchant_apply_ecs(session, mob);
+        self.merchant_traded_ecs(mob, &mut session.offers, &traded);
+        if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+            m.session = session;
+        }
+    }
+    /// `merchant_apply` for an ECS trader: the random, the level and the final offers are written to the bridge.
+    pub(super) fn merchant_apply_ecs(&mut self, session: Box<merchant::Session>, mob: Option<u32>) -> (Box<merchant::Session>, Vec<usize>) {
+        let mut session = session;
+        let events = std::mem::take(&mut session.events);
+        let mut traded = Vec::new();
+        let (villager, origin) = (session.villager, session.origin);
+        if let Some(id) = mob {
+            self.ecs.set_trade_random(id, session.random.clone());
+            self.ecs.set_ambient_timer(id, session.ambient_sound_time);
+            if villager {
+                self.ecs.set_trade_level(id, session.level.max(1));
+            }
+        }
+        for e in events {
+            match e {
+                merchant::Event::OffersRefreshed => {}
+                merchant::Event::Orb(v) => self.add_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32),
+                merchant::Event::LevelUp(_) => {
+                    if let Some(id) = mob {
+                        self.ecs.add_effect_regeneration(id, 200, 0);
+                    }
+                }
+                merchant::Event::TradeUpdated(yes, pitch) => {
+                    let sound = match (villager, yes) {
+                        (true, true) => "minecraft:entity.villager.yes",
+                        (true, false) => "minecraft:entity.villager.no",
+                        (false, true) => "minecraft:entity.wandering_trader.yes",
+                        (false, false) => "minecraft:entity.wandering_trader.no",
+                    };
+                    self.audio.play(sound, Some(origin), 1.0, pitch);
+                }
+                merchant::Event::Traded(index, _offer) => traded.push(index),
+                merchant::Event::TradeSound => {
+                    let sound = if villager { "minecraft:entity.villager.yes" } else { "minecraft:entity.wandering_trader.yes" };
+                    self.audio.play(sound, Some(origin), 1.0, 1.0);
+                }
+            }
+        }
+        if let Some(id) = mob {
+            self.ecs.set_trade_offers(id, &session.offers, session.xp);
+        }
+        (session, traded)
+    }
+    /// `merchant_traded` for an ECS trader: the same statistic and triggers, the kind and the trade hook read by id.
+    pub(super) fn merchant_traded_ecs(&mut self, mob: Option<u32>, offers: &mut [MerchantOffer], traded: &[usize]) {
+        if !traded.is_empty()
+            && let Some(id) = mob
+        {
+            self.villager_trade_pending(id);
+        }
+        for index in traded {
+            let Some(offer) = offers.get_mut(*index) else { continue };
+            self.award_custom_stat("traded_with_villager", 1);
+            let Some(id) = mob else { continue };
+            let kind = self.ecs.kind(id).map(str::to_owned);
+            self.ecs_trigger_trade(id, &offer.result);
+            if let (Some(kind), Some(_)) = (kind, self.lan_acting) {
+                self.native_trade_with_villager(id, &kind, offer);
+            }
+        }
+    }
     /// Apply the villager AI's request to generate its offers.
     pub(super) fn merchant_offers_generated(&mut self, mob: u32) {
-        if let Some(i) = self.mobs.iter().position(|m| m.id == mob) {
+        if let Some(i) = self.remote_entities.iter().position(|m| m.id == mob) {
             self.ensure_offers(i);
         }
     }
@@ -457,7 +609,7 @@ impl Game<'_> {
         }
         let Some(id) = state.mob else { return };
         let professions = self.stations().professions.clone();
-        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return;
         };
         m.extra.flag2 = false;
@@ -528,7 +680,7 @@ impl Game<'_> {
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
     pub(super) fn merchant_sync_in(&self, session: &mut merchant::Session, mob: Option<u32>) {
-        if let Some(m) = mob.and_then(|id| self.mobs.iter().find(|m| m.id == id)) {
+        if let Some(m) = mob.and_then(|id| self.remote_entities.iter().find(|m| m.id == id)) {
             session.random.clone_from(&m.random);
             session.ambient_sound_time = m.ambient_timer;
             session.origin = [m.position.x, m.position.y, m.position.z];
@@ -547,7 +699,7 @@ impl Game<'_> {
             .and_then(|s| s.merchant.as_ref())
             .and_then(|m| m.mob);
         if mob
-            .and_then(|id| self.mobs.iter().find(|m| m.id == id))
+            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
             .is_some_and(|m| {
                 m.species() == Species::Villager
                     && self
@@ -579,7 +731,7 @@ impl Game<'_> {
         let events = std::mem::take(&mut session.events);
         let mut traded = Vec::new();
         let (villager, origin) = (session.villager, session.origin);
-        if let Some(m) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+        if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
             *m.random = session.random.clone();
             m.ambient_timer = session.ambient_sound_time;
             if villager {
@@ -593,7 +745,7 @@ impl Game<'_> {
                     self.add_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32)
                 }
                 merchant::Event::LevelUp(_) => {
-                    if let Some(m) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+                    if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
                         m.add_effect("minecraft:regeneration", 200, 0);
                     }
                 }
@@ -621,7 +773,7 @@ impl Game<'_> {
         }
         // Offer hooks above may edit the live session. Publish that final state
         // so the next click, AI restock and save all see the same offers.
-        if let Some(m) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+        if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
             let trade = m.extra.trade.get_or_insert_default();
             trade.offers = session.offers.clone();
             trade.xp = session.xp;
@@ -649,7 +801,7 @@ impl Game<'_> {
                 continue;
             };
             self.award_custom_stat("traded_with_villager", 1);
-            let merchant = mob.and_then(|id| self.mobs.iter().find(|m| m.id == id));
+            let merchant = mob.and_then(|id| self.remote_entities.iter().find(|m| m.id == id));
             let kind = merchant.map(super::native_hooks::mob_kind);
             let villager = merchant.map(|m| self.mob_entity(m));
             if let Some(villager) = villager {

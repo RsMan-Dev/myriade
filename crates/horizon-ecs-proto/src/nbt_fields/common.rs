@@ -381,6 +381,8 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::MiningFatigue => "minecraft:mining_fatigue",
         Kind::Blindness => "minecraft:blindness",
         Kind::JumpBoost => "minecraft:jump_boost",
+        Kind::Glowing => "minecraft:glowing",
+        Kind::Weaving => "minecraft:weaving",
     }
 }
 
@@ -400,6 +402,8 @@ fn kind_of(name: &str) -> Option<Kind> {
         Kind::MiningFatigue,
         Kind::Blindness,
         Kind::JumpBoost,
+        Kind::Glowing,
+        Kind::Weaving,
     ]
     .into_iter()
     .find(|&k| kind_name(k) == name)

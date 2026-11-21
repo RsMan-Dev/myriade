@@ -9,13 +9,11 @@ impl Game<'_> {
     /// The boats, minecarts, primed TNT and item frames a projectile can strike
     /// (`VehicleEntity.isPickable`, `PrimedTnt.isPickable`,
     /// `BlockAttachedEntity.isPickable`).
-    pub(in crate::game) fn pickable_object_targets(&self) -> Vec<(Who, Aabb)> {
-        let mut targets: Vec<(Who, Aabb)> = self
-            .boats
-            .iter()
-            .map(|b| (Who::Mob(b.id), b.bounds()))
+    pub(in crate::game) fn pickable_object_targets(&self, min: Vec3, max: Vec3) -> Vec<(Who, Aabb)> {
+        let vehicles = self.ecs.vehicles_touching(min, max).into_iter();
+        let mut targets: Vec<(Who, Aabb)> = vehicles
+            .filter_map(|id| self.ecs.bounds(id).map(|b| (Who::Mob(id), b)))
             .collect();
-        targets.extend(self.carts.iter().map(|c| (Who::Mob(c.id), c.bounds())));
         targets.extend(self.tnts.iter().map(|t| (Who::Mob(t.id), t.bounds())));
         targets.extend(self.item_frames.iter().map(|f| {
             let (lo, hi) = f.bounds();
@@ -32,7 +30,7 @@ impl Game<'_> {
     /// What a projectile can hit: the mobs, the player, the dragon's parts and
     /// the End crystals (under reserved ids, game/dragon.rs), and the vehicles
     /// and item frames.
-    pub(in crate::game) fn projectile_targets(&self) -> Vec<(Who, Aabb)> {
+    pub(in crate::game) fn projectile_targets(&self, min: Vec3, max: Vec3) -> Vec<(Who, Aabb)> {
         let mut targets: Vec<(Who, Aabb)> = self
             .mobs
             .iter()
@@ -51,7 +49,7 @@ impl Game<'_> {
         );
         // Boats, minecarts, primed TNT and item frames are pickable for every
         // projectile, so every kind shares this one list.
-        targets.extend(self.pickable_object_targets());
+        targets.extend(self.pickable_object_targets(min, max));
         targets
     }
 }

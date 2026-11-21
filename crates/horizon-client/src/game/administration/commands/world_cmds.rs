@@ -2,7 +2,6 @@
 //! `/particle`, `/attribute`, `/ride` and `/spreadplayers`.
 use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
-use crate::game::minecarts::CartHit;
 use horizon_client::{
     mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who, finalize},
     text::Text,
@@ -223,8 +222,11 @@ impl Game<'_> {
         );
         match direct {
             Some(Target::Projectile(id)) => {
-                if let Some(shot) = self.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    Self::set_projectile_attack(&mut attack, shot);
+                if let Some(v) = self.ecs.projectile_view(id) {
+                    attack.projectile = Some(id as i32);
+                    attack.projectile_is_arrow = v.arrow;
+                    let weapon = self.ecs.projectile_weapon(id);
+                    Self::set_projectile_weapon(&mut attack, weapon.as_ref().or(v.item.as_ref()));
                 }
             }
             Some(Target::Trident(id)) => {
@@ -379,16 +381,8 @@ impl Game<'_> {
         let ignites = registry.in_tag(kind, "minecraft:is_fire")
             || registry.in_tag(kind, "minecraft:is_explosion");
         let entity_kind = match target {
-            Target::Boat(_) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map(|b| b.entity_type()),
-            Target::Cart(_) => self
-                .carts
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| c.kind.id().to_owned()),
+            Target::Boat(_) => self.ecs.kind(id).map(str::to_owned),
+            Target::Cart(_) => self.ecs.cart_kind(id).map(str::to_owned),
             _ => None,
         };
         let Some(entity_kind) = entity_kind else {
@@ -415,19 +409,11 @@ impl Game<'_> {
             return false;
         }
         match target {
-            Target::Boat(_) => self.boats.iter().position(|b| b.id == id).is_some_and(|i| {
-                self.hurt_boat_result(i, amount, creative, causing)
-                    .is_some()
-            }),
-            Target::Cart(_) => self.carts.iter().position(|c| c.id == id).is_some_and(|i| {
-                self.hurt_cart_result(
-                    i,
-                    amount,
-                    creative,
-                    ignites,
-                    CartHit::command(direct, causing),
-                )
-            }),
+            Target::Boat(_) => self.hurt_boat_result(id, amount, creative, causing).is_some(),
+            Target::Cart(_) => {
+                let credit = self.target_credit(causing);
+                self.hurt_cart_id(id, amount, creative, ignites, credit)
+            }
             _ => false,
         }
     }
@@ -1579,9 +1565,9 @@ impl Game<'_> {
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.extra.mount?,
             _ => return None,
         };
-        Some(if self.boat_object(id).is_some() {
+        Some(if self.is_boat(id) {
             Target::Boat(id)
-        } else if self.cart_object(id).is_some() {
+        } else if self.ecs.cart_kind(id).is_some() {
             Target::Cart(id)
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Target::Stand(id)
@@ -1595,29 +1581,20 @@ impl Game<'_> {
     /// (Entity.removePassenger), then to where the vehicle lets it out
     /// (LivingEntity.dismountVehicle).
     pub(in crate::game) fn dismount_mob(&mut self, rider: u32) {
-        self.dismount_mob_with_cart(rider, None, None, false);
-    }
-
-    pub(in crate::game) fn dismount_mob_from_cart(
-        &mut self,
-        rider: u32,
-        cart: &super::super::minecarts::Minecart,
-    ) {
-        self.dismount_mob_with_cart(rider, Some(cart), None, false);
+        self.dismount_mob_leaving(rider, None, false);
     }
 
     pub(in crate::game) fn dismount_mob_reentrant(&mut self, rider: u32) {
-        self.dismount_mob_with_cart(rider, None, None, true);
+        self.dismount_mob_leaving(rider, None, true);
     }
 
     pub(in crate::game) fn dismount_mob_from_removed_vehicle(&mut self, rider: u32, y: f64) {
-        self.dismount_mob_with_cart(rider, None, Some(y), false);
+        self.dismount_mob_leaving(rider, Some(y), false);
     }
 
-    fn dismount_mob_with_cart(
+    fn dismount_mob_leaving(
         &mut self,
         rider: u32,
-        cart: Option<&super::super::minecarts::Minecart>,
         removed_y: Option<f64>,
         notified: bool,
     ) {
@@ -1628,9 +1605,6 @@ impl Game<'_> {
         else {
             return;
         };
-        if cart.is_some_and(|cart| cart.id != v) {
-            return;
-        }
         if !notified && !self.native_mob_may_ride(rider, v, false) {
             return;
         }
@@ -1663,12 +1637,7 @@ impl Game<'_> {
                 )
             })
         } else {
-            match cart.filter(|cart| cart.id == v) {
-                Some(cart) => self
-                    .mob_object(rider)
-                    .and_then(|rider| self.cart_dismount_point_from(cart, rider)),
-                None => self.mob_dismount_point(v, rider),
-            }
+            self.mob_dismount_point(v, rider)
         };
         let Some(m) = self.mob_object_mut(rider) else {
             return;
@@ -1708,12 +1677,8 @@ impl Game<'_> {
                     .iter()
                     .chain(self.persist.destroying_vehicles.iter())
                     .find_map(|target| match *target {
-                        Target::Boat(id) if id == v => {
-                            self.boats.iter().find(|b| b.id == v).map(|b| b.position.y)
-                        }
-                        Target::Cart(id) if id == v => {
-                            self.carts.iter().find(|c| c.id == v).map(|c| c.position.y)
-                        }
+                        Target::Boat(id) if id == v => self.ecs.position(v).map(|p| p[1]),
+                        Target::Cart(id) if id == v => self.ecs_view(v).map(|c| c.position[1]),
                         _ => None,
                     })
             });
@@ -2304,25 +2269,29 @@ mod vehicle_damage_command_tests {
                     "summon {kind} 4.5 200 5.5 {{UUID:[I;500,0,0,{n}],NoGravity:1b}}"
                 )));
                 let id = game
-                    .boats
-                    .iter()
-                    .map(|b| b.id)
-                    .chain(game.carts.iter().map(|c| c.id))
+                    .ecs
+                    .boats_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    )
+                    .into_iter()
+                    .chain(game.ecs.carts_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    ))
                     .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(
                     game.run_command(&format!("damage {uuid} 1 minecraft:generic")),
                     "accepted small hit must reach vehicle"
                 );
-                let damage = if kind == "oak_boat" {
-                    game.boats.iter().find(|b| b.id == id).unwrap().damage
+                if kind == "oak_boat" {
+                    assert!(game.ecs_has(id), "the boat takes the hit");
                 } else {
-                    game.carts.iter().find(|c| c.id == id).unwrap().damage
-                };
-                assert_eq!(damage, 10.0);
+                    assert_eq!(game.ecs.cart_damage(id).unwrap(), 10.0);
+                }
                 assert!(game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
-                assert!(!game.boats.iter().any(|b| b.id == id));
-                assert!(!game.carts.iter().any(|c| c.id == id));
+                assert!(!game.ecs_has(id));
                 assert_eq!(
                     game.dropped
                         .iter()
@@ -2337,38 +2306,48 @@ mod vehicle_damage_command_tests {
                     "summon {kind} 8.5 200 5.5 {{UUID:[I;500,0,0,{n}],NoGravity:1b}}"
                 )));
                 let id = game
-                    .boats
-                    .iter()
-                    .map(|b| b.id)
-                    .chain(game.carts.iter().map(|c| c.id))
+                    .ecs
+                    .boats_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    )
+                    .into_iter()
+                    .chain(game.ecs.carts_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    ))
                     .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
-                let damage = if kind == "oak_boat" {
-                    game.boats.iter().find(|b| b.id == id).unwrap().damage
+                if kind == "oak_boat" {
+                    assert!(game.ecs_has(id), "exact threshold survives");
                 } else {
-                    game.carts.iter().find(|c| c.id == id).unwrap().damage
-                };
-                assert_eq!(damage, 40.0, "exact threshold survives");
+                    assert_eq!(game.ecs.cart_damage(id).unwrap(), 40.0, "exact threshold survives");
+                }
             }
             // Fresh rejected subjects avoid relying on vehicle data adoption.
             for (kind, n) in [("oak_boat", 5), ("minecart", 6)] {
                 let uuid = format!("000001f4-0000-0000-0000-{n:012x}");
                 assert!(game.run_command(&format!("summon {kind} 11.5 200 5.5 {{UUID:[I;500,0,0,{n}],NoGravity:1b,Invulnerable:1b}}")));
                 let id = game
-                    .boats
-                    .iter()
-                    .map(|b| b.id)
-                    .chain(game.carts.iter().map(|c| c.id))
+                    .ecs
+                    .boats_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    )
+                    .into_iter()
+                    .chain(game.ecs.carts_in(
+                        horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
+                        horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
+                    ))
                     .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(!game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
-                let damage = if kind == "oak_boat" {
-                    game.boats.iter().find(|b| b.id == id).unwrap().damage
+                if kind == "oak_boat" {
+                    assert!(game.ecs_has(id), "a rejected hit keeps the boat");
                 } else {
-                    game.carts.iter().find(|c| c.id == id).unwrap().damage
-                };
-                assert_eq!(damage, 0.0);
+                    assert_eq!(game.ecs.cart_damage(id).unwrap(), 0.0);
+                }
             }
             assert_eq!(game.world.game_time, clock);
         });

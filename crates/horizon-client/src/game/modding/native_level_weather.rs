@@ -53,6 +53,9 @@ impl Game<'_> {
                 w.thundering = old_thundering;
             }
         }
+        if (previous.3, previous.4) != (self.world.weather.raining, self.world.weather.thundering) {
+            self.ecs_weather_changed();
+        }
     }
     /// `set_weather_parameters` through a handle of the level in place. False for a negative
     /// time, inside the `weather_change` or `thunder_change` hook, a parked level, a stale

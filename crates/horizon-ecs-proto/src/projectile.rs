@@ -67,9 +67,9 @@ pub enum OnHit {
     Explode { power: i32, fire: bool },
     /// A thrown potion breaks and splashes these brews (`effects::splash`).
     Splash(&'static [crate::effects::Brew]),
-    /// A thrown potion whose brews are its `PotionId`'s in `effects::POTIONS`, splashed where it ends.
+    /// A thrown potion whose brews are its item's potion in `effects::POTIONS`, splashed where it ends.
     Potion,
-    /// A lingering potion breaks: an area cloud of its `PotionId` where it ends (`ThrownLingeringPotion.onHit`).
+    /// A lingering potion breaks: an area cloud of its item's potion where it ends (`ThrownLingeringPotion.onHit`).
     LingeringPotion,
     /// A wind charge bursts where it ends: knockback only, no damage, on the creatures within `radius` (`explosion::wind_burst`).
     WindBurst { radius: f32 },
@@ -151,6 +151,7 @@ pub const KINDS: &[(&str, Flight)] = &[
     ("minecraft:lingering_potion", Flight::LINGERING_POTION),
     ("minecraft:snowball", Flight::SNOWBALL),
     (crate::species::lists::TRIDENT, Flight::TRIDENT),
+    (crate::species::lists::SPECTRAL_ARROW, crate::projectile_more::SPECTRAL_ARROW),
     ("minecraft:llama_spit", Flight::SPIT),
     (crate::species::lists::SHULKER_BULLET, crate::species::shulker::SHOT.flight),
     (crate::species::lists::EGG, crate::projectile_more::EGG),
@@ -214,6 +215,7 @@ const LIFE: u64 = 1200;
 
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(StuckIndex::default());
+    w.insert_resource(crate::arrow_more::ArrowRng::default());
 }
 /// Some projectile is in flight, or one starts to fall: the system is skipped otherwise (its parameters cost about two thousand instructions a tick).
 fn flights(q: Query<(), With<Flying>>, stuck: Res<StuckIndex>) -> bool {
@@ -228,6 +230,10 @@ pub fn launch(world: &mut World, flight: Flight, at: Vec3, velocity: Vec3, owner
     let id = flight.id;
     let e = world.spawn((Pos(at), Vel(velocity), flight, Projectile { owner, age: 0, left_owner: false, expires: 0 }, Flying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, id);
+    // `ShulkerBullet` constructor: `noPhysics = true`.
+    if flight.bullet {
+        world.entity_mut(e).insert(crate::arrow_more::NoPhysics(true));
+    }
     if let (Order::Hurting, Some(Who::Entity(shooter))) = (flight.order, owner)
         && world.get_entity(shooter).is_ok()
     {
@@ -283,12 +289,13 @@ pub fn fly(
     mut wheel: ResMut<Wheel>,
     mut events: ResMut<Events>,
     mut stuck: ResMut<StuckIndex>,
+    mut arrow_rng: ResMut<crate::arrow_more::ArrowRng>,
     creatures: Query<&Bounds, With<Health>>,
     dodgers: Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
     hurts: Query<&crate::cow::HurtAt>,
-    potion: Query<&crate::effects::PotionId>,
+    potion: Query<&crate::arrow_more::ThrownItem>,
     healths: Query<&Health>,
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>), With<Flying>>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>), With<Flying>>,
     mut commands: Commands,
 ) {
     let mw = level.mw.0;
@@ -296,9 +303,13 @@ pub fn fly(
     for e in std::mem::take(&mut stuck.falling) {
         commands.entity(e).remove::<Stuck>().insert(Flying);
     }
-    for (e, mut pos, mut vel, mut p, f, born) in &mut q {
+    for (e, mut pos, mut vel, mut p, f, born, mut pierce, gate, open, crit, base_dmg, accel_of) in &mut q {
         if born.is_some_and(|b| b.0 == clock.0) {
             continue;
+        }
+        // `GateOpen` lasts one tick: the impact the mod let through is applied in it.
+        if open.is_some() {
+            commands.entity(e).remove::<crate::arrow_more::GateOpen>();
         }
         // `AbstractWindCharge.tick`: above the top of the world plus 30 it bursts where it is and is discarded, before it moves.
         if let OnHit::WindBurst { radius } = f.hit
@@ -318,7 +329,8 @@ pub fn fly(
             // `AbstractHurtingProjectile.applyInertia`: the push along the velocity, then the inertia.
             let v = vel.0;
             let len = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt().max(1.0e-9);
-            vel.0 = Vec3::new((v.x + v.x / len * f.accel) * f.inertia, (v.y + v.y / len * f.accel) * f.inertia, (v.z + v.z / len * f.accel) * f.inertia);
+            let accel = accel_of.map_or(f.accel, |a| a.0);
+            vel.0 = Vec3::new((v.x + v.x / len * accel) * f.inertia, (v.y + v.y / len * accel) * f.inertia, (v.z + v.z / len * accel) * f.inertia);
         }
         let (original, movement) = (pos.0, vel.0);
         let end = Vec3::new(original.x + movement.x, original.y + movement.y, original.z + movement.z);
@@ -338,8 +350,10 @@ pub fn fly(
         let margin = f64::from(((p.age as i32 - 2) as f32 / 20.0).clamp(0.0, 0.3));
         let area = bounds(original, f.size).expand_towards(vel.0).inflate(Vec3::new(1.0, 1.0, 1.0));
         let mut best: Option<(Who, Vec3, f64)> = None;
+        // A piercing arrow passes the creatures it has already gone through (`piercingIgnoreEntityIds`).
+        let ignored = |who: Who| matches!((who, pierce.as_deref()), (Who::Entity(c), Some(pl)) if pl.hit.contains(&c));
         let mut consider = |who: Who, b: Aabb| {
-            if Some(who) == p.owner && !p.left_owner || !b.intersects(area) {
+            if Some(who) == p.owner && !p.left_owner || !b.intersects(area) || ignored(who) {
                 return;
             }
             if let Some(at) = entity_hit(&level, b, original, stop, margin) {
@@ -358,8 +372,23 @@ pub fn fly(
         });
         on.for_near(original.x, original.z, reach, |pl| consider(Who::Player(pl.id), player_box(&pl)));
         if let Some((who, at, _)) = best {
+            // A mod's gate: the impact is announced and waits for `resolve_impact`, the arrow not moved.
+            if gate.is_some() && open.is_none() {
+                let hit = [at.x, at.y, at.z];
+                commands.queue(move |w: &mut World| crate::arrow_more::gate(w, e, Some(who), hit, None, None));
+                continue;
+            }
             // The projectile ends at the creature; the damage is queued with the shooter as the source.
             pos.0 = at;
+            // `AbstractArrow.onHitEntity`: the pierce is decided before the blow; a refused one ends the arrow here, with no blow.
+            let pierced = match (who, pierce.as_deref_mut()) {
+                (Who::Entity(t), Some(pl)) => Some(crate::arrow_more::take_pierce(pl, t)),
+                _ => None,
+            };
+            if pierced == Some(false) {
+                commands.entity(e).despawn();
+                continue;
+            }
             if let Who::Entity(t) = who
                 && dodgers.contains(t)
             {
@@ -371,9 +400,11 @@ pub fn fly(
                 continue;
             }
             let amount = match f.damage {
-                Damage::BySpeed(base) => (movement.length() * base).clamp(0.0, f64::from(i32::MAX)).ceil() as f32,
+                Damage::BySpeed(base) => (movement.length() * base_dmg.map_or(base, |b| b.0)).clamp(0.0, f64::from(i32::MAX)).ceil() as f32,
                 Damage::Fixed(a) | Damage::Owned(a) => a,
             };
+            // `AbstractArrow.onHitEntity`: a critical arrow adds its random part to the blow.
+            let amount = if crit.is_some_and(|c| c.0) { crate::arrow_more::critical_bonus(amount, &mut arrow_rng) } else { amount };
             // `WitherSkull.onHitEntity`: without a living owner the skull is a magic blow of 5.
             let amount = if f.wither && p.owner.is_none() { 5.0 } else { amount };
             let from = (original.x, original.z);
@@ -387,6 +418,9 @@ pub fn fly(
             }
             if let Who::Entity(t) = who {
                 events.projectile_hit.push(t);
+                // The health is read before the blow lands: a blow that leaves nothing kills (`killed` for `Kills`).
+                let killed = healths.get(t).is_ok_and(|h| h.0 <= amount);
+                commands.queue(move |w: &mut World| crate::arrow_more::on_hit(w, e, Some(who), amount, killed, None, None));
                 if let OnHit::Ignite(ticks) = f.hit {
                     commands.queue(move |w: &mut World| crate::cow::set_on_fire(w, t, ticks));
                 }
@@ -430,22 +464,31 @@ pub fn fly(
             }
             if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                 let (hit, owner) = (if let Who::Entity(t) = who { Some(t) } else { None }, p.owner);
-                commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, brews, owner));
+                commands.queue(move |w: &mut World| crate::effects::splash(w, at, hit, &brews, owner));
             }
             if f.hit.thrown() {
                 let (h, o, prev) = (f.hit, p.owner, original);
                 commands.queue(move |w: &mut World| crate::projectile_more::ends(w, h, at, prev, o));
             }
-            commands.entity(e).despawn();
+            if pierced != Some(true) {
+                commands.entity(e).despawn();
+            }
             continue;
         }
         match block {
-            Some((_, bpos, _)) => {
+            Some((_, bpos, normal)) if gate.is_some() && open.is_none() => {
+                let (cell, hit) = ([bpos.x, bpos.y, bpos.z], [stop.x, stop.y, stop.z]);
+                commands.queue(move |w: &mut World| crate::arrow_more::gate(w, e, None, hit, Some(cell), Some(normal)));
+                continue;
+            }
+            Some((_, bpos, normal)) => {
                 // `AbstractArrow.onHitBlock`: back off the face by 0.05 along each axis it moved on, stop, and stick.
                 pos.0 = back_off(stop, movement);
                 vel.0 = Vec3::ZERO;
                 if f.sticks {
-                    let at = [bpos.x, bpos.y, bpos.z];
+                    let cell = [bpos.x, bpos.y, bpos.z];
+                    commands.queue(move |w: &mut World| crate::arrow_more::on_hit(w, e, None, 0.0, false, Some(cell), Some(normal)));
+                    let at = cell;
                     // Its life is counted in its own time (a projectile in a chunk nobody simulates does not age).
                     p.expires = clock.of(e) + LIFE;
                     wheel.push(clock.at(e, p.expires), e, Due::Expire);
@@ -468,7 +511,7 @@ pub fn fly(
                     }
                     if let Some(brews) = splash_of(f.hit, potion.get(e).ok()) {
                         let (at, owner) = (pos.0, p.owner);
-                        commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, brews, owner));
+                        commands.queue(move |w: &mut World| crate::effects::splash(w, at, None, &brews, owner));
                     }
                     if matches!(f.hit, OnHit::LingeringPotion) {
                         let at = pos.0;
@@ -582,11 +625,11 @@ fn wither_hit(w: &mut World, t: Entity) {
         crate::effects::add(w, t, crate::effects::Kind::Wither, 1, ticks);
     }
 }
-/// The brews a thrown potion splashes: its own `OnHit::Splash`, or the table's for its `PotionId`.
-fn splash_of(hit: OnHit, id: Option<&crate::effects::PotionId>) -> Option<&'static [crate::effects::Brew]> {
+/// The brews a thrown potion splashes: its own `OnHit::Splash`, or all the contents of its item (potion and custom effects).
+fn splash_of(hit: OnHit, stack: Option<&crate::arrow_more::ThrownItem>) -> Option<Vec<crate::effects::Brew>> {
     match hit {
-        OnHit::Splash(brews) => Some(brews),
-        OnHit::Potion => id.and_then(|p| crate::effects::potion_brews(p.0)),
+        OnHit::Splash(brews) => Some(brews.to_vec()),
+        OnHit::Potion => stack.map(|t| crate::effects::contents_brews(&t.0)).filter(|b| !b.is_empty()),
         _ => None,
     }
 }
@@ -599,25 +642,29 @@ fn explode_hit(w: &mut World, b: Blast, blue: bool) {
     }
 }
 /// `ThrownLingeringPotion.onHit` (`AreaEffectCloud`: radius 3, -0.5 a use, 600 ticks, wait 10; `radiusPerTick` = -radius / duration).
-const LINGERING_CLOUD: crate::effect_cloud::EffectCloud = crate::effect_cloud::EffectCloud {
-    radius: 3.0,
-    radius_per_tick: -3.0 / 600.0,
-    radius_on_use: -0.5,
-    duration_on_use: 0,
-    age: 0,
-    wait: 10,
-    duration: 600,
-    reapplication_delay: 20,
-    duration_scale: 1.0,
-    hidden: &[],
-    ambient: &[],
-    owner: None,
-};
-/// A cloud of the flask's potion where it broke; a flask without a `PotionId` makes none.
-fn linger(w: &mut World, e: Entity, at: Vec3) {
-    if let Some(p) = w.get::<crate::effects::PotionId>(e).copied() {
-        crate::effect_cloud::spawn(w, [at.x, at.y, at.z], p, LINGERING_CLOUD);
+fn lingering_cloud(potion: &'static str) -> crate::effect_cloud::CloudSpec {
+    crate::effect_cloud::CloudSpec {
+        radius: 3.0,
+        radius_per_tick: -3.0 / 600.0,
+        radius_on_use: -0.5,
+        wait: 10,
+        duration: 600,
+        reapplication: 20,
+        potion,
+        ..crate::effect_cloud::CloudSpec::new(3.0, potion, None)
     }
+}
+/// A cloud of the flask's contents where it broke: its potion, its custom effects and colour; a flask with none of them makes none.
+fn linger(w: &mut World, e: Entity, at: Vec3) {
+    let Some(stack) = w.get::<crate::arrow_more::ThrownItem>(e).map(|t| t.0.clone()) else { return };
+    let name = stack.potion().and_then(crate::effects::potion_name);
+    let custom = crate::effects::custom_brews(&stack);
+    let color = crate::effects::custom_color(&stack);
+    if name.is_none() && custom.is_empty() && color.is_none() {
+        return;
+    }
+    let spec = crate::effect_cloud::CloudSpec { custom, color, ..lingering_cloud(name.unwrap_or("")) };
+    crate::cloud_tick::spawn(w, at, spec);
 }
 /// `WitherSkull.onHitEntity`: the living owner heals 5 when its skull kills.
 fn heal_owner(w: &mut World, o: Entity, amount: f32) {
@@ -626,11 +673,11 @@ fn heal_owner(w: &mut World, o: Entity, amount: f32) {
         h.0 = (h.0 + amount).min(max);
     }
 }
-/// A potion a player throws (the player is outside the ECS): its owner, its id, a splash or a lingering flask.
-pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, potion: crate::effects::PotionId, lingering: bool) -> Entity {
+/// A potion a player throws (the player is outside the ECS): its owner, its item (`ThrownItem`), a splash or a lingering flask.
+pub fn throw_potion(w: &mut World, owner: u32, at: Vec3, velocity: Vec3, stack: horizon_client_lib::items::ItemStack, lingering: bool) -> Entity {
     let flight = if lingering { Flight::LINGERING_POTION } else { Flight::POTION };
     let e = launch(w, flight, at, velocity, Some(Who::Player(owner)));
-    w.entity_mut(e).insert(potion);
+    w.entity_mut(e).insert(crate::arrow_more::ThrownItem(stack));
     e
 }
 /// The same effect on a player (`effects::add_player`, its end counted from now).

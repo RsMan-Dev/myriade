@@ -48,7 +48,7 @@ impl Game<'_> {
         let speed = self.remote_attribute_value("minecraft:movement_speed", values);
         let jump = self.remote_attribute_value("minecraft:jump_strength", values);
         let nameplate = self.remote_nameplate_values(values);
-        let Some(m) = self.mob_index.get_mut(&mut self.mobs, id as u32) else {
+        let Some(m) = self.remote_index.get_mut(&mut self.remote_entities, id as u32) else {
             if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id as u32) {
                 if let Some(value) = nameplate.name_tag {
                     a.nameplate.name_tag = Some(value);

@@ -8,7 +8,9 @@ use common::*;
 use horizon_core::geometry::{trig, Vec3};
 use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_ecs_proto::cow::{Herd, Pos};
-use horizon_ecs_proto::fishing_hook::{cast, reel, Hook, Phase, Target};
+use horizon_ecs_proto::fishing_hook::{cast, pull_offset, Hook, Phase, Target};
+use horizon_ecs_proto::hook_extract::retrieve;
+use horizon_ecs_proto::targeting::Who;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::host_out::HostEvent;
 
@@ -215,7 +217,7 @@ fn floating_follows_the_vanilla_draws_in_the_rain_and_a_closed_sky() {
     floating_follows_the_vanilla_draws(true, true);
 }
 
-/// The reel during the bite is a catch (one `FishingCatch` for the owner, rod damage 1); the reel before it is nothing (no catch, rod
+/// The reel during the bite is a catch (one catch for the owner, rod damage 1); the reel before it is nothing (no catch, rod
 /// damage 0). The hook is taken back in both cases.
 #[test]
 fn reel_in_the_bite_catches_and_outside_it_catches_nothing() {
@@ -230,22 +232,19 @@ fn reel_in_the_bite_catches_and_outside_it_catches_nothing() {
     stand(&mut h, at);
     h.tick();
     drain(&mut h);
-    reel(&mut h.world, 1);
-    let early = drain(&mut h);
-    assert!(!early.iter().any(|e| matches!(e, HostEvent::FishingCatch { .. })), "a catch before the bite");
-    assert!(early.iter().any(|e| matches!(e, HostEvent::HookRetrieved { owner: 1, damage: 0 })));
+    let early = retrieve(&mut h.world, hook, 1);
+    assert!(!early.caught, "a catch before the bite");
+    assert_eq!(early.damage_item, 0);
     assert!(h.world.get_entity(hook).is_err(), "the hook is taken back");
 
     let mut h = Herd::with_slab(16, true, false);
     lake(&mut h);
     stand(&mut h, at);
-    cast(&mut h.world, 1, at, Vec3::ZERO, 0, 0, SEED);
+    let hook = cast(&mut h.world, 1, at, Vec3::ZERO, 0, 0, SEED);
     until_bite(&mut h, at).expect("a bite within 800 ticks");
-    reel(&mut h.world, 1);
-    let bitten = drain(&mut h);
-    let catches = bitten.iter().filter(|e| matches!(e, HostEvent::FishingCatch { owner: 1, .. })).count();
-    assert_eq!(catches, 1, "one catch in the bite");
-    assert!(bitten.iter().any(|e| matches!(e, HostEvent::HookRetrieved { owner: 1, damage: 1 })));
+    let bitten = retrieve(&mut h.world, hook, 1);
+    assert!(bitten.caught, "one catch in the bite");
+    assert_eq!(bitten.damage_item, 1);
 }
 
 /// A hook that hits a cow is hooked to it and follows it; the reel pulls the cow towards the owner by 0.1 of the offset from the hook
@@ -279,11 +278,11 @@ fn reel_pulls_a_hooked_creature_towards_the_owner() {
     tick_pinned(&mut h, cow, &at_rest);
     let at = h.world.get::<Pos>(hook).unwrap().0;
     drain(&mut h);
-    reel(&mut h.world, 1);
-    let out = drain(&mut h);
+    let got = retrieve(&mut h.world, hook, 1);
     let k = 0.1;
     let want = [(owner.x - at.x) * k, (owner.y - at.y) * k, (owner.z - at.z) * k];
-    assert!(out.iter().any(|e| matches!(e, HostEvent::PullEntity { entity, velocity } if *entity == cow && *velocity == want)), "pull {want:?}");
-    assert!(out.iter().any(|e| matches!(e, HostEvent::HookRetrieved { owner: 1, damage: 5 })));
+    assert_eq!(got.pulled, Some(Who::Entity(cow)));
+    assert_eq!(pull_offset(&h.world, 1, at), want, "pull {want:?}");
+    assert_eq!(got.damage_item, 5);
     assert!(h.world.get_entity(hook).is_err(), "the hook is taken back");
 }

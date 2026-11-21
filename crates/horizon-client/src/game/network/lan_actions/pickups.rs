@@ -17,6 +17,9 @@ impl Game<'_> {
                 horizon_client::lan::playerdata::uuid_ints(g.uuid),
             )
         };
+        if self.ecs.is_active() {
+            return self.ecs_guest_pickups(gi);
+        }
         if mode == SPECTATOR || self.dropped.is_empty() {
             return;
         }
@@ -159,81 +162,80 @@ impl Game<'_> {
         }
     }
 
-    /// `Player.aiStep` touching arrows in the guest's box grown by (1, 0.5, 1):
-    /// `AbstractArrow.playerTouch` for a guest, as `touch_arrows` does for the
-    /// host's player. The guest's own client plays the pickup sound
-    /// (`handleTakeItemEntity`).
-    pub(super) fn guest_arrows(&mut self, gi: usize) {
-        use horizon_client::arrows::Touch;
+    /// `guest_pickups` for the stacks P holds: P takes those in reach of the guest's feet, the guest's inventory takes what it can, and
+    /// the rest lies at the feet again (a new entity: the id changes).
+    fn ecs_guest_pickups(&mut self, gi: usize) {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let (conn, id, at, creative, unable, dims, player, name) = {
-            let g = &host.hub.guests[gi];
-            (
-                g.conn,
-                g.entity_id,
-                g.position,
-                g.creative(),
-                g.spectator() || g.dead || g.health <= 0.0,
-                g.dimensions(),
-                g.uuid,
-                g.name.clone(),
-            )
-        };
-        if unable || self.creatures.projectiles.is_empty() {
+        let g = &host.hub.guests[gi];
+        if g.game_mode == SPECTATOR {
             return;
         }
-        let w = f64::from(dims.width) / 2.0;
-        let reach = Aabb::new(
-            Vec3::new(at[0] - w, at[1], at[2] - w),
-            Vec3::new(at[0] + w, at[1] + f64::from(dims.height), at[2] + w),
-        )
-        .inflate(Vec3::new(1.0, 0.5, 1.0));
-        let mut projectiles = self.creatures.projectiles.lift();
-        #[cfg(test)]
-        crate::game::entity::taken_pass_tests::after_take(self);
-        let mut picked = Vec::new();
-        projectiles.retain(|shot| {
-            let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {
-                return true;
-            };
-            let p = shot.position;
-            let bounds = Aabb::new(
-                Vec3::new(p.x - 0.25, p.y, p.z - 0.25),
-                Vec3::new(p.x + 0.25, p.y + 0.5, p.z + 0.25),
-            );
-            if !bounds.intersects(reach) {
-                return true;
+        let (conn, position, id) = (g.conn, g.position, g.entity_id);
+        let taken = self.ecs_with(|ecs, mw| ecs.pickup(mw, position, 1.5));
+        let mut counts = Vec::new();
+        for (item, stack, at) in taken {
+            let kind = stack.item.clone();
+            let count = stack.count;
+            let rest = self
+                .as_guest(conn, |g| g.native_pickup_insert(&stack))
+                .unwrap_or(Some(stack));
+            let left = rest.as_ref().map_or(0, |r| r.count);
+            if let Some(rest) = rest {
+                self.ecs_drop(rest, at, [0.0; 3]);
             }
-            let taken = match a.player_touch(creative) {
-                Touch::Ignore => false,
-                Touch::Take => true,
-                // Inventory.add: a creative player takes what does not fit.
-                Touch::Give(stack) => {
-                    self.as_guest(conn, |g| g.add_stack_to_inventory(stack))
-                        .flatten()
-                        .is_none()
-                        || creative
-                }
-            };
-            if taken {
-                picked.push(shot.clone());
+            let got = count.saturating_sub(left);
+            if got == 0 {
+                continue;
             }
-            !taken
-        });
-        self.creatures.projectiles.restore(
-            projectiles,
-            horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
-        for shot in picked {
-            if let Some(arrow) = shot.arrow.as_ref() {
-                self.native_player_pickup_arrow(player, &name, shot.id, &arrow.pickup_item.item);
-            }
-            if let Some(host) = self.lan.as_ref() {
-                host.hub.take_item(shot.id as i32, id, 1, at);
+            self.as_guest(conn, |g| g.award_stat("picked_up", &kind, got as i32));
+            self.native_entity_left(item);
+            counts.push((item, got));
+        }
+        if let Some(host) = self.lan.as_ref() {
+            for (item, count) in counts {
+                host.hub.take_item(item as i32, id, count as i32, position);
             }
         }
+    }
+
+    /// `guest_orbs` for the orbs P holds: one of those in reach of the guest, at random; P gives its value, the guest its points.
+    fn ecs_guest_orbs(&mut self, gi: usize) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let g = &host.hub.guests[gi];
+        let (conn, id, at, player, name) = (g.conn, g.entity_id, g.position, g.uuid, g.name.clone());
+        let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, at, 1.0));
+        if touching.is_empty() {
+            return;
+        }
+        let pick = self.world.random.next_int_bound(touching.len() as i32).unwrap_or(0) as usize;
+        let orb = touching[pick];
+        let orb_at = self.ecs.position(orb).unwrap_or(at);
+        let Some(value) = self.ecs_with(|ecs, mw| ecs.collect_orb(mw, orb)) else {
+            return;
+        };
+        if !self.ecs.exists(orb) {
+            self.native_entity_left(orb);
+        }
+        if let Some(host) = self.lan.as_mut() {
+            host.play.entry(conn).or_default().xp_delay = 2;
+        }
+        self.native_player_exp_cooldown_change(player, &name, 2);
+        if let Some(host) = self.lan.as_ref() {
+            host.hub.take_item(orb as i32, id, 1, at);
+        }
+        let mut random = horizon_client::random_source::create();
+        let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
+        self.audio.play("minecraft:entity.experience_orb.pickup", Some(orb_at), 0.1, pitch);
+        self.as_guest(conn, |game| {
+            let rest = game.mending(value);
+            if rest > 0 {
+                game.give_experience_points(rest.min(i32::MAX as u32) as i32);
+            }
+        });
     }
 
     /// `Player.tick`'s takeXpDelay and `Player.aiStep`'s touch of the
@@ -263,6 +265,9 @@ impl Game<'_> {
         }
         if unable || delayed {
             return;
+        }
+        if self.ecs.is_active() {
+            return self.ecs_guest_orbs(gi);
         }
         let area = match vehicle.and_then(|v| self.guest_target_box(gi, v as i32)) {
             Some(vehicle) => own.union_bounds(vehicle).inflate(Vec3::new(1.0, 0.0, 1.0)),

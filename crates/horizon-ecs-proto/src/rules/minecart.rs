@@ -7,6 +7,9 @@ pub const SLIDE: f64 = 0.0078125;
 pub const RIDDEN_FRICTION: f64 = 0.997;
 pub const TRACK_FRICTION: f64 = 0.96;
 pub const WATER_DRAG: f64 = 0.95;
+/// The reach of a cart's pickup and push: `pushAndPickupEntities` inflates the cart's box by 0.2 on x and z (the jar's `double` of the 0.2
+/// literal, y not). The host's search bound for neighbours is another thing.
+pub const CART_REACH: f64 = 0.2_f32 as f64;
 const WIDTH: f64 = 0.98_f32 as f64;
 const HEIGHT: f64 = 0.7_f32 as f64;
 
@@ -201,8 +204,8 @@ pub fn fall_step(fall: &mut f64, moved_y: f64, in_water: bool, on_ground: bool, 
     blast
 }
 
-/// `AbstractMinecart.push` of a non-cart entity at `feet`: the horizontal push the entity gets from a cart at `cart`, 0.05 at most (the
-/// cart keeps a quarter of it). `None` when the entity stands on the cart's centre.
+/// `AbstractMinecart.push(Entity)` of a non-cart entity at `feet` against a cart at `cart`: the jar's `dx`, `dz`, 0.05 at most. The cart is
+/// pushed by their negation, the entity by a quarter of them. `None` when the entity stands on the cart's centre.
 pub fn push_from(feet: Vec3, cart: Vec3) -> Option<[f64; 2]> {
     let (xa, za) = (feet.x - cart.x, feet.z - cart.z);
     let dd = xa * xa + za * za;
@@ -263,5 +266,78 @@ pub fn blast_power(speed_sqr: f64, r: f64) -> f32 {
 pub fn container_signal(fractions: &[f32], slots: usize) -> i32 {
     let total = fractions.iter().sum::<f32>() / slots.max(1) as f32;
     (total * 14.0).floor() as i32 + i32::from(total > 0.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FLAT: Rail = Rail { exits: [[-1, 0, 0], [1, 0, 0]], powered: None };
+
+    #[test]
+    fn reach_is_the_jar_inflate() {
+        assert_eq!(CART_REACH, f64::from(0.2_f32));
+    }
+
+    #[test]
+    fn a_flat_unpowered_cart_at_rest_parks() {
+        assert!(can_park(Some(&FLAT), Vec3::ZERO, false, Vec3::ZERO));
+        assert!(!can_park(Some(&FLAT), Vec3::new(0.1, 0.0, 0.0), false, Vec3::ZERO));
+        assert!(!can_park(Some(&FLAT), Vec3::ZERO, true, Vec3::ZERO));
+        assert!(!can_park(None, Vec3::ZERO, false, Vec3::ZERO));
+    }
+
+    #[test]
+    fn a_rising_or_lit_rail_does_not_park() {
+        let slope = Rail { exits: [[-1, -1, 0], [1, 0, 0]], powered: None };
+        let lit = Rail { exits: [[-1, 0, 0], [1, 0, 0]], powered: Some(true) };
+        assert!(!can_park(Some(&slope), Vec3::ZERO, false, Vec3::ZERO));
+        assert!(!can_park(Some(&lit), Vec3::ZERO, false, Vec3::ZERO));
+    }
+
+    #[test]
+    fn a_track_slowdown_keeps_96_percent_and_water_drags_more() {
+        let v = slowdown(Vec3::new(1.0, 0.5, 0.0), false, false);
+        assert!((v.x - 0.96).abs() < 1e-12 && v.y == 0.0);
+        let w = slowdown(Vec3::new(1.0, 0.0, 0.0), false, true);
+        assert!((w.x - 0.96 * 0.95).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_flat_cart_moves_along_its_rail_and_is_clamped() {
+        let mut pos = Vec3::new(0.5, 64.0, 0.5);
+        let mut vel = Vec3::new(0.3, 0.0, 0.0);
+        let d = along_track(Track::default(), &mut pos, &mut vel, [0, 64, 0], &FLAT, [0.0; 2], false);
+        assert!((d.x - 0.3).abs() < 1e-12 && d.z == 0.0);
+        assert_eq!(pos, Vec3::new(0.5, 64.0, 0.5));
+    }
+
+    #[test]
+    fn a_rising_rail_slides_the_cart_back_and_lifts_it() {
+        let slope = Rail { exits: [[-1, -1, 0], [1, 0, 0]], powered: None };
+        let mut pos = Vec3::new(0.5, 64.0, 0.5);
+        let mut vel = Vec3::ZERO;
+        let d = along_track(Track::default(), &mut pos, &mut vel, [0, 64, 0], &slope, [0.0; 2], false);
+        assert!((d.x + 2.0 * SLIDE).abs() < 1e-12);
+        assert_eq!(pos.y, 65.0);
+    }
+
+    #[test]
+    fn a_curve_keeps_its_speed_on_the_new_line() {
+        let curve = Rail { exits: [[-1, 0, 0], [0, 0, 1]], powered: None };
+        let mut pos = Vec3::new(0.5, 64.0, 0.5);
+        let mut vel = Vec3::new(0.2, 0.0, 0.0);
+        along_track(Track::default(), &mut pos, &mut vel, [0, 64, 0], &curve, [0.0; 2], false);
+        assert!((vel.horizontal().length() - 0.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_fall_of_three_blocks_blasts_a_tnt_cart() {
+        let mut fall = 0.0;
+        let blast = fall_step(&mut fall, -4.0, false, true, true);
+        assert!(fall == 0.0 && blast.is_some_and(|b| (b - 0.16).abs() < 1e-12));
+        let mut short = 0.0;
+        assert!(fall_step(&mut short, -2.0, false, true, true).is_none());
+    }
 }
 

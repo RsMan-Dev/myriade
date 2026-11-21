@@ -4,8 +4,8 @@
 //! vanilla lets nobody ride.
 use super::tests::server_game;
 use super::*;
-use crate::game::commands::{OtherEntity, Target};
-use crate::game::minecarts::{CartKind, Minecart};
+use crate::game::commands::Target;
+use crate::game::minecarts::CartKind;
 use horizon_client::motion::PlayerMotion;
 
 /// `EntityTypes`' `passengerAttachments` of 26.3: the rider's attachment point
@@ -33,12 +33,8 @@ fn mob_at(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3]) {
 
 /// A rideable minecart with id `id` at `at`.
 fn cart_at(game: &mut Game<'_>, id: u32, at: [f64; 3]) {
-    game.carts.clear();
-    game.carts.push(Minecart::new(
-        id,
-        CartKind::Rideable,
-        Vec3::new(at[0], at[1], at[2]),
-    ));
+    game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, CartKind::Rideable.id(), at, 0.0, &mut || id))
+        .expect("a rideable minecart spawns");
 }
 
 /// `Entity.positionRider`: the player sits at the vehicle type's own passenger
@@ -119,19 +115,7 @@ fn a_marker_takes_no_rider() {
         return;
     };
     for (id, kind) in [(9, "minecraft:marker"), (10, "minecraft:item_display")] {
-        game.others.push(OtherEntity {
-            id,
-            kind: kind.into(),
-            position: Vec3::new(0.5, 64.0, 0.5),
-            yaw: 0.0,
-            pitch: 0.0,
-            item_transformation: None,
-            interaction: None,
-            knot_check: None,
-            eye: None,
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-        });
+        game.load_other_as(id, kind, [0.5, 64.0, 0.5]);
     }
     let failed = game
         .ride_mount(Target::Player, Target::Other(9))

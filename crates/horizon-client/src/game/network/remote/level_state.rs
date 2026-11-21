@@ -162,7 +162,7 @@ impl Game<'_> {
             self.world.game_time = time;
             self.world.day_time = day;
             self.world.weather = weather;
-            self.mobs.clear();
+            self.remote_entities.clear();
             self.clear_remote_objects();
             self.clear_remote_projectiles();
             self.dropped.clear();

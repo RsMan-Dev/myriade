@@ -1,7 +1,6 @@
 //! Landing impacts for falling blocks, before their placement/drop decision,
 //! and `Block.fallOn` for every entity that isn't living.
-use super::{FallingBlock, Game, Landing};
-use horizon_client::falling_block;
+use super::Game;
 use horizon_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     position::BlockPos,
@@ -14,7 +13,6 @@ use horizon_world::{
         LandingSound,
     },
     entity_obstruction::EntityIdentity,
-    level::LevelEvent,
     registry::BlockStateId,
 };
 
@@ -193,213 +191,20 @@ impl Game<'_> {
         }
         landing.fall_damage
     }
-    /// `FallingBlockEntity.causeFallDamage`: impact damage and anvil wear,
-    /// before block effects and portal handling can transfer the entity.
-    pub(super) fn falling_block_impact(&mut self, block: &mut FallingBlock, distance: f64) {
-        let name = self.res.facts().get(block.state).name.clone();
-        let anvil = name.ends_with("anvil");
-        let stalactite = matches!(
-            &*name,
-            "minecraft:pointed_dripstone" | "minecraft:sulfur_spike"
-        );
-        if let Some(impact) = block.damage.impact(distance) {
-            if impact.amount > 0.0 {
-                let mob_kind = if stalactite {
-                    horizon_client::mobs::DamageKind::FallingStalactite
-                } else if anvil {
-                    horizon_client::mobs::DamageKind::FallingAnvil
-                } else {
-                    horizon_client::mobs::DamageKind::FallingBlock
-                };
-                let attack = horizon_client::health::Attack {
-                    attacker: block.id as i32,
-                    direct: Some(block.id as i32),
-                    position: Some([block.position.x, block.position.y, block.position.z]),
-                    ..Default::default()
-                };
-                falling_block::hurt_mobs_with_kind(
-                    crate::game::entity::damage_level_of!(self, &attack),
-                    &mut self.mobs,
-                    block.position,
-                    impact.amount,
-                    mob_kind,
-                );
-                // Enderman.hurtServer: a falling block is no living attacker.
-                if let Err(e) = self.settle_hurt_teleports() {
-                    log::warn!("Horizon: falling block: enderman teleport: {e}");
-                }
-                let kind = if stalactite {
-                    "minecraft:falling_stalactite"
-                } else if anvil {
-                    "minecraft:falling_anvil"
-                } else {
-                    "minecraft:falling_block"
-                };
-                self.falling_hurt_player(block.id, block.position, impact.amount, kind);
-                if let Some(host) = self.lan.as_ref() {
-                    let bounds = falling_block::bounds(block.position);
-                    let conns = host
-                        .hub
-                        .guests
-                        .iter()
-                        .filter(|g| {
-                            host.hub.here(g)
-                                && g.loaded
-                                && !g.dead
-                                && !g.creative()
-                                && !g.spectator()
-                                && bounds.intersects(super::lan_mobs::guest_bounds(g))
-                        })
-                        .map(|g| g.conn)
-                        .collect::<Vec<_>>();
-                    for conn in conns {
-                        self.guest_hit_by(conn, |g| {
-                            g.falling_hurt_player(block.id, block.position, impact.amount, kind)
-                        });
-                    }
-                }
-            }
-            // `this.random.nextFloat()`: the falling block's own (unseeded)
-            // random, not the level's.
-            if anvil
-                && impact.wear_chance > 0.0
-                && horizon_client::random_source::entity().next_float() < impact.wear_chance
-                && let Some(mut state) = self.pack.assets.registry.state(block.state).cloned()
-            {
-                if falling_block::wear_anvil(&mut state) {
-                    block.state = self
-                        .pack
-                        .assets
-                        .registry
-                        .resolve(&state)
-                        .unwrap_or(block.state);
-                } else {
-                    block.damage.cancel_drop = true;
-                }
-            }
-        }
+    /// `HostEvent::Landed` of a non-living body of P (primed TNT, falling block) that fell `fall`: `fallOn` of the block under it, then HIT_GROUND.
+    pub(in crate::game) fn ecs_landed(&mut self, id: u32, at: [f64; 3], fall: f64) {
+        let at = horizon_core::geometry::Vec3::new(at[0], at[1], at[2]);
+        let bounds = horizon_client::falling_block::bounds(at);
+        self.non_living_fall_on(id, at, bounds, fall);
+        self.post_landing_event(at, bounds, false);
     }
-
-    /// `FallingBlockEntity.tick`: finish a landing, including the placed block
-    /// entity and the carried `TileEntityData` applied through loadWithComponents.
-    pub(super) fn finish_falling_block(&mut self, block: FallingBlock, pos: [i32; 3]) {
-        let name = self.res.facts().get(block.state).name.clone();
-        let anvil = name.ends_with("anvil");
-        // Fallable.onBrokenAfterFall: the anvil's, the pointed dripstone's and
-        // the sulfur spike's level event.
-        let sound_event = match &*name {
-            "minecraft:pointed_dripstone" => Some(1045),
-            "minecraft:sulfur_spike" => Some(1052),
-            _ if anvil => Some(1029),
-            _ => None,
-        };
-        if block.damage.cancel_drop {
-            if let Some(id) = sound_event {
-                self.level_events.push(LevelEvent::LevelEvent {
-                    id,
-                    pos: BlockPos::new(pos[0], pos[1], pos[2]),
-                    data: 0,
-                    source: None,
-                });
-            } else if self
-                .res
-                .facts()
-                .get(block.state)
-                .name
-                .starts_with("minecraft:suspicious_")
-            {
-                // BrushableBlock.onBrokenAfterFall.
-                let at = BlockPos::new(pos[0], pos[1], pos[2]);
-                self.level_events.push(LevelEvent::LevelEvent {
-                    id: 2001,
-                    pos: at,
-                    data: block.state.0 as i32,
-                    source: None,
-                });
-                self.level_events.push(LevelEvent::GameEvent {
-                    pos: at,
-                    event: "minecraft:block_destroy",
-                    state: None,
-                });
-            }
-            return;
-        }
-        let landing = self.with_level(|b, level, ticks| {
-            b.falling_block_landed(
-                level,
-                ticks,
-                BlockPos::new(pos[0], pos[1], pos[2]),
-                block.state,
-                false,
-            )
-        });
-        if let Landing::Placed(state) = landing {
-            let name = self.res.facts().get(state).name.clone();
-            // LevelChunk.setBlockState creates the new block entity even when
-            // the falling entity has no supplied data.
-            let key = (pos[0], pos[1], pos[2]);
-            if !self.world.block_entities.stateful_entity(state.0)
-                && let Some(entity) = self.new_block_entity_for_state(state)
-            {
-                self.world.block_entities.insert(key, entity);
-            }
-            if let Some(entity) = self.world.block_entities.get(&key) {
-                let mut tag = horizon_client::save::block_entity_encode::encode(key, entity, &name);
-                // FallingBlockEntity.tick copies each supplied field over the
-                // new block entity's saved defaults before loadWithComponents.
-                if let Some(horizon_core::nbt::Tag::Compound(carried)) = block
-                    .saved
-                    .as_ref()
-                    .and_then(|saved| saved.1.get("TileEntityData"))
-                    && let horizon_core::nbt::Tag::Compound(fields) = &mut tag
-                {
-                    fields.extend(carried.clone());
-                    self.load_block_entity_nbt(pos, &horizon_client::snbt::to_snbt(&tag));
-                }
-            }
-        }
-        // FallingBlockEntity.tick: the players tracking the entity are told to
-        // show the block for a moment, after the block update.
-        if let Landing::Placed(state) = landing
-            && block.id != 0
-            && let Some(host) = &self.lan
-        {
-            host.hub.send_to_tracking(
-                block.id as i32,
-                &horizon_protocol::packets::play::Clientbound::AddTransientBlock(
-                    horizon_protocol::packets::play::AddTransientBlock {
-                        pos,
-                        state: state.0 as i32,
-                    },
-                ),
-            );
-        }
-        if matches!(landing, Landing::Broken)
-            && block.drop_item
-            && self
-                .ui
-                .rules
-                .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
-        {
-            if let Some(id) = sound_event {
-                self.level_events.push(LevelEvent::LevelEvent {
-                    id,
-                    pos: BlockPos::new(pos[0], pos[1], pos[2]),
-                    data: 0,
-                    source: None,
-                });
-            }
-            // FallingBlockEntity.tick: spawnAtLocation, from where the entity
-            // came to rest (on top of a turtle egg, not inside its cell).
-            self.drop_falling_block(block.state, block.position);
-        }
-    }
-    fn falling_hurt_player(&mut self, entity: u32, position: Vec3, amount: f32, kind: &str) {
+    /// The hurt of a player by a falling block (`Hurt` of P): a falling block names no attacker, so none is set.
+    pub(in crate::game) fn falling_hurt_player(&mut self, position: Vec3, amount: f32, kind: &str) {
         if self.creative || self.spectator() {
             return;
         }
         if self.player.as_ref().is_none_or(|p| {
-            p.health.dead_or_dying() || !falling_block::bounds(position).intersects(p.bounds())
+            p.health.dead_or_dying() || !horizon_client::falling_block::bounds(position).intersects(p.bounds())
         }) {
             return;
         }
@@ -407,18 +212,15 @@ impl Game<'_> {
             return;
         };
         let attack = horizon_client::health::Attack {
-            attacker: entity as i32,
-            direct: Some(entity as i32),
             position: Some([position.x, position.y, position.z]),
             ..Default::default()
         };
         let outcome = self
-            .hurt_player_equipment(id, amount, None, false, entity as i32, false, &attack, None)
+            .hurt_player_equipment(id, amount, None, false, 0, false, &attack, None)
             .unwrap_or_default();
         if outcome.hurt {
             // LivingEntity.hurtServer: ENTITY_HURT_PLAYER, the falling block
-            // (`DamageSources.fallingBlock(this)` and the like) being both the
-            // causing and the direct entity.
+            // (`DamageSources.fallingBlock(this)` and the like) as the direct entity.
             let block = horizon_client::advancements::EntityView {
                 kind: "minecraft:falling_block".into(),
                 position: [position.x, position.y, position.z],
@@ -536,7 +338,7 @@ mod tests {
         *log.lock().unwrap() = Log::default();
     }
     fn hit(game: &mut Game<'_>) {
-        game.falling_hurt_player(241, Vec3::ZERO, 8.0, ANVIL);
+        game.falling_hurt_player(Vec3::ZERO, 8.0, ANVIL);
     }
     fn health(game: &Game<'_>) -> f32 {
         game.player.as_ref().unwrap().health.health()
@@ -546,7 +348,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "porté dans P : falling_land"]
     fn a_canceled_wear_leaves_the_helmet_and_its_share_of_the_hit() {
         with_player(|game, log| {
             start(game, log, Some(iron_helmet()));
@@ -577,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "porté dans P : falling_land"]
     fn the_answered_wear_runs_on_the_real_host_before_the_cooldown_refuses() {
         with_player(|game, log| {
             start(game, log, Some(iron_helmet()));
@@ -597,7 +399,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "porté dans P : falling_land"]
     fn a_helmet_the_hit_breaks_stops_protecting_in_that_hit() {
         with_player(|game, log| {
             let mut helmet = iron_helmet();
@@ -615,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "daily"]
+    #[ignore = "porté dans P : falling_land"]
     fn no_helmet_or_a_refused_hit_fires_no_helmet_wear() {
         with_player(|game, log| {
             start(game, log, None);

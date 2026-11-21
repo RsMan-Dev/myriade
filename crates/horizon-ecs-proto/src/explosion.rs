@@ -2,8 +2,8 @@
 //! `(pow^2 + pow) / 2 * 7 * diameter + 1` with `pow = (1 - distance / diameter) * exposure` (the share of the rays from a grid over their box
 //! that reach the centre unblocked) and are pushed away by `pow`; the blocks on 1 352 rays from the centre are broken while the ray's power
 //! (`radius * (0.7 + 0.6 * random)`, less `(resistance + 0.3) * 0.3` and 0.225 per 0.3-block step) lasts; with fire, a third of them that
-//! have air and a floor take fire. The blocks are asked as `BlockChanges` (applied at the next step). Not done: items and projectiles
-//! in the blast, the players' push, enchantment protections, the sounds and particles, the other blocks' own `onExplosionHit`.
+//! have air and a floor take fire. The blocks are asked as `BlockChanges` (applied at the next step). Boats and carts are hurt and pushed, the
+//! other entities without health are pushed (`blast_others`). Not done: the items' and orbs' damage, the redirected projectiles' owner, the players' push, enchantment protections, the sounds and particles, the other blocks' own `onExplosionHit`.
 //! A creeper's fuse (`Fuse`) is a deadline of the wheel (`Due::Fuse`), armed when its direction turns to +1: no tick per creeper.
 use crate::cow::*;
 use crate::goals::mob_griefing;
@@ -109,15 +109,21 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
         }
         let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
         let dist = distance_share(feet, at, diameter);
-        if dist > 1.0 || w.get::<Vel>(c).is_none() {
+        // `ItemEntity.ignoreExplosion`: a wind burst does not affect the blocklike entities, an item is one.
+        let vehicle = is_vehicle(w, c);
+        if dist > 1.0 || w.get::<crate::item::Item>(c).is_some() || (w.get::<Vel>(c).is_none() && !vehicle) {
             continue;
         }
         let exposure = seen_percent(&level, at, bounds);
-        let eye = feet.y + w.get::<crate::targeting::Eye>(c).map_or(0.0, |e| e.0);
+        let eye = feet.y + eye_offset(w, c, bounds);
         let (dx, dy, dz) = (feet.x - at.x, eye - at.y, feet.z - at.z);
         let l = (dx * dx + dy * dy + dz * dz).sqrt();
         let dir = if l < 1.0e-5 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
         let pow = push_power(dist, exposure);
+        if vehicle {
+            push_vehicle(w, c, dir, pow);
+            continue;
+        }
         if let Some(mut v) = w.get_mut::<Vel>(c) {
             v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);
         }
@@ -127,6 +133,97 @@ pub fn wind_burst(w: &mut World, at: Vec3, radius: f32, owner: Option<crate::tar
         crate::stand::unsettle(w, c);
     }
 }
+fn is_vehicle(w: &World, c: Entity) -> bool {
+    w.get::<crate::boat_state::BoatMarker>(c).is_some() || w.get::<crate::cart_state::Cart>(c).is_some()
+}
+/// Where an entity's eyes are above its feet: its `Eye`, else `EntityDimensions`' 0.85 of the box height (jar: no boat or cart overrides it).
+fn eye_offset(w: &World, c: Entity, bounds: Aabb) -> f64 {
+    w.get::<crate::targeting::Eye>(c).map_or((bounds.max_position().y - bounds.min_position().y) * EYE_SHARE, |e| e.0)
+}
+/// `Entity.push` on a vehicle: a cart at rest has no velocity yet, the push gives it one.
+fn push_vehicle(w: &mut World, c: Entity, dir: Vec3, pow: f64) {
+    if w.get_entity(c).is_ok() && w.get::<Vel>(c).is_none() {
+        w.entity_mut(c).insert(Vel(Vec3::ZERO));
+    }
+    if w.get_entity(c).is_ok() {
+        crate::vehicle_push::push(w, c, [dir.x * pow, dir.y * pow, dir.z * pow]);
+    }
+}
+/// The item entities an explosion's damage spares though it pushes them: the host lists those whose stack `canBeHurtBy` refuses the
+/// explosion (its data is the host's); `explode_full` takes the list away.
+#[derive(Resource, Default)]
+pub struct ExplosionSpared(pub Vec<Entity>);
+/// The projectiles an explosion redirects (`REDIRECTABLE_PROJECTILE`): their owner becomes the explosion's causing entity.
+const REDIRECTABLE: [&str; 3] = ["minecraft:fireball", "minecraft:wind_charge", "minecraft:breeze_wind_charge"];
+/// The share of its box height where an entity's eyes are, as `EntityDimensions.scalable` sets them (jar: 0.85).
+const EYE_SHARE: f64 = 0.85;
+/// `ServerExplosion.hurtEntities` for what has no health: every entity of the box is pushed by `pushFromExplosion`; a boat or a cart is
+/// hurt first (`VehicleEntity.hurtServer`, a TNT cart primes: `MinecartTNT.destroy`) unless `VehicleEntity.ignoreExplosion` spares it
+/// (the indirect source is a mob and mob griefing is off). `others` is the snapshot of the entities the index listed: one a hit removed
+/// is skipped, the rest are all visited. Not done: the items' and orbs' damage, the redirected projectiles' owner.
+fn blast_others(w: &mut World, b: &Blast, others: &[Entity], diameter: f64) {
+    let level = *w.resource::<Level>();
+    let indirect = b.owner.or(b.source.map(Who::Entity));
+    let mob_source = matches!(indirect, Some(Who::Entity(m)) if w.get::<Health>(m).is_some());
+    let spare_vehicles = mob_source && !mob_griefing(w);
+    let drops = w.get_resource::<crate::boat_hurt::EntityDrops>().is_none_or(|d| d.0);
+    for &c in others {
+        let boat = w.get::<crate::boat_state::BoatMarker>(c).is_some();
+        let vehicle = boat || w.get::<crate::cart_state::Cart>(c).is_some();
+        if vehicle && spare_vehicles {
+            continue;
+        }
+        let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
+        if !vehicle && w.get::<Vel>(c).is_none() {
+            continue;
+        }
+        let dist = distance_share(feet, b.at, diameter);
+        if dist > 1.0 {
+            continue;
+        }
+        let exposure = seen_percent(&level, b.at, bounds);
+        // A primed TNT is aimed at from its position, the rest from their eyes.
+        let up = if w.get::<crate::tnt::Primed>(c).is_some() { 0.0 } else { eye_offset(w, c, bounds) };
+        let (dx, dy, dz) = (feet.x - b.at.x, feet.y + up - b.at.y, feet.z - b.at.z);
+        let l = (dx * dx + dy * dy + dz * dz).sqrt();
+        let dir = if l < 1.0e-4 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
+        let pow = push_power(dist, exposure);
+        // `Projectile.setOwner(damageSource.getEntity())` for a redirectable projectile.
+        if w.get::<crate::projectile::Flight>(c).is_some_and(|f| REDIRECTABLE.contains(&f.id)) {
+            if let Some(mut p) = w.get_mut::<crate::projectile::Projectile>(c) {
+                p.owner = indirect;
+            }
+        }
+        if vehicle {
+            let amount = blast_damage(dist, exposure, diameter);
+            if boat {
+                // A host that runs the mods' `vehicle_damage` hook takes the blow and plays it through its ordinary hit (`BoatBlows`).
+                let routed = w.get_resource::<crate::boat_hurt::BoatBlows>().is_some_and(|q| q.host);
+                if routed {
+                    w.resource_mut::<crate::boat_hurt::BoatBlows>().queue.push((c, amount, indirect));
+                } else {
+                    let flags = crate::boat_hurt::HurtFlags { invulnerable: false, entity_drops: drops };
+                    crate::boat_hurt::hit(w, c, amount, indirect, false, flags);
+                }
+            } else {
+                crate::cart_variants::hit_cart_blast(w, c, amount, indirect, |w| {
+                    let mut rng = w.resource::<ExplosionRng>().0;
+                    let fuse = rng.next_int(TNT_CART_FUSE_DRAW) + rng.next_int(TNT_CART_FUSE_DRAW);
+                    w.resource_mut::<ExplosionRng>().0 = rng;
+                    fuse
+                });
+            }
+            push_vehicle(w, c, dir, pow);
+            continue;
+        }
+        if w.get_entity(c).is_ok() {
+            crate::vehicle_push::push(w, c, [dir.x * pow, dir.y * pow, dir.z * pow]);
+        }
+    }
+}
+/// `MinecartTNT.destroy`'s short fuse: two draws of `nextInt(20)` added (jar: bound 20).
+const TNT_CART_FUSE_DRAW: i32 = 20;
+
 pub fn explode(w: &mut World, b: Blast) {
     let griefs = mob_griefing(w);
     explode_with(w, b, griefs);
@@ -148,15 +245,26 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
     if b.radius < 1.0e-5 {
         return;
     }
+    crate::hanging::blast(w, b.at, b.radius, b.source.map(Who::Entity), breaks_blocks);
     let level = *w.resource::<Level>();
     let diameter = f64::from(b.radius * 2.0);
     // The creatures around.
     let mut near: Vec<Entity> = Vec::new();
+    let mut others: Vec<Entity> = Vec::new();
+    let indirect = b.owner.or(b.source.map(Who::Entity));
+    let mob_source = matches!(indirect, Some(Who::Entity(m)) if w.get::<Health>(m).is_some());
+    let griefs = mob_griefing(w);
     w.resource::<Index>().for_radius(b.at.x, b.at.z, diameter, |c| near.push(c));
     for c in near {
         // `ArmorStand.ignoreExplosion`: an invisible stand is no target.
         let spared = w.get::<crate::stand::Stand>(c).is_some_and(|s| crate::stand::ignores_explosion(*s));
-        if Some(c) == b.source || w.get::<Health>(c).is_none() || spared {
+        // `Warden.ignoreExplosion`: `isDiggingOrEmerging`.
+        let buried = w.get::<crate::behaviours::act_phase::ActPhase>(c).is_some_and(|a| matches!(a.phase, crate::behaviours::act_phase::Phase::Burrowing | crate::behaviours::act_phase::Phase::Emerging));
+        if Some(c) == b.source || spared || buried {
+            continue;
+        }
+        if w.get::<Health>(c).is_none() {
+            others.push(c);
             continue;
         }
         let (Some(feet), Some(bounds)) = (w.get::<Pos>(c).map(|p| p.0), w.get::<Bounds>(c).map(|x| x.0)) else { continue };
@@ -170,7 +278,12 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         let l = (dx * dx + dy * dy + dz * dz).sqrt();
         let dir = if l < 1.0e-4 { Vec3::ZERO } else { Vec3::new(dx / l, dy / l, dz / l) };
         let pow = push_power(dist, exposure);
-        w.resource_mut::<DamageQueue>().add_from(c, blast_damage(dist, exposure, diameter), Cause::Blast, (b.at.x, b.at.z));
+        // `ItemEntity.hurtServer`: no damage when a mob blasts with mob griefing off, nor to a stack that resists the blast; still pushed.
+        let item = w.get::<crate::item::Item>(c).is_some();
+        let spared_item = item && ((mob_source && !griefs) || w.get::<crate::item::BlastResist>(c).is_some() || w.get_resource::<ExplosionSpared>().is_some_and(|s| s.0.contains(&c)));
+        if !spared_item {
+            w.resource_mut::<DamageQueue>().add_from(c, blast_damage(dist, exposure, diameter), Cause::Blast, (b.at.x, b.at.z));
+        }
         if let Some(mut v) = w.get_mut::<Vel>(c) {
             v.0 = Vec3::new(v.0.x + dir.x * pow, v.0.y + dir.y * pow, v.0.z + dir.z * pow);
         }
@@ -179,6 +292,8 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         }
         crate::stand::unsettle(w, c);
     }
+    blast_others(w, &b, &others, diameter);
+    w.remove_resource::<ExplosionSpared>();
     // The players around.
     let tick = w.resource::<Clock>().0;
     let players: Vec<(u32, Aabb)> = {
@@ -207,7 +322,7 @@ fn explode_full(w: &mut World, b: Blast, breaks_blocks: bool, skull: bool) {
         for p in &blocks {
             // `TntBlock.wasExploded`: a TNT block the blast destroys is primed in its place.
             if Some(mw.world.block(p[0], p[1], p[2])) == tnt {
-                crate::tnt::spawn_from_blast(w, *p, &mut rng);
+                crate::tnt::spawn_from_blast_by(w, *p, &mut rng, b.owner);
             }
             w.resource_mut::<BlockChanges>().0.push((p[0], p[1], p[2], "minecraft:air"));
         }

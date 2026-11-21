@@ -347,3 +347,6 @@ pub mod warden_drop_invalid_target;
 pub mod warden_look_target;
 pub mod water_jump;
 pub mod work_swim;
+pub mod hook_wait;
+pub mod push_rules;
+pub mod seat_rules;

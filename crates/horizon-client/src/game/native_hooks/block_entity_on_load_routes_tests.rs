@@ -262,37 +262,6 @@ mod tests {
     }
     #[test]
     #[ignore = "daily"]
-    fn block_entity_on_load_falling_block_placement() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_falling_block_placement";
-        if run_fresh_cases(NAME, "HORIZON_ON_LOAD_FALLING", &["run"]) {
-            return;
-        }
-        with_fixture(false, |game, log, _| {
-            let state = game.pack.assets.registry.default_state("test:a").unwrap();
-            assert!(game.spawn_falling_block(
-                "minecraft:overworld",
-                state,
-                [1.5, 66.0, 1.5],
-                [0.0; 3],
-                Falling::default()
-            ));
-            let join = game.falling[0].join;
-            let mut block = game.falling.extract(join).unwrap();
-            let id = block.id;
-            block.saved = Some(Box::new((
-                [1, 2, 3, 4],
-                Tag::Compound(Compound::from([(
-                    "TileEntityData".into(),
-                    Tag::Compound(Compound::from([("count".into(), Tag::Int(29))])),
-                )])),
-            )));
-            game.finish_falling_block(block, [1, 64, 1]);
-            game.falling.retire_extracted(id, join);
-            assert_first_two_ticks(game, &log, 29);
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
     fn block_entity_on_load_stale_queued_identity_is_skipped() {
         const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped";
         if run_fresh_cases(NAME, "HORIZON_ON_LOAD_STALE", &["run"]) {

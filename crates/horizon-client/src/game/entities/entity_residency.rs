@@ -37,10 +37,10 @@ macro_rules! assign_resident_ids {
 }
 pub(crate) use assign_resident_ids;
 
-// Projectiles, knots and general rows have distinct Game/Parked field paths;
+// Projectiles and knots have distinct Game/Parked field paths;
 // keep binding and resolution on this one family list.
 macro_rules! resident_owners {
-    ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+, $($general:ident).+) => {
+    ($then:ident, $this:ident, $($projectiles:ident).+, $($knots:ident).+) => {
         $then! {
             ($this, $($projectiles).+)
             Mob => Mob: mobs,
@@ -62,7 +62,6 @@ macro_rules! resident_owners {
             Trident => Trident: tridents,
             Spawner => Spawner: ominous_spawners,
             Cloud => Cloud: breath_clouds,
-            General => General: $($general).+,
         }
     };
 }
@@ -256,8 +255,7 @@ impl Game<'_> {
         define_resident_access,
         self,
         creatures.projectiles,
-        resident_entities.knots,
-        resident_entities.general.rows
+        resident_entities.knots
     );
 }
 

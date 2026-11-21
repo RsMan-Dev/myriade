@@ -378,19 +378,7 @@ mod tests {
                 ));
             let stand = game.entity(13).unwrap();
             assert!(!stand.set_rotation(game, 30.0, 10.0));
-            game.others.push(super::super::commands::OtherEntity {
-                attachment_lifetime: Default::default(),
-                knot_check: None,
-                eye: None,
-                join: Default::default(),
-                item_transformation: None,
-                interaction: None,
-                id: 14,
-                kind: "minecraft:marker".into(),
-                position: Vec3::ZERO,
-                yaw: 60.0,
-                pitch: 0.0,
-            });
+            game.load_other_as(14, "minecraft:marker", [0.0; 3]);
             let marker = game.entity(14).unwrap();
             assert_eq!(marker.head_yaw(game), Some(0.0));
             assert!(!marker.set_head_yaw(game, 10.0));

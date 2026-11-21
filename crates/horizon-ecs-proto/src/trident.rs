@@ -40,6 +40,17 @@ pub struct Trident {
     pub pickup: Pickup,
     pub dealt: bool,
     pub stack: ItemStack,
+    /// Channeling: a blow in a storm strikes the victim with lightning (`trident_hit::channels`).
+    pub channeling: bool,
+}
+/// The damage a blow adds: `(stack, victim, the victim's species id)`, the host's table (`EnchantmentHelper.modifyDamage`).
+pub type BlowBonus = Box<dyn Fn(&ItemStack, Who, &str) -> f32 + Send + Sync>;
+#[derive(Resource)]
+pub struct HitBonus(pub BlowBonus);
+impl Default for HitBonus {
+    fn default() -> Self {
+        Self(Box::new(|_, _, _| 0.0))
+    }
 }
 /// In flight: the flight visits it each tick (zero-size, sparse).
 #[derive(Component, Clone, Copy, Debug)]
@@ -71,6 +82,8 @@ pub struct TridentTaken(pub Vec<(u32, ItemStack, Entity)>);
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(TridentIndex::default());
     w.insert_resource(TridentTaken::default());
+    w.insert_resource(crate::host_out_trident::TridentOut::default());
+    w.insert_resource(HitBonus::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems((block_changes, fly, pickups).chain().after(crate::projectile::fly));
@@ -78,7 +91,7 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 
 /// `ThrownTrident` thrown from `at` with `velocity`, owned by `owner`.
 pub fn throw(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, owner: Option<Who>, loyalty: u8, pickup: Pickup) -> Entity {
-    let t = Trident { owner, loyalty, pickup, dealt: false, stack };
+    let t = Trident { owner, loyalty, pickup, dealt: false, stack, channeling: false };
     let e = world.spawn((Pos(at), Vel(velocity), t, Projectile { owner, age: 0, left_owner: false, expires: 0 }, TridentFlying, OwnTime)).id();
     crate::nbt::mark_saved(world, e, crate::species::lists::TRIDENT);
     world.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::TRIDENT));
@@ -159,9 +172,18 @@ fn fly(world: &mut World) {
             if let Some(eye) = owner_at(world, owner) {
                 let k = 0.05 * f64::from(loyalty);
                 let mut pos = from;
-                if matches!(owner, Some(Who::Entity(_))) && pos.distance(eye) < 0.25 + 1.0 {
-                    world.despawn(e);
-                    continue;
+                if pos.distance(eye) < 0.25 + 1.0 {
+                    if matches!(owner, Some(Who::Entity(_))) {
+                        world.resource_mut::<crate::host_out_trident::TridentOut>().0.push(crate::host_out_trident::TridentEvent::Returned { entity: e, owner });
+                        world.despawn(e);
+                        continue;
+                    }
+                    // A player owner takes it back by the pickup path; `Returned` follows once it is taken.
+                    touch(world, e);
+                    if world.get_entity(e).is_err() {
+                        world.resource_mut::<crate::host_out_trident::TridentOut>().0.push(crate::host_out_trident::TridentEvent::Returned { entity: e, owner });
+                        continue;
+                    }
                 }
                 pos.y += (eye.y - pos.y) * 0.015 * f64::from(loyalty);
                 let d = Vec3::new(eye.x - pos.x, eye.y - pos.y, eye.z - pos.z);
@@ -182,10 +204,14 @@ fn fly(world: &mut World) {
         if let Some((_, at, who)) = hit {
             let stack_pos = (from.x, from.z);
             match who {
-                Hitter::Creature(c) => world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount: BLOW, cause: Cause::Entity, from: Some(stack_pos), by: owner, direct: false, power: None }),
+                Hitter::Creature(c) => {
+                    let amount = crate::trident_hit::hit_entity(world, e, c).damage;
+                    world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount, cause: Cause::Entity, damage: "trident", from: Some(stack_pos), by: owner, direct: false, power: None });
+                }
                 Hitter::Player(id) => {
+                    let amount = crate::trident_hit::hit_player(world, e, id, at).damage;
                     let tick = now(world);
-                    world.resource_mut::<PlayerState>().hurt(tick, id, BLOW, stack_pos, owner);
+                    world.resource_mut::<PlayerState>().hurt(tick, id, amount, stack_pos, owner);
                 }
             }
             world.get_mut::<Trident>(e).unwrap().dealt = true;
@@ -200,6 +226,7 @@ fn fly(world: &mut World) {
                 continue;
             }
             stick(world, e, back_off(at, vel), b, loyalty);
+            crate::trident_hit::hit_block(world, e, b);
             continue;
         }
         world.entity_mut(e).insert((Pos(reach), Vel(vel)));
@@ -236,7 +263,7 @@ fn stick(world: &mut World, e: Entity, at: Vec3, block: [i32; 3], loyalty: u8) {
     }
 }
 /// Removes a planted trident from the indexes.
-fn forget(world: &mut World, e: Entity) {
+pub(crate) fn forget(world: &mut World, e: Entity) {
     let Some(p) = world.get::<Planted>(e).copied() else { return };
     let at = world.get::<Pos>(e).map_or(Vec3::new(0.0, 0.0, 0.0), |q| q.0);
     let mut index = world.resource_mut::<TridentIndex>();
@@ -262,32 +289,14 @@ fn expire(world: &mut World, e: Entity) {
 /// The pickup of a trident by a player (`ThrownTrident.playerTouch`): the shake is over, the player is the owner (or any when there is
 /// none), its box meets the trident (|dx| < 1, |dz| < 1, y within feet - 1 .. feet + 2.5), and the pickup rule allows it.
 fn touch(world: &mut World, e: Entity) {
-    let Some(t) = world.get::<Trident>(e) else { return };
-    let (owner, pickup) = (t.owner, t.pickup);
-    if pickup == Pickup::Disallowed {
-        return;
-    }
-    if world.get::<Planted>(e).is_some_and(|p| now_of(world, e) < p.shake_end) {
-        return;
-    }
     let at = world.get::<Pos>(e).unwrap().0;
     let mut near = Vec::new();
-    world.resource::<Online>().for_near(at.x, at.z, 1.0, |p| near.push(p));
-    for p in near {
-        if (p.x - at.x).abs() >= 1.0 || (p.z - at.z).abs() >= 1.0 || at.y <= p.y - 1.0 || at.y >= p.y + 2.5 {
-            continue;
+    world.resource::<Online>().for_near(at.x, at.z, 1.0, |p| near.push(p.id));
+    for id in near {
+        if let Some(stack) = crate::trident_hit::pickup(world, e, id) {
+            world.resource_mut::<TridentTaken>().0.push((id, stack, e));
+            return;
         }
-        if owner.is_some_and(|w| w != Who::Player(p.id)) {
-            continue;
-        }
-        if pickup == Pickup::CreativeOnly && !world.resource::<PlayerState>().creative(p.id) {
-            continue;
-        }
-        let stack = world.get::<Trident>(e).unwrap().stack.clone();
-        forget(world, e);
-        world.resource_mut::<TridentTaken>().0.push((p.id, stack, e));
-        world.despawn(e);
-        return;
     }
 }
 /// The block of a planted trident changed: it falls again (`startFalling`), its life starts over.

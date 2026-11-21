@@ -25,7 +25,7 @@ impl Game<'_> {
         let following = self.remote.is_some();
         let mut events = Vec::new();
         let random = self.particles.level_random();
-        for m in self.mobs.iter_mut().filter(|m| !m.removed) {
+        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
             ambient::client_ai_step(m, &mut events);
             ambient::client_particles(m, random, &mut events);
             if following && m.species() == horizon_client::mobs::Species::Wither {
@@ -97,7 +97,7 @@ impl Game<'_> {
         // IronGolem.canSpawnSprintParticle replaces the sprinting test: one
         // tick in five while it moves at all, in water or not, drawn from the
         // golem's own random as its client copy's Entity.baseTick does.
-        for (i, m) in self.mobs.iter_mut().enumerate() {
+        for (i, m) in self.remote_entities.iter_mut().enumerate() {
             if &*m.kind.id != "minecraft:iron_golem" {
                 continue;
             }
@@ -112,7 +112,7 @@ impl Game<'_> {
         // sprint flag draws the crumb as a player's does, and a spectator's
         // never does (`!isSpectator()`). `Rabbit` overrides it to false (its
         // hop event draws its own), and the iron golem's own branch is above.
-        for (i, m) in self.mobs.iter().enumerate() {
+        for (i, m) in self.remote_entities.iter().enumerate() {
             if &*m.kind.id == "minecraft:iron_golem" || m.species() == Species::Rabbit {
                 continue;
             }
@@ -145,7 +145,7 @@ impl Game<'_> {
                 // leaves the level's and the particles' random alone. The
                 // window's player has its own body's random too.
                 let r = match mob {
-                    Some(i) => &mut game.mobs.get_mut(i)?.random,
+                    Some(i) => &mut game.remote_entities.get_mut(i)?.random,
                     None => &mut game.player.as_mut()?.random,
                 };
                 Some((r.next_double(), r.next_double()))
@@ -180,7 +180,7 @@ impl Game<'_> {
                 .and_then(|p| p.ground.supporting_block)
                 .map(|p| [p.x, p.y, p.z]),
             Target::Mob(id) => self
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| m.id == id)
                 .and_then(|m| m.supporting),
@@ -197,7 +197,7 @@ impl Game<'_> {
             max[0] - min[0],
             |game| {
                 let random = match mob {
-                    Some(id) => &mut game.mob_index.get_mut(&mut game.mobs, id)?.random,
+                    Some(id) => &mut game.remote_index.get_mut(&mut game.remote_entities, id)?.random,
                     None => game.particles.random(),
                 };
                 Some((random.next_double(), random.next_double()))
@@ -295,7 +295,7 @@ impl Game<'_> {
                 invisible,
             );
         }
-        for m in self.mobs.iter() {
+        for m in self.remote_entities.iter() {
             // A mob with no effects swirls nothing: skipped before its size
             // is worked out, which every mob in a crowded world would pay
             // for (#14053).

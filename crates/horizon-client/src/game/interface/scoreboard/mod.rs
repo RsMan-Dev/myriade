@@ -266,6 +266,11 @@ impl Game<'_> {
     }
     /// `Entity.getTags` (the `Tags` list of the saved entity).
     pub(super) fn tags_of(&self, t: Target) -> Vec<String> {
+        if let Target::Mob(id) | Target::Ecs(id) = t
+            && self.ecs.is_active()
+        {
+            return self.ecs_mob_tags(id);
+        }
         let raw = match t {
             Target::Mob(id)
             | Target::Item(id)
@@ -578,7 +583,7 @@ impl Game<'_> {
 
     /// `Entity.getScoreboardName`: another player's profile name
     /// (`Player.getScoreboardName`), any other entity's UUID.
-    fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
+    pub(in crate::game) fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
         self.remote_player_name(id)
             .map_or_else(|| uuid_text(uuid), str::to_owned)
     }
@@ -591,7 +596,7 @@ impl Game<'_> {
         // The mob is looked up only when its own name has no team: the
         // owner's team is the fallback.
         self.team_with_owner(id, || {
-            self.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
+            self.remote_entities.iter().find(|m| m.id == id).and_then(tame_owner)
         })
     }
     /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
@@ -602,7 +607,7 @@ impl Game<'_> {
         self.team_with_owner(m.id, || tame_owner(m))
     }
     /// `mob_team_of` while the mob tick has lent its mobs out of `Game`.
-    /// The active mob and the disjoint live loan replace `self.mobs` for
+    /// The active mob and the disjoint live loan replace `self.remote_entities` for
     /// resolving a tame owner's UUID; other live entities still use Game.
     pub(super) fn mob_team_scoped(
         &self,
@@ -642,7 +647,7 @@ impl Game<'_> {
             let Target::Mob(id) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|mob| mob.id == id)
                 .and_then(tame_owner)
@@ -680,7 +685,7 @@ impl Game<'_> {
             let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
-            self.mobs
+            self.remote_entities
                 .iter()
                 .find(|m| m.id == pet && m.extra.tame)?
                 .extra
@@ -712,7 +717,7 @@ impl Game<'_> {
         }
         // One pass over the mobs, not one per mob.
         let tame_owners: HashMap<u32, [i32; 4]> = self
-            .mobs
+            .remote_entities
             .iter()
             .filter_map(|m| Some((m.id, tame_owner(m)?)))
             .collect();
@@ -1171,6 +1176,9 @@ impl Env for GameEnv<'_, '_> {
     }
     fn resolve(&mut self, c: Comp) -> Comp {
         self.g.resolve_component(c)
+    }
+    fn team_changed(&mut self, team: &str) {
+        self.g.push_team_event(team);
     }
     fn feedback(&mut self, message: Text) {
         self.g.feedback(message);

@@ -297,7 +297,7 @@ impl Game<'_> {
                 ([at.x, at.y, at.z], [v.x, v.y, v.z])
             })
         } else {
-            self.mobs.iter().find(|m| m.id == id as u32).map(|m| {
+            self.remote_entities.iter().find(|m| m.id == id as u32).map(|m| {
                 let (at, v) = (m.position, m.velocity);
                 ([at.x, at.y, at.z], [v.x, v.y, v.z])
             })
@@ -325,7 +325,7 @@ impl Game<'_> {
     /// A mob's drowning tick (`MobEvent::Drown`).
     pub(super) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self
-            .mobs
+            .remote_entities
             .iter()
             .find(|m| m.id == mob)
             .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
@@ -334,12 +334,34 @@ impl Game<'_> {
             self.drown_particles(at, v, 8);
         }
     }
+    /// `remote_drown` for the ECS mob `id`: its place and velocity come from the bridge.
+    pub(super) fn remote_drown_ecs(&mut self, id: u32) {
+        if let (Some(at), Some(v)) = (self.ecs.position(id), self.ecs_mob_velocity(id)) {
+            self.drown_particles(at, [v.x, v.y, v.z], 8);
+        }
+    }
+    /// `mob_drown` for the ECS mob `mob`.
+    pub(super) fn mob_drown_ecs(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
+        let v = self.ecs_mob_velocity(mob).map_or([0.0; 3], |v| [v.x, v.y, v.z]);
+        if self.drown_bubbles(at, v, bubbles) {
+            self.lan_entity_event(mob as i32, DROWN_EVENT, at);
+            self.drown_particles(at, v, 8);
+        }
+    }
     /// The display name of a mob: its custom name or its type's name.
-    pub(super) fn mob_display_name(&self, id: u32) -> Option<Text> {
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+    pub(in crate::game) fn mob_display_name(&self, id: u32) -> Option<Text> {
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(match &m.custom_name {
             Some(name) => Text::literal(name.clone()),
             None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
+        })
+    }
+    /// `mob_display_name` for the ECS mob `id`: its name and its type come from the bridge.
+    pub(in crate::game) fn mob_display_name_ecs(&self, id: u32) -> Option<Text> {
+        let kind = self.ecs.kind(id)?;
+        Some(match self.ecs.display_name(id) {
+            Some(name) => Text::literal(name),
+            None => Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
         })
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
@@ -353,7 +375,7 @@ impl Game<'_> {
             self.note_named_attacker(damage_type, mob, name);
         }
     }
-    /// `note_attacker` for an entity that is not one of `self.mobs` (the
+    /// `note_attacker` for an entity that is not one of `self.remote_entities` (the
     /// ender dragon).
     pub(super) fn note_named_attacker(&mut self, damage_type: &str, id: u32, name: Text) {
         self.note_player_attacker(damage_type, id, name, None);
@@ -410,7 +432,7 @@ impl Game<'_> {
     /// it as it was.
     fn resolve_player_responsible_for_player(&mut self, id: u32) {
         let now = self.world.game_time;
-        match self.mobs.iter().find(|m| m.id == id) {
+        match self.remote_entities.iter().find(|m| m.id == id) {
             None => {
                 let uuid = self.lan.as_ref().and_then(|host| {
                     host.hub
@@ -628,7 +650,7 @@ impl Game<'_> {
     }
     /// The display component of a custom-named held stack.
     pub(super) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
-        let m = self.mobs.iter().find(|m| m.id == id)?;
+        let m = self.remote_entities.iter().find(|m| m.id == id)?;
         let mut stack = m.extra.main_hand_stack()?.clone();
         if !has_custom_name(&stack) {
             return None;
@@ -747,6 +769,112 @@ impl Game<'_> {
         // template that names a killer then shows as written).
         Text::translate(&key, &[me])
     }
+    /// `tell_owner_pet_died` for the ECS mob `id`: its species, tame flag and owner come from the bridge.
+    pub(super) fn tell_owner_pet_died_ecs(&mut self, id: u32, killer: Option<Option<u32>>) {
+        let Some(mob) = self.ecs_mob(id) else { return };
+        let tamable = matches!(
+            mob.species,
+            Some(Species::Wolf | Species::Cat | Species::Parrot | Species::Nautilus | Species::ZombieNautilus)
+        );
+        let Some(owner) = self.ecs.owner(id).filter(|_| tamable && mob.tame) else {
+            return;
+        };
+        if !self.ui.rules.bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES) {
+            return;
+        }
+        let host = self.player.is_some()
+            && self.options.dedicated.is_none()
+            && horizon_client::mobs::tame::owned_by(Some(owner), self.level.player_uuid.unwrap_or_default());
+        let uuid = horizon_client::lan::playerdata::ints_uuid(owner);
+        let guest = !host
+            && self
+                .lan
+                .as_ref()
+                .is_some_and(|l| l.hub.guests.iter().any(|g| g.placed && g.uuid == uuid));
+        if !host && !guest {
+            return;
+        }
+        let mut built = Some(self.mob_death_message_ecs(id, killer));
+        let Some(kind) = self.ecs.kind(id).map(str::to_owned) else { return };
+        self.native_living_death_message(id, &kind, &mut built);
+        let Some(message) = built else {
+            return;
+        };
+        if host {
+            self.system_message(message);
+        } else if let Some(lan) = &self.lan {
+            let content = horizon_client::lan::data::component_nbt(&message.component());
+            lan.hub.system_message_to_player(uuid, content);
+        }
+    }
+    /// `mob_death_message` for the ECS mob `id`: the hits, the last hurt and the age are read by id from the bridge.
+    pub(super) fn mob_death_message_ecs(&mut self, id: u32, killer: Option<Option<u32>>) -> Text {
+        use horizon_client::mobs::{DamageKind, Who};
+        let me = self.mob_display_name_ecs(id).unwrap_or_else(|| Text::literal(String::new()));
+        let player = match killer {
+            Some(Some(conn)) => Some((u32::MAX - 1 - conn, self.target_name(Target::Guest(conn)))),
+            Some(None) => Some((u32::MAX, self.target_name(Target::Player))),
+            None if self.player.is_some() || self.lan_acting.is_some() => Some((u32::MAX, self.target_name(Target::Player))),
+            None => None,
+        };
+        let player_item = match killer {
+            Some(conn) => self.player_main_hand_custom_name(conn),
+            None => player.as_ref().and_then(|_| self.main_hand_custom_name()),
+        };
+        let name = |g: &Self, who: Who| match who {
+            Who::Player => player.clone(),
+            Who::Mob(id) => g
+                .mob_display_name(id)
+                .or_else(|| g.mob_display_name_ecs(id))
+                .or_else(|| g.combat.exploded.iter().find(|(e, _)| *e == id).map(|(_, n)| n.clone()))
+                .map(|n| (id, n)),
+        };
+        let tracker = self.ecs.combat_tracker(id).unwrap_or_default();
+        let entries = tracker
+            .entries
+            .iter()
+            .map(|e| {
+                let attacker = e.source.attacker.and_then(|w| name(self, w));
+                let item = (e.source.attacker == Some(Who::Player)).then(|| player_item.clone()).flatten();
+                let direct = match e.source.kind {
+                    _ if attacker.is_some() => None,
+                    DamageKind::Arrow => Some(Text::translate("entity.minecraft.arrow", &[])),
+                    DamageKind::Fireworks => Some(Text::translate("entity.minecraft.firework_rocket", &[])),
+                    _ => None,
+                };
+                Entry {
+                    damage_type: super::creatures::source_damage_type(e.source).to_owned(),
+                    damage: e.damage,
+                    fall_location: e.in_water.then_some("water"),
+                    fall_distance: e.fall_distance,
+                    attacker,
+                    item,
+                    direct,
+                }
+            })
+            .collect();
+        let credit = if self.ecs.last_hurt_by_player(id) > 0 && player.is_some() {
+            player.clone()
+        } else {
+            let age = self.ecs.age(id) as i32;
+            self.ecs
+                .last_hurt_by(id)
+                .filter(|_| age - self.ecs.last_hurt_by_time(id) <= 100)
+                .and_then(|w| name(self, w))
+        };
+        let now = self.world.game_time;
+        let mut swap = CombatTracker {
+            entries,
+            last_damage: now,
+            in_combat: tracker.in_combat,
+            last_hurt_by: credit.map(|c| (c, now)),
+            ..CombatTracker::default()
+        };
+        std::mem::swap(&mut self.combat, &mut swap);
+        let text = self.combat_death_message_for(me);
+        std::mem::swap(&mut self.combat, &mut swap);
+        text
+    }
     /// `TamableAnimal.die`: with `showDeathMessages`, a tame wolf, cat,
     /// parrot or nautilus's owner, when online in any dimension
     /// (`EntityReference.getEntity` looks through every level), is sent how it
@@ -827,6 +955,7 @@ impl Game<'_> {
             Who::Player => player.clone(),
             Who::Mob(id) => g
                 .mob_display_name(id)
+                .or_else(|| g.mob_display_name_ecs(id))
                 .or_else(|| {
                     g.combat
                         .exploded
@@ -997,7 +1126,7 @@ impl Game<'_> {
         };
         self.combat.hit_landed = landed;
         if !landed {
-            if let Some(b) = mob.and_then(|id| self.mobs.iter_mut().find(|m| m.id == id)) {
+            if let Some(b) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
                 horizon_client::mobs::bee::sting_refused(b);
             }
             return;
@@ -1010,7 +1139,7 @@ impl Game<'_> {
                 }
             }
             Who::Mob(id) if poison_ticks > 0 => {
-                if let Some(t) = self.mobs.iter_mut().find(|m| m.id == id) {
+                if let Some(t) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     t.add_effect("minecraft:poison", poison_ticks, 0);
                 }
             }
@@ -1019,7 +1148,7 @@ impl Game<'_> {
         let Some(mob) = mob else {
             return;
         };
-        if let Some(b) = self.mobs.iter_mut().find(|m| m.id == mob)
+        if let Some(b) = self.remote_entities.iter_mut().find(|m| m.id == mob)
             && horizon_client::mobs::bee::sting_landed(b)
         {
             self.audio
@@ -1047,9 +1176,9 @@ impl Game<'_> {
         {
             return false;
         }
-        // The mobs added during the tick come first in `self.mobs`; the
+        // The mobs added during the tick come first in `self.remote_entities`; the
         // ticked ones keep their tick order after them.
-        let at = |id: u32| self.mobs.iter().position(|m| m.id == id);
+        let at = |id: u32| self.remote_entities.iter().position(|m| m.id == id);
         matches!((at(attacker), at(target)), (Some(a), Some(t)) if a < t)
     }
 }
@@ -1195,11 +1324,11 @@ mod pet_credit_tests {
                 (Arc::new(hound), false, None),
             ] {
                 game.combat.last_hurt_by_player = None;
-                game.mobs.clear();
+                game.remote_entities.clear();
                 let mut pet = Mob::new(7, kind, Vec3::ZERO, 0.0);
                 pet.extra.tame = tame;
                 pet.extra.owner = Some(uuid_ints(12));
-                game.mobs.push(pet);
+                game.remote_entities.push(pet);
                 game.resolve_player_responsible_for_player(7);
                 assert_eq!(game.combat.last_hurt_by_player.map(|(c, _)| c.0), credit);
             }
@@ -1225,7 +1354,7 @@ mod guest_hit_tests {
                 (5, "minecraft:cave_spider", 100.0),
             ] {
                 let kind = game.res.mob_types().get(kind).cloned().unwrap();
-                game.mobs
+                game.remote_entities
                     .push(Mob::new(id, kind, Vec3::new(1.5, y, 0.5), 0.0));
             }
             let from = [1.5, 100.0, 0.5];

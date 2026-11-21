@@ -67,6 +67,6 @@ fn convert_now(w: &mut World, e: Entity) {
     let (Some(c), Some(cv)) = (w.get::<Converting>(e).copied(), w.get::<Convert>(e).copied()) else { return };
     if is_over(now_of(w, e), c.until) {
         w.entity_mut(e).remove::<Converting>();
-        crate::conversion::convert(w, e, cv.0.into, crate::conversion::ConvertKeep::ALL);
+        crate::conversion::convert_or_ask(w, e, cv.0.into, crate::conversion::ConvertKeep::ALL);
     }
 }

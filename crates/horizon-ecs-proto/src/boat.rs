@@ -1,6 +1,7 @@
 //! Boats and rafts (`AbstractBoat`), the physics of their own tick: the status from the fluids and the ground under the hull, the float
 //! and the paddle controls, the seats. The host samples the box (fluid over the hull, ground friction, clearance of the lift) and keeps the
 //! rest (fire, bubble columns, lava, passengers, leash, chest) in its own modules. Position, velocity and yaw are `cow::{Pos, Vel, Yaw}`.
+pub use crate::boat_state::{BoatMarker, CHEST_SLOTS, Chest, Hull, Hurt, PendingLoot, Wobble, Wood};
 pub use crate::rules::boat::{HEIGHT, Status, Under, WIDTH, bounds_at, classify, max_passengers, ride_height, seat_z};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
@@ -24,8 +25,6 @@ pub struct Boat {
     /// `landFriction`: the ground's, halved by each controlled tick on land.
     pub land_friction: f32,
     pub delta_rotation: f32,
-    /// left, right, up, down: the rider's keys; all false unless a player steers it.
-    pub input: [bool; 4],
     /// Left and right paddle row moving this tick.
     pub paddling: [bool; 2],
 }
@@ -39,7 +38,6 @@ impl Default for Boat {
             water_level: 0.0,
             land_friction: 0.0,
             delta_rotation: 0.0,
-            input: [false; 4],
             paddling: [false; 2],
         }
     }
@@ -71,7 +69,7 @@ pub fn enter_water(b: &mut Boat, level_above: f32, clear: bool, y: &mut f64, vy:
 
 /// `floatBoat`, then `controlBoat` when a rider steers: the drag and the buoyancy of the status, then the turn and the push along the yaw.
 /// `y` is the hull's height now and `gravity` its `getGravity()` (0 with `NoGravity`).
-pub fn float(b: &mut Boat, vel: &mut Vec3, yaw: &mut f32, y: f64, gravity: f64, controlled: bool) {
+pub fn float(b: &mut Boat, vel: &mut Vec3, yaw: &mut f32, y: f64, gravity: f64, keys: Option<[bool; 4]>) {
     let mut vspeed = -gravity;
     let mut buoyancy = 0.0;
     let inv: f32 = match b.status {
@@ -90,7 +88,7 @@ pub fn float(b: &mut Boat, vel: &mut Vec3, yaw: &mut f32, y: f64, gravity: f64, 
         Status::InAir => 0.9,
         Status::OnLand => {
             let friction = b.land_friction;
-            if controlled {
+            if keys.is_some() {
                 b.land_friction /= 2.0;
             }
             friction
@@ -104,14 +102,14 @@ pub fn float(b: &mut Boat, vel: &mut Vec3, yaw: &mut f32, y: f64, gravity: f64, 
     if buoyancy > 0.0 {
         vel.y = (vel.y + buoyancy * (0.04 / 0.65)) * 0.75;
     }
-    if controlled {
-        control(b, vel, yaw);
+    if let Some(keys) = keys {
+        control(b, keys, vel, yaw);
     }
 }
 
 /// `controlBoat`: the left and right keys turn the boat, up pushes it along its yaw and down pulls it back. Each row paddles on its turn.
-fn control(b: &mut Boat, vel: &mut Vec3, yaw: &mut f32) {
-    let [left, right, up, down] = b.input;
+fn control(b: &mut Boat, keys: [bool; 4], vel: &mut Vec3, yaw: &mut f32) {
+    let [left, right, up, down] = keys;
     let mut acceleration = 0.0_f32;
     if left {
         b.delta_rotation -= 1.0;

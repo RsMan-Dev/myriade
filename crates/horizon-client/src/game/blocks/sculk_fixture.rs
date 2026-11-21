@@ -228,7 +228,7 @@ impl Game<'_> {
         };
         // A source entity that is gone reads as none (VibrationInfo.getEntity).
         let alive = |w: Option<Who>| match w {
-            Some(Who::Mob(id)) if !self.mobs.iter().any(|m| m.id == id && !m.removed) => None,
+            Some(Who::Mob(id)) if !self.mob_exists(id) => None,
             other => other,
         };
         format!(
@@ -348,7 +348,10 @@ impl Game<'_> {
         self.block_ticks = Ticks::new(0);
         self.tick_chunks.clear();
         self.sync_tick_chunks();
-        self.mobs.clear();
+        if self.ecs.is_active() {
+            self.ecs = self.new_ecs_level(self.dim, s.level_seed);
+        }
+        self.remote_entities.clear();
         if s.trace_events {
             self.creatures.projectiles.clear();
         }
@@ -462,6 +465,21 @@ impl Game<'_> {
                 .get(&spec.kind)
                 .cloned()
                 .ok_or_else(|| format!("unknown mob {}", spec.kind))?;
+            if self.ecs.is_active() {
+                let Some(id) = self.ecs_spawn(&spec.kind, spec.pos, None) else {
+                    return Err(format!("cannot spawn {}", spec.kind).into());
+                };
+                if spec.flags.iter().any(|f| f == "persistent") {
+                    self.ecs.set_persistent(id, true);
+                }
+                if spec.flags.iter().any(|f| f == "noai") {
+                    self.ecs.set_no_ai(id);
+                }
+                self.ecs.set_random_seed(id, spec.seed);
+                names.insert(id, format!("m{}", sources.len()));
+                sources.push(id);
+                continue;
+            }
             let id = 100_000 + sources.len() as u32;
             let mut m = Mob::new(
                 id,
@@ -486,13 +504,13 @@ impl Game<'_> {
             }
             names.insert(id, format!("m{}", sources.len()));
             sources.push(id);
-            self.mobs.push(m);
+            self.remote_entities.push(m);
         }
         self.next_entity = self.next_entity.max(200_000);
         self.world.day_time = 6000;
         self.world.random.set_seed(s.level_seed);
         self.audio.capture = Some(Vec::new());
-        let mut known: HashSet<u32> = self.mobs.iter().map(|m| m.id).collect();
+        let mut known: HashSet<u32> = self.remote_entities.iter().map(|m| m.id).chain(sources.iter().copied()).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
         let mut known_items = self.dropped.len();
         let mut known_orbs = self.orbs.len();
@@ -542,35 +560,50 @@ impl Game<'_> {
                 last_player = now.clone();
                 lines.push(now);
             }
-            let mut fresh: Vec<&Mob> = self
-                .mobs
-                .iter()
-                .filter(|m| !known.contains(&m.id))
-                .collect();
-            fresh.sort_by_key(|m| m.id);
-            let fresh: Vec<(u32, String)> = fresh
-                .iter()
-                .map(|m| {
-                    (
-                        m.id,
-                        format!(
-                            "new {} {},{},{}",
-                            m.kind.id,
-                            d(m.position.x),
-                            d(m.position.y),
-                            d(m.position.z)
-                        ),
-                    )
-                })
-                .collect();
+            let fresh: Vec<(u32, String)> = if self.ecs.is_active() {
+                let mut ids: Vec<u32> = self.ecs.followed_ids().into_iter().filter(|id| !known.contains(id)).collect();
+                ids.sort_unstable();
+                ids.into_iter()
+                    .filter_map(|id| {
+                        let [x, y, z] = self.ecs.position(id)?;
+                        let kind = self.ecs.kind(id)?;
+                        Some((id, format!("new {kind} {},{},{}", d(x), d(y), d(z))))
+                    })
+                    .collect()
+            } else {
+                let mut fresh: Vec<&Mob> = self
+                    .remote_entities
+                    .iter()
+                    .filter(|m| !known.contains(&m.id))
+                    .collect();
+                fresh.sort_by_key(|m| m.id);
+                fresh
+                    .iter()
+                    .map(|m| {
+                        (
+                            m.id,
+                            format!(
+                                "new {} {},{},{}",
+                                m.kind.id,
+                                d(m.position.x),
+                                d(m.position.y),
+                                d(m.position.z)
+                            ),
+                        )
+                    })
+                    .collect()
+            };
             for (id, line) in fresh {
                 known.insert(id);
                 names.insert(id, format!("n{}", names.len()));
                 let seed = 0x5eed + names.len() as i64;
-                if seeded.insert(id)
-                    && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
-                {
-                    seed_fresh(m, seed);
+                if seeded.insert(id) {
+                    if self.ecs.is_active() {
+                        self.ecs.set_random_seed(id, seed);
+                        self.ecs.init_warden_brain(id, seed);
+                    } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
+                        seed_fresh(m, seed);
+                    }
                 }
                 lines.push(line);
             }
@@ -591,7 +624,7 @@ impl Game<'_> {
             }
             known_orbs = self.orbs.len();
             if s.trace_events {
-                for m in &self.mobs {
+                for m in &self.remote_entities {
                     if let Some(st) = &m.extra.warden {
                         let selected = st.vibration.selector.current().map(|(i, _)| {
                             serde_json::json!({"event": i.event, "pos": i.pos, "distance": i.distance})
@@ -753,7 +786,9 @@ impl Game<'_> {
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z])
                         .unwrap_or_default();
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    if self.ecs.is_active() {
+                        self.ecs_hurt(id, amount, Some(Who::Player));
+                    } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         m.damage(
                             crate::game::entity::damage_level_of!(self),
                             amount,
@@ -769,7 +804,14 @@ impl Game<'_> {
                         .copied()
                         .ok_or("no such mob")?;
                     let mut events = Vec::new();
-                    if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+                    if self.ecs.is_active() {
+                        if words[0] == "ignite" {
+                            self.ecs.set_ignited(id);
+                        } else {
+                            // Mob.ate.
+                            self.ecs.ate(id, &mut events);
+                        }
+                    } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         if words[0] == "ignite" {
                             m.extra.flag = true;
                         } else {
@@ -794,18 +836,21 @@ impl Game<'_> {
         // Mobs that appeared during the block ticks (a summoned warden) tick
         // in this tick's entity phase: seed them now, as they are seeded
         // after the tick.
-        let mut born: Vec<u32> = self
-            .mobs
-            .iter()
-            .map(|m| m.id)
-            .filter(|id| !known.contains(id))
-            .collect();
+        let mut born: Vec<u32> = if self.ecs.is_active() {
+            self.ecs.followed_ids().into_iter().filter(|id| !known.contains(id)).collect()
+        } else {
+            self.remote_entities.iter().map(|m| m.id).filter(|id| !known.contains(id)).collect()
+        };
         born.sort_unstable();
         for (i, id) in born.into_iter().enumerate() {
-            if seeded.insert(id)
-                && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
-            {
-                seed_fresh(m, 0x5eed + (named + i + 1) as i64);
+            let seed = 0x5eed + (named + i + 1) as i64;
+            if seeded.insert(id) {
+                if self.ecs.is_active() {
+                    self.ecs.set_random_seed(id, seed);
+                    self.ecs.init_warden_brain(id, seed);
+                } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
+                    seed_fresh(m, seed);
+                }
             }
         }
         // The player's tickets, as `tick_world` takes them.

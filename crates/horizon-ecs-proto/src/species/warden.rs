@@ -10,6 +10,7 @@ pub static DEF: Def = Def {
     name: "minecraft:warden",
     reference: Some(&monster::DEF),
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.55, dampens: true, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&emerge::MODULE, 0, &emerge::Params { duration: 134, sound: "entity.warden.emerge" }),
         Entry::new(&dig::MODULE, 1, &dig::Params { duration: 100, cooldown: 1200, sound_ground: "entity.warden.dig", sound_liquid: "entity.warden.agitated" }),
         Entry::new(
@@ -61,6 +62,6 @@ pub static DEF: Def = Def {
     ],
     // The Mob's warden has no idle look (its brain looks only at its look target): the monster base's two look goals left, they cut the pause.
     changes: &[Change::Remove { module: &look_at_player::MODULE, nth: 0 }, Change::Remove { module: &random_look::MODULE, nth: 0 }, Change::Remove { module: &nearest_target::MODULE, nth: 0 }],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
     ..Def::EMPTY
 };

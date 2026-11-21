@@ -24,7 +24,7 @@ impl Game<'_> {
     }
 
     fn remote_mob_answers(&mut self, i: usize, hand: Hand, act: bool) -> bool {
-        let Some(m) = self.mobs.get(i).filter(|m| m.alive()) else {
+        let Some(m) = self.remote_entities.get(i).filter(|m| m.alive()) else {
             return false;
         };
         let stack = match hand {
@@ -96,7 +96,7 @@ impl Game<'_> {
                 m.extra.saddled()
                     && !sneaking
                     && self.riding != Some(m.id)
-                    && !self.mobs.iter().any(|o| o.extra.mount == Some(m.id))
+                    && !self.remote_entities.iter().any(|o| o.extra.mount == Some(m.id))
             }
             // HappyGhast.mobInteract: a harnessed adult is ridden.
             Species::HappyGhast => !baby && m.extra.body_id().is_some(),
@@ -197,7 +197,7 @@ impl Game<'_> {
     /// CONSUME on a client, and a horse's or panda's food SUCCESS_SERVER
     /// (#9437). A tame wolf, cat or parrot sitting down is SUCCESS.
     pub(super) fn remote_mob_swings(&self, i: usize, hand: Hand) -> bool {
-        let Some(m) = self.mobs.get(i).filter(|m| m.alive()) else {
+        let Some(m) = self.remote_entities.get(i).filter(|m| m.alive()) else {
             return false;
         };
         let stack = match hand {
@@ -217,7 +217,7 @@ impl Game<'_> {
     /// villager particle. The server draws it on its own level only, so no
     /// packet brings it.
     pub(super) fn remote_feed_particles(&mut self, i: usize, hand: Hand) {
-        let Some(m) = self.mobs.get(i).filter(|m| m.alive()) else {
+        let Some(m) = self.remote_entities.get(i).filter(|m| m.alive()) else {
             return;
         };
         let stack = match hand {

@@ -3614,6 +3614,75 @@ impl Hub {
         self.entities.insert(self.config.dimension.clone(), level);
     }
 
+    /// The ECS's tracking pass (`Game::lan_tick_changed`): the entities `changed` and the network ids `gone_ids` of this
+    /// dimension go to its clients. No other entity is visited, and the level's sweep does not run for them.
+    pub fn track_changed(&mut self, changed: &[EntityState], gone_ids: &[i32]) {
+        let mut level = self.entities.remove(&self.config.dimension).unwrap_or_default();
+        // As track_entities (joined and synced, hub.rs:3554-3560): a changed entity first seen starts from its joined state.
+        let refs: Vec<&EntityState> = changed.iter().collect();
+        let mut joined = noted_last_tick(self.joined.remove(&self.config.dimension), self.ticks);
+        if let Some(fresh) = self.fresh_joined.remove(&self.config.dimension) {
+            joined.extend(fresh);
+        }
+        let joined = level.joined_states(&refs, joined);
+        let changed: Vec<EntityState> = changed
+            .iter()
+            .map(|e| joined.get(&e.id).cloned().unwrap_or_else(|| e.clone()))
+            .collect();
+        level.synced.clone_from(&self.synced);
+        let mut outs = std::mem::take(&mut self.entity_out);
+        let dimension = &self.config.dimension;
+        let mut views = self.view_outs();
+        let here = |g: &Guest| {
+            g.participates_online() && (g.placed || g.held) && g.dimension == *dimension
+        };
+        outs.resize_with(self.guests.iter().filter(|g| here(g)).count(), Vec::new);
+        let recording = self.recording();
+        let mut gone = std::mem::take(&mut self.entity_gone);
+        gone.resize_with(outs.len(), Vec::new);
+        let mut viewers = self.guests.tracking_viewers_and_views(
+            here,
+            outs.iter_mut()
+                .zip(gone.iter_mut())
+                .map(|(out, gone)| (out, recording.then_some(gone))),
+            true,
+            (dimension, &mut views),
+        );
+        level.range_percent = Some(self.entity_range_percent);
+        let (types, sync) = (&mut self.entity_types, &self.sync);
+        level.tick_changed(&changed, gone_ids, &self.riding, &mut viewers, |kind| {
+            entity_type(types, sync, kind)
+        });
+        drop(viewers);
+        for (g, out) in self.guests.iter().filter(|g| here(g)).zip(outs.iter_mut()) {
+            self.hold_sound_removals(g.conn, out);
+            g.sender.send_many(out.drain(..));
+        }
+        let ticks = self.ticks;
+        let mut gone_rows = gone.iter_mut();
+        self.guests.update_all(|g| {
+            if !here(g) {
+                return;
+            }
+            let gone = gone_rows.next().expect("one output per visible guest");
+            let slack = super::prediction::slack(std::array::from_fn(|i| {
+                g.position[i] - g.previous_position[i]
+            }));
+            for at in gone.drain(..) {
+                let block = at.map(|v| v.floor() as i32);
+                if let Some(record) = g.record.as_deref_mut()
+                    && super::prediction::near(g.position, block, slack)
+                {
+                    record.entity_gone(ticks);
+                }
+            }
+        });
+        self.entity_gone = gone;
+        self.entity_out = outs;
+        self.send_view_entities(views);
+        self.entities.insert(self.config.dimension.clone(), level);
+    }
+
     /// ServerPlayer.stopSleepInBed: the wake-up animation goes to the player
     /// and those around, the pose is standing again and the sleep counter
     /// starts the wake-up fade (100).

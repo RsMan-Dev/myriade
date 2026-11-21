@@ -11,6 +11,7 @@ pub const EXPERIENCE_ORB: &str = "minecraft:experience_orb";
 pub const END_CRYSTAL: &str = "minecraft:end_crystal";
 pub const FALLING_BLOCK: &str = "minecraft:falling_block";
 pub const TRIDENT: &str = "minecraft:trident";
+pub const SPECTRAL_ARROW: &str = "minecraft:spectral_arrow";
 pub const OMINOUS_ITEM_SPAWNER: &str = "minecraft:ominous_item_spawner";
 pub const EVOKER_FANGS: &str = "minecraft:evoker_fangs";
 pub const AREA_EFFECT_CLOUD: &str = "minecraft:area_effect_cloud";

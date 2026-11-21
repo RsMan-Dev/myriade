@@ -41,7 +41,7 @@ impl Game<'_> {
         let player_team = board.players_team(&r.profile_name);
         let mut push = Vec3::ZERO;
         let order = |id: u32| r.ticked_before_player.contains(&id) == before_player;
-        for m in self.mobs.iter().filter(|m| order(m.id)) {
+        for m in self.remote_entities.iter().filter(|m| order(m.id)) {
             // Bats never push, nor passengers of one vehicle, nor a spectator; the
             // box test comes before the lookups that far mobs never need (#14053).
             if !m.alive()
@@ -127,7 +127,7 @@ impl Game<'_> {
         let mut looks = std::mem::take(&mut self.guardian_look_scratch);
         looks.clear();
         looks.extend(
-            self.mobs
+            self.remote_entities
                 .iter()
                 .enumerate()
                 .filter(|(_, m)| {
@@ -136,7 +136,7 @@ impl Game<'_> {
                 .filter_map(|(i, m)| {
                     let look = match m.ai.target.filter(|_| m.extra.flag) {
                         Some(Who::Mob(id)) => self
-                            .mobs
+                            .remote_entities
                             .iter()
                             .find(|t| t.id == id)
                             .map(|t| [t.position.x, t.eye_y(), t.position.z]),
@@ -146,14 +146,14 @@ impl Game<'_> {
                 }),
         );
         for &(i, look) in &looks {
-            guardian::look_at(&mut self.mobs[i], look);
+            guardian::look_at(&mut self.remote_entities[i], look);
         }
         self.guardian_look_scratch = looks;
     }
     /// Humanoid held arm poses, once the tick has set equipment and use state.
     pub(super) fn tick_remote_arm_poses_body(&mut self) {
-        for i in 0..self.mobs.len() {
-            let m = &self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &self.remote_entities[i];
             if !horizon_client::mobs::anim::extracts_humanoid(m) {
                 continue;
             }
@@ -169,9 +169,9 @@ impl Game<'_> {
                     .then(|| m.extra.slot_stack(slot))
                     .flatten()
                     .map_or_else(Default::default, |stack| self.item_use_animation(stack));
-                self.mobs[i].extra.use_animation = animation;
+                self.remote_entities[i].extra.use_animation = animation;
             }
-            let m = &self.mobs[i];
+            let m = &self.remote_entities[i];
             let poses = self.held_arm_poses(m.id, m);
             let charge_duration = (&*m.kind.id != "minecraft:player").then(|| {
                 let using_slot = if m.extra.using_off_hand {
@@ -183,9 +183,9 @@ impl Game<'_> {
                     .slot_stack(using_slot)
                     .map_or(25, |stack| Self::charge_ticks(stack).max(1)) as i32
             });
-            self.mobs[i].extra.held_arm_pose = poses;
+            self.remote_entities[i].extra.held_arm_pose = poses;
             if let Some(duration) = charge_duration {
-                self.mobs[i].extra.ints[5] = duration;
+                self.remote_entities[i].extra.ints[5] = duration;
             }
         }
     }
@@ -215,12 +215,12 @@ impl Game<'_> {
             let w = self.mob_world_base(&[]);
             let players = self.remote.as_ref().map(|r| &r.level_players);
             fluids.clear();
-            fluids.extend(self.mobs.iter().map(|m| {
+            fluids.extend(self.remote_entities.iter().map(|m| {
                 (running || players.is_some_and(|p| p.contains_key(&(m.id as i32))))
                     .then(|| w.fluids(m.bounds(), m.eye_y()))
             }));
             rain.clear();
-            rain.extend(self.mobs.iter().map(|m| {
+            rain.extend(self.remote_entities.iter().map(|m| {
                 m.species() == horizon_client::mobs::Species::Wolf
                     && horizon_client::mobs::tame::in_rain(m, &w)
             }));
@@ -228,7 +228,7 @@ impl Game<'_> {
             // cow), one hair below the feet like `Entity.getBlockStateOn`; nothing
             // without rules.
             standings.clear();
-            standings.extend(self.mobs.iter().map(|m| {
+            standings.extend(self.remote_entities.iter().map(|m| {
                 horizon_client::mobs::cem::tracks_standing(&m.kind.id).then(|| {
                     let (x, y, z) = (
                         m.position.x.floor() as i32,
@@ -242,8 +242,8 @@ impl Game<'_> {
         };
         // The window's own player already splashes from its motion tick.
         let own = self.remote.as_ref().map(|r| r.entity_id);
-        for i in 0..self.mobs.len() {
-            let m = &mut self.mobs[i];
+        for i in 0..self.remote_entities.len() {
+            let m = &mut self.remote_entities[i];
             let fluids = fluids[i].take();
             let standing = standings[i].take();
             if let Some(fluids) = fluids {
@@ -268,7 +268,7 @@ impl Game<'_> {
         // What a wither's side heads can look at, by network entity id: the
         // mobs and the player (position and eye height).
         let wither_targets: Vec<(i32, [f64; 3], f64)> = if self
-            .mobs
+            .remote_entities
             .iter()
             .any(|m| m.species() == horizon_client::mobs::Species::Wither)
         {
@@ -277,7 +277,7 @@ impl Game<'_> {
                 .as_ref()
                 .zip(self.eye_position())
                 .map(|(r, eye)| (r.entity_id, eye, eye[1]));
-            self.mobs
+            self.remote_entities
                 .iter()
                 .map(|m| {
                     (
@@ -304,7 +304,7 @@ impl Game<'_> {
                     (feet, [feet[0], feet[1] + eye / 2.0, feet[2]])
                 });
             let others = self.remote.as_ref().into_iter().flat_map(|r| {
-                self.mobs
+                self.remote_entities
                     .iter()
                     .filter(move |m| m.alive() && r.level_players.contains_key(&(m.id as i32)))
                     .filter(move |m| {
@@ -332,7 +332,7 @@ impl Game<'_> {
             .remote
             .as_ref()
             .map(|r| {
-                self.mobs
+                self.remote_entities
                     .iter()
                     .filter(|m| {
                         r.level_players.contains_key(&(m.id as i32)) && m.extra.ints[1] != 0
@@ -368,7 +368,7 @@ impl Game<'_> {
         let tick_listened = mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost);
         for (i, rain) in rain.iter().copied().enumerate() {
-            let id = self.mobs[i].id;
+            let id = self.remote_entities[i].id;
             let player = self
                 .remote
                 .as_ref()
@@ -378,8 +378,8 @@ impl Game<'_> {
             if (!running && !player) || driven == Some(id) {
                 continue;
             }
-            let animation = if player && self.mobs[i].extra.using_item > 0 {
-                let extra = &self.mobs[i].extra;
+            let animation = if player && self.remote_entities[i].extra.using_item > 0 {
+                let extra = &self.remote_entities[i].extra;
                 let slot = if extra.using_off_hand {
                     horizon_items::equipment::OFFHAND
                 } else {
@@ -406,7 +406,7 @@ impl Game<'_> {
             let stepped = &mut r.stepped;
             let players = &r.level_players;
             let tab_players = &r.tab_players;
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             let section_from = m.position;
             if player {
                 // AvatarRenderer.extractRenderState: isSpectator, from the player list.
@@ -498,7 +498,7 @@ impl Game<'_> {
                 self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
             }
             let head_lerps = &mut self.remote.as_mut().unwrap().head_lerps;
-            let m = &mut self.mobs[i];
+            let m = &mut self.remote_entities[i];
             // LivingEntity.aiStep: the head's own interpolation.
             if let Some((yaw, steps)) = head_lerps.get_mut(&(m.id as i32))
                 && *steps > 0

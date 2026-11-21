@@ -367,7 +367,7 @@ impl Game<'_> {
     fn mob_hand_stack(&self, id: u32, off_hand: bool) -> Option<ItemStack> {
         use horizon_items::equipment::{MAINHAND, OFFHAND};
         let slot = if off_hand { OFFHAND } else { MAINHAND };
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
         mob.extra.slot_stack(slot).cloned()
     }
     /// `ItemStack.causeUseVibration` for `stack` used by mob `id`.
@@ -375,7 +375,7 @@ impl Game<'_> {
         if !self.use_vibrates(stack) {
             return;
         }
-        let Some(p) = self.mobs.iter().find(|m| m.id == id).map(|m| m.position) else {
+        let Some(p) = self.remote_entities.iter().find(|m| m.id == id).map(|m| m.position) else {
             return;
         };
         let ctx = self.mob_context(id, None);
@@ -390,7 +390,7 @@ impl Game<'_> {
         let free = |m: &horizon_client::mobs::Mob| {
             !spear_use::is_using_item(m) && !spear_use::counts_own_timer(m)
         };
-        if !self.mobs.iter().any(|m| m.id == id && free(m)) {
+        if !self.remote_entities.iter().any(|m| m.id == id && free(m)) {
             return false;
         }
         let Some(stack) = self.mob_hand_stack(id, off_hand) else {
@@ -411,7 +411,7 @@ impl Game<'_> {
         }
         // The hook may have changed the mob: the same checks again.
         let started = self
-            .mobs
+            .remote_entities
             .iter_mut()
             .find(|m| m.id == id)
             .is_some_and(|m| free(m) && spear_use::start_using_item(m, off_hand));
@@ -424,7 +424,7 @@ impl Game<'_> {
     /// less the ticks its counter has run, 0 when it uses nothing (an admiring
     /// piglin and a drinking witch use none). None for a mob that is gone.
     pub(super) fn mob_item_use_remaining(&self, id: u32) -> Option<i32> {
-        let mob = self.mobs.iter().find(|m| m.id == id)?;
+        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
         if !spear_use::is_using_item(mob) {
             return Some(0);
         }
@@ -440,7 +440,7 @@ impl Game<'_> {
     /// counter moves to where that many ticks are left. A mob's use never
     /// runs out, so nothing else changes. False when it uses nothing.
     pub(super) fn mob_set_item_use_remaining(&mut self, id: u32, remaining: i32) -> bool {
-        let Some(mob) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(mob) = self.remote_entities.iter().find(|m| m.id == id) else {
             return false;
         };
         if !spear_use::is_using_item(mob) {
@@ -450,7 +450,7 @@ impl Game<'_> {
             return false;
         };
         let counter = use_counter_leaving(self.use_duration(&stack), remaining);
-        if let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             mob.extra.using_item = counter;
         }
         true
@@ -460,7 +460,7 @@ impl Game<'_> {
     /// and a trident's own release ask for a player, and a use cooldown too
     /// (`UseCooldown.apply`). False when no use runs.
     pub(super) fn release_mob_using_item(&mut self, id: u32) -> bool {
-        let Some(mob) = self.mobs.iter_mut().find(|m| m.id == id) else {
+        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
             return false;
         };
         if !spear_use::is_using_item(mob) {
@@ -481,6 +481,83 @@ impl Game<'_> {
             self.native_release_using(&stack, entity, remaining, &mut false);
         }
         self.mob_use_vibration(id, &stack, "minecraft:item_interact_finish");
+        true
+    }
+    /// `mob_hand_stack` for the ECS mob `id`: the hand stack the bridge holds (`ecs_hand_stack`, not yet on the bridge).
+    fn ecs_mob_hand_stack(&self, id: u32, off_hand: bool) -> Option<ItemStack> {
+        self.ecs_hand_stack(id, off_hand)
+    }
+    /// `mob_use_vibration` for the ECS mob `id`.
+    fn ecs_mob_use_vibration(&mut self, id: u32, stack: &ItemStack, event: &'static str) {
+        if !self.use_vibrates(stack) {
+            return;
+        }
+        let Some(p) = self.ecs.position(id) else { return };
+        let ctx = self.mob_context(id, None);
+        self.post_game_event(event, p, ctx);
+    }
+    /// `start_mob_using_item` for the ECS mob `id`: the use counter is the bridge's (`ecs_start_using`, not yet on the bridge).
+    pub(super) fn start_mob_using_item_ecs(&mut self, id: u32, hand: Hand) -> bool {
+        let off_hand = hand == Hand::Off;
+        if !self.ecs_mob_free(id) {
+            return false;
+        }
+        let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else {
+            return false;
+        };
+        let own = self.use_duration(&stack);
+        let (mut duration, mut canceled) = (own, false);
+        let entity = Some(id as i32);
+        self.native_living_entity_use_item_start(&stack, entity, hand, &mut duration, &mut canceled);
+        if start_of(own, duration, canceled).is_none() {
+            return false;
+        }
+        let started = self.ecs_mob_free(id) && self.ecs_start_using(id, off_hand);
+        if started {
+            self.ecs_mob_use_vibration(id, &stack, "minecraft:item_interact_start");
+        }
+        started
+    }
+    /// `mob_item_use_remaining` for the ECS mob `id`.
+    pub(super) fn mob_item_use_remaining_ecs(&self, id: u32) -> Option<i32> {
+        let (off_hand, counter) = self.ecs_using(id)?;
+        if counter == 0 {
+            return Some(0);
+        }
+        let stack = self.ecs_mob_hand_stack(id, off_hand);
+        Some(stack.map_or(0, |stack| ticks_left(self.use_duration(&stack), counter.unsigned_abs() - 1)))
+    }
+    /// `mob_set_item_use_remaining` for the ECS mob `id`.
+    pub(super) fn mob_set_item_use_remaining_ecs(&mut self, id: u32, remaining: i32) -> bool {
+        let Some((off_hand, counter)) = self.ecs_using(id) else { return false };
+        if counter == 0 {
+            return false;
+        }
+        let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else { return false };
+        let counter = use_counter_leaving(self.use_duration(&stack), remaining);
+        self.ecs_set_using(id, counter);
+        true
+    }
+    /// `release_mob_using_item` for the ECS mob `id`.
+    pub(super) fn release_mob_using_item_ecs(&mut self, id: u32) -> bool {
+        let Some((off_hand, counter)) = self.ecs_using(id) else { return false };
+        if counter == 0 {
+            return false;
+        }
+        let ticks = counter.unsigned_abs() - 1;
+        self.ecs_stop_using(id);
+        let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else {
+            return true;
+        };
+        let remaining = ticks_left(self.use_duration(&stack), ticks);
+        let hand = if off_hand { Hand::Off } else { Hand::Main };
+        let entity = Some(id as i32);
+        let mut canceled = false;
+        self.native_living_entity_use_item_stop(&stack, entity, hand, remaining, &mut canceled);
+        if !canceled {
+            self.native_release_using(&stack, entity, remaining, &mut false);
+        }
+        self.ecs_mob_use_vibration(id, &stack, "minecraft:item_interact_finish");
         true
     }
     /// `Player.canEat(canAlwaysEat)` for `stack`, food that is eaten only
@@ -1469,7 +1546,6 @@ pub(super) mod interact_vibration_tests {
             );
             assert!(game.hook.is_some());
             assert_eq!(game.cast_rod(), Some(&rod), "drawn cast");
-            game.tick_fishing();
             assert!(
                 game.hook.is_some(),
                 "the content rod keeps its hook when ticked"

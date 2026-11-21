@@ -2,6 +2,7 @@ use super::*;
 use crate::game::{Audio, Options, Progress, Settings, load_resources};
 use horizon_client::{chunk::Chunk, motion::PlayerMotion};
 use horizon_core::position::ChunkPos;
+use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, bridge::select::Select, targeting::Who as ShotBy, trident::Pickup};
 use std::sync::Arc;
 fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -63,24 +64,35 @@ fn source(game: &mut Game<'_>, x: i32, z: i32, block: &str) {
     assert!(game.run_command(&format!("setblock {x} 200 {z} {block} strict")));
     assert!(game.run_command(&format!("execute if block {x} 199 {z} end_stone")));
 }
-fn launch(game: &mut Game<'_>, kind: &str, n: i32, x: i32, z: i32, owner: bool) -> u32 {
-    let own = if owner { ",Owner:[I;116,0,0,99]" } else { "" };
-    assert!(game.run_command(&format!("summon {kind} {x}.5 202.5 {z}.5 {{UUID:[I;116,0,0,{n}],NoGravity:1b,Motion:[0d,-2d,0d]{own}}}")));
-    let p = game
-        .creatures
-        .projectiles
-        .iter()
-        .find(|p| game.persist.uuid_of(p.id) == Some([116, 0, 0, n]))
-        .unwrap();
-    assert_eq!(p.kind.id(), format!("minecraft:{kind}"));
-    assert_eq!(p.position, Vec3::new(x as f64 + 0.5, 202.5, z as f64 + 0.5));
-    assert_eq!(p.velocity, Vec3::new(0.0, -2.0, 0.0));
-    assert!(p.no_gravity);
-    assert_eq!(p.owner_uuid, owner.then_some([116, 0, 0, 99]));
-    if owner {
-        assert!(matches!(p.owner, Some(Who::Mob(_))));
+fn plain_shot() -> ArrowShot {
+    ArrowShot {
+        pickup: Pickup::Disallowed,
+        stack: crate::items::ItemStack::new("minecraft:arrow", 1),
+        fx: Def {
+            fire: 0,
+            punch: 0.0,
+            pierce: 0,
+            effects: Vec::new(),
+        },
+        sound: "minecraft:entity.arrow.hit",
     }
-    p.id
+}
+/// Launches `kind` from above `(x, z)` falling at two blocks a tick, owned by `owner`; its ECS id.
+fn launch(game: &mut Game<'_>, kind: &str, x: i32, z: i32, owner: Option<ShotBy>) -> u32 {
+    let (at, velocity) = ([x as f64 + 0.5, 202.5, z as f64 + 0.5], [0.0, -2.0, 0.0]);
+    let id = if kind == "arrow" {
+        game.ecs_shoot_arrow(at, velocity, owner, plain_shot(), None)
+    } else {
+        game.ecs_launch_item(kind, at, velocity, owner, None).unwrap_or(0)
+    };
+    assert_ne!(id, 0, "{kind} is in the level");
+    id
+}
+/// The ECS owner of the pig summoned in this test.
+fn pig_owner(game: &mut Game<'_>) -> Option<ShotBy> {
+    let pig = game.ecs.select(&Select { kind: Some("minecraft:pig".into()), ..Default::default() })[0];
+    let pig = game.ecs_id_of(pig);
+    game.ecs_owner(Some(crate::mobs::Who::Mob(pig)))
 }
 fn dropped(game: &Game<'_>, item: &str) {
     assert_eq!(game.dropped.len(), 1, "actual unfiltered item collection");
@@ -93,23 +105,13 @@ fn a_registered_arrow_collision_keeps_the_actual_projectile_for_chorus_loot() {
     with_game(|game| {
         source(game, 4, 4, "chorus_flower");
         assert!(game.dropped.is_empty());
-        let id = launch(game, "arrow", 1, 4, 4, false);
-        game.tick_projectiles().unwrap();
+        let id = launch(game, "arrow", 4, 4, None);
+        game.tick_ecs().unwrap();
         assert!(
             game.run_command("execute if block 4 200 4 air"),
             "actual collision broke the source"
         );
-        assert!(
-            game.creatures
-                .projectiles
-                .iter()
-                .find(|p| p.id == id)
-                .unwrap()
-                .arrow
-                .as_ref()
-                .unwrap()
-                .in_ground
-        );
+        assert!(game.ecs_view(id).is_some(), "the arrow stays stuck");
         dropped(game, "minecraft:chorus_flower");
     });
 }
@@ -118,10 +120,10 @@ fn a_registered_arrow_collision_keeps_the_actual_projectile_for_chorus_loot() {
 fn a_registered_snowball_collision_keeps_the_actual_projectile_for_chorus_loot() {
     with_game(|game| {
         source(game, 4, 4, "chorus_flower");
-        let id = launch(game, "snowball", 2, 4, 4, false);
-        game.tick_projectiles().unwrap();
+        let id = launch(game, "snowball", 4, 4, None);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 4 200 4 air"));
-        assert!(!game.creatures.projectiles.iter().any(|p| p.id == id));
+        assert!(game.ecs_view(id).is_none(), "the snowball broke on impact");
         dropped(game, "minecraft:chorus_flower");
     });
 }
@@ -131,8 +133,8 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
     with_game(|game| {
         source(game, 4, 4, "chorus_flower");
         assert!(game.run_command("gamerule projectiles_can_break_blocks false"));
-        launch(game, "arrow", 3, 4, 4, false);
-        game.tick_projectiles().unwrap();
+        launch(game, "arrow", 4, 4, None);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 4 200 4 chorus_flower"));
         assert!(game.dropped.is_empty());
         assert!(game.run_command("gamerule projectiles_can_break_blocks true"));
@@ -146,24 +148,25 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
             "summon pig 12.5 200 12.5 {UUID:[I;116,0,0,99],NoAI:1b,NoGravity:1b,Health:10f}"
         ));
         source(game, 8, 4, "chorus_flower");
-        launch(game, "arrow", 4, 8, 4, true);
-        game.tick_projectiles().unwrap();
+        let owner = pig_owner(game);
+        launch(game, "arrow", 8, 4, owner);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 8 200 4 chorus_flower"));
         assert!(game.dropped.is_empty());
         source(game, 12, 4, "chorus_flower");
-        launch(game, "ender_pearl", 5, 12, 4, false);
-        game.tick_projectiles().unwrap();
+        launch(game, "ender_pearl", 12, 4, None);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 12 200 4 chorus_flower"));
         assert!(game.dropped.is_empty());
         source(game, 4, 8, "stone");
-        launch(game, "arrow", 6, 4, 8, false);
-        game.tick_projectiles().unwrap();
+        launch(game, "arrow", 4, 8, None);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 4 200 8 stone"));
         assert!(game.dropped.is_empty());
         assert!(game.run_command("gamerule block_drops false"));
         source(game, 8, 8, "chorus_flower");
-        launch(game, "snowball", 7, 8, 8, false);
-        game.tick_projectiles().unwrap();
+        launch(game, "snowball", 8, 8, None);
+        game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 8 200 8 air"));
         assert!(game.dropped.is_empty());
         assert!(game.run_command("gamerule block_drops true"));

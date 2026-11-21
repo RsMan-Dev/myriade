@@ -614,16 +614,16 @@ mod tests {
                 .unwrap()
                 .clone();
             let at = horizon_core::geometry::Vec3::new(6.5, 64.0, 5.5);
-            let index = game.mobs.len();
-            game.mobs.push(Mob::new(21, kind.clone(), at, 0.0));
+            let index = game.remote_entities.len();
+            game.remote_entities.push(Mob::new(21, kind.clone(), at, 0.0));
             let source = EquipInput::new(1, rich_helmet());
             let prepared = game.equip_stack(&source, &["minecraft:zombie"], &[21]);
             assert!(game.can_equip(&prepared, "feet", 21, "minecraft:zombie", false));
             let before = asked.load(Ordering::Relaxed);
             assert!(!game.can_equip(&prepared, "feet", 9999, "minecraft:zombie", true));
-            game.mobs.remove(index);
+            game.remote_entities.remove(index);
             assert!(!game.can_equip(&prepared, "feet", 21, "minecraft:zombie", true));
-            game.mobs.push(Mob::new(21, kind, at, 0.0));
+            game.remote_entities.push(Mob::new(21, kind, at, 0.0));
             assert!(!game.can_equip(&prepared, "feet", 21, "minecraft:zombie", true));
             assert_eq!(asked.load(Ordering::Relaxed), before);
             take_equip_conversions();

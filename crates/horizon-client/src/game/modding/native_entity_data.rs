@@ -127,7 +127,17 @@ impl Game<'_> {
             return false;
         };
         let saved = name.as_ref().map(|n| json_to_tag(&n.component()));
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        // A name of an ECS entity is its saved `CustomName`; clearing it goes through the bridge.
+        if self.ecs_has(id) {
+            match saved {
+                Some(tag) => {
+                    self.ecs_put(id, "CustomName", tag);
+                }
+                None => self.ecs.clear_name(id),
+            }
+            return true;
+        }
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.custom_name = name.as_ref().map(Text::plain);
             m.custom_name_text = name;
         } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
@@ -146,7 +156,8 @@ impl Game<'_> {
             return Some(false);
         };
         Some(match t {
-            Target::Mob(_) => self.mobs.iter().any(|m| m.id == id && m.name_visible),
+            Target::Mob(_) if self.ecs_has(id) => self.ecs_flag(id, "CustomNameVisible").unwrap_or(false),
+            Target::Mob(_) => self.remote_entities.iter().any(|m| m.id == id && m.name_visible),
             Target::Stand(_) => self
                 .armor_stands
                 .iter()
@@ -167,7 +178,10 @@ impl Game<'_> {
         let Some(id) = self.name_holder(entity) else {
             return false;
         };
-        if let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) {
+        if self.ecs_has(id) {
+            return self.ecs_put_flag(id, "CustomNameVisible", visible);
+        }
+        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.name_visible = visible;
         } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
             a.name_visible = visible;
@@ -181,16 +195,8 @@ impl Game<'_> {
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(super) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) => match self.mobs.iter().find(|m| m.id == id)?.category() {
-                "monster" => MobCategory::Monster,
-                "creature" => MobCategory::Creature,
-                "ambient" => MobCategory::Ambient,
-                "axolotls" => MobCategory::Axolotls,
-                "underground_water_creature" => MobCategory::UndergroundWaterCreature,
-                "water_creature" => MobCategory::WaterCreature,
-                "water_ambient" => MobCategory::WaterAmbient,
-                _ => MobCategory::Misc,
-            },
+            Target::Mob(id) if self.ecs_has(id) => mob_category_named(self.ecs.category(id)?),
+            Target::Mob(id) => mob_category_named(self.remote_entities.iter().find(|m| m.id == id)?.category()),
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
         })
@@ -266,6 +272,20 @@ fn named_id(t: Target) -> Option<u32> {
     }
 }
 
+/// The `MobCategory` a mob type's category name stands for.
+fn mob_category_named(name: &str) -> MobCategory {
+    match name {
+        "monster" => MobCategory::Monster,
+        "creature" => MobCategory::Creature,
+        "ambient" => MobCategory::Ambient,
+        "axolotls" => MobCategory::Axolotls,
+        "underground_water_creature" => MobCategory::UndergroundWaterCreature,
+        "water_creature" => MobCategory::WaterCreature,
+        "water_ambient" => MobCategory::WaterAmbient,
+        _ => MobCategory::Misc,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::api_values::TryIntoApi;
@@ -277,7 +297,7 @@ mod tests {
 
     fn push_mob(game: &mut super::Game<'_>, id: u32, kind: &str) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
-        game.mobs
+        game.remote_entities
             .push(Mob::new(id, kind, Vec3::new(0.5, 70.0, 0.5), 0.0));
         game.entity(id).unwrap()
     }
@@ -311,7 +331,7 @@ mod tests {
             // The saved data loads back with the styled name and the flag.
             let t = game.native_entity_target(mob).unwrap();
             game.apply_entity_nbt(t, Tag::Compound(saved)).unwrap();
-            let m = game.mobs.iter().find(|m| m.id == 12).unwrap();
+            let m = game.remote_entities.iter().find(|m| m.id == 12).unwrap();
             assert_eq!(m.custom_name_text.as_ref(), Some(&name));
             assert_eq!(mob.name(game).as_deref(), Some("Grumbles"));
             assert_eq!(mob.custom_name_visible(game), Some(true));
@@ -429,3 +449,4 @@ mod tests {
         });
     }
 }
+

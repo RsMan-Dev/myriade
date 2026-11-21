@@ -75,6 +75,9 @@ pub struct Contact {
     pub on_ground: bool,
     pub horizontal: bool,
     pub fall_distance: f64,
+    /// `Entity.stuckSpeedMultiplier` as a kind (`inside_effects::STUCK`, 0 = none): the next `do_move` scales its movement by it and
+    /// clears it. A byte in the padding after the two flags.
+    pub stuck: u8,
 }
 
 /// What the move control left for the travel: the forward input and the speed it scales by.

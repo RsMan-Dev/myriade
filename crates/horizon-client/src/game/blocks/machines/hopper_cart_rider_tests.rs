@@ -4,11 +4,7 @@
 //! its rider's turn instead (`tick_cart_riding`, from `guest_vehicle_tick`),
 //! which used to move the cart without the suck: a player riding a hopper
 //! minecart under a chest got nothing.
-use super::super::{
-    Game,
-    game_tests::tests::server_game,
-    minecarts::{CartKind, Minecart},
-};
+use super::super::{Game, game_tests::tests::server_game};
 use horizon_client::{containers::BlockEntity, items::ItemStack};
 use horizon_core::geometry::Vec3;
 
@@ -32,16 +28,21 @@ fn counts(game: &Game<'_>, x: i32, id: u32) -> (u32, u32) {
         _ => 0,
     };
     let in_cart: u32 = game
-        .carts
-        .iter()
-        .find(|c| c.id == id)
+        .ecs
+        .cart_items(id)
         .unwrap()
-        .items
         .iter()
         .flatten()
         .map(|s| s.count)
         .sum();
     (in_chest, in_cart)
+}
+
+fn spawn_hopper(game: &mut Game<'_>, id: u32, at: [f64; 3]) {
+    let spawned = game.ecs_with(|ecs, mw| {
+        ecs.spawn_cart_id(mw, "minecraft:hopper_minecart", at, 0.0, &mut || id)
+    });
+    assert_eq!(spawned, Some(id));
 }
 
 /// A player riding a hopper minecart loads exactly like one without a rider,
@@ -53,10 +54,8 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     let mut game = server_game(&mut resources);
     chest(&mut game, 8);
     chest(&mut game, 12);
-    let ridden = Minecart::new(1, CartKind::Hopper, Vec3::new(8.5, 64.0625, 8.5));
-    let empty = Minecart::new(2, CartKind::Hopper, Vec3::new(12.5, 64.0625, 8.5));
-    game.carts.push(ridden);
-    game.carts.push(empty);
+    spawn_hopper(&mut game, 1, [8.5, 64.0625, 8.5]);
+    spawn_hopper(&mut game, 2, [12.5, 64.0625, 8.5]);
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.5, 8.5)).unwrap(),
     );
@@ -73,7 +72,7 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     assert_eq!(game.riding, Some(1), "the rider is in the first cart");
     for _ in 0..20 {
         assert!(game.tick_cart_riding(super::super::Keys::default()));
-        game.tick_carts();
+        game.tick_ecs().unwrap();
     }
     assert_eq!(game.riding, Some(1), "the rider keeps its cart");
     let (ridden_chest, ridden_cart) = counts(&game, 8, 1);

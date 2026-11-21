@@ -12,6 +12,7 @@
 use crate::cow::*;
 use crate::goals::*;
 use crate::rules::{no_attrs, params, Rule};
+use crate::pilot::PilotInput;
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use crate::rules::mount::{boost_factor, charged_jump, dash_push, dist_sq, drive_forward, repath_due, seat_point, temper_after};
@@ -56,7 +57,6 @@ pub struct Mount {
     pub rider: Option<Who>,
     /// The second seat and the following ones (`seats.len()` in all): never steer.
     pub passenger: Option<Who>,
-    pub input: RiderInput,
     /// `AbstractHorse`'s jump strength (the attribute), and the highest temper (`getMaxTemper`): 0 for a mount that is not an `AbstractHorse`.
     pub jump_strength: f32,
     pub max_temper: i32,
@@ -77,7 +77,7 @@ pub struct Mount {
 }
 impl Default for Mount {
     fn default() -> Self {
-        Self { rider: None, passenger: None, input: RiderInput::default(), jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, ready_at: 0, rider_ranged: false, by_player: true }
+        Self { rider: None, passenger: None, jump_strength: 0.7, max_temper: 0, temper: 0, saddled: false, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, ready_at: 0, rider_ranged: false, by_player: true }
     }
 }
 /// The stick of a pig or strider was used: the boost runs (`elapsed` of `total` own ticks).
@@ -142,7 +142,6 @@ pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
     let first = m.rider.is_none();
     if first {
         m.rider = Some(who);
-        m.input = RiderInput::default();
     } else if m.seats.len() > 1 && m.passenger.is_none() {
         m.passenger = Some(who);
     } else {
@@ -196,8 +195,8 @@ pub fn dismount(w: &mut World, mount: Entity) -> Option<Who> {
     let mut m = w.get_mut::<Mount>(mount)?;
     let who = m.rider.take()?;
     m.rider = m.passenger.take();
-    m.input = RiderInput::default();
     let next = m.rider;
+    w.entity_mut(mount).remove::<PilotInput>();
     get_off(w, mount, who);
     if let Some(mut d) = w.get_mut::<Drive>(mount) {
         d.air_speed = None;
@@ -288,6 +287,7 @@ fn ridden_drive(
     clock: Res<Clock>,
     mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::fly_steer::Params>), With<Ridden>>,
     targets: Query<(), With<crate::targeting::Target>>,
+    mut pilots: Query<&mut PilotInput>,
     level: Res<Level>,
     on: Res<Online>,
     mut held: Query<crate::leash::Held, crate::leash::HeldFilter>,
@@ -297,16 +297,16 @@ fn ridden_drive(
     // The lead (no system of its own: this one runs every tick anyway).
     crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
     for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture, flier) in &mut q {
+        let r = pilots.get(e).map(crate::pilot::as_rider_input).unwrap_or_default();
         // A flying mount (`FlyingSteer`: its `Params` are the steer's constants) takes `fly_steer`'s drive instead of this one.
         if let Some(p) = flier {
-            crate::behaviours::fly_steer::drive_one(&m, &yaw, &mut vel, p);
+            crate::behaviours::fly_steer::drive_one(&m, r, &yaw, &mut vel, p);
             continue;
         }
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();
             continue;
         };
-        let r = m.input;
         let now = clock.of(e);
         d.air_speed = None;
         let mut controlled = false;
@@ -326,7 +326,9 @@ fn ridden_drive(
                     d.zza = forward;
                     if c.on_ground && r.jump > 0.0 {
                         vel.0 = charged_jump(vel.0, r.yaw, m.jump_strength, r.jump, forward);
-                        m.input.jump = 0.0;
+                        if let Ok(mut p) = pilots.get_mut(e) {
+                            p.jump = 0.0;
+                        }
                     }
                 }
                 Steer::Stick { factor, boost_gain, .. } if r.steer => {
@@ -374,7 +376,9 @@ fn ridden_drive(
                                 true
                             };
                             if used {
-                                m.input.jump = 0.0;
+                                if let Ok(mut p) = pilots.get_mut(e) {
+                                    p.jump = 0.0;
+                                }
                             }
                         }
                     }

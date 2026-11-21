@@ -53,9 +53,10 @@ impl Game<'_> {
             .retain(|i| !intersects(standing(at(i.position), 0.25, 0.25), bounds));
         self.orbs
             .retain(|o| !intersects(standing(at(o.position), 0.5, 0.5), bounds));
-        self.creatures
-            .projectiles
-            .retain(|p| !intersects(standing(at(p.position), 0.5, 0.5), bounds));
+        // The ECS projectiles in the box: a bounded query on their marker, each one removed.
+        for id in self.ecs.projectiles_in(bounds.0, bounds.1) {
+            self.remove_projectile(id);
+        }
         self.armor_stands.retain(|a| {
             // ArmorStand.getDimensions: a marker has none, a small one is
             // half scale.
@@ -66,19 +67,30 @@ impl Game<'_> {
             };
             !intersects(standing(at(a.position), w, h), bounds)
         });
-        self.item_frames.retain(|f| !intersects(f.bounds(), bounds));
-        self.paintings.retain(|p| !intersects(p.bounds(), bounds));
+        for f in self.ecs_frames().into_iter().filter(|f| intersects(f.bounds(), bounds)) {
+            if let Some(e) = self.ecs.entity_of(f.id) {
+                self.ecs.despawn(e);
+            }
+        }
+        for p in self.ecs_paintings().into_iter().filter(|p| intersects(p.bounds(), bounds)) {
+            if let Some(e) = self.ecs.entity_of(p.id) {
+                self.ecs.despawn(e);
+            }
+        }
         let (boat_w, boat_h) = (super::boats::WIDTH, super::boats::HEIGHT);
         let gone: Vec<u32> = self
-            .boats
-            .iter()
-            .filter(|b| intersects(standing(at(b.position), boat_w, boat_h), bounds))
-            .map(|b| b.id)
+            .ecs
+            .boats_in(bounds.min_position(), bounds.max_position())
+            .into_iter()
+            .filter(|&id| {
+                self.ecs
+                    .position(id)
+                    .is_some_and(|p| intersects(standing(p, boat_w, boat_h), bounds))
+            })
             .collect();
         for id in gone {
-            if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                let b = self.boats.remove(i);
-                self.boat_removed(&b);
+            if let Some(e) = self.ecs.entity_of(id) {
+                self.ecs.despawn(e);
             }
         }
         let (cart_w, cart_h) = (super::minecarts::WIDTH, super::minecarts::HEIGHT);

@@ -151,49 +151,31 @@ impl Game<'_> {
     pub(super) fn add_planned(
         &mut self,
         planned: Vec<Planned>,
-        mut created: Vec<Mob>,
-        rides: Vec<(u32, u32)>,
+        created: Vec<Mob>,
+        _rides: Vec<(u32, u32)>,
     ) -> HashMap<u32, u32> {
-        let _save_lease = horizon_client::join_seq::visibility::PassLease::enter();
-        let mut finalized: Vec<Mob> = Vec::new();
-        let mut gears: Vec<Option<Tag>> = Vec::new();
-        let mut loads: Vec<(Tag, Option<Tag>, u32)> = Vec::new();
+        // The planned mobs go into the ECS level, in spawn order; the map gives each provisional id its network id. The
+        // equipment table and the rides are not carried yet (no ECS call for them).
+        let mut ids = HashMap::new();
         for plan in planned {
             match plan {
-                Planned::Finalized(mob, equipment) => {
-                    finalized.push(mob);
-                    gears.push(equipment);
+                Planned::Finalized(mob, _equipment) => {
+                    let at = [mob.position.x, mob.position.y, mob.position.z];
+                    if let Some(id) = self.ecs_spawn(&mob.kind.id, at, None) {
+                        ids.insert(mob.id, id);
+                    }
                 }
-                Planned::Loaded(tag, equipment, key) => loads.push((tag, equipment, key)),
-            }
-        }
-        // Real ids for finalizeSpawn's provisional mobs, in spawn order, the
-        // links that ride by id rewritten after them: the map the spawner's
-        // events resolve their provisional ids with.
-        let mut ids = self.resolve_spawn_ids([&mut finalized, &mut created], &rides);
-        for (mob, equipment) in finalized.into_iter().zip(gears) {
-            let id = mob.id;
-            let i = self.mobs.len();
-            self.mobs.push(mob);
-            self.native_mobs_joined(i, false);
-            // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
-            if let Some(table) = equipment {
-                self.equip_from_table(id, &table);
+                Planned::Loaded(Tag::Compound(tag), _equipment, key) => {
+                    if let Some(id) = self.ecs_load(&tag) {
+                        ids.insert(key, id);
+                    }
+                }
+                Planned::Loaded(..) => {}
             }
         }
         for mob in created {
-            let i = self.mobs.len();
-            self.mobs.push(mob);
-            self.native_mobs_joined(i, false);
-        }
-        for (tag, equipment, key) in loads {
-            if let Some(id) = self.load_mob(tag, None) {
-                // `nextSpawnData.getEquipment().ifPresent(mob::equip)`.
-                if let Some(table) = equipment {
-                    self.equip_from_table(id, &table);
-                }
-                ids.insert(key, id);
-            }
+            let at = [mob.position.x, mob.position.y, mob.position.z];
+            self.ecs_spawn(&mob.kind.id, at, None);
         }
         ids
     }
@@ -360,29 +342,31 @@ impl Game<'_> {
     }
     /// `LivingEntity.makePoofParticles` (entity event 20) for a mob.
     pub(super) fn mob_poof(&mut self, id: u32) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let Some(at) = self.ecs.position(id) else {
             return;
         };
-        let at = m.position;
-        self.lan_entity_event(id as i32, 20, [at.x, at.y, at.z]);
+        self.lan_entity_event(id as i32, 20, at);
         self.poof_particles(id);
     }
     /// `Mob.handleEntityEvent` 20 (`spawnAnim` on a client): the poof about
     /// mob `id`.
     pub(super) fn poof_particles(&mut self, id: u32) {
-        let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
+        let (Some(at), Some(kind)) = (self.ecs.position(id), self.ecs.kind(id)) else {
             return;
         };
-        let (at, w, h) = (m.position, f64::from(m.width()), f64::from(m.height()));
+        let Some(t) = self.res.mob_types().get(kind) else {
+            return;
+        };
+        let (w, h) = (t.width, t.height);
         let options = ParticleOptions::simple(ParticleType::Poof);
         for _ in 0..20 {
             let r = self.particles.level_random();
             let xa = r.next_gaussian() * 0.02;
             let ya = r.next_gaussian() * 0.02;
             let za = r.next_gaussian() * 0.02;
-            let x = at.x + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
-            let y = at.y + h * r.next_double() - ya * 10.0;
-            let z = at.z + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
+            let x = at[0] + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
+            let y = at[1] + h * r.next_double() - ya * 10.0;
+            let z = at[2] + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
             self.particles.add(&options, [x, y, z], [xa, ya, za]);
         }
     }

@@ -1,25 +1,24 @@
 //! Hanging entities (`HangingEntity`, `BlockAttachedEntity`): an item frame, a glow frame, a painting, fixed on a face of a block.
 //! State: `Attached` (its cell, its face, its kind, its birth in its own time), `Size` (a painting's footprint; a frame is 1 x 1) and
-//! `Frame` (the frame's rotation and its item). Nothing ticks. Vanilla's survival check runs every 101 ticks counted from the birth
+//! the item frame's `Held` (`frame_item.rs`: its item and rotation). Nothing ticks. Vanilla's survival check runs every 101 ticks counted from the birth
 //! (`ticksSinceLastCheck` is incremented, then compared with 100 before the test: the 101st tick). It is a deadline of the wheel
 //! (`cow::after`), armed when the entity is hung beside one it overlaps, and when a block changes under it (`BlockEvents`). An intact
 //! hanging entity costs nothing per tick. The walls and the free space are the host's (`Walls`).
 use crate::block_events::BlockEvents;
 use crate::cow::*;
+use crate::host_out_frames::Spot;
+use crate::rules::explosion::distance_share;
+use crate::targeting::Who;
 use crate::goals::Events;
-use crate::item::drop_item;
 pub use crate::rules::hanging::CHECK_PERIOD;
-use crate::rules::hanging::{cells, check_delay, support};
+use crate::rules::hanging::{cells, check_delay, left, step, support};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
 pub const ITEM_FRAME: u8 = 0;
 pub const GLOW_ITEM_FRAME: u8 = 1;
 pub const PAINTING: u8 = 2;
-/// Ticks of the dropped item's pickup delay (`Entity.spawnAtLocation`).
-const DROP_DELAY: i64 = 10;
 
 /// What a kind drops when it breaks, and its break sound.
 pub struct Kind {
@@ -48,13 +47,6 @@ pub struct Size {
     pub width: u8,
     pub height: u8,
 }
-/// An item frame: its rotation (`ItemFrame.rotation`, -7..=7 in 45 degree steps) and the item it holds.
-#[derive(Component, Clone, Debug)]
-pub struct Frame {
-    pub rotation: i8,
-    pub item: Option<Box<ItemStack>>,
-}
-
 /// The hanging entities by the cell of the block they hang on: the wall that decides whether they stay.
 #[derive(Resource, Default)]
 pub struct AttachIndex(HashMap<[i32; 3], Vec<Entity>>);
@@ -78,16 +70,16 @@ fn size_of(w: &World, e: Entity) -> (u8, u8) {
 
 /// Hangs an entity of `kind` at `pos` on `face`. Its survival check is armed when it overlaps another hanging entity (the one
 /// created and the ones it overlaps, which vanilla checks in the same way).
-pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>, frame: Option<Frame>) -> Entity {
+pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>) -> Entity {
     let at = Vec3::new(f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5);
     let e = w.spawn((crate::cow::Pos(at), OwnTime, Attached { pos, face, kind, born: 0 })).id();
+    let id = KINDS[usize::from(kind)].item;
+    w.entity_mut(e).insert(crate::cow::TypeName(id));
+    crate::nbt::mark_saved(w, e, id);
     let born = now_of(w, e);
     w.get_mut::<Attached>(e).expect("just spawned").born = born;
     if let Some(s) = size {
         w.entity_mut(e).insert(s);
-    }
-    if let Some(f) = frame {
-        w.entity_mut(e).insert(f);
     }
     w.resource_mut::<AttachIndex>().0.entry(support(pos, face)).or_default().push(e);
     let overlapped = overlapping(w, e);
@@ -121,11 +113,80 @@ fn overlapping(w: &World, e: Entity) -> Vec<Entity> {
     found
 }
 
+/// The hanging entities on `face` of the air cell `pos`, read from the index of the wall they hang on.
+pub fn at_cell(w: &World, pos: [i32; 3], face: u8) -> Vec<Entity> {
+    let Some(list) = w.get_resource::<AttachIndex>().and_then(|i| i.0.get(&support(pos, face))) else { return Vec::new() };
+    list.iter().copied().filter(|&e| w.get::<Attached>(e).is_some_and(|a| a.pos == pos && a.face == face)).collect()
+}
+
+/// The first entity `want` accepts that the ray `eye + dir * t` (`dir` a unit vector, `t` in 0..=reach) crosses, with `t`. The ray
+/// is sampled by 1/16 block and only the cells it crosses are read: no pass over all the entities.
+pub fn aimed(w: &World, eye: [f64; 3], dir: [f64; 3], reach: f64, want: fn(&World, Entity) -> bool) -> Option<(Entity, f64)> {
+    const STEP: f64 = 1.0 / 16.0;
+    let mut last = None;
+    for k in 0..=(reach / STEP) as u32 {
+        let t = f64::from(k) * STEP;
+        let cell = [0, 1, 2].map(|i| (eye[i] + dir[i] * t).floor() as i32);
+        if last == Some(cell) {
+            continue;
+        }
+        last = Some(cell);
+        for face in 0..6 {
+            for e in at_cell(w, cell, face) {
+                if want(w, e) {
+                    return Some((e, t));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// `Explosion` on the hanging entities (`BlockAttachedEntity.ignoreExplosion`, `hurtServer`): within the blast's diameter, one breaks when
+/// the blast breaks blocks, a fixed frame stays (`canHurtWhenFixed`). Read from the index, once per blast.
+pub fn blast(w: &mut World, at: Vec3, radius: f32, who: Option<Who>, breaks_blocks: bool) {
+    if !breaks_blocks {
+        return;
+    }
+    let diameter = f64::from(radius * 2.0);
+    let found: Vec<Entity> = w.get_resource::<AttachIndex>().map(|i| i.0.values().flatten().copied().collect()).unwrap_or_default();
+    for e in found {
+        let (Some(a), Some(feet)) = (w.get::<Attached>(e).copied(), w.get::<Pos>(e).map(|p| p.0)) else { continue };
+        if distance_share(feet, at, diameter) > 1.0 {
+            continue;
+        }
+        if a.kind == PAINTING {
+            crate::painting::break_out(w, e, who, false);
+        } else if !w.get::<crate::frame_item::Fixed>(e).is_some_and(|f| f.0) {
+            let spot = Spot { at: a.pos, face: a.face, glow: a.kind == GLOW_ITEM_FRAME };
+            crate::frame_item::break_out(w, e, spot, who, false);
+        }
+    }
+}
+
 /// Arms the entity's next survival check.
 pub fn arm(w: &mut World, e: Entity) {
     let Some(a) = w.get::<Attached>(e).copied() else { return };
     let now = now_of(w, e);
     after(w, e, check_delay(a.born, now), check);
+}
+
+/// The hanging entities on `face` whose footprint holds `c`. A footprint spans from one cell before its anchor to two after
+/// (`rules::hanging::span`), so the anchors read are those within two cells of `c`, each from the index.
+fn covering(w: &World, c: [i32; 3], face: u8) -> Vec<Entity> {
+    let l = left(face);
+    let mut found = Vec::new();
+    for j in -2..=2 {
+        for k in -2..=2 {
+            let p: [i32; 3] = std::array::from_fn(|i| c[i] - j * l[i] - k * i32::from(i == 1));
+            for e in at_cell(w, p, face) {
+                if cells(p, face, size_of(w, e)).contains(&c) && !found.contains(&e) {
+                    found.push(e);
+                }
+            }
+        }
+    }
+    found
 }
 
 /// The survival check (`BlockAttachedEntity.tick`'s `survives`): an entity that no longer survives breaks.
@@ -139,27 +200,37 @@ fn check(w: &mut World, e: Entity) {
     }
 }
 
-/// `dropItem(level, null)`: the sound, the item (and the framed item), then the entity goes.
+/// `dropItem(level, null)`: the sound, then the entity goes and its item falls (`frame_item::break_out`, `painting::break_out`).
 fn break_entity(w: &mut World, e: Entity, a: Attached) {
     let kind = &KINDS[usize::from(a.kind)];
     let at = Vec3::new(f64::from(a.pos[0]) + 0.5, f64::from(a.pos[1]) + 0.5, f64::from(a.pos[2]) + 0.5);
-    let held = w.get_mut::<Frame>(e).and_then(|mut f| f.item.take());
-    w.despawn(e);
     w.resource_mut::<Events>().host.sound(kind.break_sound, [at.x, at.y, at.z], 1.0, 1.0);
-    drop_item(w, ItemStack::new(kind.item, 1), at, Vec3::ZERO, DROP_DELAY);
-    if let Some(item) = held {
-        drop_item(w, *item, at, Vec3::ZERO, DROP_DELAY);
+    if a.kind == PAINTING {
+        crate::painting::break_out(w, e, None, false);
+    } else {
+        let spot = Spot { at: a.pos, face: a.face, glow: a.kind == GLOW_ITEM_FRAME };
+        crate::frame_item::break_out(w, e, spot, None, false);
     }
 }
 
-/// Block changes wake the hanging entities that hang on the changed cell: each arms its next check.
+/// Block changes wake the hanging entities whose wall or footprint is the changed cell: each arms its next check. Read per changed
+/// cell from the index, never per tick.
 pub fn attached_wake(w: &mut World) {
     let changed = match w.get_resource::<BlockEvents>() {
         Some(b) if !b.changed.is_empty() => b.changed.clone(),
         _ => return,
     };
     for c in changed {
-        let on: Vec<Entity> = w.resource::<AttachIndex>().0.get(&c).cloned().unwrap_or_default();
+        let mut on: Vec<Entity> = Vec::new();
+        for face in 0..6 {
+            let s = step(face);
+            let front: [i32; 3] = std::array::from_fn(|i| c[i] + s[i]);
+            for e in covering(w, c, face).into_iter().chain(covering(w, front, face)) {
+                if !on.contains(&e) {
+                    on.push(e);
+                }
+            }
+        }
         for e in on {
             arm(w, e);
         }

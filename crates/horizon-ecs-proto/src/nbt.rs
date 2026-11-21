@@ -220,7 +220,7 @@ pub fn save(w: &World, e: Entity) -> Option<Compound> {
             c.insert(d.key.into(), (d.default)());
         }
     }
-    for &(key, default) in crate::nbt_fields::common::DEFAULTS {
+    for &(key, default) in crate::nbt_fields::common::DEFAULTS.iter().chain(crate::nbt_fields::living_state::DEFAULTS) {
         if c.get(&JavaString::from(key)).is_none() {
             c.insert(key.into(), default());
         }
@@ -478,8 +478,12 @@ pub fn save_all(w: &mut World, mut each: impl FnMut(Entity, Compound)) {
     }
 }
 
-/// A rider of a saved mount: its mount writes it under `Passengers`, so `save_all` does not write it a second time.
+/// A rider of a saved mount or of a saved vehicle with seats: its vehicle writes it under `Passengers`, so `save_all` does not write it a
+/// second time.
 fn written_by_mount(w: &World, e: Entity) -> bool {
+    if let Some(crate::seat::Seated { vehicle, .. }) = w.get::<crate::seat::Seated>(e).copied() {
+        return w.get::<Saved>(vehicle).is_some() && crate::seat::riders_of(w, vehicle).contains(&e);
+    }
     let Some(Riding(m)) = w.get::<Riding>(e).copied() else { return false };
     w.get::<Saved>(m).is_some() && w.get::<Mount>(m).is_some_and(|t| t.rider == Some(Who::Entity(e)) || t.passenger == Some(Who::Entity(e)))
 }

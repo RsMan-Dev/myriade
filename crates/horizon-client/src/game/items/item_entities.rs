@@ -69,6 +69,14 @@ impl Game<'_> {
         id > self.ticked_entities_through || self.contact_drops.contains(&id)
     }
     pub(super) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
+        if self.ecs.is_active() {
+            // The stacks tick, merge and expire in the ECS (P's `item`): the host only lets the player take those in reach, by position.
+            if let Some(p) = self.player.as_ref().filter(|p| !p.health.dead_or_dying() && !self.spectator()) {
+                let feet = [p.position.x, p.position.y, p.position.z];
+                self.ecs_player_pickups(feet);
+            }
+            return;
+        }
         let mut items = self.dropped.lift();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
@@ -339,7 +347,7 @@ impl Game<'_> {
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
-    pub(super) fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
+    pub(in crate::game) fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
         for (stack, at) in destroyed {
             self.spawn_item_own(stack, [at.x, at.y, at.z], 0);
         }
@@ -373,6 +381,10 @@ impl Game<'_> {
     }
     /// `tryMergeToExisting`: true when an orb took the new one.
     pub(super) fn merge_new_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) -> bool {
+        // The ECS merges the orb with those near it (P's `orb`): the host spawns it there, unmerged.
+        if self.ecs.is_active() {
+            return false;
+        }
         let centre = Vec3::new(at[0], at[1], at[2]);
         let half = Vec3::new(0.5, 0.5, 0.5);
         let area = Aabb::new(centre.subtract(half), centre.add_vector(half));
@@ -410,6 +422,10 @@ impl Game<'_> {
     /// Puts back what a merge hook may have written to the orb `join`: a refused merge
     /// leaves both orbs as they were.
     fn restore_orb(&mut self, join: crate::join_seq::JoinSeq, value: i32, count: u32, age: u32) {
+        // Under the ECS no merge touched the host's list: nothing to put back.
+        if self.ecs.is_active() {
+            return;
+        }
         if let Some(i) = self.orbs.locate(join) {
             let orb = &mut self.orbs[i];
             (orb.value, orb.count, orb.age) = (value, count, age);
@@ -457,7 +473,8 @@ impl Game<'_> {
     /// `ExperienceOrb.tick`'s scan before movement, once every twenty ticks.
     /// Hooks can change the resident list, so retain join identities, not indices.
     pub(super) fn merge_orb(&mut self, i: usize) {
-        if !self.orbs[i].ticks.is_multiple_of(20) {
+        // The ECS scans its own orbs (P's `orb`); the host's list is empty under it.
+        if self.ecs.is_active() || !self.orbs[i].ticks.is_multiple_of(20) {
             return;
         }
         let into_join = self.orbs[i].join;
@@ -557,6 +574,11 @@ impl Game<'_> {
         if len_sqr > 0.0 && dot < 0.0 {
             velocity = Vec3::new(-velocity.x, -velocity.y, -velocity.z);
         }
+        if self.ecs.is_active() {
+            self.ecs_orb_moving(value, [p.x, p.y, p.z], [velocity.x, velocity.y, velocity.z]);
+            self.native_joins_flush(false, 0);
+            return;
+        }
         self.next_entity += 1;
         self.orbs.push(ExperienceOrb {
             attachment_lifetime: Default::default(),
@@ -623,6 +645,10 @@ impl Game<'_> {
                 ],
             )
         });
+        if self.ecs.is_active() {
+            let feet = player.map(|p| [p.position.x, p.position.y, p.position.z]);
+            return self.ecs_player_orbs(feet);
+        }
         let mut orbs = self.orbs.lift();
         #[cfg(test)]
         crate::game::entity::taken_pass_tests::after_take(self);
@@ -735,6 +761,10 @@ impl Game<'_> {
         velocity: [f64; 3],
         pickup_delay: u32,
     ) {
+        if self.ecs.is_active() {
+            self.ecs_drop_after(stack, position, velocity, i16::try_from(pickup_delay).unwrap_or(i16::MAX));
+            return;
+        }
         self.add_item_entity(stack, position, Some(velocity), pickup_delay);
     }
 
@@ -892,7 +922,9 @@ impl Game<'_> {
             ),
         };
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
-        let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
+        if self.ecs.is_active() {
+            return self.ecs_toss(thrown, at, v, uuid, !randomly);
+        }
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
         let id = if randomly {
             self.spawn_item(thrown, at, v, 40);

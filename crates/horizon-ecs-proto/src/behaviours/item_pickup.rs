@@ -28,7 +28,7 @@ impl Params {
 pub struct Pickup {
     reach: [f64; 3],
     whole_stack: bool,
-    picks_up: bool,
+    pub(crate) picks_up: bool,
 }
 
 pub static MODULE: Module = Module {

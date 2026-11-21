@@ -4,6 +4,7 @@
 //! effect attribute modifiers and the HUD effect icons (`Hud.extractEffects`).
 #[path = "potions/cloud_particle.rs"]
 mod cloud_particle;
+use horizon_ecs_proto::{effect_cloud::CloudSpec, effects, targeting};
 use super::{
     Game, Screen,
     dragon::{Breath, FightPlayer, FightWho},
@@ -115,87 +116,6 @@ fn thrown_left_owner(ridden: &[Aabb], position: Vec3, velocity: Vec3) -> bool {
 pub(super) const LINGERING_WAIT: i32 = 10;
 /// `AreaEffectCloud.DEFAULT_REAPPLICATION_DELAY`.
 const REAPPLICATION_DELAY: i32 = 20;
-/// `AreaEffectCloud.readAdditionalSaveData` for the fields a client cloud keeps:
-/// its position, lifetime, radius and use settings, and the potion it carries.
-/// The custom particle and the owner reference are not modelled on a client
-/// cloud, and the entity id is the caller's (`load_potion_cloud`).
-pub(super) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)> {
-    use horizon_client::save::{float, number, text};
-    let at = horizon_client::entity_nbt::position(tag)?;
-    let motion = horizon_client::entity_nbt::loaded_motion(tag);
-    let int = |key, default| number(tag.get(key)).map_or(default, |v| v as i32);
-    let real = |key, default| float(tag.get(key)).map_or(default, |v| v as f32);
-    let contents = tag.get("potion_contents");
-    let mut effects = contents
-        .and_then(|c| text(c.get("potion")))
-        .and_then(|id| brewing::potion(&id))
-        .map_or_else(Vec::new, |p| p.effects.to_vec());
-    let (mut hidden, mut ambient) = (Vec::new(), Vec::new());
-    if let Some(Tag::List(custom)) = contents.and_then(|c| c.get("custom_effects")) {
-        for effect in custom {
-            let Some(def) = text(effect.get("id")).and_then(|id| brewing::effect(&id)) else {
-                continue;
-            };
-            let duration = number(effect.get("duration")).unwrap_or(0) as i32;
-            let amp = number(effect.get("amplifier")).unwrap_or(0).clamp(0, 255) as i32;
-            effects.push((def.id, duration, amp));
-            if number(effect.get("show_particles")) == Some(0) {
-                hidden.push(def.id);
-            }
-            if number(effect.get("ambient")).unwrap_or(0) != 0 {
-                ambient.push(def.id);
-            }
-        }
-    }
-    let color = contents
-        .and_then(|c| number(c.get("custom_color")))
-        .map_or_else(
-            || {
-                horizon_client_core::potions::effects_color(
-                    effects
-                        .iter()
-                        .filter(|(id, ..)| !hidden.contains(id))
-                        .map(|(id, _, amp)| (*id, *amp)),
-                )
-            },
-            |color| color as u32,
-        );
-    Some((
-        at,
-        Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 0,
-            at: [at.x, at.y, at.z],
-            motion: [motion.x, motion.y, motion.z],
-            radius: real("Radius", 3.0).clamp(0.0, 32.0),
-            age: int("Age", 0),
-            duration: int("Duration", -1),
-            from_dragon: false,
-            victims: Vec::new(),
-            potion: Some(PotionCloud {
-                settings: CloudSettings {
-                    wait_time: int("WaitTime", 20),
-                    reapplication_delay: int("ReapplicationDelay", 20),
-                    radius_on_use: real("RadiusOnUse", 0.0),
-                    duration_on_use: int("DurationOnUse", 0),
-                    duration_scale: real("potion_duration_scale", 1.0),
-                },
-                effects,
-                hidden,
-                ambient,
-                radius_per_tick: real("RadiusPerTick", 0.0),
-                color,
-                custom_particle: tag.get("custom_particle").cloned(),
-                victims: Vec::new(),
-                source: Text::translate("entity.minecraft.area_effect_cloud", &[]),
-                owner: None,
-                guest: None,
-            }),
-        },
-    ))
-}
-
 /// `AreaEffectCloud.addAdditionalSaveData`: the lifetime, radius and use
 /// settings with the effects the cloud applies, as `custom_effects` with the
 /// colour they were drawn in. The client keeps no potion id, so a cloud that
@@ -353,7 +273,7 @@ impl PotionOwner {
     }
 }
 /// A mob's effect ids carry the `minecraft:` namespace; a mod's has its own.
-pub(super) fn mob_effect_id(id: &str) -> Option<&'static str> {
+pub(in crate::game) fn mob_effect_id(id: &str) -> Option<&'static str> {
     brewing::effect(id).map(|e| brewing::namespaced(e.id))
 }
 /// `LivingEntity.canBeAffected` with the mob overrides (`WitherBoss` and
@@ -414,7 +334,7 @@ impl Game<'_> {
 /// box at the hit point to an entity's box grown by the hit margin
 /// (`ProjectileUtil.computeMargin`), for entities that meet the potion's box
 /// grown by (4, 2, 4); none when it is 16 or more.
-fn splash_distance_sqr(at: Vec3, age: u32, bounds: Aabb) -> Option<f64> {
+pub(in crate::game) fn splash_distance_sqr(at: Vec3, age: u32, bounds: Aabb) -> Option<f64> {
     let potion = Aabb::new(
         Vec3::new(at.x - 0.125, at.y, at.z - 0.125),
         Vec3::new(at.x + 0.125, at.y + 0.25, at.z + 0.125),
@@ -442,7 +362,22 @@ impl Game<'_> {
     ) {
         let player = bearer.is_none();
         let feet = bounds.bottom_center();
-        if effects.contains(&"oozing") {
+        if effects.contains(&"oozing") && self.ecs.is_active() {
+            // OozingMobEffect.numberOfSlimesToSpawn, on the ECS level.
+            let limit = self
+                .ui
+                .rules
+                .int_at(horizon_client::gamerules::vanilla::MAX_ENTITY_CRAMMING);
+            let count = if limit >= 1 {
+                self.ecs_oozing_count(bounds, bearer.and_then(|b| self.ecs.entity_of(b)), limit)
+            } else {
+                2
+            };
+            let feet = [feet.x, feet.y, feet.z];
+            for _ in 0..count {
+                self.ecs_spawn_slime_offspring(feet);
+            }
+        } else if effects.contains(&"oozing") {
             // OozingMobEffect.numberOfSlimesToSpawn: two, fewer when the
             // slimes close by already fill the cramming limit.
             let limit = self
@@ -453,7 +388,7 @@ impl Game<'_> {
             if limit >= 1 {
                 let near = bounds.inflate(Vec3::new(2.0, 2.0, 2.0));
                 let nearby = self
-                    .mobs
+                    .remote_entities
                     .iter()
                     .filter(|m| {
                         m.species() == horizon_client::mobs::Species::Slime
@@ -471,7 +406,7 @@ impl Game<'_> {
                     [feet.x, feet.y + 0.5, feet.z],
                     false,
                     super::creatures::SpawnSite::Plain,
-                ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+                ) && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
                 {
                     horizon_client::mobs::cube::set_size(m, 2);
                 }
@@ -565,12 +500,14 @@ impl Game<'_> {
     /// (`horizon_client::mobs::infested_silverfish`).
     pub(super) fn spawn_infested(&mut self, at: [f64; 3], velocities: Vec<Vec3>) {
         for velocity in velocities {
-            if let Some(id) = self.spawn_mob(
+            if self.ecs.is_active() {
+                self.ecs_spawn_silverfish(at, velocity);
+            } else if let Some(id) = self.spawn_mob(
                 "minecraft:silverfish",
                 at,
                 false,
                 super::creatures::SpawnSite::Plain,
-            ) && let Some(m) = self.mobs.iter_mut().find(|m| m.id == id)
+            ) && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
             {
                 m.velocity = velocity;
             }
@@ -783,8 +720,13 @@ impl Game<'_> {
                 shot.shoot_from_rotation(
                     self.pitch, self.yaw, -20.0, power, 1.0, velocity, on_ground,
                 );
-                shot.guest = self.lan_acting;
-                self.add_projectile(shot);
+                self.ecs_launch_item(
+                    shot.entity_type(),
+                    [shot.position.x, shot.position.y, shot.position.z],
+                    [shot.velocity.x, shot.velocity.y, shot.velocity.z],
+                    self.ecs_owner(shot.owner),
+                    shot.item.clone(),
+                );
                 // ThrowablePotionItem.use / ExperienceBottleItem.use: awardStat(ITEM_USED).
                 self.award_stat("used", &stack.item, 1);
                 self.swing_arm();
@@ -1052,8 +994,12 @@ impl Game<'_> {
                     }
                 }
             }
+            Who::Mob(id) if self.ecs.is_active() => {
+                let amount = |base: i32, amp: i32| (base << amp.min(30)) as f32;
+                self.ecs_mob_effects(id, &effects, &[], &[], &amount);
+            }
             Who::Mob(id) => {
-                let Some(i) = self.mobs.iter().position(|m| m.id == id && m.alive()) else {
+                let Some(i) = self.remote_entities.iter().position(|m| m.id == id && m.alive()) else {
                     return;
                 };
                 let inverted = self
@@ -1062,10 +1008,10 @@ impl Game<'_> {
                     .enchantments
                     .entity_tags
                     .get("minecraft:inverted_healing_and_harm")
-                    .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
+                    .is_some_and(|t| t.contains(&self.remote_entities[i].kind.id));
                 for (effect, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
-                    let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+                    let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
                         return;
                     };
                     match effect {
@@ -1090,7 +1036,7 @@ impl Game<'_> {
                             if self.can_be_affected(Some(id as i32), &kind, effect)
                                 && let Some(name) = mob_effect_id(effect)
                             {
-                                let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
+                                let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
                                     return;
                                 };
                                 let new = !m.has_effect(name);
@@ -1184,7 +1130,6 @@ impl Game<'_> {
         self.tick_mob_effects();
         if running {
             self.tick_thrown_potions();
-            self.tick_potion_clouds();
         }
     }
     /// `LivingEntity.tickEffects` (server side) for `self.player`, the local
@@ -1365,7 +1310,7 @@ impl Game<'_> {
     /// the event fires first, for every effect, and `Allow` or `Deny`
     /// decides; unanswered, the vanilla tag check runs. `entity` is a mob's
     /// `Entity.getId`, None for the player.
-    pub(super) fn can_be_affected(
+    pub(in crate::game) fn can_be_affected(
         &mut self,
         entity: Option<i32>,
         kind: &str,
@@ -1478,7 +1423,7 @@ impl Game<'_> {
     /// `LivingEntity.addEffect` for a content mod's effect: its
     /// `onEffectAdded` when it is new, then its `onEffectStarted`, on a
     /// server. `entity` is a mob's id, None for the player.
-    pub(super) fn mod_effect_added(
+    pub(in crate::game) fn mod_effect_added(
         &mut self,
         effect: &str,
         entity: Option<i32>,
@@ -1678,7 +1623,9 @@ impl Game<'_> {
             }
         }
         if let Some(v) = vehicle {
-            if let Some(m) = self.mobs.iter().find(|m| m.id == v) {
+            if self.ecs.is_active() {
+                boxes.extend(self.ecs_mob_bounds(v));
+            } else if let Some(m) = self.remote_entities.iter().find(|m| m.id == v) {
                 boxes.push(m.bounds());
             }
             if let Some(b) = self.boats.iter().find(|b| b.id == v) {
@@ -1741,14 +1688,22 @@ impl Game<'_> {
                 let state =
                     self.world
                         .block(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-                let mob = self.mobs.iter().find(|m| {
-                    m.alive()
-                        && (t.left_owner || Some(m.id) != vehicle)
-                        && (m.position.x - p.x).abs() < m.kind.width / 2.0 + 0.125
-                        && (m.position.z - p.z).abs() < m.kind.width / 2.0 + 0.125
-                        && p.y >= m.position.y
-                        && p.y <= m.position.y + m.kind.height
-                });
+                // (id, feet, is a breeze) of the creature the step meets.
+                let mob = if self.ecs.is_active() {
+                    self.ecs_thrown_mob_at(p, vehicle, t.left_owner)
+                } else {
+                    self.remote_entities
+                        .iter()
+                        .find(|m| {
+                            m.alive()
+                                && (t.left_owner || Some(m.id) != vehicle)
+                                && (m.position.x - p.x).abs() < m.kind.width / 2.0 + 0.125
+                                && (m.position.z - p.z).abs() < m.kind.width / 2.0 + 0.125
+                                && p.y >= m.position.y
+                                && p.y <= m.position.y + m.kind.height
+                        })
+                        .map(|m| (m.id, m.position, m.species() == horizon_client::mobs::Species::Breeze))
+                };
                 // A player (`canHitEntity`: not the thrower before it has left
                 // them), the box grown by the 0.3 pick margin.
                 let player = thrown_player_at(&players, skip, p, margin);
@@ -1756,10 +1711,8 @@ impl Game<'_> {
                     // Projectile.hitTargetOrDeflectSelf: a breeze's deflection
                     // (`Breeze.deflection`) turns the potion back at half
                     // speed instead of `onHit`, and it flies on.
-                    if let Some(m) = mob
-                        && m.species() == horizon_client::mobs::Species::Breeze
-                    {
-                        if t.last_deflected_by != Some(m.id) {
+                    if let Some((mid, _, true)) = mob {
+                        if t.last_deflected_by != Some(mid) {
                             // ProjectileDeflection.REVERSE.
                             let _ = t.random.next_float();
                             t.velocity = Vec3::new(
@@ -1767,8 +1720,8 @@ impl Game<'_> {
                                 t.velocity.y * -0.5,
                                 t.velocity.z * -0.5,
                             );
-                            t.last_deflected_by = Some(m.id);
-                            deflected.push(m.id);
+                            t.last_deflected_by = Some(mid);
+                            deflected.push(mid);
                         }
                         // ThrowableProjectile.tick: `setPos(hitResult.getLocation())`
                         // before the deflection, so it does not step on past the
@@ -1781,7 +1734,7 @@ impl Game<'_> {
                     // (`onHitBlock`); an entity hit has none.
                     let block = (mob.is_none() && player.is_none())
                         .then(|| thrown_block_hit(t.position, p, t.velocity));
-                    let at = mob.map(|m| m.position).or_else(|| {
+                    let at = mob.map(|(_, at, _)| at).or_else(|| {
                         player.map(|(_, b)| {
                             let c = b.center();
                             Vec3::new(c.x, b.min(Axis::Y), c.z)
@@ -1819,7 +1772,9 @@ impl Game<'_> {
         });
         self.potions.thrown = thrown;
         for id in deflected {
-            if let Some(index) = self.mobs.iter().position(|m| m.id == id) {
+            if self.ecs.is_active() {
+                self.ecs_mob_sound(id, "minecraft:entity.breeze.deflect", 5, 1.0, 1.0, false);
+            } else if let Some(index) = self.remote_entities.iter().position(|m| m.id == id) {
                 self.play_mob_bound_sound(
                     index,
                     "minecraft:entity.breeze.deflect",
@@ -1865,169 +1820,25 @@ impl Game<'_> {
         tag: &Tag,
         transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
-        let (_, mut cloud) = potion_cloud_from_nbt(tag)?;
-        let id = self.take_entity_id();
-        cloud.id = id;
+        let Tag::Compound(c) = tag else { return None };
+        let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
+        let id = self.ecs_id_of(e);
         if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
         }
-        self.breath_clouds.push(cloud);
         Some(id)
     }
-    /// `AreaEffectCloud.tick` for the lingering potions' clouds: the client
-    /// tick's particles, then the server tick.
-    fn tick_potion_clouds(&mut self) {
-        if self.breath_clouds.iter().all(|c| c.potion.is_none()) {
-            return;
-        }
-        let players: Vec<FightPlayer> = self
-            .fight_players()
-            .into_iter()
-            .filter(|p| p.alive)
-            .collect();
-        let mut clouds = self.breath_clouds.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let ticking = self.entity_ticking_area();
-        let mut expired: Vec<u32> = Vec::new();
-        clouds.retain_mut(|c| {
-            let keep = c.potion.is_none()
-                || !ticking(c.at[0].floor() as i32, c.at[2].floor() as i32)
-                || self.tick_potion_cloud(c, &players);
-            if !keep {
-                expired.push(c.id);
-            }
-            keep
+    /// A lingering potion cloud in the ECS: `spawn_cloud` takes its spec whole (brews, flags, source, owner); P doses and ends it.
+    pub(super) fn spawn_potion_cloud(&mut self, at: [f64; 3], spec: CloudSpec) -> u32 {
+        let mut next = self.next_entity;
+        let id = self.ecs_with(|ecs, mw| {
+            ecs.spawn_cloud(mw, at, spec, &mut || {
+                next += 1;
+                next
+            })
         });
-        self.breath_clouds
-            .restore(clouds, horizon_client::join_seq::RestoreOrder::SpawnsFirst);
-        // A cloud that expired on its own takes its `noPhysics` write with it.
-        for id in expired {
-            self.forget_entity(id);
-        }
-    }
-    /// `AreaEffectCloud.serverTick`: configured lifetime/radius changes and
-    /// five-tick doses, with each victim's configured reapplication delay.
-    /// False once the cloud is gone.
-    fn tick_potion_cloud(&mut self, c: &mut Breath, players: &[FightPlayer]) -> bool {
-        // `Entity.baseTick`: an `AreaEffectCloud` is fire-immune, so a positive
-        // loaded `Fire` is cleared on its first tick (a load keeps it as given).
-        if let Some(raw) = self.persist.raw.get_mut(&c.id) {
-            horizon_client::entity_nbt::clear_positive_fire(raw);
-        }
-        // `Entity.baseTick` -> `updateFluidInteraction`: a cloud whose box (`radius * 2`
-        // wide, 0.5 high) is in water resets the fall distance it was loaded with.
-        if c.potion.is_some() {
-            let r = f64::from(c.radius);
-            let bounds = Aabb::new(
-                Vec3::new(c.at[0] - r, c.at[1], c.at[2] - r),
-                Vec3::new(c.at[0] + r, c.at[1] + 0.5, c.at[2] + r),
-            );
-            if self.bounds_in_water(bounds)
-                && let Some(Tag::Compound(raw)) = self.persist.raw.get_mut(&c.id)
-                && raw.contains_key(&"fall_distance".into())
-            {
-                raw.insert("fall_distance".into(), Tag::Double(0.0_f64.to_bits()));
-            }
-        }
-        c.age = c.age.wrapping_add(1);
-        let Some(potion) = c.potion.as_mut() else {
-            return true;
-        };
-        if c.duration != -1 && c.age.wrapping_sub(potion.settings.wait_time) >= c.duration {
-            return false;
-        }
-        let waiting = c.age < potion.settings.wait_time;
-        cloud_client_tick(
-            &mut self.particles,
-            c.at,
-            c.radius,
-            waiting,
-            &potion.particle(),
-        );
-        if waiting {
-            return true;
-        }
-        if potion.radius_per_tick != 0.0 {
-            c.radius += potion.radius_per_tick;
-            if c.radius < 0.5 {
-                return false;
-            }
-            c.radius = c.radius.clamp(0.0, 32.0);
-        }
-        if c.age % 5 != 0 {
-            return true;
-        }
-        potion.victims.retain(|(_, until)| c.age < *until);
-        if potion.effects.is_empty() {
-            potion.victims.clear();
-            return true;
-        }
-        let r = f64::from(c.radius);
-        let area = Aabb::new(
-            Vec3::new(c.at[0] - r, c.at[1], c.at[2] - r),
-            Vec3::new(c.at[0] + r, c.at[1] + 0.5, c.at[2] + r),
-        );
-        let mut inside = Vec::new();
-        for p in players.iter().filter(|p| p.bounds.intersects(area)) {
-            inside.push((Victim::Player(p.who), p.position.x, p.position.z));
-        }
-        let effects = potion.effects.clone();
-        // Only mobs that at least one of the cloud's effects can affect are
-        // taken (`allEffects.stream().anyMatch(entity::canBeAffected)`), so
-        // the others neither become victims nor use up its radius.
-        let candidates: Vec<(u32, String, f64, f64)> = self
-            .mobs
-            .iter()
-            .filter(|m| m.alive() && m.bounds().intersects(area))
-            .map(|m| (m.id, m.kind.id.clone(), m.position.x, m.position.z))
-            .collect();
-        for (mob_id, kind, x, z) in candidates {
-            let affected = effects
-                .iter()
-                .any(|(id, ..)| self.can_be_affected(Some(mob_id as i32), &kind, id));
-            if affected {
-                inside.push((Victim::Mob(mob_id), x, z));
-            }
-        }
-        for (victim, x, z) in inside {
-            let (dx, dz) = (x - c.at[0], z - c.at[2]);
-            if potion.victims.iter().any(|(v, _)| *v == victim)
-                || dx * dx + dz * dz > f64::from(c.radius * c.radius)
-            {
-                continue;
-            }
-            potion.victims.push((
-                victim,
-                c.age.wrapping_add(potion.settings.reapplication_delay),
-            ));
-            self.cloud_affect(
-                victim,
-                &effects,
-                (
-                    &potion.hidden,
-                    &potion.ambient,
-                    potion.settings.duration_scale,
-                ),
-                c.at,
-                &potion.source,
-                (potion.owner, potion.guest),
-            );
-            if potion.settings.radius_on_use != 0.0 {
-                c.radius += potion.settings.radius_on_use;
-                if c.radius < 0.5 {
-                    return false;
-                }
-                c.radius = c.radius.clamp(0.0, 32.0);
-            }
-            if potion.settings.duration_on_use != 0 && c.duration != -1 {
-                c.duration = c.duration.wrapping_add(potion.settings.duration_on_use);
-                if c.duration <= 0 {
-                    return false;
-                }
-            }
-        }
-        true
+        self.next_entity = next;
+        id
     }
     /// `Creeper.spawnLingeringCloud`: an `AreaEffectCloud` of radius 2.5, wait time 10, duration 300,
     /// shrinking by `-radius / duration` a tick and by 0.5 for each entity it affects, applying
@@ -2040,32 +1851,19 @@ impl Game<'_> {
         ambient: Vec<&'static str>,
         color: u32,
     ) {
-        let id = self.take_entity_id();
-        self.breath_clouds.push(Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            at,
-            motion: [0.0; 3],
-            radius: 2.5,
-            age: 0,
-            duration: 300,
-            from_dragon: false,
-            victims: Vec::new(),
-            potion: Some(PotionCloud {
-                settings: CloudSettings::lingering(),
-                effects,
-                hidden,
-                ambient,
-                radius_per_tick: -2.5 / 300.0,
-                color,
-                custom_particle: None,
-                victims: Vec::new(),
-                source: Text::translate("entity.minecraft.area_effect_cloud", &[]),
-                owner: None,
-                guest: None,
-            }),
-        });
+        // The creeper's effect list has no potion id: the brews are its custom effects, with their flags.
+        let mut spec = CloudSpec::new(2.5, "", None);
+        spec.custom = Self::ecs_brews(&effects);
+        spec.hidden = hidden.iter().filter_map(|n| horizon_ecs_proto::effects::kind_of(n)).collect();
+        spec.ambient = ambient.iter().filter_map(|n| horizon_ecs_proto::effects::kind_of(n)).collect();
+        spec.radius_per_tick = -2.5 / 300.0;
+        spec.duration = 300;
+        spec.wait = LINGERING_WAIT;
+        spec.reapplication = REAPPLICATION_DELAY;
+        spec.radius_on_use = -0.5;
+        spec.duration_scale = 0.25;
+        spec.color = Some(color as i32);
+        self.spawn_potion_cloud(at, spec);
     }
     /// What a cloud puts on one entity: instant effects at half strength
     /// (`applyInstantaneousEffect` with 0.5), the others at the cloud's duration
@@ -2106,18 +1904,24 @@ impl Game<'_> {
                     }
                 }
             }),
+            Victim::Mob(mob) if self.ecs.is_active() => {
+                let scaled_effects: Vec<(&'static str, i32, i32)> =
+                    effects.iter().map(|&(id, duration, amp)| (id, scaled(duration), amp)).collect();
+                let amount = |base: i32, amp: i32| (0.5 * f64::from(base.wrapping_shl(amp as u32)) + 0.5) as i32 as f32;
+                self.ecs_mob_effects(mob, &scaled_effects, hidden, ambient, &amount);
+            }
             Victim::Mob(mob) => {
-                let Some(i) = self.mobs.iter().position(|m| m.id == mob) else {
+                let Some(i) = self.remote_entities.iter().position(|m| m.id == mob) else {
                     return;
                 };
                 // Undead invert healing and harming.
                 let tags = &world_stations!(self).enchantments.entity_tags;
                 let inverted = tags
                     .get("minecraft:inverted_healing_and_harm")
-                    .is_some_and(|t| t.contains(&self.mobs[i].kind.id));
+                    .is_some_and(|t| t.contains(&self.remote_entities[i].kind.id));
                 for (id, duration, amp) in effects {
                     // A mod's `onEffectAdded` may have changed the mobs.
-                    let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
+                    let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
                         return;
                     };
                     match *id {
@@ -2156,7 +1960,7 @@ impl Game<'_> {
                             if self.can_be_affected(Some(mob as i32), &kind, id)
                                 && let Some(name) = mob_effect_id(id)
                             {
-                                let Some(m) = self.mobs.iter_mut().find(|m| m.id == mob) else {
+                                let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
                                     return;
                                 };
                                 let new = !m.has_effect(name);
@@ -2366,6 +2170,18 @@ impl Game<'_> {
             None => PotionOwner::default(),
         }
     }
+    /// The ECS owner of a cloud a thrower made: the acting player's entity (a guest's by its connection), or the ECS entity of the
+    /// mob that threw it; None for nobody's.
+    fn cloud_owner(&self, owner: &PotionOwner) -> Option<targeting::Who> {
+        if owner.player {
+            let id = match owner.guest {
+                Some(conn) => self.lan.as_ref()?.hub.guests.iter().find(|g| g.conn == conn)?.entity_id as u32,
+                None => self.player.as_ref()?.entity_id as u32,
+            };
+            return Some(targeting::Who::Player(id));
+        }
+        self.ecs.entity_of(owner.attacker?).map(targeting::Who::Entity)
+    }
     /// `AbstractThrownPotion.onHit` with `ThrownSplashPotion.onHitAsPotion`, or
     /// `ThrownLingeringPotion.onHitAsPotion` for a lingering potion, read from
     /// the stack's `potion_contents`; `mob` is where it hit a mob, `hit` the
@@ -2441,47 +2257,32 @@ impl Game<'_> {
             // radius 3, wait 10, 600 ticks, shrinking to nothing, with the
             // stack's `potion_contents` and `potion_duration_scale`.
             let at = mob.unwrap_or(at);
-            let id = self.take_entity_id();
-            self.breath_clouds.push(Breath {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id,
-                at: [at.x, at.y, at.z],
-                motion: [0.0; 3],
-                radius: 3.0,
-                age: 0,
-                duration: 600,
-                from_dragon: false,
-                victims: Vec::new(),
-                potion: Some(PotionCloud {
-                    settings: CloudSettings {
-                        duration_scale: stack.potion_duration_scale(),
-                        ..CloudSettings::lingering()
-                    },
-                    effects,
-                    hidden: Vec::new(),
-                    ambient: Vec::new(),
-                    radius_per_tick: -3.0 / 600.0,
-                    color,
-                    custom_particle: None,
-                    victims: Vec::new(),
-                    source: owner.name.clone().unwrap_or_else(|| {
-                        Text::translate("entity.minecraft.area_effect_cloud", &[])
-                    }),
-                    owner: owner.who(),
-                    guest: owner.guest,
-                }),
-            });
+            // The named potion's brews come from its id; the stack's custom effects are the cloud's own.
+            let potion = effects::potion_name(stack.potion().unwrap_or("")).unwrap_or("");
+            let mut spec = CloudSpec::new(3.0, potion, self.cloud_owner(owner));
+            spec.radius_per_tick = -3.0 / 600.0;
+            spec.duration = 600;
+            spec.wait = LINGERING_WAIT;
+            spec.reapplication = REAPPLICATION_DELAY;
+            spec.radius_on_use = -0.5;
+            spec.duration_scale = stack.potion_duration_scale();
+            spec.color = Some(color as i32);
+            spec.custom = effects::custom_brews(stack);
+            self.spawn_potion_cloud([at.x, at.y, at.z], spec);
             return;
         }
         let duration_scale = f64::from(stack.potion_duration_scale());
         // Every player in range (`ThrownSplashPotion.applySplash` over
         // `LivingEntity`s, the players among them).
         self.for_each_player(|g| g.splash_on_player(&effects, at, age, owner, duration_scale));
+        // The ECS creatures take their share in `ecs_splash_mobs` (reaction included); the list below is empty on a server.
+        if self.ecs.is_active() {
+            self.ecs_splash_mobs(at, age, &effects, duration_scale);
+        }
         // Mobs take the instant effects (undead invert healing and harming).
         let undead = &self.stations().enchantments.entity_tags;
         let mut hits = Vec::new();
-        for (i, m) in self.mobs.iter().enumerate() {
+        for (i, m) in self.remote_entities.iter().enumerate() {
             if m.alive()
                 && let Some(d2) = splash_distance_sqr(at, age, m.bounds())
             {
@@ -2503,12 +2304,12 @@ impl Game<'_> {
                         if d > 20
                             && let Some(name) = mob_effect_id(id)
                         {
-                            self.mobs[i].add_effect(name, d, *amp);
+                            self.remote_entities[i].add_effect(name, d, *amp);
                         }
                         continue;
                     }
                 };
-                let m = &mut self.mobs[i];
+                let m = &mut self.remote_entities[i];
                 if harm && m.species() == horizon_client::mobs::Species::Enderman {
                     // `Enderman.hurtServer` for a thrown potion: only water hurts
                     // (`hurtWithCleanWater`), then `repeatedlyTryToTeleport`, which
@@ -2785,167 +2586,6 @@ mod tests {
     use super::super::sculk::darkness_blend_added;
     use super::*;
     use horizon_client::{motion::PlayerMotion, screen_effects::nausea_blend_added};
-    #[test]
-    #[ignore = "daily"]
-    fn lifecycle_cloud_commands_and_parked_owners() {
-        super::super::entity::taken_pass_tests::LifecycleFixture {
-            seed: |game, entries| {
-                game.breath_clouds.clear();
-                for &(id, at) in entries {
-                    game.spawn_creeper_cloud(at, Vec::new(), Vec::new(), Vec::new(), 0);
-                    let i = game.breath_clouds.len() - 1;
-                    let mut cloud = game.breath_clouds.remove(i);
-                    cloud.id = id;
-                    game.breath_clouds.push(cloud);
-                }
-            },
-            ids: |game| game.breath_clouds.iter().map(|c| c.id).collect(),
-            target: super::super::commands::Target::Cloud,
-            unloads_with_chunk: true,
-            remote: None,
-        }
-        .run();
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn taken_breath_tick_keeps_both_spawns_before_survivors() {
-        cloud_spawns_during_pass(false);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn taken_potion_tick_keeps_both_spawns_before_survivors() {
-        cloud_spawns_during_pass(true);
-    }
-
-    fn cloud_spawns_during_pass(potion_pass: bool) {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.breath_clouds.clear();
-            for _ in 0..2 {
-                game.spawn_creeper_cloud([0.0, 80.0, 0.0], Vec::new(), Vec::new(), Vec::new(), 0);
-            }
-            if !potion_pass {
-                game.breath_clouds.for_each_mut(|c| c.potion = None);
-            }
-            let first = game.breath_clouds[0].id;
-            let second = game.breath_clouds[1].id;
-            let next = game.next_entity;
-            super::super::entity::taken_pass_tests::with_spawn(
-                |game| {
-                    assert!(game.breath_clouds.is_empty());
-                    for _ in 0..2 {
-                        game.spawn_creeper_cloud(
-                            [0.0, 80.0, 0.0],
-                            Vec::new(),
-                            Vec::new(),
-                            Vec::new(),
-                            0,
-                        );
-                    }
-                },
-                || {
-                    if potion_pass {
-                        game.tick_potion_clouds();
-                    } else {
-                        game.tick_breath();
-                    }
-                },
-            );
-            assert_eq!(
-                game.breath_clouds
-                    .iter()
-                    .map(|c| (c.id, c.age))
-                    .collect::<Vec<_>>(),
-                [(next + 1, 0), (next + 2, 0), (first, 1), (second, 1)]
-            );
-        });
-    }
-
-    /// A loaded cloud keeps `Fire` as given until its first tick, which clears
-    /// a positive value only (`Entity.baseTick` of a fire-immune entity).
-    #[test]
-    #[ignore = "daily"]
-    fn a_cloud_clears_a_positive_fire_on_its_tick_and_keeps_a_negative_one() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.breath_clouds.clear();
-            for _ in 0..2 {
-                game.spawn_creeper_cloud([0.0, 80.0, 0.0], Vec::new(), Vec::new(), Vec::new(), 0);
-            }
-            let burning = game.breath_clouds[0].id;
-            let frozen_fire = game.breath_clouds[1].id;
-            for (id, snbt) in [(burning, "{Fire:300s}"), (frozen_fire, "{Fire:-5s}")] {
-                let (tag, _) = horizon_core::nbt::parse_snbt(snbt).unwrap();
-                game.persist.raw.insert(id, tag);
-            }
-            let fire = |game: &crate::game::Game<'_>, id| {
-                horizon_client::save::number(game.persist.raw[&id].get("Fire"))
-            };
-            assert_eq!(fire(game, burning), Some(300));
-            game.tick_potion_clouds();
-            assert_eq!(fire(game, burning), Some(0));
-            assert_eq!(fire(game, frozen_fire), Some(-5));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn residency_cloud_load_expiry_bottling_and_late_ids() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.breath_clouds.clear();
-            game.ominous_spawners.clear();
-            let (tag, _) =
-                horizon_core::nbt::parse_snbt("{Pos:[0d,80d,0d],Duration:2,WaitTime:0,Radius:3f}")
-                    .unwrap();
-            let potion = game.load_potion_cloud(&tag).unwrap();
-            for (age, duration) in [(20, 1), (0, 40)] {
-                game.breath_clouds.push(super::super::dragon::Breath {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: 0,
-                    at: [0.0, 80.0, 0.0],
-                    motion: [0.0; 3],
-                    radius: 3.0,
-                    age,
-                    duration,
-                    from_dragon: false,
-                    victims: Vec::new(),
-                    potion: None,
-                });
-            }
-            game.add_remote_ominous_item_spawner(0, [0.0, 80.0, 0.0]);
-            let before = game.next_entity;
-            assert_eq!(game.breath_clouds[1].id, 0);
-            game.lan_assign_ids();
-            assert_eq!(game.ominous_spawners[0].id, before + 1);
-            assert_eq!(game.breath_clouds[1].id, before + 2);
-            assert_eq!(game.breath_clouds[2].id, before + 3);
-            game.tick_breath();
-            assert_eq!(
-                game.breath_clouds
-                    .iter()
-                    .map(|c| (c.id, c.age))
-                    .collect::<Vec<_>>(),
-                [(potion, 0), (before + 3, 1)]
-            );
-            game.tick_potion_clouds();
-            game.tick_potion_clouds();
-            assert_eq!(game.breath_clouds.len(), 1);
-            assert_eq!(game.breath_clouds[0].age, 1);
-            game.breath_clouds.update(0, |c| c.from_dragon = true);
-            assert!(
-                collect_dragon_breath(
-                    Aabb::new(Vec3::new(-0.3, 80.0, -0.3), Vec3::new(0.3, 81.8, 0.3)),
-                    &mut game.breath_clouds
-                )
-                .is_some()
-            );
-            assert_eq!(game.breath_clouds[0].radius, 2.5);
-            game.breath_clouds.clear();
-            assert!(game.breath_clouds.is_empty());
-        });
-    }
-
     fn effect_test_mod() {
         use mod_api::{self, *};
         struct TestMod;
@@ -3067,9 +2707,9 @@ mod tests {
                 .set_main_hand(Some(Arc::from("minecraft:iron_sword")));
             mob.extra.drop_chances = Some(Box::new([2.0; 8]));
             mob.add_effect(brewing::effect("test:effect").unwrap().id, 10, 2);
-            game.mobs.push(mob);
+            game.remote_entities.push(mob);
             game.tick_creature_entities().unwrap();
-            assert!(!game.mobs[0].alive());
+            assert!(!game.remote_entities[0].alive());
             assert!(
                 game.dropped
                     .iter()
@@ -3078,7 +2718,7 @@ mod tests {
             for _ in 0..20 {
                 game.tick_creature_entities().unwrap();
             }
-            assert!(game.mobs.is_empty());
+            assert!(game.remote_entities.is_empty());
         });
     }
 
@@ -3148,89 +2788,6 @@ mod tests {
             );
         }
         assert_eq!(NamedDamage::registered(&catalog, "demo:missing"), None);
-    }
-
-    /// `AreaEffectCloud.addAdditionalSaveData` with `readAdditionalSaveData`: a
-    /// lingering cloud written at a save reads back with its lifetime, radius,
-    /// use settings and the effects it sprays, with the hidden and ambient
-    /// flags it carried.
-    #[test]
-    fn a_lingering_cloud_survives_a_save() {
-        let cloud = Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 7,
-            at: [1.5, 64.0, -2.5],
-            motion: [0.6, 0.0, 0.0],
-            radius: 3.5,
-            age: 12,
-            duration: 400,
-            from_dragon: false,
-            victims: Vec::new(),
-            potion: Some(PotionCloud {
-                settings: CloudSettings {
-                    wait_time: 10,
-                    reapplication_delay: 25,
-                    radius_on_use: -0.5,
-                    duration_on_use: -5,
-                    duration_scale: 0.5,
-                },
-                effects: vec![("poison", 200, 1), ("slowness", 100, 0)],
-                hidden: vec!["slowness"],
-                ambient: vec!["poison"],
-                radius_per_tick: -0.008_750,
-                color: 0x0033_FF44,
-                custom_particle: None,
-                victims: Vec::new(),
-                source: Text::translate("entity.minecraft.area_effect_cloud", &[]),
-                owner: None,
-                guest: None,
-            }),
-        };
-        let tag = potion_cloud_to_nbt(&cloud, [1, 2, 3, 4], None);
-        let (at, back) = potion_cloud_from_nbt(&tag).expect("the cloud reads back");
-        assert_eq!(at, Vec3::new(1.5, 64.0, -2.5), "the position");
-        assert_eq!(back.motion, [0.6, 0.0, 0.0], "the motion");
-        assert_eq!((back.age, back.duration), (12, 400));
-        assert!((back.radius - 3.5).abs() < 1.0e-6, "{}", back.radius);
-        let potion = back.potion.expect("a potion cloud");
-        assert_eq!(
-            (
-                potion.settings.wait_time,
-                potion.settings.reapplication_delay,
-                potion.settings.duration_on_use
-            ),
-            (10, 25, -5)
-        );
-        assert!((potion.settings.radius_on_use + 0.5).abs() < 1.0e-6);
-        assert!((potion.settings.duration_scale - 0.5).abs() < 1.0e-6);
-        assert!((potion.radius_per_tick + 0.008_750).abs() < 1.0e-6);
-        assert_eq!(
-            potion.effects,
-            vec![("poison", 200, 1), ("slowness", 100, 0)]
-        );
-        assert_eq!(potion.hidden, vec!["slowness"]);
-        assert_eq!(potion.ambient, vec!["poison"]);
-        assert_eq!(potion.color, 0x0033_FF44, "the colour it was drawn in");
-        // The vanilla field names the reader of another client would look for.
-        for key in [
-            "Age",
-            "Duration",
-            "Radius",
-            "RadiusPerTick",
-            "WaitTime",
-            "ReapplicationDelay",
-            "RadiusOnUse",
-            "DurationOnUse",
-            "potion_duration_scale",
-            "potion_contents",
-        ] {
-            assert!(tag.get(key).is_some(), "{key}");
-        }
-        assert_eq!(
-            horizon_client::entity_nbt::kind(&tag).as_deref(),
-            Some("minecraft:area_effect_cloud")
-        );
     }
 
     /// `WitherBoss.canBeAffected` refuses only the wither effect: its `addEffect`
@@ -3902,8 +3459,8 @@ mod mob_absorption_max_tests {
         test(&mut game);
     }
     fn pig(game: &Game<'_>, n: i32) -> usize {
-        let i: Vec<usize> = (0..game.mobs.len())
-            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([203, 0, 0, n]))
+        let i: Vec<usize> = (0..game.remote_entities.len())
+            .filter(|&i| game.persist.uuid_of(game.remote_entities[i].id) == Some([203, 0, 0, n]))
             .collect();
         assert_eq!(i.len(), 1, "one live pig with UUID {n}");
         i[0]
@@ -3958,10 +3515,10 @@ mod mob_absorption_max_tests {
                 |game: &mut Game<'_>, phase: &str, rows: [(&str, i32, f32, i32); 5]| {
                     for (name, n, amount, max) in rows {
                         let i = pig(game, n);
-                        if game.mobs[i].absorption != amount {
+                        if game.remote_entities[i].absorption != amount {
                             failures.push(format!(
                                 "{phase} {name}: amount {}, expected {amount}",
-                                game.mobs[i].absorption
+                                game.remote_entities[i].absorption
                             ));
                         }
                         let got = max_absorption(game, &format!("h203_{name}"));
@@ -4075,18 +3632,18 @@ mod mob_health_boost_tests {
         test(&mut game);
     }
     fn pig(game: &Game<'_>, n: i32) -> usize {
-        let i: Vec<usize> = (0..game.mobs.len())
-            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([205, 0, 0, n]))
+        let i: Vec<usize> = (0..game.remote_entities.len())
+            .filter(|&i| game.persist.uuid_of(game.remote_entities[i].id) == Some([205, 0, 0, n]))
             .collect();
         assert_eq!(i.len(), 1, "one live pig with UUID {n}");
         i[0]
     }
     fn health(game: &Game<'_>, n: i32) -> f32 {
-        game.mobs[pig(game, n)].health
+        game.remote_entities[pig(game, n)].health
     }
     fn boost(game: &Game<'_>, n: i32) -> Option<(i32, i32)> {
         let i = pig(game, n);
-        game.mobs[i]
+        game.remote_entities[i]
             .extra
             .effects
             .iter()
@@ -4223,13 +3780,13 @@ mod mob_health_boost_tests {
                 )));
                 let i = pig(game, n);
                 if tag.starts_with("h205_wolf") {
-                    horizon_client::mobs::tame::set_tame(&mut game.mobs[i], true);
+                    horizon_client::mobs::tame::set_tame(&mut game.remote_entities[i], true);
                 }
                 ids.push(i);
             }
             let state = |game: &Game<'_>| -> Vec<(f32, f32)> {
                 ids.iter()
-                    .map(|&i| (game.mobs[i].attrs.max_health, game.mobs[i].health))
+                    .map(|&i| (game.remote_entities[i].attrs.max_health, game.remote_entities[i].health))
                     .collect()
             };
             let before = state(game);
@@ -4238,7 +3795,7 @@ mod mob_health_boost_tests {
                 [12.0, 20.0, 40.0, 40.0]
             );
             assert_eq!(
-                horizon_client::mobs::finalize::max_health(&game.mobs[ids[1]]),
+                horizon_client::mobs::finalize::max_health(&game.remote_entities[ids[1]]),
                 20.0,
                 "sizing installs the cube's actual max-health attribute base"
             );
@@ -4248,7 +3805,7 @@ mod mob_health_boost_tests {
                 )));
             }
             assert_eq!(
-                horizon_client::mobs::finalize::max_health(&game.mobs[ids[3]]),
+                horizon_client::mobs::finalize::max_health(&game.remote_entities[ids[3]]),
                 72.0,
                 "health boost adds to the tamed wolf's attribute base"
             );
@@ -4330,15 +3887,15 @@ mod depleted_absorption_tests {
     }
     /// The mob in the level with UUID word `n`.
     fn pig(game: &Game<'_>, n: i32) -> usize {
-        let i: Vec<usize> = (0..game.mobs.len())
-            .filter(|&i| game.persist.uuid_of(game.mobs[i].id) == Some([204, 0, 0, n]))
+        let i: Vec<usize> = (0..game.remote_entities.len())
+            .filter(|&i| game.persist.uuid_of(game.remote_entities[i].id) == Some([204, 0, 0, n]))
             .collect();
         assert_eq!(i.len(), 1, "one live pig with UUID {n}");
         i[0]
     }
     /// Absorption's remaining ticks on the mob, if it has the effect.
     fn absorption(game: &Game<'_>, i: usize) -> Option<i32> {
-        game.mobs[i]
+        game.remote_entities[i]
             .extra
             .effects
             .iter()
@@ -4390,7 +3947,7 @@ mod depleted_absorption_tests {
             // Setup controls, independent of the tick: amount, health, effect.
             for (name, n, _, effect, hit) in cases {
                 let i = pig(game, n);
-                let m = &game.mobs[i];
+                let m = &game.remote_entities[i];
                 let amount = match (effect, hit) {
                     (false, _) => 0.0,
                     (true, Some(h)) if name != "refused" => 4.0 - h as f32,
@@ -4434,7 +3991,7 @@ mod depleted_absorption_tests {
                     ));
                 }
                 let saved = game
-                    .command_target_nbt(Target::Mob(game.mobs[i].id))
+                    .command_target_nbt(Target::Mob(game.remote_entities[i].id))
                     .unwrap();
                 let listed = matches!(saved.get("active_effects"), Some(horizon_core::nbt::Tag::List(l)) if !l.is_empty());
                 if listed != expected.is_some() {
@@ -4443,7 +4000,7 @@ mod depleted_absorption_tests {
             }
             for (name, n, _, _, _) in [cases[0], cases[5]] {
                 let i = pig(game, n);
-                if game.mobs[i].absorption != 0.0 || game.mobs[i].health != 10.0 {
+                if game.remote_entities[i].absorption != 0.0 || game.remote_entities[i].health != 10.0 {
                     failures.push(format!("{name}: amount/health changed by the removal"));
                 }
             }
@@ -4485,7 +4042,7 @@ mod depleted_absorption_tests {
                 }
             }
             let effect = |game: &Game<'_>, i: usize, id: &str| {
-                game.mobs[i]
+                game.remote_entities[i]
                     .extra
                     .effects
                     .iter()
@@ -4496,12 +4053,12 @@ mod depleted_absorption_tests {
                 let i = pig(game, n);
                 let has = effects.contains(&"absorption");
                 assert_eq!(
-                    game.mobs[i].absorption,
+                    game.remote_entities[i].absorption,
                     if has && !hit { 4.0 } else { 0.0 },
                     "{name}: amount"
                 );
                 assert_eq!(
-                    game.mobs[i].health,
+                    game.remote_entities[i].health,
                     if hit && !has { 6.0 } else { 10.0 },
                     "{name}: health"
                 );

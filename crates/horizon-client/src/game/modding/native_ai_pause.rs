@@ -20,7 +20,10 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        if self.ecs.is_active() {
+            return self.ecs_mod_live(id).and(self.ecs.ai_paused(id));
+        }
+        let m = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
         Some(m.ai.ai_paused)
     }
 
@@ -32,8 +35,14 @@ impl Game<'_> {
         paused: bool,
     ) -> Result<(), MobAiPauseRefusal> {
         let id = self.ai_pause_target(mob.entity())?;
+        if self.ecs.is_active() {
+            // The pause and the inputs it zeroes (LivingEntity.aiStep's isImmobile branch) are the ECS mob's, set by the bridge.
+            self.ecs_mod_live(id).ok_or(MobAiPauseRefusal::Stale)?;
+            self.ecs.set_ai_paused(id, paused);
+            return Ok(());
+        }
         let m = self
-            .mobs
+            .remote_entities
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .ok_or(MobAiPauseRefusal::Stale)?;
@@ -110,18 +119,18 @@ mod tests {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         let mut m = Mob::new(id, kind, at, 0.0);
         m.on_ground = true;
-        game.mobs.push(m);
+        game.remote_entities.push(m);
         game.mob(game.entity(id).unwrap()).unwrap()
     }
 
     fn mob<'a>(game: &'a super::Game<'_>, handle: MobRef) -> &'a Mob {
         let id = handle.entity().id();
-        game.mobs.iter().find(|m| m.id == id).unwrap()
+        game.remote_entities.iter().find(|m| m.id == id).unwrap()
     }
 
     fn mob_mut<'a>(game: &'a mut super::Game<'_>, handle: MobRef) -> &'a mut Mob {
         let id = handle.entity().id();
-        game.mobs.iter_mut().find(|m| m.id == id).unwrap()
+        game.remote_entities.iter_mut().find(|m| m.id == id).unwrap()
     }
 
     fn tick(game: &mut super::Game<'_>, ticks: u32) {
@@ -159,10 +168,10 @@ mod tests {
             lifted.position.y = 68.0;
             lifted.on_ground = false;
             // The pig is the last mob, so it pops for the push as a hit does.
-            let mut m = game.mobs.pop().unwrap();
+            let mut m = game.remote_entities.pop().unwrap();
             let hit = Damage::of(DamageKind::Generic);
             m.knockback(damage_level_of!(game), 0.4, 0.0, 1.0, &hit, 0.0);
-            game.mobs.push(m);
+            game.remote_entities.push(m);
             tick(game, 20);
             let m = mob(game, pig);
             assert!(
@@ -373,9 +382,9 @@ mod tests {
             );
             assert_eq!(pig.set_ai_paused(game, true), Ok(()));
             let reload = |game: &mut super::Game<'_>, id: u32| {
-                let index = game.mobs.iter().position(|m| m.id == id).unwrap();
+                let index = game.remote_entities.iter().position(|m| m.id == id).unwrap();
                 let saved = game.mob_tree_nbt(index);
-                game.mobs.remove(index);
+                game.remote_entities.remove(index);
                 game.forget_entity(id);
                 let id = game.load_mob(saved.clone(), None).unwrap();
                 (saved, game.mob(game.entity(id).unwrap()).unwrap())

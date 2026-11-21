@@ -488,7 +488,7 @@ impl Game<'_> {
         if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == id) {
             use super::super::minecarts::CartKind;
             let ridden = self.riding == Some(cart.id)
-                || self.mobs.iter().any(|m| m.extra.mount == Some(cart.id));
+                || self.remote_entities.iter().any(|m| m.extra.mount == Some(cart.id));
             let game_master = self.can_use_game_master_blocks();
             return match cart.kind {
                 _ if cart.kind.interact_passes(sneaking, ridden, game_master) => None,
@@ -508,13 +508,13 @@ impl Game<'_> {
             return rideable.then_some(Verb::Ride);
         }
         if self
-            .painting_hit()
+            .aimed_painting()
             .is_some_and(|(_, d)| (d - distance).abs() < 1e-6)
         {
             return None;
         }
         // ItemFrame.interact: a fixed frame, or an empty one with nothing to put in it, passes.
-        if let Some(frame) = self.item_frames.iter().find(|f| f.id as i32 == id) {
+        if let Some(frame) = u32::try_from(id).ok().and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.frame_from_ecs(e)) {
             let held = self.held().is_some() || self.offhand.is_some();
             if frame.fixed || (frame.item.is_none() && !held) {
                 return None;
@@ -525,13 +525,13 @@ impl Game<'_> {
 
     /// What mob `i` takes from either hand (`remote_mob_would_take`, which stands for the click).
     fn pad_guide_mob(&mut self, i: usize) -> Option<Verb> {
-        if self.is_level_player(self.mobs.get(i)?.id as i32) {
+        if self.is_level_player(self.remote_entities.get(i)?.id as i32) {
             return None;
         }
         let hand = Hand::BOTH
             .into_iter()
             .find(|hand| self.remote_mob_would_take(i, *hand))?;
-        let m = self.mobs.get(i)?;
+        let m = self.remote_entities.get(i)?;
         let stack = match hand {
             Hand::Main => self.stack_in(self.selected),
             Hand::Off => self.offhand.as_ref(),
@@ -605,7 +605,7 @@ impl Game<'_> {
                     Species::Strider
                 };
                 let i = self.mount_index()?;
-                if self.mobs[i].species() != wanted {
+                if self.remote_entities[i].species() != wanted {
                     return None;
                 }
                 Verb::Boost

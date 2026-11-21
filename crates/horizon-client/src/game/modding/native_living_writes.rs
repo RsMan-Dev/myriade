@@ -35,15 +35,12 @@ impl Game<'_> {
         out
     }
     /// What is stuck in the player or the mob a handle names.
-    fn native_living_stuck(&mut self, living: LivingRef) -> Option<&mut Stuck> {
+    fn native_living_stuck_with<T>(&mut self, living: LivingRef, f: impl FnOnce(&mut Stuck) -> T) -> Option<T> {
         match self.native_living_target(living)? {
-            Target::Player => Some(&mut self.combat.stuck),
-            Target::Guest(conn) => Some(&mut self.guest_combat.entry(conn).or_default().stuck),
-            Target::Mob(id) => self
-                .mobs
-                .iter_mut()
-                .find(|m| m.id == id)
-                .map(|m| &mut m.extra.stuck),
+            Target::Player => Some(f(&mut self.combat.stuck)),
+            Target::Guest(conn) => Some(f(&mut self.guest_combat.entry(conn).or_default().stuck)),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.stuck_with(id, f),
+            Target::Mob(id) => self.remote_mob_any_mut(id).map(|m| f(&mut m.extra.stuck)),
             _ => None,
         }
     }
@@ -62,8 +59,9 @@ impl Game<'_> {
         send_to_self: bool,
     ) -> bool {
         match self.native_living_target(living) {
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.swing(id, hand == Hand::Off),
             Some(Target::Mob(id)) => {
-                self.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
+                self.remote_mob_any_mut(id).is_some_and(|m| {
                     m.swing_hand_modified(hand == Hand::Off, SwingAnimation::DEFAULT)
                 })
             }
@@ -97,34 +95,28 @@ impl Game<'_> {
     /// None for armor stands and the dragon, which Horizon keeps no count
     /// for.
     pub(super) fn living_arrow_count(&mut self, living: LivingRef) -> Option<i32> {
-        Some(self.native_living_stuck(living)?.arrows)
+        self.native_living_stuck_with(living, |s| s.arrows)
     }
     /// `LivingEntity.setArrowCount`: players around see the arrows (vanilla
     /// does not limit the count). False for armor stands and the dragon.
     pub(super) fn living_set_arrow_count(&mut self, living: LivingRef, count: i32) -> bool {
-        self.native_living_stuck(living)
-            .map(|s| s.arrows = count)
-            .is_some()
+        self.native_living_stuck_with(living, |s| s.arrows = count).is_some()
     }
     /// `LivingEntity.getStingerCount`: the bee stingers stuck in a player or
     /// a mob. None for armor stands and the dragon.
     pub(super) fn living_stinger_count(&mut self, living: LivingRef) -> Option<i32> {
-        Some(self.native_living_stuck(living)?.stingers)
+        self.native_living_stuck_with(living, |s| s.stingers)
     }
     /// `LivingEntity.setStingerCount`: players around see the stingers. False
     /// for armor stands and the dragon.
     pub(super) fn living_set_stinger_count(&mut self, living: LivingRef, count: i32) -> bool {
-        self.native_living_stuck(living)
-            .map(|s| s.stingers = count)
-            .is_some()
+        self.native_living_stuck_with(living, |s| s.stingers = count).is_some()
     }
     /// `LivingEntity.removeArrowTime`: the ticks until the next arrow falls
     /// out of a player or a mob; at 0 or less it restarts at
     /// `20 * (30 - arrows)`. False for armor stands and the dragon.
     pub(super) fn living_set_arrow_removal_ticks(&mut self, living: LivingRef, ticks: i32) -> bool {
-        self.native_living_stuck(living)
-            .map(|s| s.remove_arrow_time = ticks)
-            .is_some()
+        self.native_living_stuck_with(living, |s| s.remove_arrow_time = ticks).is_some()
     }
     /// `LivingEntity.removeStingerTime`, as `set_arrow_removal_ticks` for the
     /// stingers.
@@ -133,9 +125,7 @@ impl Game<'_> {
         living: LivingRef,
         ticks: i32,
     ) -> bool {
-        self.native_living_stuck(living)
-            .map(|s| s.remove_stinger_time = ticks)
-            .is_some()
+        self.native_living_stuck_with(living, |s| s.remove_stinger_time = ticks).is_some()
     }
 
     /// `LivingEntity.getUseItemRemainingTicks`: the ticks left of the item a
@@ -146,6 +136,7 @@ impl Game<'_> {
         match self.native_living_target(living)? {
             Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
             Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.item_use_remaining(id),
             Target::Mob(id) => self.mob_item_use_remaining(id),
             _ => None,
         }
@@ -164,6 +155,7 @@ impl Game<'_> {
     /// the dragon.
     pub(super) fn living_set_item_use_remaining(&mut self, living: LivingRef, ticks: i32) -> bool {
         match self.native_living_target(living) {
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_item_use_remaining(id, ticks),
             Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
             Some(Target::Player) => {
                 super::item_use::set_remaining(self.using, &mut self.use_duration, ticks)
@@ -183,8 +175,12 @@ impl Game<'_> {
         match self.native_living_read_target(living)? {
             Target::Player => self.used_hand(),
             Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.used_hand(),
+            Target::Mob(id) if self.ecs.is_active() => self
+                .ecs
+                .using_off_hand(id)
+                .map(|off| if off { Hand::Off } else { Hand::Main }),
             Target::Mob(id) => {
-                let mob = self.mobs.iter().find(|m| m.id == id)?;
+                let mob = self.remote_mob_any(id)?;
                 spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
                     Hand::Off
                 } else {
@@ -214,6 +210,7 @@ impl Game<'_> {
         hand: Hand,
     ) -> bool {
         match self.native_living_target(living) {
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.start_using_item(id, hand),
             Some(Target::Mob(id)) => self.start_mob_using_item(id, hand),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, |game| {
@@ -232,6 +229,7 @@ impl Game<'_> {
     /// trident has no release of its own, as in vanilla.
     pub(in crate::game) fn living_release_using_item(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.release_using_item(id),
             Some(Target::Mob(id)) => self.release_mob_using_item(id),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, Self::release_using_item)
@@ -542,7 +540,7 @@ mod tests {
             ];
             for (id, kind) in kinds {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let piglin = game.living(game.entity(13).unwrap()).unwrap();
@@ -552,22 +550,22 @@ mod tests {
             {
                 assert!(!game.living_start_using_item(zombie, hand));
                 let bow = ItemStack::new("minecraft:bow", 1);
-                game.mobs[0].extra.set_slot_stack(slot, Some(bow));
+                game.remote_entities[0].extra.set_slot_stack(slot, Some(bow));
                 assert_eq!(game.living_used_item_hand(zombie), None);
                 assert!(game.living_start_using_item(zombie, hand));
                 assert!(!game.living_start_using_item(zombie, hand));
                 assert_eq!(game.living_used_item_hand(zombie), Some(hand));
                 // Its clients are told through the counter and the hand.
-                assert_eq!(game.mobs[0].extra.using_item, 1);
-                assert_eq!(game.mobs[0].extra.using_off_hand, hand == Hand::Off);
+                assert_eq!(game.remote_entities[0].extra.using_item, 1);
+                assert_eq!(game.remote_entities[0].extra.using_off_hand, hand == Hand::Off);
                 // A bow is used for 72000 ticks, and a write moves the counter
                 // to where 100 are left of them.
                 assert_eq!(game.living_item_use_remaining(zombie), Some(72_000));
                 assert!(game.living_set_item_use_remaining(zombie, 100));
-                assert_eq!(game.mobs[0].extra.using_item, 71_901);
+                assert_eq!(game.remote_entities[0].extra.using_item, 71_901);
                 assert_eq!(game.living_item_use_remaining(zombie), Some(100));
 
-                game.mobs[0].extra.using_item = 6;
+                game.remote_entities[0].extra.using_item = 6;
                 let arrows = game.creatures.projectiles.len();
                 assert!(game.living_release_using_item(zombie));
                 assert_eq!(game.living_used_item_hand(zombie), None);
@@ -582,31 +580,31 @@ mod tests {
                 assert_eq!(uses.stops[round], (Some(12), hand, 71_995));
                 assert_eq!(uses.releases[round], (Some(12), 71_995));
                 drop(uses);
-                game.mobs[0].extra.set_slot_stack(slot, None);
+                game.remote_entities[0].extra.set_slot_stack(slot, None);
             }
 
             // A piglin's off hand makes the counter its admiring timer.
             let gold = ItemStack::new("minecraft:gold_ingot", 1);
-            game.mobs[1]
+            game.remote_entities[1]
                 .extra
                 .set_slot_stack(OFFHAND, Some(gold.clone()));
-            game.mobs[1].extra.set_slot_stack(MAINHAND, Some(gold));
+            game.remote_entities[1].extra.set_slot_stack(MAINHAND, Some(gold));
             assert!(!game.living_start_using_item(piglin, Hand::Main));
-            assert_eq!(game.mobs[1].extra.using_item, 0);
+            assert_eq!(game.remote_entities[1].extra.using_item, 0);
             assert_eq!(game.living_item_use_remaining(piglin), Some(0));
 
             // A witch's drink is its own timer: no use to read, end or replace.
             let witch = game.living(game.entity(14).unwrap()).unwrap();
             let potion = ItemStack::new("minecraft:potion", 1);
-            game.mobs[2].extra.set_slot_stack(MAINHAND, Some(potion));
-            game.mobs[2].extra.using_item = 10;
-            game.mobs[2].extra.flag = true;
+            game.remote_entities[2].extra.set_slot_stack(MAINHAND, Some(potion));
+            game.remote_entities[2].extra.using_item = 10;
+            game.remote_entities[2].extra.flag = true;
             assert_eq!(game.living_used_item_hand(witch), None);
             assert!(!game.living_start_using_item(witch, Hand::Main));
             assert!(!game.living_release_using_item(witch));
             assert_eq!(game.living_item_use_remaining(witch), Some(0));
             assert!(!game.living_set_item_use_remaining(witch, 5));
-            assert_eq!(game.mobs[2].extra.using_item, 10);
+            assert_eq!(game.remote_entities[2].extra.using_item, 10);
         });
     }
 
@@ -616,19 +614,19 @@ mod tests {
         with_game(|game| {
             for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:cow")] {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
             }
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
 
             assert!(game.living_swing(zombie, Hand::Off, false));
-            assert!(game.mobs[0].ai.swinging);
-            assert_eq!(game.mobs[0].extra.swing_right_arm, Some(false));
+            assert!(game.remote_entities[0].ai.swinging);
+            assert_eq!(game.remote_entities[0].extra.swing_right_arm, Some(false));
             // In the first half of a swing it doesn't restart, past it does.
-            game.mobs[0].ai.swing_time = 1;
+            game.remote_entities[0].ai.swing_time = 1;
             assert!(!game.living_swing(zombie, Hand::Main, false));
-            game.mobs[0].ai.swing_time = 3;
+            game.remote_entities[0].ai.swing_time = 3;
             assert!(game.living_swing(zombie, Hand::Main, false));
-            assert_eq!(game.mobs[0].ai.swing_time, -1);
+            assert_eq!(game.remote_entities[0].ai.swing_time, -1);
 
             // A mob keeps what is stuck in it, but no spin and, using nothing,
             // no item use timer.
@@ -638,7 +636,7 @@ mod tests {
             assert!(game.living_set_arrow_removal_ticks(zombie, 4));
             assert!(game.living_set_stinger_removal_ticks(zombie, 5));
             assert_eq!(
-                game.mobs[0].extra.stuck,
+                game.remote_entities[0].extra.stuck,
                 Stuck {
                     arrows: 3,
                     stingers: 2,
@@ -686,14 +684,14 @@ mod tests {
             game.tick_mobs().unwrap();
             assert_eq!(game.living_arrow_count(zombie), Some(2));
             // The next one waits `20 * (30 - 2)` ticks from the new count.
-            assert_eq!(game.mobs[0].extra.stuck.remove_arrow_time, 0);
+            assert_eq!(game.remote_entities[0].extra.stuck.remove_arrow_time, 0);
             game.tick_mobs().unwrap();
             assert_eq!(
-                game.mobs[0].extra.stuck.remove_arrow_time,
+                game.remote_entities[0].extra.stuck.remove_arrow_time,
                 20 * (30 - 2) - 1
             );
             // The other zombie has none of it.
-            assert_eq!(game.mobs[1].extra.stuck, Stuck::default());
+            assert_eq!(game.remote_entities[1].extra.stuck, Stuck::default());
         });
     }
 
@@ -707,16 +705,16 @@ mod tests {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let spear = ItemStack::new("minecraft:iron_spear", 1);
-            game.mobs[0].extra.set_slot_stack(MAINHAND, Some(spear));
-            game.mobs[0].ai.targets.clear();
-            game.mobs[0].ai.goals.clear();
+            game.remote_entities[0].extra.set_slot_stack(MAINHAND, Some(spear));
+            game.remote_entities[0].ai.targets.clear();
+            game.remote_entities[0].ai.goals.clear();
             assert!(game.living_start_using_item(zombie, Hand::Main));
             let own = game.living_item_use_remaining(zombie).unwrap();
             assert!(own > 10);
             assert!(game.living_set_item_use_remaining(zombie, own - 10));
-            assert_eq!(game.mobs[0].extra.using_item, 11);
+            assert_eq!(game.remote_entities[0].extra.using_item, 11);
             game.tick_mobs().unwrap();
-            assert_eq!(game.mobs[0].extra.using_item, 12);
+            assert_eq!(game.remote_entities[0].extra.using_item, 12);
             assert_eq!(game.living_item_use_remaining(zombie), Some(own - 11));
         });
     }
@@ -1026,18 +1024,18 @@ mod tests {
                 .get("minecraft:zombie")
                 .unwrap()
                 .clone();
-            game.mobs
+            game.remote_entities
                 .push(Mob::new(40, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
             let zombie = game.living(game.entity(40).unwrap()).unwrap();
             // The hand in the swing packet the flush sends after each swing.
             let mut sent = Vec::new();
             for natural in [false, true] {
                 for hand in [Hand::Off, Hand::Main] {
-                    game.mobs[0].ai.swinging = false;
-                    game.mobs[0].ai.swing_time = 0;
+                    game.remote_entities[0].ai.swinging = false;
+                    game.remote_entities[0].ai.swing_time = 0;
                     if natural {
                         // A swing no hand was named for (a melee attack).
-                        game.mobs[0].swing();
+                        game.remote_entities[0].swing();
                     } else {
                         assert!(game.living_swing(zombie, hand, false));
                     }
@@ -1052,7 +1050,7 @@ mod tests {
                         }
                     }
                     // The swing runs on, so the next one is a new start.
-                    game.mobs[0].ai.swing_time = 3;
+                    game.remote_entities[0].ai.swing_time = 3;
                     game.lan_flush_effects();
                     if natural {
                         break;

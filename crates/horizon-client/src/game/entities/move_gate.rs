@@ -18,6 +18,8 @@ pub(in crate::game) enum MoveWho {
     Player,
     Guest(u32),
     Entity(EntityHandle),
+    /// An entity of P's ECS, by its network id.
+    Ecs(u32),
 }
 
 impl Game<'_> {
@@ -52,6 +54,7 @@ impl Game<'_> {
                 host.hub.guest(conn).map_or(0, |g| g.entity_id as u32)
             }),
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.id()),
+            MoveWho::Ecs(id) => id,
         }
     }
 
@@ -60,6 +63,7 @@ impl Game<'_> {
         match who {
             MoveWho::Player | MoveWho::Guest(_) => Cow::Borrowed("minecraft:player"),
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.native_type()),
+            MoveWho::Ecs(id) => Cow::Owned(self.ecs_kind(id).unwrap_or_default()),
         }
     }
 }

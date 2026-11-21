@@ -308,7 +308,7 @@ impl Game<'_> {
             // Where the other players' entities are (harnesses check movement).
             // What the other players hold and wear, as this client draws them.
             "player_equipment": self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| r.level_players.contains_key(&(m.id as i32)))
                 .map(|m| {
@@ -332,14 +332,14 @@ impl Game<'_> {
                 .collect::<Vec<_>>(),
             // The other players this client draws dead (lying down, after EntityEvent DEATH).
             "dead_players": self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| r.level_players.contains_key(&(m.id as i32)) && !m.alive())
                 .map(|m| m.id)
                 .collect::<Vec<_>>(),
             // The other players this client draws lying in a bed (SLEEPING_POS).
             "lying_players": self
-                .mobs
+                .remote_entities
                 .iter()
                 .filter(|m| r.level_players.contains_key(&(m.id as i32)) && m.extra.ints[1] != 0)
                 .map(|m| m.id)

@@ -8,6 +8,7 @@ use crate::effects::Kind;
 
 pub static DEF: Def = Def {
     name: "minecraft:parched",
+    caps: Some(super::WEAKNESS_IMMUNE_CAPS),
     reference: Some(&monster::DEF),
     changes: &[
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:iron_golem"], ..nearest_target::Params::DEFAULT })),

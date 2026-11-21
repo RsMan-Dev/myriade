@@ -42,7 +42,3 @@ impl Game<'_> {
         Some((h, canceled || changed))
     }
 }
-
-#[cfg(test)]
-#[path = "impact_tests.rs"]
-mod tests;

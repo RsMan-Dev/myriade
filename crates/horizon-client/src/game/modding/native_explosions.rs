@@ -10,7 +10,6 @@ use super::{
     native_hooks::{mod_particles_ok, sound_id},
 };
 use horizon_client::particles::{ExplosionParticle, ParticleOptions, ParticleType};
-use horizon_client::projectiles::ProjectileKind;
 use horizon_client::{
     gamerules::vanilla,
     mobs::{NamedDamage, Who},
@@ -237,7 +236,7 @@ impl Game<'_> {
         // `getEntities(this.source, ...)`: the source is no victim of its own blast.
         self.combat.explosion_source_named = true;
         let owner = match target {
-            Target::Tnt(_) => return self.set_tnt_blast_owner(id),
+            Target::Tnt(_) => return,
             Target::Player => Some((Who::Player, self.lan_acting)),
             Target::Guest(conn) => Some((Who::Player, Some(conn))),
             Target::Dragon(_) | Target::Stand(_) => {
@@ -287,9 +286,8 @@ impl Game<'_> {
     pub(super) fn native_blast_calculator(&mut self, id: u32, target: Target) {
         match target {
             Target::Projectile(_)
-                if self.creatures.projectiles.iter().any(|p| {
-                    p.id == id && matches!(p.kind, ProjectileKind::WitherSkull { dangerous: true })
-                }) =>
+                if self.ecs.projectile_kind(id) == Some("minecraft:wither_skull")
+                    && self.ecs_flag(id, "dangerous") == Some(true) =>
             {
                 self.combat.blast_resistance_cap = Some(0.8);
                 self.combat.explosion_direct = Some(id);
@@ -311,13 +309,10 @@ impl Game<'_> {
                 SourceCalculator::PortalProof
             }
             Target::Projectile(_)
-                if self.creatures.projectiles.iter().any(|p| {
-                    p.id == id
-                        && matches!(
-                            p.kind,
-                            ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
-                        )
-                }) =>
+                if matches!(
+                    self.ecs.projectile_kind(id),
+                    Some("minecraft:wind_charge" | "minecraft:breeze_wind_charge")
+                ) =>
             {
                 let items = self.res.items();
                 let tag = items

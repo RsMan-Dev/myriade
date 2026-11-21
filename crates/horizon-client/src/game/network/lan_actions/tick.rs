@@ -48,10 +48,6 @@ impl Game<'_> {
         // The players' pickups ask which columns items reach before
         // scanning every item: most players stand on none.
         self.pickup_columns = Some(Default::default());
-        // The players the guests' hooks can catch.
-        if host.play.values().any(|p| p.hook.is_some()) {
-            self.refresh_hook_targets();
-        }
         for conn in conns {
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -220,7 +216,6 @@ impl Game<'_> {
             let mut recorded =
                 std::mem::take(&mut host.play.entry(conn).or_default().score_recorded);
             self.as_guest(conn, |g| {
-                g.tick_fishing();
                 g.tick_maps();
                 g.tick_lodestone_compasses();
                 g.native_inventory_ticks();
@@ -244,7 +239,6 @@ impl Game<'_> {
                 .is_some_and(|host| host.hub.guests[gi].handover.is_none())
             {
                 self.guest_pickups(gi);
-                self.guest_arrows(gi);
                 self.guest_orbs(gi);
             }
             self.guest_die(gi, conn);
@@ -294,14 +288,21 @@ impl Game<'_> {
         }
         let swept = p.bounds();
         let riding = self.riding;
-        let Some(index) = first_spin_target(
-            swept,
-            riding,
-            self.mobs.iter().map(|m| (m.id, m.removed, m.bounds())),
-        ) else {
-            return;
-        };
-        self.attack_mob(index);
+        if self.ecs.is_active() {
+            let Some(id) = self.ecs_spin_target(swept, riding) else {
+                return;
+            };
+            self.attack_entity(id);
+        } else {
+            let Some(index) = first_spin_target(
+                swept,
+                riding,
+                self.mobs.iter().map(|m| (m.id, m.removed, m.bounds())),
+            ) else {
+                return;
+            };
+            self.attack_mob(index);
+        }
         if let Some(p) = self.player.as_mut() {
             p.auto_spin_attack_ticks = 0;
             p.auto_spin_attack_dmg = 0.0;

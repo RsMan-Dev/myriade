@@ -43,31 +43,21 @@ impl Game<'_> {
             .and_then(OffLevel::as_mob_mut)
     }
 
-    /// A boat object, resident or retained by a passenger graph.
-    /// Selectors, tracking and ticking keep iterating `boats` instead.
+    /// Whether `id` is a boat: resident in the ECS, or retained off the level by a passenger graph.
+    pub(in crate::game) fn is_boat(&self, id: u32) -> bool {
+        self.ecs.boat_status(id).is_some()
+            || self.persist.off_level.get(&id).and_then(OffLevel::as_boat).is_some()
+    }
+    /// A retained boat object (off the level); the resident boats are the ECS's.
     pub(in crate::game) fn boat_object(&self, id: u32) -> Option<&crate::game::boats::Boat> {
-        self.boats
-            .iter()
-            .find(|boat| boat.id == id)
-            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_boat))
+        self.persist.off_level.get(&id).and_then(OffLevel::as_boat)
     }
 
-    /// A minecart object, resident or retained by a passenger graph.
-    /// Selectors, tracking and ticking keep iterating `carts` instead.
-    pub(in crate::game) fn cart_object(
-        &self,
-        id: u32,
-    ) -> Option<&crate::game::minecarts::Minecart> {
-        self.carts
-            .iter()
-            .find(|cart| cart.id == id)
-            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_cart))
-    }
-
-    /// Internal topology only: resident objects followed by retained passengers.
-    /// Callers needing level membership must continue to iterate `mobs` instead.
+    /// Internal topology only: resident objects followed by retained passengers. The ECS's residents are not `Mob` values, so
+    /// under the ECS only the retained ones come here; their readers go by id. The client's residents are `remote_entities`.
     pub(in crate::game) fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
-        self.mobs
+        let residents: &[Mob] = if self.ecs.is_active() { &[] } else { &self.remote_entities };
+        residents
             .iter()
             .chain(self.persist.off_level.values().filter_map(OffLevel::as_mob))
     }
@@ -120,33 +110,36 @@ impl Game<'_> {
         }
     }
 
+    /// Loads the saved projectile `tag` in the ECS level and gives it its id, which keeps its portal cooldown, its transferred state
+    /// and its uuid; None when the level refuses the saved form.
+    fn load_projectile_ecs(
+        &mut self,
+        tag: &Tag,
+        uuid: Option<[i32; 4]>,
+        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
+    ) -> Option<u32> {
+        let Tag::Compound(c) = tag else { return None };
+        let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
+        let id = self.ecs_id_of(e);
+        self.restore_portal_cooldown(id, tag);
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
+        }
+        if let Some(own) = uuid {
+            self.remember_uuid(id, Some(own), tag);
+        }
+        Some(id)
+    }
+
     pub(in crate::game) fn load_arrow_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
+        _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some((mut p, in_block)) =
-            entity_nbt::arrow_from_nbt(&tag, player_uuid, crate::game::dispenser::tipped_effect)
-        {
-            if let Some(a) = p.arrow.as_mut() {
-                a.last_state = in_block.and_then(|t| self.state_from_nbt(&t));
-            }
-            self.claim_owner(&mut p);
-            // An arrow that came through a portal keeps its
-            // cooldown: it does not go straight back through.
-            self.next_entity += 1;
-            p.id = self.next_entity;
-            self.restore_portal_cooldown(p.id, &tag);
-            self.remember_tags(p.id, &tag);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(p.id, state);
-            }
-            let own_uuid = p.own_uuid(uuid);
-            self.remember_uuid(p.id, Some(own_uuid), &tag);
-            self.bind_saved_entity_attachments(p.id, &mut p.attachment_lifetime);
-            self.add_projectile(p);
+        if let Some(id) = self.load_projectile_ecs(&tag, uuid, transferred) {
+            self.remember_tags(id, &tag);
         }
     }
 
@@ -154,22 +147,10 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
+        _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        let target = self.bullet_target(&tag);
-        if let Some(mut p) = entity_nbt::spit_or_bullet_from_nbt(&tag, player_uuid, target) {
-            self.claim_owner(&mut p);
-            self.next_entity += 1;
-            p.id = self.next_entity;
-            self.restore_portal_cooldown(p.id, &tag);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(p.id, state);
-            }
-            let own_uuid = p.own_uuid(uuid);
-            self.remember_uuid(p.id, Some(own_uuid), &tag);
-            self.bind_saved_entity_attachments(p.id, &mut p.attachment_lifetime);
-            self.add_projectile(p);
+        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
             self.remember_last_projectile_tags(&tag);
         }
     }
@@ -178,22 +159,10 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
+        _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(mut p) = entity_nbt::fireball_from_nbt(&tag, player_uuid) {
-            self.claim_owner(&mut p);
-            // A projectile that came through a portal keeps its cooldown.
-            self.next_entity += 1;
-            p.id = self.next_entity;
-            self.restore_portal_cooldown(p.id, &tag);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(p.id, state);
-            }
-            let own_uuid = p.own_uuid(uuid);
-            self.remember_uuid(p.id, Some(own_uuid), &tag);
-            self.bind_saved_entity_attachments(p.id, &mut p.attachment_lifetime);
-            self.add_projectile(p);
+        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
             self.remember_last_projectile_tags(&tag);
         }
     }
@@ -202,22 +171,10 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
+        _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(mut p) = entity_nbt::throwable_from_nbt(&tag, player_uuid) {
-            self.claim_owner(&mut p);
-            // A projectile that came through a portal keeps its cooldown.
-            self.next_entity += 1;
-            p.id = self.next_entity;
-            self.restore_portal_cooldown(p.id, &tag);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(p.id, state);
-            }
-            let own_uuid = p.own_uuid(uuid);
-            self.remember_uuid(p.id, Some(own_uuid), &tag);
-            self.bind_saved_entity_attachments(p.id, &mut p.attachment_lifetime);
-            self.add_projectile(p);
+        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
             self.remember_last_projectile_tags(&tag);
         }
     }
@@ -393,77 +350,40 @@ impl Game<'_> {
         if let Some((position, velocity, yaw)) = entity_nbt::boat_from_nbt(&tag) {
             let mut tag = tag;
             let riders = passenger_graph::take_passengers(&mut tag);
-            self.next_entity += 1;
-            let id = self.next_entity;
-            let (wood, chest) = crate::game::boats::any_boat_wood(k).unwrap_or(("oak", false));
-            let mut b =
-                crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
-            b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-            b.on_ground = entity_nbt::flag(&tag, "OnGround");
-            b.fire_ticks = crate::game::boats::saved_fire(&tag);
-            b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
-            b.pitch = entity_nbt::rotation(&tag)[1];
-            // Entity.load: OnGround and fall_distance, as saved.
-            (b.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
-            if chest {
-                b = b.with_chest();
-                b.items = horizon_client::save::decode_items(
-                    tag.get("Items"),
-                    crate::game::boats::CHEST_SLOTS,
-                );
-            }
-            b.velocity = velocity;
-            // AbstractBoat.readAdditionalSaveData: the lead's holder.
-            b.leash_pending = horizon_client::mobs::leash::pending_from_nbt(tag.get("leash"));
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
-            self.remember(id, uuid, tag);
+            let id = if refused {
+                self.next_entity += 1;
+                self.next_entity
+            } else {
+                let Tag::Compound(c) = &tag else {
+                    return None;
+                };
+                self.ecs_load(c)?
+            };
             if refused {
+                let (wood, chest) = crate::game::boats::any_boat_wood(k).unwrap_or(("oak", false));
+                let mut b =
+                    crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
+                b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
+                b.on_ground = entity_nbt::flag(&tag, "OnGround");
+                b.fire_ticks = crate::game::boats::saved_fire(&tag);
+                b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
+                b.pitch = entity_nbt::rotation(&tag)[1];
+                (b.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
+                if chest {
+                    b = b.with_chest();
+                    b.items = horizon_client::save::decode_items(
+                        tag.get("Items"),
+                        crate::game::boats::CHEST_SLOTS,
+                    );
+                }
+                b.velocity = velocity;
+                b.leash_pending = horizon_client::mobs::leash::pending_from_nbt(tag.get("leash"));
                 self.persist.off_level.insert(id, OffLevel::Boat(b));
-            } else {
-                self.bind_saved_entity_attachments(id, &mut b.attachment_lifetime);
-                self.boats.push(b);
             }
-            if let Some(riders) = riders {
-                self.load_passengers(id, riders);
-            }
-            return Some(id);
-        }
-        None
-    }
-
-    pub(in crate::game) fn load_cart_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        k: &str,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
-    ) -> Option<u32> {
-        // As `load_boat_transferred`: only a runtime transfer retains a refused copy.
-        if transferred.is_none() && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
-            return None;
-        }
-        let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
-        let kind = crate::game::minecarts::CartKind::from_id(k).unwrap();
-        let mut tag = tag;
-        let riders = passenger_graph::take_passengers(&mut tag);
-        let id = self.next_entity + 1;
-        if let Some(mut c) = crate::game::minecarts::Minecart::from_nbt(&tag, id, kind) {
-            crate::game::minecarts::forget_unreadable_display(&mut c, |t| {
-                self.state_from_nbt(t).is_some()
-            });
-            self.next_entity = id;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
             self.remember(id, uuid, tag);
-            if refused {
-                self.persist.off_level.insert(id, OffLevel::Cart(c));
-            } else {
-                self.bind_saved_entity_attachments(id, &mut c.attachment_lifetime);
-                self.carts.push(c);
-            }
             if let Some(riders) = riders {
                 self.load_passengers(id, riders);
             }
@@ -644,19 +564,20 @@ impl Game<'_> {
     ) -> Option<(Tag, TransferredVehicleTree)> {
         let (kind, mut tag) = if let Some(object) = self.mob_object_slot(root) {
             (VehicleTreeKind::Mob, self.mob_object_nbt(object))
-        } else if self.boat_object(root).is_some() {
-            let uuid = self.uuid_for(root);
-            let mut tag = self.boat_object(root)?.to_nbt(uuid, self.persist.raw.get(&root));
-            if let Some(index) = self.boats.iter().position(|boat| boat.id == root) {
-                self.write_boat_leash(&mut tag, index);
-            }
+        } else if self.is_boat(root) {
+            let mut tag = match self.boat_object(root) {
+                Some(b) => {
+                    let uuid = self.uuid_for(root);
+                    b.to_nbt(uuid, self.persist.raw.get(&root))
+                }
+                None => Tag::Compound(self.ecs_mob_tree(root)?),
+            };
             self.save_portal_cooldown(root, &mut tag);
             (VehicleTreeKind::Boat, tag)
-        } else if self.cart_object(root).is_some() {
-            let uuid = self.uuid_for(root);
-            let mut tag = self.cart_object(root)?.to_nbt(uuid, self.persist.raw.get(&root));
+        } else if let Some(c) = self.ecs.is_active().then(|| self.ecs_mob_tree(root)).flatten() {
+            let mut tag = Tag::Compound(c);
             self.save_portal_cooldown(root, &mut tag);
-            (VehicleTreeKind::Cart, tag)
+            (VehicleTreeKind::Ecs, tag)
         } else {
             let target = self.level_entity(root as i32)?;
             (VehicleTreeKind::Other, self.command_target_nbt(target)?)
@@ -782,6 +703,27 @@ impl Game<'_> {
         Some(root)
     }
 
+    /// The arrival of an ECS entity that crossed a portal: loaded into the ECS level, its riders after it.
+    fn load_ecs_transferred(
+        &mut self,
+        tag: Tag,
+        uuid: Option<[i32; 4]>,
+        state: crate::game::entity_initialization::TransferredEntityState,
+    ) -> Option<u32> {
+        let mut tag = tag;
+        let riders = passenger_graph::take_passengers(&mut tag);
+        let Tag::Compound(c) = &tag else {
+            return None;
+        };
+        let id = self.ecs_load(c)?;
+        self.adopt_transferred_entity_state(id, state);
+        self.remember(id, uuid, tag);
+        if let Some(riders) = riders {
+            self.load_passengers(id, riders);
+        }
+        Some(id)
+    }
+
     pub(super) fn restore_vehicle_object(
         &mut self,
         tag: Tag,
@@ -793,7 +735,7 @@ impl Game<'_> {
         match kind {
             VehicleTreeKind::Mob => self.load_mob_transferred(tag, None, Some(state)),
             VehicleTreeKind::Boat => self.load_boat_transferred(tag, uuid, name, Some(state)),
-            VehicleTreeKind::Cart => self.load_cart_transferred(tag, uuid, name, Some(state)),
+            VehicleTreeKind::Ecs => self.load_ecs_transferred(tag, uuid, state),
             VehicleTreeKind::Other => {
                 let before = self.next_entity;
                 self.load_listed_transferred(name, uuid, self.level.player_uuid, tag, state)

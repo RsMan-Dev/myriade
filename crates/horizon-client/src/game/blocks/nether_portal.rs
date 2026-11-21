@@ -145,40 +145,6 @@ fn rotate_y(v: Vec3, degrees: f32) -> Vec3 {
     );
     Vec3::new(v.x * cos + v.z * sin, v.y, v.z * cos - v.x * sin)
 }
-/// Whether a projectile is an arrow, which goes through a portal like the
-/// other entities.
-pub(super) fn is_arrow(p: &horizon_client::projectiles::Projectile) -> bool {
-    matches!(
-        p.kind,
-        horizon_client::projectiles::ProjectileKind::Arrow { .. }
-    )
-}
-/// The projectiles besides arrows that a portal sends on: the thrown items
-/// and fireballs a chunk saves. A pearl has its own rules (it keeps its owner's
-/// dimension) and a wind charge is not saved, so both stay.
-pub(super) fn is_portal_projectile(p: &horizon_client::projectiles::Projectile) -> bool {
-    use horizon_client::projectiles::ProjectileKind;
-    !is_arrow(p)
-        && !matches!(
-            p.kind,
-            ProjectileKind::EnderPearl
-                | ProjectileKind::WindCharge
-                | ProjectileKind::BreezeWindCharge
-        )
-        && horizon_client::entity_nbt::saved_with_chunk(p)
-}
-/// Width and height of a projectile that goes through a portal.
-pub(super) fn projectile_box(p: &horizon_client::projectiles::Projectile) -> (f32, f32) {
-    if is_arrow(p) {
-        (
-            horizon_client::arrows::WIDTH,
-            horizon_client::arrows::HEIGHT,
-        )
-    } else {
-        let size = p.kind.size() as f32;
-        (size, size)
-    }
-}
 /// `Entity.calculatePassengerTransition`: the riders under `tag`'s
 /// `Passengers`, and theirs, keep their place on the vehicle: they move by
 /// what it moved and turn by what it turned.
@@ -710,6 +676,24 @@ impl Game<'_> {
         let frozen = self.mobs_below_off_level();
         let tracked = &self.portals.entities;
         let mut present = std::collections::HashSet::new();
+        if self.ecs.is_active() && !vehicles {
+            // The followed entities come from the bridge by id: (id, sweeps, position).
+            for (id, can_sweep, at) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+                let has_portal_state = tracked.contains_key(&id);
+                if has_portal_state {
+                    present.insert(id);
+                }
+                if frozen.contains(&id) || !entity_ticking(at[0].floor() as i32, at[2].floor() as i32) {
+                    continue;
+                }
+                if can_sweep {
+                    before.insert(id, Vec3::new(at[0], at[1], at[2]));
+                }
+                if has_portal_state {
+                    ids.push((id, can_sweep && self.ecs.can_use_portal(id), self.dimension_changing_delay(id)));
+                }
+            }
+        } else {
         for_each_entity!(entity_lists_of!(self), entity => {
             let can_sweep = entity.sweeps_portals();
             let has_portal_state = tracked.contains_key(&entity.id());
@@ -738,14 +722,15 @@ impl Game<'_> {
                 }
             }
         });
+        }
         self.portals.before = before;
         self.portals.entities.retain(|id, _| present.contains(id));
         // SulfurCube.tickFuse runs before Entity.handlePortal. A cube removed
         // there must neither decrement its cooldown nor travel before its blast.
         let removed_before_portal: std::collections::HashSet<u32> = self
-            .mobs
+            .remote_entities
             .iter()
-            .filter(|_| !vehicles)
+            .filter(|_| !vehicles && !self.ecs.is_active())
             .filter(|m| horizon_client::mobs::sulfur_cube::removes_before_portal_tick(m))
             .map(|m| m.id)
             .collect();
@@ -780,8 +765,10 @@ impl Game<'_> {
                     self.portals.carried_at.insert(id, c.position);
                 } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
                     self.portals.carried_at.insert(id, b.position);
-                } else if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+                } else if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
                     self.portals.carried_at.insert(id, m.position);
+                } else if let Some((at, _, _)) = self.ecs_body(id) {
+                    self.portals.carried_at.insert(id, at);
                 }
                 self.portals.carrying.push((self.dim, id, entry));
             } else {
@@ -850,7 +837,7 @@ impl Game<'_> {
                 .any(|g| g.entity_id as u32 == id)
         {
             VEHICLE_DELAY
-        } else if self.creatures.projectiles.iter().any(|p| p.id == id)
+        } else if self.ecs.projectile_kind(id).is_some()
             || self.tridents.iter().any(|t| t.id == id)
             || self.rockets.iter().any(|r| r.id == id)
         {
@@ -969,7 +956,10 @@ impl Game<'_> {
     /// `Entity.canUsePortal(false)` for a primed TNT: it carries no mob.
     pub(super) fn tnt_can_use_portal(&self, id: u32) -> bool {
         // Id 0: not tracked yet, nothing to key its portal state by.
-        id != 0 && !self.mobs.iter().any(|m| m.extra.mount == Some(id))
+        if self.ecs.is_active() {
+            return id != 0 && !self.ecs.has_rider(id);
+        }
+        id != 0 && !self.remote_entities.iter().any(|m| m.extra.mount == Some(id))
     }
     /// `canUsePortal(false)` of a boat or minecart: it is nobody's passenger;
     /// the mobs riding it, and on a server the players, cross with it.
@@ -1002,7 +992,10 @@ impl Game<'_> {
     /// (`AbstractBoat` and `AbstractMinecart.getRelativePortalPosition`).
     pub(super) fn vehicle_plan(&self, id: u32, entry: BlockPos) -> Option<Plan> {
         let at = |own: Vec3| self.portals.carried_at.get(&id).copied().unwrap_or(own);
-        if let Some(m) = self.mobs.iter().find(|m| m.id == id) {
+        if let Some((own, width, height)) = self.ecs_body(id) {
+            return Some(self.entity_plan(entry, at(own), width, height, true));
+        }
+        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
             return Some(self.entity_plan(entry, at(m.position), m.width(), m.height(), true));
         }
         if let Some(b) = self.boats.iter().find(|b| b.id == id) {
@@ -1086,7 +1079,35 @@ impl Game<'_> {
         let frozen = self.mobs_below_off_level();
         // The first portal block each entity's box swept through since the
         // start of its tick (a stuck arrow that did not move enters none).
+        if self.ecs.is_active() {
+            for (id, can_sweep, to) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+                let to = Vec3::new(to[0], to[1], to[2]);
+                if frozen.contains(&id) || !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
+                    continue;
+                }
+                if !can_sweep || !self.ecs.can_use_portal(id) {
+                    continue;
+                }
+                let swept_later = match only {
+                    Some(ids) => !ids.contains(&id),
+                    None => ridden.contains(&id),
+                };
+                if swept_later {
+                    continue;
+                }
+                let from = self.portals.before.get(&id).copied().unwrap_or(to);
+                let Some((width, height)) = self.ecs.portal_size(id) else {
+                    continue;
+                };
+                if let Some(pos) = self.swept_portal(from, to, width, height, &mut portal_sections) {
+                    inside.push((id, pos, self.dimension_changing_delay(id)));
+                }
+            }
+        }
         for_each_entity!(entity_lists_of!(self), entity => {
+            if self.ecs.is_active() {
+                continue;
+            }
             if !entity.sweeps_portals() {
                 continue;
             }
@@ -1225,7 +1246,15 @@ impl Game<'_> {
     /// entity is saved and removed, and waits for its dimension to load.
     fn remove_portal_vehicle_tree(&mut self, root: u32) {
         let tree = self.passenger_tree(root);
-        self.mobs.retain(|m| !tree.contains(&m.id));
+        if self.ecs.is_active() {
+            for id in tree.iter().copied() {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
+        } else {
+            self.remote_entities.retain(|m| !tree.contains(&m.id));
+        }
         self.persist.off_level.retain(|id, _| !tree.contains(id));
         self.boats.retain(|b| !tree.contains(&b.id));
         self.carts.retain(|c| !tree.contains(&c.id));
@@ -1272,13 +1301,7 @@ impl Game<'_> {
             let [width, height] = self.entity_dimensions(entity)?;
             return Some((Vec3::new(at[0], at[1], at[2]), width as f32, height as f32));
         }
-        let p = self
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id == id && (is_arrow(p) || is_portal_projectile(p)))?;
-        let (width, height) = projectile_box(p);
-        Some((p.position, width, height))
+        None
     }
     /// `Entity.teleportCrossDimension` for an entity that changes level alone
     /// (`lone_traveller_box`): its saved compound, with its attachments, and
@@ -1334,7 +1357,6 @@ impl Game<'_> {
             Trident,
             Rocket,
             Orb,
-            Projectile,
         }
         let (mut tag, list, i) = if let Some(i) = self.dropped.iter().position(|e| e.id == id) {
             let uuid = self.uuid_for(id);
@@ -1345,8 +1367,6 @@ impl Game<'_> {
                 self.items(),
             );
             (tag, List::Item, i)
-        } else if let Some(i) = self.tnts.iter().position(|t| t.id == id) {
-            (self.tnt_nbt(i), List::Tnt, i)
         } else if let Some(i) = self.tridents.iter().position(|t| t.id == id) {
             let uuid = self.uuid_for(id);
             let tag =
@@ -1361,28 +1381,7 @@ impl Game<'_> {
             let tag = horizon_client::entity_nbt::orb_to_nbt(&self.orbs[i], uuid);
             (tag, List::Orb, i)
         } else {
-            let i = self
-                .creatures
-                .projectiles
-                .iter()
-                .position(|p| p.id == id && (is_arrow(p) || is_portal_projectile(p)))?;
-            let uuid = self.uuid_for(id);
-            let p = &self.creatures.projectiles[i];
-            let in_block = p
-                .arrow
-                .as_ref()
-                .and_then(|a| a.last_state)
-                .map(|s| self.state_to_nbt(s));
-            let raw = self.persist_raw(id);
-            let tag =
-                horizon_client::entity_nbt::arrow_to_nbt(p, uuid, p.owner_uuid, in_block, raw)
-                    .or_else(|| {
-                        horizon_client::entity_nbt::fireball_to_nbt(p, uuid, p.owner_uuid, raw)
-                    })
-                    .or_else(|| {
-                        horizon_client::entity_nbt::throwable_to_nbt(p, uuid, p.owner_uuid, raw)
-                    })?;
-            (tag, List::Projectile, i)
+            return None;
         };
         super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
         let state = self.take_transferred_entity_state(id);
@@ -1405,10 +1404,6 @@ impl Game<'_> {
             }
             List::Orb => {
                 self.orbs.remove(i);
-                self.forget_entity(id);
-            }
-            List::Projectile => {
-                self.creatures.projectiles.remove(i);
                 self.forget_entity(id);
             }
         }
@@ -1437,8 +1432,31 @@ impl Game<'_> {
                 transferred: Some(TransferredArrivalState::Entity(state)),
             });
             self.portals.dirty = true;
-        } else if let Some(i) = self.mobs.iter().position(|m| m.id == id) {
-            let m = &self.mobs[i];
+        } else if let Some((at, width, height)) = self.ecs_body(id) {
+            let plan = self.entity_plan(entry, at, width, height, true);
+            if !self.may_travel_through(id, &plan) {
+                return;
+            }
+            // The tree (passengers included) is read as for any vehicle; the despawn below removes it from the ECS.
+            let Some((mut tag, state)) = self.take_vehicle_tree_transfer(id) else {
+                return;
+            };
+            // Entity.removeAfterChangingDimensions drops the leash.
+            if let Tag::Compound(c) = &mut tag {
+                c.remove(&"leash".into());
+            }
+            self.remove_portal_vehicle_tree(id);
+            self.portals.arrivals.push(Arrival {
+                tnt_used_portal: false,
+                plan,
+                tag,
+                transferred: Some(TransferredArrivalState::VehicleTree(state)),
+            });
+            self.portals.dirty = true;
+        } else if !self.ecs.is_active()
+            && let Some(i) = self.remote_entities.iter().position(|m| m.id == id)
+        {
+            let m = &self.remote_entities[i];
             let plan = self.entity_plan(entry, m.position, m.width(), m.height(), true);
             if !self.may_travel_through(id, &plan) {
                 return;
@@ -1855,7 +1873,7 @@ mod tests {
             );
             assert!(game.run_command(r#"summon minecraft:pig 0 64 0 {UUID:[I;0,0,0,175],Tags:["portal_root"],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,175],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,176]}]}]}"#));
             let root = game
-                .mobs
+                .remote_entities
                 .iter()
                 .find(|m| {
                     game.persist_raw(m.id).is_some_and(|t| {
@@ -1866,7 +1884,7 @@ mod tests {
                 .id;
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
-            assert!(!game.mobs.iter().any(|m| m.id == child));
+            assert!(!game.remote_entities.iter().any(|m| m.id == child));
             game.tickets.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
@@ -1900,8 +1918,8 @@ mod tests {
                 .id;
             let new_child = game.mob_passenger_ids(new_root)[0];
             let new_leaf = game.mob_passenger_ids(new_child)[0];
-            assert!(!game.mobs.iter().any(|m| m.id == new_root));
-            assert!(game.mobs.iter().any(|m| m.id == new_child));
+            assert!(!game.remote_entities.iter().any(|m| m.id == new_root));
+            assert!(game.remote_entities.iter().any(|m| m.id == new_child));
             assert!(game.mobs_below_off_level().contains(&new_child));
             assert!(game.mobs_below_off_level().contains(&new_leaf));
             assert_eq!(game.portals.entities[&new_root].cooldown, ENTITY_DELAY);
@@ -2026,17 +2044,9 @@ mod tests {
                 horizon_client::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)
             };
             let (cow, pig) = (mob("minecraft:cow", 102), mob("minecraft:pig", 104));
-            game.mobs.push(cow);
-            game.mobs.push(pig);
+            game.remote_entities.push(cow);
+            game.remote_entities.push(pig);
             assert_eq!(game.dimension_changing_delay(12), 10);
-            let mut projectile = horizon_client::projectiles::Projectile::new(
-                horizon_client::projectiles::ProjectileKind::Snowball,
-                Vec3::ZERO,
-                None,
-            );
-            projectile.id = 106;
-            game.creatures.projectiles.push(projectile);
-            assert_eq!(game.dimension_changing_delay(106), 2);
             let entry = BlockPos::new(0, 64, 0);
             // Boats and minecarts (`VehicleEntity`) are 10 whoever rides them;
             // a mob vehicle follows its first passenger. Riders: none, mob
@@ -2054,8 +2064,8 @@ mod tests {
                         g.vehicle = player.then_some(vehicle);
                         g.vehicle_order = 0;
                     });
-                    game.mobs[0].extra.mount = mob_order.map(|_| vehicle);
-                    game.mobs[0].extra.vehicle_order = mob_order.unwrap_or_default();
+                    game.remote_entities[0].extra.mount = mob_order.map(|_| vehicle);
+                    game.remote_entities[0].extra.vehicle_order = mob_order.unwrap_or_default();
                     assert_eq!(
                         game.dimension_changing_delay(vehicle),
                         expected,
@@ -2201,7 +2211,7 @@ mod tests {
     fn discarded_mob_and_tnt_do_not_travel() {
         with_gate_mode(true, |game, _, heard| {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.mobs.push(horizon_client::mobs::Mob::new(
+            game.remote_entities.push(horizon_client::mobs::Mob::new(
                 101,
                 kind,
                 Vec3::new(0.5, 64.0, 0.5),
@@ -2233,13 +2243,13 @@ mod tests {
                 if id != 101 {
                     mob.extra.mount = Some(101);
                 }
-                game.mobs.push(mob);
+                game.remote_entities.push(mob);
             }
             spare.store(102, Ordering::Relaxed);
             game.send_through_portal(101, BlockPos::new(0, 64, 0));
             assert_eq!(game.portals.arrivals.len(), 1);
-            assert_eq!(game.mobs.iter().map(|m| m.id).collect::<Vec<_>>(), [102]);
-            assert_eq!(game.mobs[0].extra.mount, None);
+            assert_eq!(game.remote_entities.iter().map(|m| m.id).collect::<Vec<_>>(), [102]);
+            assert_eq!(game.remote_entities[0].extra.mount, None);
             assert_eq!(
                 heard
                     .lock()
@@ -2268,7 +2278,7 @@ mod tests {
                     if id != 101 {
                         mob.extra.mount = Some(101);
                     }
-                    game.mobs.push(mob);
+                    game.remote_entities.push(mob);
                 }
                 spare.store(attack, Ordering::Relaxed);
                 assert!(game.entity_may_travel(101, Dim::Nether, TravelCause::Teleport));
@@ -2282,8 +2292,8 @@ mod tests {
                     }
                 );
                 assert!(
-                    !(game.mobs[0].extra.mount == Some(102)
-                        && game.mobs[1].extra.mount == Some(101))
+                    !(game.remote_entities[0].extra.mount == Some(102)
+                        && game.remote_entities[1].extra.mount == Some(101))
                 );
             });
         }
@@ -2310,7 +2320,7 @@ mod tests {
                     mob.extra.mount = Some(101);
                     mob.extra.vehicle_order = 20;
                 }
-                game.mobs.push(mob);
+                game.remote_entities.push(mob);
             }
             for (conn, order) in [(12, 30), (13, 10)] {
                 game.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
@@ -2595,3 +2605,26 @@ impl Game<'_> {
 #[cfg(test)]
 #[path = "tests/nether_portal_stand_tests.rs"]
 mod stand_tests;
+
+#[cfg(test)]
+mod ecs_portal_tests {
+    use crate::game::ecs::test_support::ecs_game_with;
+
+    #[test]
+    fn primed_tnt_portal_gate_reads_the_bridge_by_id() {
+        let (game, id) = ecs_game_with("minecraft:tnt", [0.0, 64.0, 0.0]);
+        assert!(game.tnt_can_use_portal(id));
+        assert!(!game.tnt_can_use_portal(0));
+    }
+
+    #[test]
+    fn an_ecs_mob_leaves_through_the_vehicle_tree_and_comes_back_in_the_ecs() {
+        let (mut game, id) = ecs_game_with("minecraft:cow", [0.5, 64.0, 0.5]);
+        let (tag, tree) = game.take_vehicle_tree_transfer(id).expect("the ECS mob is read as a tree");
+        assert_eq!(horizon_client::entity_nbt::kind(&tag).as_deref(), Some("minecraft:cow"));
+        game.remove_portal_vehicle_tree(id);
+        assert!(game.ecs.entity_of(id).is_none());
+        assert!(game.restore_vehicle_tree_state(tag, tree).is_some());
+        assert!(game.ecs.entity_of(id).is_none(), "the arrival has a new id");
+    }
+}

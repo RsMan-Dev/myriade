@@ -6,12 +6,13 @@ use crate::IFloor as _;
 use crate::cow::*;
 use crate::goals::*;
 use crate::effects::Invisible;
+use crate::bridge::teams::{allied, allied_in, Teams};
 use crate::hostile::{ChangedBlocks, PlayerState};
 use bevy_ecs::{prelude::*, system::SystemParam};
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// Whom an attack is aimed at: a player of the bench's list, or a creature.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Who {
     Player(u32),
     Entity(Entity),
@@ -141,12 +142,15 @@ pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
         let mw = w.resource::<Level>().mw.0;
         t.seen = mw.line_of_sight_for(Some(pos.y), Vec3::new(pos.x, pos.y + eye, pos.z), Vec3::new(i.pos.x, i.eye, i.pos.z));
     }
+    let who = t.who;
+    let previous = w.get::<Target>(e).map(|p| p.who);
     w.entity_mut(e).insert(t);
     // `StartAttacking` erases the memory of the unreachable: a new target starts afresh.
     if let Some(mut n) = w.get_mut::<crate::cow::Nav>(e) {
         n.cant_reach_since = 0;
     }
     w.resource_mut::<Events>().target_acquired.push(e);
+    w.resource_mut::<Events>().host.target_changed(e, Some(who), previous);
     let watchers = w.resource::<TargetWatchers>().0.clone();
     for f in watchers {
         f(w, e);
@@ -154,8 +158,9 @@ pub fn set_target(w: &mut World, e: Entity, mut t: Target) {
 }
 /// The attacker has no target any more.
 pub fn clear_target(w: &mut World, e: Entity) {
-    if w.entity_mut(e).take::<Target>().is_some() {
+    if let Some(old) = w.entity_mut(e).take::<Target>() {
         w.resource_mut::<Events>().target_lost.push(e);
+        w.resource_mut::<Events>().host.target_changed(e, None, Some(old.who));
         crate::behaviours::dig::target_lost(w, e);
     }
 }
@@ -182,13 +187,13 @@ pub fn sight_eval(level: Res<Level>, tg: Targets, mut changed: ResMut<ChangedBlo
 }
 /// `TargetGoal.canContinueToUse`, asked every other tick of the attackers that have a target: alive, not creative, within
 /// the follow range, and (with `must_see`) seen at least once in `memory` evaluations; else the target is lost.
-pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Pos, &FollowRange, &mut Target)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
+pub fn target_continue(clock: Res<Clock>, tg: Targets, teams: Option<Res<Teams>>, mut q: Query<(Entity, &Pos, &FollowRange, &mut Target)>, mut reqs: ResMut<Requests>, mut cmd: Commands) {
     if clock.0 % 2 != 0 {
         return;
     }
     for (e, pos, range, mut g) in &mut q {
         let follow = range.0 * g.follow_scale;
-        let ok = tg.info(g.who).is_some_and(|i| !i.exempt && d2(pos.0, i.pos) <= follow * follow);
+        let ok = tg.info(g.who).is_some_and(|i| !i.exempt && d2(pos.0, i.pos) <= follow * follow) && !teams.as_deref().is_some_and(|t| allied_in(t, Who::Entity(e), g.who));
         if g.seen {
             g.unseen = 0;
         } else {
@@ -203,9 +208,9 @@ pub fn target_continue(clock: Res<Clock>, tg: Targets, mut q: Query<(Entity, &Po
         }
     }
 }
-/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), and not `e` itself.
+/// `TargetingConditions` for `e`: `who` is alive and not creative or spectator (`Info.exempt`), not `e` itself, and not in its team.
 pub fn can_target(w: &World, e: Entity, who: Who) -> bool {
-    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt)
+    who != Who::Entity(e) && info(w, who).is_some_and(|i| !i.exempt) && !allied(w, Who::Entity(e), who)
 }
 /// The first creature within `radius` of `e` (by identifier, ascending) that `e` can target, read from the spatial index.
 pub fn attackable_near(w: &World, e: Entity, radius: f64) -> Option<Who> {

@@ -41,7 +41,7 @@ struct Families {
     projectiles: [&'static str; 1],
     rockets: [&'static str; 1],
     tridents: [&'static str; 1],
-    general: [&'static str; 1],
+    general: [&'static str; 0],
 }
 
 /// One census case: the family (as `EntityHandle`'s Debug names it), the
@@ -110,11 +110,6 @@ const CASES: &[Case] = &[
     Case {
         family: "Trident",
         kind: "minecraft:trident",
-        fires: &[],
-    },
-    Case {
-        family: "General",
-        kind: "mymod:robot",
         fires: &[],
     },
 ];
@@ -231,22 +226,6 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             );
             trident.velocity = horizon_core::geometry::Vec3::new(1.0, 0.0, 0.0);
             game.tridents.push(trident);
-            // The general row: the declared type's own record, loaded as the
-            // game loads one from a save.
-            let record = crate::game::general::GeneralEntityRecord {
-                position: at(11),
-                velocity: [0.5, 0.0, 0.0],
-                rotation: [0.0, 90.0],
-                uuid: [11, 12, 13, 14],
-                envelope: crate::game::general::GeneralTypeEnvelope {
-                    type_key: "mymod:robot".to_owned(),
-                    payload_version: 3,
-                    payload_bytes: Vec::new(),
-                },
-                passengers: Vec::new(),
-            };
-            game.load_listed("mymod:robot", None, None, record.to_tag())
-                .unwrap();
             // The cases must be exactly the families of `entity_lists!`:
             // its own walk of [`Families`] names them, one field per list.
             let families = Families {
@@ -261,7 +240,7 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
                 projectiles: ["Projectile"],
                 rockets: ["Rocket"],
                 tridents: ["Trident"],
-                general: ["General"],
+                general: [],
             };
             let mut listed = Vec::new();
             super::entity::entity_lists!(walk_lists, families, family, {
@@ -297,11 +276,8 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             game.tick_dropped_items(&mut round);
             let _ = game.tick_creatures();
             game.tick_boats();
-            game.tick_carts();
-            game.tick_rockets();
+            game.tick_ecs().unwrap();
             let _ = game.tick_armor_stands();
-            let _ = game.tick_projectiles();
-            game.tick_tridents();
             game.tickets.update(None);
             // Existing residents whose spawn packets were already announced
             // (as the ordered tick's own test sets it): the round's TNT and
@@ -310,7 +286,6 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
             game.begin_ordered_ticks();
             game.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();
-            game.tick_general().unwrap();
             let heard = std::mem::take(&mut *log.lock().unwrap());
             let mut by_kind: std::collections::BTreeMap<&str, Vec<MoveCause>> = Default::default();
             for (kind, cause) in &heard {
@@ -355,7 +330,7 @@ fn an_arrow_in_flight_fires_nothing_and_a_piston_push_fires_once() {
             game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
             assert!(game.run_command("summon arrow 5.5 15.5 5.5 {Motion:[1.0d,0.0d,0.0d]}"));
             log.lock().unwrap().clear();
-            let _ = game.tick_projectiles();
+            game.tick_ecs().unwrap();
             let heard = std::mem::take(&mut *log.lock().unwrap());
             assert!(
                 heard.is_empty(),

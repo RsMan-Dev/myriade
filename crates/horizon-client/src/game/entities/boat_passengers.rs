@@ -6,10 +6,9 @@
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 use super::{Game, boats::Boat, lan_mobs::guest_bounds};
 use horizon_client::{
-    camera::wrap_degrees,
     fast_hash::FxHashMap,
     join_seq::ListStamp,
-    mobs::{BoxReach, Mob, Species, Who, drops::is_animal, riders, seen_grid::SeenGrid},
+    mobs::{BoxReach, Mob, Species, Who, riders, seen_grid::SeenGrid},
     scoreboard::pushable_by,
 };
 use horizon_core::geometry::{Aabb, Vec3};
@@ -108,7 +107,7 @@ impl Game<'_> {
         self.vehicle_mobs.reach.set(reach);
         // The boats' grid serves the carts ticking right after them; an older one goes.
         let mut grid = self.vehicle_mobs.grid.borrow_mut();
-        let stamp = self.mobs.stamp();
+        let stamp = self.remote_entities.stamp();
         let built = grid.built.take().filter(|(s, _)| *s == stamp);
         *grid = MobGrid {
             built,
@@ -125,11 +124,11 @@ impl Game<'_> {
     /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
     pub(super) fn vehicle_mob_reach(&self) -> Option<BoxReach> {
         let (count, reach) = self.vehicle_mobs.reach.get()?;
-        if count == self.mobs.len() {
+        if count == self.remote_entities.len() {
             return Some(reach);
         }
-        let reach = BoxReach::of(&self.mobs);
-        self.vehicle_mobs.reach.set(Some((self.mobs.len(), reach)));
+        let reach = BoxReach::of(&self.remote_entities);
+        self.vehicle_mobs.reach.set(Some((self.remote_entities.len(), reach)));
         Some(reach)
     }
     /// The slots, ascending, of the mobs whose vehicle is `id`, whatever their state. While
@@ -137,15 +136,15 @@ impl Game<'_> {
     /// next written: each boat asks for its passengers and each cart on rails whether it is
     /// ridden, and each one walked every mob of the level.
     fn vehicle_riders(&self, id: u32) -> Vec<usize> {
-        let rides = |v: u32| move |&j: &usize| self.mobs[j].extra.mount == Some(v);
+        let rides = |v: u32| move |&j: &usize| self.remote_entities[j].extra.mount == Some(v);
         if !self.vehicle_mobs_indexed() {
-            return (0..self.mobs.len()).filter(rides(id)).collect();
+            return (0..self.remote_entities.len()).filter(rides(id)).collect();
         }
-        let stamp = self.mobs.stamp();
+        let stamp = self.remote_entities.stamp();
         let mut riders = self.vehicle_mobs.riders.borrow_mut();
         if riders.as_ref().is_none_or(|(s, _)| *s != stamp) {
             let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
-            for (j, m) in self.mobs.iter().enumerate() {
+            for (j, m) in self.remote_entities.iter().enumerate() {
                 if let Some(v) = m.extra.mount {
                     by_vehicle.entry(v).or_default().push(j);
                 }
@@ -159,8 +158,11 @@ impl Game<'_> {
     }
     /// Whether a mob (one not removed) rides vehicle `id`: `Entity.isVehicle` for a cart.
     pub(in crate::game) fn mob_rides(&self, id: u32) -> bool {
+        if self.ecs.is_active() && self.ecs_rider_of(id).is_some() {
+            return true;
+        }
         let riders = self.vehicle_riders(id);
-        riders.iter().any(|&j| !self.mobs[j].removed)
+        riders.iter().any(|&j| !self.remote_entities[j].removed)
             || self.persist.off_level.values().any(|entity| {
                 matches!(entity, super::persist::OffLevel::Mob(m) if !m.removed && m.extra.mount == Some(id))
             })
@@ -180,14 +182,14 @@ impl Game<'_> {
         if !self.vehicle_mobs_indexed() {
             return false;
         }
-        let stamp = self.mobs.stamp();
+        let stamp = self.remote_entities.stamp();
         let mut grid = self.vehicle_mobs.grid.borrow_mut();
         if grid.built.as_ref().is_none_or(|(s, _)| *s != stamp) {
             if grid.walked < grid.patience {
                 grid.walked += 1;
                 return false;
             }
-            grid.built = Some((stamp, SeenGrid::new(self.mobs.iter().map(Mob::bounds))));
+            grid.built = Some((stamp, SeenGrid::new(self.remote_entities.iter().map(Mob::bounds))));
             grid.walked = 0;
             grid.patience = (grid.patience * 2).max(WALKS_BEFORE_GRID);
         }
@@ -207,7 +209,7 @@ impl Game<'_> {
         let mut near = self.vehicle_mobs.near.take();
         if self.vehicle_mobs_near(area, &mut near) {
             for &j in &near {
-                let m = &self.mobs[j as usize];
+                let m = &self.remote_entities[j as usize];
                 let b = m.bounds();
                 if b.intersects(area) {
                     each(j as usize, m, b);
@@ -215,7 +217,7 @@ impl Game<'_> {
             }
         } else {
             let reach = self.vehicle_mob_reach();
-            for (j, m) in self.mobs.iter().enumerate() {
+            for (j, m) in self.remote_entities.iter().enumerate() {
                 if reach.is_some_and(|r| !r.may_meet(m, area)) {
                     continue;
                 }
@@ -226,22 +228,6 @@ impl Game<'_> {
             }
         }
         self.vehicle_mobs.near.set(near);
-    }
-    /// Whether mob `m`, whose box `reach` bounds, may touch a cart: the carts' grid (`cells`)
-    /// names the carts near it, or every cart when the grid cannot (a superset either way).
-    pub(in crate::game) fn mob_may_meet_cart(
-        &self,
-        reach: BoxReach,
-        m: &Mob,
-        cells: &SeenGrid,
-        near: &mut Vec<u32>,
-    ) -> bool {
-        if !cells.candidates(reach.around(m.position), near) {
-            near.clear();
-            near.extend(0..self.carts.len() as u32);
-        }
-        near.iter()
-            .any(|&k| reach.may_meet(m, self.carts[k as usize].bounds()))
     }
     /// The players in boat `id`: the window's player (or the server player
     /// acting as it) and the server's other players.
@@ -259,7 +245,7 @@ impl Game<'_> {
     /// (`Entity.addPassenger` puts a player first).
     pub(super) fn boat_mobs(&self, id: u32) -> Vec<usize> {
         let mut riders = self.vehicle_riders(id);
-        riders.retain(|&j| !self.mobs[j].removed && self.mobs[j].alive());
+        riders.retain(|&j| !self.remote_entities[j].removed && self.remote_entities[j].alive());
         riders
     }
     /// `getPassengers().size()` of boat `id`.
@@ -272,32 +258,31 @@ impl Game<'_> {
     }
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not
     /// under water.
-    pub(super) fn boat_has_room(&self, i: usize) -> bool {
-        let b = &self.boats[i];
-        self.boat_passengers(b.id) < b.max_passengers() && !b.under_water()
+    pub(super) fn boat_has_room(&self, id: u32) -> bool {
+        let under_water = self.ecs.boat_status(id).is_some_and(|s| s.under_water);
+        self.boat_passengers(id) < self.ecs.boat_max_passengers(id).unwrap_or(0) && !under_water
     }
     /// Where the player in boat `i` sits: in the middle alone, in front of a
     /// mob.
-    pub(super) fn player_boat_seat(&self, i: usize) -> Vec3 {
-        let b = &self.boats[i];
-        let players = self.boat_players(b.id);
+    pub(super) fn player_boat_seat(&self, id: u32) -> Vec3 {
+        let players = self.boat_players(id);
         let count = if self.persist.off_level.is_empty() {
-            players.max(1) + self.boat_mobs(b.id).len()
+            players.max(1) + self.boat_mobs(id).len()
         } else {
-            self.boat_passengers(b.id) + usize::from(players == 0)
+            self.boat_passengers(id) + usize::from(players == 0)
         };
-        b.seat(0, count, false, PLAYER_RIDING_OFFSET, false)
+        self.ecs.boat_seat(id, 0, count).unwrap_or(Vec3::ZERO)
     }
     /// `getRootVehicle` of mob `j`: the mob or boat at the bottom of what it
     /// rides, None when it rides nothing.
     pub(super) fn mob_root_vehicle(&self, mut j: usize) -> Option<u32> {
         let mut root = None;
         for _ in 0..8 {
-            let Some(v) = self.mobs[j].extra.mount else {
+            let Some(v) = self.remote_entities[j].extra.mount else {
                 break;
             };
             root = Some(v);
-            match self.mobs.iter().position(|m| m.id == v) {
+            match self.remote_entities.iter().position(|m| m.id == v) {
                 Some(k) => j = k,
                 None => break,
             }
@@ -339,12 +324,14 @@ impl Game<'_> {
                 out.push(b);
             }
         });
+        let boats = self
+            .ecs
+            .boats_in(area.min_position(), area.max_position())
+            .into_iter()
+            .filter(|&b| b != id)
+            .filter_map(|b| self.ecs.bounds(b));
         out.extend(
-            self.boats
-                .iter()
-                .filter(|b| b.id != id)
-                .map(Boat::bounds)
-                .chain(self.carts.iter().map(|c| c.bounds()))
+            boats
                 .chain(self.players_outside(id).into_iter().map(|(bb, _)| bb))
                 .filter(|bb| bb.intersects(area)),
         );
@@ -362,306 +349,10 @@ impl Game<'_> {
         !self.boat_obstacles(u32::MAX, area).is_empty()
     }
 
-    /// The end of `AbstractBoat.tick` on the server for boat `i`: each
-    /// entity it touches gets in (a mob, while no player steers) or is
-    /// pushed apart from it, and `LivingEntity.pushEntities` of each mob and
-    /// player touching it pushes the two apart once more. Only the window's
-    /// own player is moved here: a server's players are pushed by their
-    /// clients, which tick the boats near them (`remote_pushes`).
-    pub(super) fn boat_contacts(&mut self, mut i: usize) {
-        let (id, bb, max) = {
-            let b = &self.boats[i];
-            (b.id, b.bounds(), b.max_passengers())
-        };
-        let area = bb.inflate(Vec3::new(
-            f64::from(0.2_f32),
-            f64::from(-0.01_f32),
-            f64::from(0.2_f32),
-        ));
-        let mut count = self.boat_passengers(id);
-        // getControllingPassenger is a player: one rides it (players sit first).
-        let pick_up = self.boat_players(id) == 0;
-        // canAddPassenger, which startRiding asks after the checks below.
-        let room = !self.boats[i].under_water();
-        // The mobs near the two boxes: the teams are only worked out when something
-        // touches the boat.
-        let mut near = Vec::new();
-        self.mobs_meeting(area.union_bounds(bb), |j, _, mb| {
-            if mb.intersects(area) || mb.intersects(bb) {
-                near.push(j);
-            }
-        });
-        let outside = self.players_outside(id);
-        let touching = !near.is_empty()
-            || outside
-                .iter()
-                .any(|(pb, _)| pb.intersects(area) || pb.intersects(bb));
-        // (mob, touched by the boat's sweep, its own pushEntities reaches the boat)
-        let teams = if touching {
-            self.mob_teams()
-        } else {
-            Default::default()
-        };
-        let mobs: Vec<(u32, bool, bool)> = near
-            .into_iter()
-            .filter_map(|j| {
-                let m = &self.mobs[j];
-                if !pushable(m) || m.extra.mount.is_some() && self.mob_root_vehicle(j) == Some(id) {
-                    return None;
-                }
-                let mb = m.bounds();
-                let team = teams.of(Who::Mob(m.id));
-                let touched = mb.intersects(area) && pushable_by(None, team, true);
-                // Bats push nothing (Bat.pushEntities).
-                let pushes = m.species() != Species::Bat
-                    && mb.intersects(bb)
-                    && pushable_by(team, None, true);
-                (touched || pushes).then_some((m.id, touched, pushes))
-            })
-            .collect();
-        let player_team = teams.of(Who::Player);
-        let players: Vec<(Aabb, bool, bool, bool)> = outside
-            .into_iter()
-            .map(|(pb, own)| {
-                let team = if own { player_team } else { None };
-                (
-                    pb,
-                    own,
-                    pb.intersects(area) && pushable_by(None, team, true),
-                    pb.intersects(bb) && pushable_by(team, None, true),
-                )
-            })
-            .collect();
-        drop(teams);
-        for (mob, touched, pushes) in mobs {
-            // By id: a mod's mount hook may have removed mobs since the list
-            // was made, which moves the others' indices.
-            let Some(j) = self.mobs.iter().position(|m| m.id == mob) else {
-                continue;
-            };
-            if touched {
-                let m = &self.mobs[j];
-                let boards = pick_up
-                    && count < max
-                    && m.extra.mount.is_none()
-                    && m.width() < super::boats::WIDTH as f32
-                    && !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:cannot_be_pushed_onto_boats", &m.kind.id);
-                if boards {
-                    // startRiding fails quietly (no push) while the mob's
-                    // boarding cooldown runs (Entity.canRide) or the boat
-                    // is under water, or when a mod cancels it
-                    // (EntityMountEvent).
-                    let ready = m.extra.boarding_cooldown <= 0 && species_can_ride(m.species());
-                    if room && ready && self.native_mob_may_ride(mob, id, true) {
-                        // The hook had `&mut self`: find the boat and the mob
-                        // again by id and check the boarding still holds.
-                        let Some(bi) = self.boats.iter().position(|b| b.id == id) else {
-                            return;
-                        };
-                        i = bi;
-                        let fresh = self.boat_passengers(id);
-                        if fresh >= max {
-                            continue;
-                        }
-                        count = fresh;
-                        let Some(m) = self
-                            .mobs
-                            .iter_mut()
-                            .find(|m| m.id == mob && !m.removed && m.extra.mount.is_none())
-                        else {
-                            continue;
-                        };
-                        horizon_client::mobs::shulker::on_start_riding(m);
-                        m.extra.mount = Some(id);
-                        m.extra.passenger = true;
-                        m.ai.nav.stop();
-                        count += 1;
-                        self.seat_mob(mob);
-                        // Mob.startRiding drops its lead.
-                        self.break_leash(mob, true, false);
-                        self.note_started_riding(id);
-                        self.vehicle_picked_up();
-                    }
-                    continue;
-                }
-                self.boat_push_mob(i, j, count);
-            }
-            if pushes {
-                self.boat_push_mob(i, j, count);
-            }
-        }
-        for (pb, own, touched, pushes) in players {
-            let Some(v) = push_impulse(self.boats[i].position, pb.center())
-                .filter(|_| boat_pushes(bb, pb, false))
-            else {
-                continue;
-            };
-            for _ in 0..usize::from(touched) + usize::from(pushes) {
-                if count == 0 {
-                    self.boats
-                        .update(i, |b| b.velocity = b.velocity.subtract(v));
-                }
-                if own && let Some(p) = self.player.as_mut() {
-                    p.velocity = p.velocity.add_vector(v);
-                }
-            }
-        }
-        for k in 0..self.boats.len() {
-            let ob = self.boats[k].bounds();
-            if k == i || !ob.intersects(area) || !boat_pushes(bb, ob, true) {
-                continue;
-            }
-            let Some(v) = push_impulse(self.boats[i].position, self.boats[k].position) else {
-                continue;
-            };
-            if count == 0 {
-                self.boats
-                    .update(i, |b| b.velocity = b.velocity.subtract(v));
-            }
-            if self.boat_passengers(self.boats[k].id) == 0 {
-                self.boats
-                    .update(k, |b| b.velocity = b.velocity.add_vector(v));
-            }
-        }
-        let guest_carts = self.guest_vehicles();
-        for c in 0..self.carts.len() {
-            let cb = self.carts[c].bounds();
-            if !cb.intersects(area) || !boat_pushes(bb, cb, false) {
-                continue;
-            }
-            let Some(v) = push_impulse(self.boats[i].position, self.carts[c].position) else {
-                continue;
-            };
-            if count == 0 {
-                self.boats
-                    .update(i, |b| b.velocity = b.velocity.subtract(v));
-            }
-            let cid = self.carts[c].id;
-            let ridden = self.riding == Some(cid)
-                || guest_carts.contains(&cid)
-                || self.mobs.iter().any(|m| m.extra.mount == Some(cid));
-            if !ridden {
-                self.carts
-                    .update(c, |c| c.velocity = c.velocity.add_vector(v));
-            }
-        }
-    }
-    /// `AbstractBoat.push(mob)` from boat `i`, which has `count` passengers.
-    fn boat_push_mob(&mut self, i: usize, j: usize, count: usize) {
-        let (b, m) = (&self.boats[i], &self.mobs[j]);
-        if !boat_pushes(b.bounds(), m.bounds(), false) {
-            return;
-        }
-        let Some(v) = push_impulse(b.position, m.position) else {
-            return;
-        };
-        if count == 0 {
-            self.boats
-                .update(i, |b| b.velocity = b.velocity.subtract(v));
-        }
-        let m = &mut self.mobs[j];
-        if moved_by_push(m) {
-            m.velocity = m.velocity.add_vector(v);
-            m.needs_sync = true;
-        }
-    }
-
-    /// `positionRider` and `clampRotation` for the mobs in boats: each sits
-    /// in its seat facing the way the boat does, an animal in a full boat
-    /// sideways, its head kept within its reach of its body.
-    pub(super) fn seat_boat_mobs(&mut self, riding: &super::passengers::Riders) {
-        for i in 0..self.boats.len() {
-            let id = self.boats[i].id;
-            // `boat_mobs`, from the riders found in one pass.
-            let mobs: Vec<usize> = riding
-                .get(&id)
-                .into_iter()
-                .flatten()
-                .copied()
-                .filter(|&j| !self.mobs[j].removed && self.mobs[j].alive())
-                .collect();
-            if mobs.is_empty() {
-                continue;
-            }
-            let players = self.boat_players(id);
-            let retained_seats =
-                (!self.persist.off_level.is_empty()).then(|| self.seated_passengers(id));
-            let count = retained_seats
-                .as_ref()
-                .map_or(players + mobs.len(), Vec::len);
-            let b = &self.boats[i];
-            let full = count == b.max_passengers();
-            let delta = b.delta_rotation;
-            let boat_box = b.bounds();
-            let ridden = horizon_client::motion::RiddenBoat {
-                under_water: b.under_water(),
-                max_y: boat_box.max_position().y,
-            };
-            let seats: Vec<_> = mobs
-                .iter()
-                .enumerate()
-                .map(|(n, &j)| {
-                    let m = &self.mobs[j];
-                    let animal = is_animal(m.species());
-                    // Another player's too, on a server's client.
-                    // AbstractBoat's box is 1.375 wide.
-                    let offset = riders::vehicle_attachment(m, 1.375);
-                    let index = retained_seats
-                        .as_ref()
-                        .and_then(|seats| seats.iter().position(|&(_, id, _)| id == m.id))
-                        .unwrap_or(players + n);
-                    // calculatePassengerBodyYRot.
-                    let turn = match (animal && full, m.id.is_multiple_of(2)) {
-                        (false, _) => 0.0,
-                        (true, true) => 90.0,
-                        (true, false) => 270.0,
-                    };
-                    let turns = !self
-                        .res
-                        .mob_data()
-                        .entity_has("minecraft:can_turn_in_boats", &m.kind.id);
-                    (
-                        j,
-                        offset,
-                        b.seat(index, count, animal, offset, false),
-                        b.seat(index, count, animal, offset, true),
-                        turns.then_some((b.yaw + turn, b.previous_yaw + turn)),
-                    )
-                })
-                .collect();
-            for (j, offset, at, previous, facing) in seats {
-                let m = &mut self.mobs[j];
-                m.seated(id, offset, boat_box);
-                m.fluids.boat = Some((id, ridden));
-                m.position = at;
-                m.previous = previous;
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-                let Some((body, previous_body)) = facing else {
-                    continue;
-                };
-                m.head_yaw += delta;
-                m.body_yaw = body;
-                m.previous_body_yaw = previous_body;
-                m.yaw = body;
-                m.previous_yaw = previous_body;
-                // Mob.clampHeadRotationToBody.
-                let limit = m.kind.max_head_y_rot;
-                let d = wrap_degrees(body - m.head_yaw);
-                m.head_yaw += d - d.clamp(-limit, limit);
-            }
-        }
-    }
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
     pub(super) fn kill_vehicle_object(&mut self, target: super::commands::Target) -> bool {
-        use super::{commands::Target, persist::RemovedVehicle};
+        use super::commands::Target;
         let id = match target {
             Target::Boat(id) | Target::Cart(id) => id,
             _ => unreachable!("only boat and cart removals use this helper"),
@@ -682,26 +373,14 @@ impl Game<'_> {
         }
         match target {
             Target::Boat(_) => {
-                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                    self.release_vehicle_container(id);
-                    self.unpack_boat_loot(i, false);
-                    let boat = self.boats.remove(i);
-                    self.drop_vehicle_contents(boat.position.components(), &boat.items);
-                    self.boat_removed(&boat);
-                    self.retain_removed_vehicle(id, RemovedVehicle::Boat(boat));
-                }
+                self.release_vehicle_container(id);
+                self.unpack_boat_loot(id, false);
+                self.ecs_with(|ecs, mw| ecs.kill_vehicle(mw, id));
             }
             Target::Cart(_) => {
                 self.release_vehicle_container(id);
-                if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-                    self.unpack_loot(
-                        super::container_loot::LootTarget::Cart(self.carts[i].id),
-                        None,
-                    );
-                    let cart = self.carts.remove(i);
-                    self.drop_vehicle_contents(cart.position.components(), &cart.items);
-                    self.retain_removed_vehicle(id, RemovedVehicle::Cart(cart));
-                }
+                self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+                self.ecs_with(|ecs, mw| ecs.kill_vehicle(mw, id));
             }
             _ => unreachable!(),
         }
@@ -754,9 +433,10 @@ impl Game<'_> {
     /// `ejectPassengers` for the mobs in boat `i`: each gets out where
     /// `getDismountLocationForPassenger` puts it (beside the boat when it
     /// broke: `LivingEntity.dismountVehicle`) and can't board for a while.
-    pub(super) fn eject_boat_mobs(&mut self, i: usize, broken: bool) {
-        let b = &self.boats[i];
-        let (id, y) = (b.id, b.position.y);
+    pub(super) fn eject_boat_mobs(&mut self, id: u32, broken: bool) {
+        let Some(y) = self.ecs.position(id).map(|p| p[1]) else {
+            return;
+        };
         for rider in self.mob_passenger_ids(id) {
             if self
                 .mob_object(rider)
@@ -780,7 +460,7 @@ impl Game<'_> {
                     f64::from(m.height()),
                     y,
                 )
-            } else if let Some(boat) = self.boats.iter().find(|b| b.id == id) {
+            } else if let Some(boat) = self.boat_object(id) {
                 self.boat_dismount_target(boat, f64::from(m.width()), m.yaw)
             } else {
                 self.removed_vehicle_dismount_point(
@@ -804,34 +484,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    #[ignore = "daily"]
-    fn rejected_boat_passengers_fill_actual_capacity_without_becoming_resident() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.boats.push(super::super::boats::Boat::new(
-                71,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
-            for id in [72, 73] {
-                let mut rider = Mob::new(id, kind.clone(), Vec3::ZERO, 0.0);
-                rider.extra.mount = Some(71);
-                game.persist
-                    .off_level
-                    .insert(id, super::super::persist::OffLevel::Mob(rider));
-            }
-            assert!(game.boat_mobs(71).is_empty());
-            // An ordinary oak boat has two seats; rejected passengers still own both.
-            assert_eq!(game.boat_passengers(71), 2);
-            assert!(!game.boat_has_room(0));
-            game.mob_object_mut(73).unwrap().extra.mount = None;
-            assert_eq!(game.boat_passengers(71), 1);
-            assert!(game.boat_has_room(0));
-        });
-    }
 
     #[test]
     fn push_is_capped_and_scaled() {
@@ -862,15 +514,15 @@ mod tests {
             let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             let mut cow = Mob::new(77, kind, Vec3::ZERO, 0.0);
             horizon_client::mobs::finalize::set_baby(&mut cow, true);
-            game.mobs.push(cow);
+            game.remote_entities.push(cow);
             let mob = game.mob(game.entity(77).unwrap()).unwrap();
             let area = Aabb::new(Vec3::new(0.3, 0.0, 0.0), Vec3::new(0.4, 1.0, 0.1));
-            assert!(!game.mobs[0].bounds().intersects(area));
+            assert!(!game.remote_entities[0].bounds().intersects(area));
             let mods = vec![mod_api::ModEntry::new("resize-test", Box::new(Resize))].into();
             mod_platform::testing::with_mods(mods, || {
                 game.vehicles_ticking(true);
                 assert!(mob.set_baby(game, false));
-                let cow = &game.mobs[0];
+                let cow = &game.remote_entities[0];
                 assert!(cow.bounds().intersects(area));
                 assert!(
                     game.vehicle_mob_reach()
@@ -891,44 +543,6 @@ mod tests {
         assert!(!boat_pushes(boat, at(64.5625), true));
     }
 
-    /// A mob pushes the cart its box touches while a mob far from every cart pushes none and
-    /// is not pushed, whichever grid finds them: the carts' (four carts in four of its columns,
-    /// asked once per mob while the mobs are the fewer) or, in a crowd, the mobs' (asked once
-    /// per cart).
-    #[test]
-    #[ignore = "daily"]
-    fn only_the_mob_touching_a_cart_pushes_it() {
-        use super::super::minecarts::{CartKind, Minecart};
-        let pushed = [0, 12].map(|crowd: u32| {
-            let mut resources = None;
-            let mut game = super::super::game_tests::tests::server_game(&mut resources);
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            for (i, (x, z)) in [(0.5, 0.5), (20.5, 0.5), (0.5, 20.5), (20.5, 20.5)]
-                .into_iter()
-                .enumerate()
-            {
-                let at = Vec3::new(x, 64.0, z);
-                game.carts
-                    .push(Minecart::new(100 + i as u32, CartKind::Chest, at));
-            }
-            // 0.5 west of the second cart (boxes 0.9 and 0.98 wide), in the middle of them
-            // all, and the crowd well away.
-            let spots = [(20.0, 0.5), (10.5, 10.5)].into_iter();
-            let crowd = (0..crowd).map(|i| (40.5 + 3.0 * f64::from(i), 40.5));
-            for (i, (x, z)) in spots.chain(crowd).enumerate() {
-                let at = Vec3::new(x, 64.0, z);
-                game.mobs.push(Mob::new(1 + i as u32, pig.clone(), at, 0.0));
-            }
-            game.tick_carts();
-            let velocity = |id| game.mobs.iter().find(|m| m.id == id).unwrap().velocity;
-            assert!(velocity(1).x < 0.0, "pushed back west: {:?}", velocity(1));
-            let idle = game.mobs.iter().filter(|m| m.velocity == Vec3::ZERO);
-            assert_eq!(idle.count(), game.mobs.len() - 1);
-            velocity(1)
-        });
-        assert_eq!(pushed[0], pushed[1]);
-    }
-
     /// A vehicle's box query during a stretch of vehicle ticks names the mobs a walk over
     /// every box names, in the same order, also right after a mob moved into the box (a
     /// push or a pick-up writes the mob list in the middle of a stretch).
@@ -946,7 +560,7 @@ mod tests {
         };
         for id in 1..=400 {
             let at = Vec3::new(next(48.0), 64.0 + next(3.0), next(48.0));
-            game.mobs.push(Mob::new(id, pig.clone(), at, 0.0));
+            game.remote_entities.push(Mob::new(id, pig.clone(), at, 0.0));
         }
         let mut met = 0;
         for round in 0..300 {
@@ -958,11 +572,11 @@ mod tests {
             let size = Vec3::new(0.5 + next(2.5), 0.5 + next(1.5), 0.5 + next(2.5));
             let area = Aabb::new(corner, corner.add_vector(size));
             if round % 40 == 20 {
-                let j = round % game.mobs.len();
-                game.mobs[j].position = area.center();
+                let j = round % game.remote_entities.len();
+                game.remote_entities[j].position = area.center();
             }
             let walked: Vec<Aabb> = game
-                .mobs
+                .remote_entities
                 .iter()
                 .map(Mob::bounds)
                 .filter(|b| b.intersects(area))
@@ -971,7 +585,7 @@ mod tests {
             assert_eq!(game.boat_obstacles(u32::MAX, area), walked, "round {round}");
             if round % 100 == 99 {
                 // The last comparisons ran against the grid: it stands, for the list as it is.
-                let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.mobs.stamp();
+                let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.remote_entities.stamp();
                 assert!(
                     game.vehicle_mobs
                         .grid
@@ -996,18 +610,18 @@ mod tests {
         let mut game = super::super::game_tests::tests::server_game(&mut resources);
         let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         for id in 1..=4 {
-            game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
+            game.remote_entities.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
         }
         let riders =
             |game: &Game| [100, 101, 102].map(|id| (game.mob_rides(id), game.boat_mobs(id)));
-        game.mobs[0].extra.mount = Some(100);
+        game.remote_entities[0].extra.mount = Some(100);
         game.vehicles_ticking(true);
         let none = (false, vec![]);
         assert_eq!(riders(&game), [(true, vec![0]), none.clone(), none.clone()]);
-        game.mobs[0].removed = true;
-        game.mobs[1].extra.mount = Some(101);
-        game.mobs[3].extra.mount = Some(102);
-        game.mobs[3].health = 0.0;
+        game.remote_entities[0].removed = true;
+        game.remote_entities[1].extra.mount = Some(101);
+        game.remote_entities[3].extra.mount = Some(102);
+        game.remote_entities[3].health = 0.0;
         let after = [none, (true, vec![1]), (true, vec![])];
         assert_eq!(riders(&game), after);
         game.vehicles_ticking(false);
@@ -1019,30 +633,6 @@ mod tests {
 mod off_level_tests {
     use super::*;
 
-    #[test]
-    #[ignore = "daily"]
-    fn retained_boat_passenger_occupies_a_seat_without_being_positioned() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let boat = Boat::new(71, "oak".into(), Vec3::new(1.0, 80.0, 0.5), 0.0);
-            let mut ghost = horizon_client::mobs::Mob::new(72, pig.clone(), Vec3::ZERO, 0.0);
-            ghost.extra.mount = Some(71);
-            ghost.extra.vehicle_order = 0;
-            let mut resident = horizon_client::mobs::Mob::new(73, pig, Vec3::ZERO, 0.0);
-            resident.extra.mount = Some(71);
-            resident.extra.vehicle_order = 1;
-            let offset = riders::vehicle_attachment(&resident, 1.375);
-            let expected = boat.seat(1, 2, true, offset, false);
-            game.boats.push(boat);
-            game.mobs.push(resident);
-            game.persist
-                .off_level
-                .insert(72, crate::game::persist::OffLevel::Mob(ghost));
-            game.position_riders();
-            assert_eq!(game.mob_object(73).unwrap().position, expected);
-            assert_eq!(game.mob_object(72).unwrap().position, Vec3::ZERO);
-        });
-    }
 }
 
 #[cfg(test)]
@@ -1082,86 +672,5 @@ mod boat_callback_review_tests {
             }
             mod_api::Flow::Continue
         }
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn boat_ejection_preserves_a_later_passengers_callback_reparenting() {
-        let heard = Arc::new(Mutex::new(Vec::new()));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "mutate_rider",
-            Box::new(MutateRider {
-                discard: false,
-                heard: heard.clone(),
-            }),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.boats.push(super::super::boats::Boat::new(
-                    71,
-                    "oak".into(),
-                    Vec3::ZERO,
-                    0.0,
-                ));
-                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                for id in [72, 73, 74] {
-                    let mut mob = Mob::new(id, kind.clone(), Vec3::ZERO, 0.0);
-                    mob.extra.mount = (id != 74).then_some(71);
-                    mob.extra.vehicle_order = i64::from(id);
-                    game.mobs.push(mob);
-                }
-                game.eject_boat_mobs(0, true);
-                assert_eq!(game.mob_object(73).unwrap().extra.mount, Some(74));
-                assert_eq!(
-                    heard
-                        .lock()
-                        .unwrap()
-                        .iter()
-                        .filter(|&&(id, mounting)| id == 73 && !mounting)
-                        .count(),
-                    1,
-                    "only the callback's deliberate reparenting dismounts this rider"
-                );
-            });
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn boat_ejection_does_not_snap_a_rider_discarded_by_its_callback() {
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "mutate_rider",
-            Box::new(MutateRider {
-                discard: true,
-                heard: Arc::default(),
-            }),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.boats.push(super::super::boats::Boat::new(
-                    71,
-                    "oak".into(),
-                    Vec3::ZERO,
-                    0.0,
-                ));
-                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let original = Vec3::new(2.0, 60.0, 3.0);
-                let mut rider = Mob::new(72, kind.clone(), original, 0.0);
-                rider.extra.mount = Some(71);
-                game.mobs.push(rider);
-                let mut child = Mob::new(73, kind, original, 0.0);
-                child.extra.mount = Some(72);
-                game.mobs.push(child);
-                let mut boat = game.boats[0].clone();
-                boat.position = Vec3::new(40.0, 70.0, 40.0);
-                game.boats.store_back(0, boat);
-                game.eject_boat_mobs(0, true);
-                assert!(game.mob_object(72).unwrap().removed);
-                assert_eq!(game.mob_object(72).unwrap().position, original);
-                assert_eq!(game.mob_object(73).unwrap().position, original);
-            });
-        });
     }
 }

@@ -344,9 +344,11 @@ impl Game<'_> {
             self.cushion_spawn(hit).is_some()
         } else if &*stack.item == "minecraft:painting" {
             // HangingEntityItem.useOn on a client level: SUCCESS once
-            // `Painting.create` finds a surviving variant, before the
-            // server spawns it.
-            self.painting_fits(hit, stack)
+            // `Painting.create` finds a surviving variant, before the server spawns it.
+            let at: [i32; 3] = std::array::from_fn(|i| hit.pos[i] + hit.face[i]);
+            let variant = self.painting_variants.of_stack(stack).map(|v| v.id.to_string());
+            let mw = self.mob_world_base(&[]);
+            self.ecs.painting_fits(&mw, at, crate::game::entities::frames::facing_of(hit.face), variant.as_deref())
         } else {
             false
         }

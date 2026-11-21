@@ -467,12 +467,11 @@ impl Game<'_> {
         let record = [
             size_of::<horizon_client::entities::ItemEntity>(),
             size_of::<horizon_client::entities::ExperienceOrb>(),
-            size_of::<horizon_client::projectiles::Projectile>(),
             size_of::<super::minecarts::Minecart>(),
             size_of::<super::boats::Boat>(),
         ];
         let mut by_type: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        let mut level = |mobs: &[horizon_client::mobs::Mob], loose: [usize; 5]| {
+        let mut level = |mobs: &[horizon_client::mobs::Mob], loose: [usize; 4]| {
             for m in mobs.iter().filter(|m| !m.removed) {
                 let bytes = size_of::<horizon_client::mobs::Mob>()
                     + size_of_val(&*m.ai)
@@ -500,7 +499,6 @@ impl Game<'_> {
             [
                 self.dropped.len(),
                 self.orbs.len(),
-                self.creatures.projectiles.len(),
                 self.carts.len(),
                 self.boats.len(),
             ],
@@ -510,6 +508,10 @@ impl Game<'_> {
                 let loose = self.levels.parked_entity_counts(dim).unwrap_or_default();
                 level(mobs, loose);
             }
+        }
+        // The level's ECS entities, projectiles included, by kind: their records are not measured here, the ECS world holds them.
+        for (id, n) in self.ecs.count_by_kind() {
+            by_type.entry(id.to_owned()).or_default().0 += n;
         }
         let count = by_type.values().map(|r| r.0).sum();
         let bytes = by_type.values().map(|r| r.1).sum();

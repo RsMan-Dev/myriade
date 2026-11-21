@@ -3,6 +3,7 @@
 //! one `HostEvent::DisplayUpdate` when the value changed. The summon is the host's: `spawn` emits nothing.
 use crate::cow::Pos;
 use crate::goals::Events;
+use crate::passive;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
@@ -93,6 +94,14 @@ impl Default for TextData {
 /// A display at `at` with its transformation, its way of showing, and what it shows (`kind`: a `BlockState`, a `Stack` or a `TextData`).
 pub fn spawn(w: &mut World, at: Vec3, t: Transform, s: Shown, kind: impl Bundle) -> Entity {
     w.spawn((Pos(at), t, s, kind)).id()
+}
+
+/// A display of `kind` at `at` from its saved compound: `passive::spawn` keeps the compound and reads the box. The transformation and the
+/// way of showing start at their defaults, until a write; a block, an item or a text is set by its kind's own components.
+pub fn spawn_display(w: &mut World, kind: &'static str, at: Vec3, tag: Tag) -> Entity {
+    let e = passive::spawn(w, kind, at, tag);
+    w.entity_mut(e).insert((Transform::default(), Shown::default()));
+    e
 }
 
 /// Writes `value` into the component of `e` when it differs, and emits one update. False when nothing changed or `e` has no such component.

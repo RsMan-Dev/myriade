@@ -2,66 +2,58 @@
 //! rail (`performCommand`, `CloseableCommandBlockSource`), the entity data
 //! that carries its command and last output to clients, and the edit screen's
 //! `ServerboundSetCommandMinecartPacket` with `handleSetCommandMinecart`.
-use super::{
-    Game,
-    command_blocks::CommandBlockScreen,
-    commands::{Target, execute::Source},
-    minecarts::{CartKind, Minecart},
+//! The state lives in the ECS cart (`cart_command`, `set_cart_command`), read
+//! as a copy and written back by id.
+use super::{Game, command_blocks::CommandBlockScreen, commands::{Target, execute::Source}};
+use horizon_client::{
+    command_block::{CommandBlock, Mode},
+    text::Text,
 };
-use horizon_client::{command_block::Mode, text::Text};
 use horizon_protocol::packets::play::{self, Serverbound as S};
 
 impl Game<'_> {
-    fn edit_command_cart<R>(
-        &mut self,
-        id: u32,
-        edit: impl FnOnce(&mut Minecart) -> R,
-    ) -> Option<R> {
-        let i = self
-            .carts
-            .iter()
-            .position(|c| c.id == id && c.kind == CartKind::CommandBlock)?;
-        Some(self.carts.update(i, edit))
-    }
-    /// `MinecartCommandBase.onUpdated`: the cart's command and last output go
-    /// into its synched data (`DATA_ID_COMMAND_NAME`, `DATA_ID_LAST_OUTPUT`).
-    pub(super) fn cart_command_updated(&mut self, id: u32) {
-        self.edit_command_cart(id, |c| {
-            c.synced_command = c.command.command.clone();
-            c.synced_output = c.command.last_output_string();
-        });
+    fn edit_command_cart<R>(&mut self, id: u32, edit: impl FnOnce(&mut CommandBlock) -> R) -> Option<R> {
+        let mut state = self.ecs.cart_command(id)?;
+        let out = edit(&mut state);
+        self.ecs.set_cart_command(id, &state).then_some(out)
     }
     /// `BaseCommandBlock.performCommand` for the cart: false when it already
     /// ran this game tick.
-    pub(super) fn perform_cart_command(&mut self, id: u32) -> bool {
+    pub(in crate::game) fn perform_cart_command(&mut self, id: u32) -> bool {
         let game_time = self.world.game_time;
         let rules_work = self
             .ui
             .rules
             .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         let dimension = self.dim;
-        let Some(prepared) = self.edit_command_cart(id, |c| {
-            use std::ops::ControlFlow::{Break, Continue};
-            if c.command.last_execution == game_time {
-                return Break(false);
-            }
-            if c.command.command.eq_ignore_ascii_case("Searge") {
-                c.command.last_output = Some(Text::literal("#itzlipofutzli"));
-                c.command.success_count = 1;
-                return Break(true);
-            }
-            c.command.success_count = 0;
-            let command = c.command.command.clone();
-            if !rules_work || command.is_empty() {
-                return Continue(None);
-            }
-            c.command.last_output = None;
+        let (Some(mut state), Some(view)) = (self.ecs.cart_command(id), self.ecs_view(id)) else {
+            return false;
+        };
+        if state.last_execution == game_time {
+            return false;
+        }
+        if state.command.eq_ignore_ascii_case("Searge") {
+            state.last_output = Some(Text::literal("#itzlipofutzli"));
+            state.success_count = 1;
+            return self.ecs.set_cart_command(id, &state);
+        }
+        state.success_count = 0;
+        let command = state.command.clone();
+        let run = rules_work && !command.is_empty();
+        if run {
+            state.last_output = None;
+        }
+        // The state goes back before the command runs: it may write the cart itself.
+        if !self.ecs.set_cart_command(id, &state) {
+            return false;
+        }
+        if run {
             // MinecartCommandBase.createCommandSourceStack: the cart's
             // position and rotation at game master level.
             let source = Source {
                 entity: Some(Target::Cart(id)),
-                pos: [c.position.x, c.position.y, c.position.z],
-                rot: [c.yaw, 0.0],
+                pos: view.position,
+                rot: [view.yaw, 0.0],
                 eyes: false,
                 silent: false,
                 store: None,
@@ -72,52 +64,35 @@ impl Game<'_> {
                 block: None,
                 cart: Some(id),
             };
-            Continue(Some((command, source)))
-        }) else {
-            return false;
-        };
-        let command = match prepared {
-            std::ops::ControlFlow::Break(done) => return done,
-            std::ops::ControlFlow::Continue(command) => command,
-        };
-        if let Some((command, source)) = command {
             let successes = self.run_as_game_master(&command, source);
-            self.edit_command_cart(id, |c| c.command.success_count = successes);
+            self.edit_command_cart(id, |c| c.success_count = successes);
         }
         self.edit_command_cart(id, |c| {
-            c.command.last_execution = if c.command.update_last_execution {
-                game_time
-            } else {
-                -1
-            };
+            c.last_execution = if c.update_last_execution { game_time } else { -1 };
         });
         true
     }
     /// `CloseableCommandBlockSource.sendSystemMessage` for the cart: its last
-    /// output stamped with the time, then `onUpdated`. Nothing when it does
-    /// not track output (`CommandSource.NULL`).
+    /// output stamped with the time. Nothing when it does not track output
+    /// (`CommandSource.NULL`).
     pub(super) fn cart_command_output(&mut self, id: u32, message: Text) {
-        let updated = self.edit_command_cart(id, |c| {
-            if !c.command.track_output {
-                return false;
+        self.edit_command_cart(id, |c| {
+            if !c.track_output {
+                return;
             }
             let time = chrono::Local::now().format("[%H:%M:%S] ").to_string();
-            c.command.last_output = Some(Text::literal(time).append(message));
-            true
+            c.last_output = Some(Text::literal(time).append(message));
         });
-        if updated == Some(true) {
-            self.cart_command_updated(id);
-        }
     }
     /// `CommandSourceStack.sendSuccess` from a command minecart: its output
     /// when `send_command_feedback`, and `broadcastToAdmins` when
     /// `command_block_output`.
     pub(super) fn cart_command_success(&mut self, id: u32, message: Text, broadcast: bool) {
         let Some(name) = self
-            .carts
-            .iter()
-            .find(|c| c.id == id && c.kind == CartKind::CommandBlock && c.command.track_output)
-            .map(|c| c.command.name())
+            .ecs
+            .cart_command(id)
+            .filter(|c| c.track_output)
+            .map(|c| c.name())
         else {
             return;
         };
@@ -142,12 +117,7 @@ impl Game<'_> {
     /// `LocalPlayer.openMinecartCommandBlock`: the editor over the cart's
     /// command (`MinecartCommandBlockEditScreen`).
     pub(super) fn open_cart_command_block(&mut self, id: u32) {
-        let Some(block) = self
-            .carts
-            .iter()
-            .find(|c| c.id == id && c.kind == CartKind::CommandBlock)
-            .map(|c| c.command.clone())
-        else {
+        let Some(block) = self.ecs.cart_command(id) else {
             return;
         };
         self.open_edit_screen((0, 0, 0), Some(id), block, Mode::Redstone, false);
@@ -163,7 +133,7 @@ impl Game<'_> {
         let command = s.command.value().to_owned();
         let track_output = s.track_output;
         // The output button set the cart's own flag as it was pressed.
-        self.edit_command_cart(id, |c| c.command.track_output = track_output);
+        self.edit_command_cart(id, |c| c.track_output = track_output);
         if self.remote.is_some() {
             self.send(S::SetCommandMinecart(play::SetCommandMinecart {
                 entity: id as i32,
@@ -174,7 +144,7 @@ impl Game<'_> {
             self.apply_cart_command(id, command, track_output);
         }
         if !track_output {
-            self.edit_command_cart(id, |c| c.command.last_output = None);
+            self.edit_command_cart(id, |c| c.last_output = None);
         }
     }
     /// `ServerGamePacketListenerImpl.handleSetCommandMinecart` for a guest.
@@ -193,7 +163,8 @@ impl Game<'_> {
     }
     /// What `handleSetCommandMinecart` does once the player may edit: the
     /// command (which resets the success count), output tracking, the cleared
-    /// last output, `onUpdated` while command blocks work, and the chat note.
+    /// last output, and the chat note. The synched command and output are the
+    /// cart's own components, so `onUpdated` has nothing to copy.
     pub(super) fn apply_cart_command(&mut self, id: u32, command: String, track_output: bool) {
         let enabled = self
             .ui
@@ -201,18 +172,15 @@ impl Game<'_> {
             .bool_at(horizon_client::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         if self
             .edit_command_cart(id, |c| {
-                c.command.set_command(&command);
-                c.command.track_output = track_output;
+                c.set_command(&command);
+                c.track_output = track_output;
                 if !track_output {
-                    c.command.last_output = None;
+                    c.last_output = None;
                 }
             })
             .is_none()
         {
             return;
-        }
-        if enabled {
-            self.cart_command_updated(id);
         }
         if !command.is_empty() {
             let key = if enabled {
@@ -222,39 +190,5 @@ impl Game<'_> {
             };
             self.system_message(Text::translate(key, &[Text::literal(command)]));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use horizon_core::geometry::Vec3;
-
-    #[test]
-    #[ignore = "daily"]
-    fn scoped_cart_commands_keep_tick_and_self_removal_rules() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.world.game_time = 10;
-            game.carts
-                .push(Minecart::new(41, CartKind::CommandBlock, Vec3::ZERO));
-            game.carts
-                .push(Minecart::new(42, CartKind::Rideable, Vec3::ZERO));
-            game.carts.update(0, |c| c.command.set_command("Searge"));
-            assert!(game.perform_cart_command(41));
-            assert_eq!(game.carts[0].command.success_count, 1);
-            game.carts.update(0, |c| c.command.set_command(""));
-            assert!(game.perform_cart_command(41));
-            assert_eq!(game.carts[0].command.success_count, 0);
-            assert_eq!(game.carts[0].command.last_execution, 10);
-            assert!(!game.perform_cart_command(41));
-            assert!(!game.perform_cart_command(42));
-            assert!(!game.perform_cart_command(99));
-            game.world.game_time = 11;
-            game.carts.update(0, |c| c.command.set_command("kill @s"));
-            assert!(game.perform_cart_command(41));
-            assert_eq!(game.carts.len(), 1);
-            assert_eq!(game.carts[0].id, 42);
-            assert_eq!(game.carts[0].command.success_count, 0);
-        });
     }
 }

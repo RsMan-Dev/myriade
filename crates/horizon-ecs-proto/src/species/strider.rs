@@ -11,6 +11,7 @@ use crate::rules::RuleEntry;
 pub static DEF: Def = Def {
     name: "minecraft:strider",
     goals: &[
+        Entry::new(&crate::behaviours::move_emission::MODULE, 0, &crate::behaviours::move_emission::Params { step_gap: 0.6, ..crate::behaviours::move_emission::Params::DEFAULT }),
         Entry::new(&panic::MODULE, 1, &panic::Params { speed: 1.65, ..panic::Params::DEFAULT }),
         Entry::new(&breed::MODULE, 2, &breed::Params { speed: 1.0, foods: &["minecraft:warped_fungus"], ..breed::Params::DEFAULT }),
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.4, items: &["minecraft:warped_fungus", "minecraft:warped_fungus_on_a_stick"], ..tempt::Params::DEFAULT }),
@@ -21,7 +22,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 8.0, species: &["minecraft:strider"], ..look_at_player::Params::DEFAULT }),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable, Cap::FireImmune]),
     rules: &[RuleEntry::new(&RIDE, &RideParams::STRIDER), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::SADDLE)],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params::DEFAULT)), (Medium::Lava, Entry::new(&lava::MODULE, 0, &lava::Params::DEFAULT))],
     ..Def::EMPTY

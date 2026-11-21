@@ -1,6 +1,7 @@
 //! `Entity.extinguishFire`, distinct from the silent `clearFire` write.
 use super::{Game, commands::Target, powder_snow::extinguish_pitch};
 use mod_api::{EntityRef, SoundSource};
+use horizon_core::nbt::Tag;
 
 impl Game<'_> {
     pub(super) fn entity_extinguish_fire(&mut self, entity: EntityRef) -> bool {
@@ -28,8 +29,10 @@ impl Game<'_> {
                     true
                 })
                 .unwrap_or(false),
+            // The ECS mob's fire is its saved `Fire` ticks; clearing them is the vanilla clearFire.
+            Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put(id, "Fire", Tag::Short(0)),
             Some(Target::Mob(id)) => {
-                let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id) else {
+                let Some(mob) = self.remote_entities.iter_mut().find(|mob| mob.id == id) else {
                     return false;
                 };
                 // Own random, kind-owned fire immunity, sound outbox, then clearFire.

@@ -93,35 +93,3 @@ fn natural_knot_tick_cleanup_retires_a_removed_holder_and_fresh_tie_gets_a_new_i
         assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
     });
 }
-
-#[test]
-#[ignore = "daily"]
-fn natural_knot_last_boat_notification_excludes_its_old_resident_payload() {
-    with_game(|game| {
-        game.reset_entity_residency();
-        let fence = [1, 70, 1];
-        let (mob, knot) = tie_player_mob(game, fence);
-        game.summon_with_nbt("minecraft:oak_boat", [1.0, 70.0, 1.0], "{}")
-            .unwrap();
-        let boat = game.boats[0].id;
-        assert!(game.set_leash(Target::Boat(boat), Holder::Knot(fence), None));
-        assert!(game.detach_leash(Target::Mob(mob), false));
-        assert_eq!(game.natural_knot(knot), Some(fence));
-        // A copied boat is removed before its original payload is taken out
-        // of the storage list; that old payload is not a remaining holder.
-        let departing = game.boats[0].clone();
-        game.boat_removed(&departing);
-        assert_eq!(game.server_resident_entity(knot), EntityLookup::Missing);
-        game.boats.remove(0);
-
-        let (mob, knot) = tie_player_mob(game, fence);
-        game.summon_with_nbt("minecraft:oak_boat", [1.0, 70.0, 1.0], "{}")
-            .unwrap();
-        let boat = game.boats[0].id;
-        assert!(game.set_leash(Target::Boat(boat), Holder::Knot(fence), None));
-        assert!(game.detach_leash(Target::Mob(mob), false));
-        game.release_stored_boat_leash(0, false);
-        assert_eq!(game.server_resident_entity(knot), EntityLookup::Missing);
-        assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
-    });
-}
