@@ -2184,7 +2184,7 @@ impl Game<'_> {
         self.handle_mob_events_reusable(&mut events)
     }
 
-    pub(in crate::game) fn handle_mob_events_reusable(
+    pub(crate) fn handle_mob_events_reusable(
         &mut self,
         events: &mut Vec<MobEvent>,
     ) -> Result<()> {

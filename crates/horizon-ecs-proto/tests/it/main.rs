@@ -1,6 +1,7 @@
 //! All the integration tests in ONE binary: every test binary loads the vanilla data (seconds of CPU), so 52 binaries cost 52 loads per
 //! species. One binary, one load.
 mod common;
+mod bridge;
 mod brain_fill_vs_mob;
 mod allay_vs_mob;
 mod avoid_sun_vs_mob;
