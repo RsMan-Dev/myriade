@@ -46,7 +46,7 @@ pub static DEF: Def = Def {
                 kids: &[],
             },
             BEntry {
-                behaviour: &run_one::BEHAVIOUR,
+                behaviour: &run_one::QUIET,
                 activity: "idle",
                 priority: 12,
                 params: &(),

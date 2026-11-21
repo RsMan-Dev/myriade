@@ -57,7 +57,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &sniff::FEELING_HAPPY_B, activity: "idle", priority: 3, params: &SNIFF, needs: &[(&sniff::SNIFFER_HAPPY, Need::Present)], duration: Some((40, 100)), kids: &[] },
             BEntry {
-                behaviour: &run_one::BEHAVIOUR,
+                behaviour: &run_one::QUIET,
                 activity: "idle",
                 priority: 4,
                 params: &(),

@@ -224,6 +224,9 @@ impl Ctx {
 pub struct Gate {
     pub shuffle: bool,
     pub try_all: bool,
+    /// A gate that ends with no kid running does not wake the brain: its next ask comes from an event (configured by the species whose
+    /// kids all wait on memories, sensors or deadlines, not on a count of asks).
+    pub quiet: bool,
 }
 /// A behaviour, written `Behaviour { name, <entry points>, ..Behaviour::DEFAULT }`.
 pub struct Behaviour {
@@ -536,7 +539,7 @@ fn wake_on_item(ev: Res<Events>, items: Query<&Pos, With<crate::item::Item>>, id
             let Ok((mut b, me)) = q.get_mut(c) else { return };
             let r = b.plan.item_wake;
             if r > 0.0 && !b.awake && (me.0.x - at.0.x).abs() <= r && (me.0.y - at.0.y).abs() <= r && (me.0.z - at.0.z).abs() <= r {
-                b.awake = true;
+        b.awake = true;
                 awake.0.push(c);
             }
         });
@@ -861,6 +864,11 @@ fn try_start(w: &mut World, e: Entity, plan: &'static Plan, id: u16) -> bool {
             if w.get::<Brain>(e).is_some_and(|b| b.kid_ready(k)) && try_start(w, e, plan, k) && !g.try_all {
                 break;
             }
+        }
+        // No kid went on running: the gate ends here without waking the brain (the next ask comes from an event: a memory, a sensor, a
+        // behaviour that ends), not by a re-step every tick.
+        if g.quiet && !inst.kids.iter().any(|&k| running(w, e, k)) {
+            set_running(w, e, id, false);
         }
         return true;
     }
