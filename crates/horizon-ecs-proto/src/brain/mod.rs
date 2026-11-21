@@ -667,26 +667,32 @@ fn step(w: &mut World, e: Entity) {
     }
     let mut any;
     for &id in &plan.order {
-        if running(w, e, id) {
+        // One read of the brain per behaviour (the running flags change as the earlier ones are ticked).
+        if w.get::<Brain>(e).is_some_and(|b| b.run[id as usize].running) {
             tick_or_stop(w, e, plan, id);
         }
     }
     update_activity(w, e, plan);
     any = false;
-    for (i, x) in plan.insts.iter().enumerate() {
-        if x.b.gate.is_some() || x.b.passive || !running(w, e, i as u16) {
-            continue;
+    // The running flags are read in place (one lookup of the brain); the deadlines to arm are applied after the walk.
+    let mut arm: Vec<(usize, u64)> = Vec::new();
+    if let Some(b) = w.get::<Brain>(e) {
+        for (i, x) in plan.insts.iter().enumerate() {
+            if x.b.gate.is_some() || x.b.passive || !b.run[i].running {
+                continue;
+            }
+            if !(x.b.sleeps)(w, e, &ctx(plan, i as u16)) {
+                any = true;
+                break;
+            }
+            if x.duration.is_some() && !b.run[i].armed {
+                arm.push((i, b.run[i].end));
+            }
         }
-        if !(x.b.sleeps)(w, e, &ctx(plan, i as u16)) {
-            any = true;
-            break;
-        }
-        let b = w.get::<Brain>(e).unwrap();
-        if x.duration.is_some() && !b.run[i].armed {
-            let end = b.run[i].end;
-            w.get_mut::<Brain>(e).unwrap().run[i].armed = true;
-            arm_at(w, e, end + 1, Due::BrainWake);
-        }
+    }
+    for (i, end) in arm {
+        w.get_mut::<Brain>(e).unwrap().run[i].armed = true;
+        arm_at(w, e, end + 1, Due::BrainWake);
     }
     if any {
         wake(w, e);
@@ -794,14 +800,18 @@ fn update_activity(w: &mut World, e: Entity, plan: &'static Plan) {
 // ---- the services the modules use -------------------------------------------------------------------------------------
 /// `NearestVisibleLivingEntities.findClosest`: the first of `visible_mobs` that passes the filter and the sight test.
 pub fn find_closest(w: &mut World, e: Entity, filter: impl Fn(&World, Who) -> bool) -> Option<Who> {
-    // The list is read one entry at a time (no copy of the list: this runs at every step of an awake brain).
+    // The list is read in place (no copy), once per candidate: the entries the filter refuses cost one test each, not one lookup of the memory.
     let mut i = 0;
     loop {
         let who = match get(w, e, &VISIBLE_MOBS) {
-            Some(MemValue::Whos(l)) => *l.get(i)?,
+            Some(MemValue::Whos(l)) => {
+                let Some(k) = l.iter().skip(i).position(|&x| filter(w, x)) else { return None };
+                i += k;
+                l[i]
+            }
             _ => return None,
         };
-        if filter(w, who) && visible_test(w, e, who) {
+        if visible_test(w, e, who) {
             return Some(who);
         }
         i += 1;
