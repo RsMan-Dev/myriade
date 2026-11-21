@@ -12,7 +12,7 @@ use horizon_ecs_proto::{
     goals::Events,
     host_out::HostEvent,
     interaction,
-    passive::{self, Act, Interact, Raw},
+    passive::{self, Act, Interact},
 };
 use horizon_world::registry::BlockStateId;
 
@@ -78,7 +78,7 @@ fn an_unsimulated_entity_comes_back_with_its_data() {
     let mut w = world();
     let data = Tag::compound([("id", Tag::String("custom:thing".into())), ("custom", Tag::String("kept".into()))]);
     let e = passive::spawn(&mut w, "custom:thing", at(), data.clone());
-    assert_eq!(*w.get::<Raw>(e).unwrap().0, data);
+    assert_eq!(passive::save(&w, e), data);
     assert_eq!(w.get::<Pos>(e).unwrap().0.y, 64.0);
     assert_eq!(passive::save(&w, e).get("custom"), Some(&Tag::String("kept".into())));
 }

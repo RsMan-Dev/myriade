@@ -1,18 +1,15 @@
 //! Passive entities (`Display`, `Interaction`, `Marker`): no goal, no clock, no move, so no system visits them. The compound is kept
-//! as loaded (`Raw`): the ECS reads none of a display's settings. An interaction also keeps its box and answer (`Interact`) and
-//! drops those keys from the compound. Saving writes the position and the fields Horizon's `addAdditionalSaveData` writes.
+//! as loaded (its free keys in `NbtData`): the ECS reads none of a display's settings. An interaction's box and answer (`Interact`) are
+//! declared keys (`FIELDS`). Saving writes the position and the fields Horizon's `addAdditionalSaveData` writes.
 use crate::cow::Pos;
+use crate::nbt::{owner, Field, Kind};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
-use horizon_core::nbt::{Compound, Tag};
+use horizon_core::nbt::{Compound, JavaString, Tag};
+use std::borrow::Cow;
 
 pub use crate::species::lists::DISPLAYS;
 use crate::species::lists::{BLOCK_DISPLAY, INTERACTION, ITEM_DISPLAY, TEXT_DISPLAY};
-const INTERACTION_KEYS: [&str; 5] = ["width", "height", "response", "attack", "interaction"];
-
-/// The compound of the entity as Horizon keeps it (`persist.raw`): the state the ECS does not read.
-#[derive(Component, Clone, Debug)]
-pub struct Raw(pub Box<Tag>);
 
 /// `Interaction.PlayerAction`: the player (four ints) and the game time of its last attack or use.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -80,31 +77,126 @@ impl Act {
     }
 }
 
-impl Interact {
-    /// `Interaction.readAdditionalSaveData`: the size (1 x 1 when absent), the answer and the actions.
-    pub fn load(tag: &Tag) -> Self {
-        Self {
-            width: num(tag.get("width")).unwrap_or(1.0) as f32,
-            height: num(tag.get("height")).unwrap_or(1.0) as f32,
-            response: flag(tag, "response"),
-            attack: Act::from_tag(tag.get("attack")),
-            interaction: Act::from_tag(tag.get("interaction")),
-        }
+/// `Interaction.readAdditionalSaveData` with no key: the size 1 x 1, no answer, no action.
+impl Default for Interact {
+    fn default() -> Self {
+        Self { width: 1.0, height: 1.0, response: false, attack: None, interaction: None }
     }
+}
+
+/// A display's box (`width`, `height`), as saved: zero when absent.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct DisplayBox {
+    pub width: f32,
+    pub height: f32,
+}
+
+/// The keys of an `Interaction` and of a display, declared to the registry. `width` and `height` belong to whichever of `Interact` or
+/// `DisplayBox` the entity has: the default of each is its own (1 for an interaction, 0 for a display).
+pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("width"), write: write_width, read: read_width, accepts: crate::nbt::accept::any, owner: Some(owner::<Interact>) },
+    Field { key: Cow::Borrowed("height"), write: write_height, read: read_height, accepts: crate::nbt::accept::any, owner: Some(owner::<Interact>) },
+    Field { key: Cow::Borrowed("width"), write: write_display_width, read: read_display_width, accepts: crate::nbt::accept::any, owner: Some(owner::<DisplayBox>) },
+    Field { key: Cow::Borrowed("height"), write: write_display_height, read: read_display_height, accepts: crate::nbt::accept::any, owner: Some(owner::<DisplayBox>) },
+    Field { key: Cow::Borrowed("response"), write: write_response, read: read_response, accepts: crate::nbt::accept::any, owner: Some(owner::<Interact>) },
+    Field { key: Cow::Borrowed("attack"), write: write_attack, read: read_attack, accepts: crate::nbt::accept::any, owner: Some(owner::<Interact>) },
+    Field { key: Cow::Borrowed("interaction"), write: write_interaction, read: read_interaction, accepts: crate::nbt::accept::any, owner: Some(owner::<Interact>) },
+];
+
+fn write_display_width(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<DisplayBox>(e) {
+        c.insert("width".into(), real_tag(b.width));
+    }
+}
+
+fn read_display_width(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut b) = w.get_mut::<DisplayBox>(e) else { return false };
+    b.width = num(Some(t)).unwrap_or(0.0) as f32;
+    true
+}
+
+fn write_display_height(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(b) = w.get::<DisplayBox>(e) {
+        c.insert("height".into(), real_tag(b.height));
+    }
+}
+
+fn read_display_height(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut b) = w.get_mut::<DisplayBox>(e) else { return false };
+    b.height = num(Some(t)).unwrap_or(0.0) as f32;
+    true
+}
+
+/// A `Float` value, zero stored as +0.0.
+fn real_tag(v: f32) -> Tag {
+    Tag::Float(if v == 0.0 { 0 } else { v.to_bits() })
+}
+
+fn write_width(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(i) = w.get::<Interact>(e) {
+        c.insert("width".into(), Tag::Float(i.width.to_bits()));
+    }
+}
+
+fn read_width(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut i) = w.get_mut::<Interact>(e) else { return false };
+    i.width = num(Some(t)).unwrap_or(1.0) as f32;
+    true
+}
+
+fn write_height(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(i) = w.get::<Interact>(e) {
+        c.insert("height".into(), Tag::Float(i.height.to_bits()));
+    }
+}
+
+fn read_height(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut i) = w.get_mut::<Interact>(e) else { return false };
+    i.height = num(Some(t)).unwrap_or(1.0) as f32;
+    true
+}
+
+fn write_response(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(i) = w.get::<Interact>(e) {
+        c.insert("response".into(), Tag::Byte(i8::from(i.response)));
+    }
+}
+
+fn read_response(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut i) = w.get_mut::<Interact>(e) else { return false };
+    i.response = num(Some(t)).is_some_and(|v| (v.floor() as i32) as i8 != 0);
+    true
+}
+
+fn write_attack(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Interact>(e).and_then(|i| i.attack.as_deref()) {
+        c.insert("attack".into(), a.to_tag());
+    }
+}
+
+fn read_attack(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut i) = w.get_mut::<Interact>(e) else { return false };
+    i.attack = Act::from_tag(Some(t));
+    true
+}
+
+fn write_interaction(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(a) = w.get::<Interact>(e).and_then(|i| i.interaction.as_deref()) {
+        c.insert("interaction".into(), a.to_tag());
+    }
+}
+
+fn read_interaction(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Some(mut i) = w.get_mut::<Interact>(e) else { return false };
+    i.interaction = Act::from_tag(Some(t));
+    true
+}
+
+impl Interact {
     /// `Interaction.refreshDimensions`: `width` square about x and z, from the feet (`at`) up `height`.
     pub fn bounds(&self, at: Vec3) -> Aabb {
         let half = f64::from(self.width) / 2.0;
         Aabb::new(Vec3::new(at.x - half, at.y, at.z - half), Vec3::new(at.x + half, at.y + f64::from(self.height.max(0.0)), at.z + half))
-    }
-    /// `addAdditionalSaveData`: each key with its value, `None` where the key is removed.
-    fn fields(&self) -> Vec<(&'static str, Option<Tag>)> {
-        vec![
-            ("width", Some(Tag::Float(self.width.to_bits()))),
-            ("height", Some(Tag::Float(self.height.to_bits()))),
-            ("attack", self.attack.as_deref().map(Act::to_tag)),
-            ("interaction", self.interaction.as_deref().map(Act::to_tag)),
-            ("response", Some(Tag::Byte(i8::from(self.response)))),
-        ]
     }
 }
 
@@ -126,8 +218,6 @@ fn display_fields(src: &Tag, kind: &str) -> Vec<(&'static str, Option<Tag>)> {
         ("view_range", Some(real(src, "view_range", 1.0))),
         ("shadow_radius", Some(real(src, "shadow_radius", 0.0))),
         ("shadow_strength", Some(real(src, "shadow_strength", 1.0))),
-        ("width", Some(real(src, "width", 0.0))),
-        ("height", Some(real(src, "height", 0.0))),
         ("glow_color_override", Some(Tag::Int(int(src, "glow_color_override", -1)))),
     ];
     match kind {
@@ -170,36 +260,31 @@ fn display_fields(src: &Tag, kind: &str) -> Vec<(&'static str, Option<Tag>)> {
     f
 }
 
-/// A passive entity of `kind` at `at`, with the compound it is saved as (`id` is set when absent). An interaction's box and answer
-/// leave the compound for `Interact`.
+/// A passive entity of `kind` at `at`, with the compound it is saved as (`id` is set when absent). The position asked for wins over the
+/// compound's `Pos`, as `place_summoned` snaps a summoned entity. An interaction starts with its box and answer at their defaults.
 pub fn spawn(w: &mut World, kind: &str, at: Vec3, mut tag: Tag) -> Entity {
     if let Tag::Compound(c) = &mut tag {
         c.entry("id".into()).or_insert_with(|| Tag::String(kind.into()));
+        c.remove(&JavaString::from("Pos"));
     }
-    let interact = (kind == INTERACTION).then(|| Interact::load(&tag));
-    if let (Some(_), Tag::Compound(c)) = (&interact, &mut tag) {
-        for key in INTERACTION_KEYS {
-            c.remove(&key.into());
-        }
+    let e = w.spawn((Pos(at), crate::goals::Uid(crate::goals::next_uid()), Kind(kind.into()), crate::nbt::Saved)).id();
+    if kind == INTERACTION {
+        w.entity_mut(e).insert(Interact::default());
+    } else if DISPLAYS.contains(&kind) {
+        w.entity_mut(e).insert(DisplayBox::default());
     }
-    let e = w.spawn((Pos(at), Raw(Box::new(tag)), crate::goals::Uid(crate::goals::next_uid()))).id();
-    if let Some(i) = interact {
-        w.entity_mut(e).insert(i);
+    if let Tag::Compound(c) = &tag {
+        crate::nbt::load(w, e, c);
     }
     e
 }
 
-/// The compound of the entity as Horizon saves it (`other_to_nbt`): the kept compound, its position, and the fields of its kind.
+/// The compound of the entity as Horizon saves it (`other_to_nbt`): the registry's compound (position, interaction, free keys), and the
+/// fields of its kind.
 pub fn save(w: &World, e: Entity) -> Tag {
-    let mut tag = w.get::<Raw>(e).map_or_else(|| Tag::Compound(Compound::default()), |r| (*r.0).clone());
+    let mut tag = Tag::Compound(crate::nbt::save(w, e).unwrap_or_default());
     let kind = text_of(tag.get("id")).unwrap_or_default();
-    let mut fields = if DISPLAYS.contains(&kind.as_str()) { display_fields(&tag, &kind) } else { Vec::new() };
-    if let Some(p) = w.get::<Pos>(e) {
-        fields.push(("Pos", Some(Tag::List([p.0.x, p.0.y, p.0.z].map(|v| Tag::Double(v.to_bits())).to_vec()))));
-    }
-    if let Some(i) = w.get::<Interact>(e) {
-        fields.extend(i.fields());
-    }
+    let fields = if DISPLAYS.contains(&kind.as_str()) { display_fields(&tag, &kind) } else { Vec::new() };
     if let Tag::Compound(c) = &mut tag {
         for (key, value) in fields {
             match value {

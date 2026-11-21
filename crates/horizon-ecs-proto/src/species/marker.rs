@@ -1,4 +1,4 @@
-//! `Marker` : passif, `tick` ne fait rien ; ses données restent dans `passive::Raw`.
+//! `Marker` : passif, `tick` ne fait rien ; ses clés libres restent dans `nbt::NbtData`.
 use crate::behaviours::Cap;
 use crate::species::Def;
 

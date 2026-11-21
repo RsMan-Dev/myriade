@@ -11,7 +11,7 @@ use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
-pub static DEF: Def = Def { name: "minecraft:leash_knot", caps: Some(&[Cap::Transform, Cap::Hanging]), ..Def::EMPTY };
+pub static DEF: Def = Def { name: "minecraft:leash_knot", caps: Some(&[Cap::Transform, Cap::Hanging]), saved: false, ..Def::EMPTY };
 
 /// `BlockAttachedEntity.tick`: the check falls on the 101st tick after the birth.
 pub const CHECK_PERIOD: u64 = 101;

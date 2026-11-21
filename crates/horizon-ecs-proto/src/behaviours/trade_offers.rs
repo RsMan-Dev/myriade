@@ -11,9 +11,13 @@ use horizon_client_lib::{
     merchant::{self, MerchantOffer, Trader, TradeContext, Trades},
     mobs::render::VILLAGER_TYPES,
 };
-use horizon_core::{nbt::Tag, random::XoroshiroRandom};
+use crate::nbt::{owner, Field};
+use horizon_core::{
+    nbt::{Compound, Tag},
+    random::XoroshiroRandom,
+};
 use horizon_items::enchant::Enchantments;
-use std::collections::BTreeMap;
+use std::{borrow::Cow, collections::BTreeMap};
 
 /// Les registres de commerce du monde (chargés une fois, `'static`), sa graine et ses séquences aléatoires.
 #[derive(Resource)]
@@ -107,43 +111,69 @@ pub fn profession_name(w: &World, profession: u8) -> String {
     d.trades.professions.state(usize::from(profession)).map(|s| s.id()).unwrap_or_default()
 }
 
-/// Les champs de commerce de la sauvegarde d'un marchand (`Villager.addAdditionalSaveData`) : `Xp`, `LastRestock`,
-/// `RestocksToday`, et `Offers` quand elles sont faites. Le niveau est écrit dans `VillagerData` par la sauvegarde du métier.
-pub fn save(w: &World, e: Entity) -> Vec<(&'static str, Tag)> {
-    let Some(m) = w.get::<Merchant>(e) else { return Vec::new() };
-    let t = &m.trade;
-    let mut out = vec![
-        ("Xp", Tag::Int(t.xp)),
-        ("LastRestock", Tag::Long(t.last_restock)),
-        ("RestocksToday", Tag::Int(t.restocks_today)),
-    ];
-    if !t.unset {
-        out.push(("Offers", offers_to_nbt(&t.offers)));
+/// Les champs de commerce de la sauvegarde d'un marchand (`Villager.addAdditionalSaveData`) : `Xp`, `LastRestock`, `RestocksToday`, et
+/// `Offers` quand elles sont faites. Le niveau est écrit dans `VillagerData` par la sauvegarde du métier. Déclarés au registre NBT.
+pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("Xp"), write: write_xp, read: read_xp, accepts: crate::nbt::accept::int, owner: Some(owner::<Merchant>) },
+    Field { key: Cow::Borrowed("LastRestock"), write: write_last_restock, read: read_last_restock, accepts: crate::nbt::accept::long, owner: Some(owner::<Merchant>) },
+    Field { key: Cow::Borrowed("RestocksToday"), write: write_restocks, read: read_restocks, accepts: crate::nbt::accept::int, owner: Some(owner::<Merchant>) },
+    Field { key: Cow::Borrowed("Offers"), write: write_offers, read: read_offers, accepts: crate::nbt::accept::any, owner: Some(owner::<Merchant>) },
+];
+
+fn write_xp(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(m) = w.get::<Merchant>(e) {
+        c.insert("Xp".into(), Tag::Int(m.trade.xp));
     }
-    out
 }
 
-/// L'état de commerce relu d'une sauvegarde, par `get` (la clé donnée, son étiquette) ; None quand la sauvegarde n'a aucun des champs.
-pub fn read<'a>(get: impl Fn(&str) -> Option<&'a Tag>) -> Option<Trader> {
-    let int = |k: &str| match get(k) {
-        Some(Tag::Int(v)) => *v,
-        _ => 0,
-    };
-    let long = |k: &str| match get(k) {
-        Some(Tag::Long(v)) => *v,
-        _ => 0,
-    };
-    let offers_tag = get("Offers");
-    if offers_tag.is_none() && get("Xp").is_none() && get("LastRestock").is_none() {
-        return None;
+fn write_last_restock(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(m) = w.get::<Merchant>(e) {
+        c.insert("LastRestock".into(), Tag::Long(m.trade.last_restock));
     }
-    Some(Trader {
-        unset: offers_tag.is_none(),
-        xp: int("Xp"),
-        offers: offers_tag.map(offers_from_nbt).unwrap_or_default(),
-        last_restock: long("LastRestock"),
-        restocks_today: int("RestocksToday"),
-        check_day: 0,
+}
+
+fn write_restocks(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(m) = w.get::<Merchant>(e) {
+        c.insert("RestocksToday".into(), Tag::Int(m.trade.restocks_today));
+    }
+}
+
+fn write_offers(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(m) = w.get::<Merchant>(e).filter(|m| !m.trade.unset) {
+        c.insert("Offers".into(), offers_to_nbt(&m.trade.offers));
+    }
+}
+
+/// Sets the trade state of a merchant; refused (false) when the entity has no `Merchant`.
+fn set_trade(w: &mut World, e: Entity, f: impl FnOnce(&mut Trader)) -> bool {
+    match w.get_mut::<Merchant>(e) {
+        Some(mut m) => {
+            f(&mut m.trade);
+            true
+        }
+        None => false,
+    }
+}
+
+fn read_xp(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    set_trade(w, e, |tr| tr.xp = *v)
+}
+
+fn read_last_restock(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Long(v) = t else { return false };
+    set_trade(w, e, |tr| tr.last_restock = *v)
+}
+
+fn read_restocks(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    set_trade(w, e, |tr| tr.restocks_today = *v)
+}
+
+fn read_offers(w: &mut World, e: Entity, t: &Tag) -> bool {
+    set_trade(w, e, |tr| {
+        tr.offers = offers_from_nbt(t);
+        tr.unset = false;
     })
 }
 

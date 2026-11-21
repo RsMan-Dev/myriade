@@ -6,10 +6,10 @@ use common::*;
 use horizon_ecs_proto::{
     cow::*,
     dragon::{death::DeathTime, perch::SittingDamage, phases::PhaseId, save},
+    nbt::{self, Kind},
     species::ender_dragon::START_PHASE,
 };
-use horizon_core::nbt::Tag;
-use std::collections::HashMap;
+use horizon_core::nbt::{Compound, Tag};
 
 #[test]
 fn a_dragon_is_born_hovering_with_its_type_health() {
@@ -28,35 +28,45 @@ fn a_dragon_is_born_hovering_with_its_type_health() {
 #[test]
 fn the_dragon_save_keys_are_the_jars() {
     let mut w = bevy_ecs::world::World::new();
-    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5))).id();
-    let saved: HashMap<&str, Tag> = save::save(&w, e).into_iter().collect();
-    let keys: Vec<&str> = {
-        let mut k: Vec<&str> = saved.keys().copied().collect();
-        k.sort_unstable();
-        k
-    };
+    nbt::register(&mut w, save::FIELDS);
+    let e = w.spawn((PhaseId(3), DeathTime(42), SittingDamage(12.5), Kind("minecraft:ender_dragon".into()))).id();
+    let saved = nbt::save(&w, e).expect("an NBT");
+    let keys: Vec<String> = saved.keys().map(|k| k.to_string_lossy()).collect();
     assert_eq!(keys, ["DragonDeathTime", "DragonPhase", "sitting_damage_received"]);
-    assert!(matches!(saved.get("DragonPhase"), Some(Tag::Int(3))));
-    assert!(matches!(saved.get("DragonDeathTime"), Some(Tag::Int(42))));
-    assert!(matches!(saved.get("sitting_damage_received"), Some(Tag::Float(b)) if f32::from_bits(*b) == 12.5));
+    assert!(matches!(nbt::get(&w, e, "DragonPhase"), Some(Tag::Int(3))));
+    assert!(matches!(nbt::get(&w, e, "DragonDeathTime"), Some(Tag::Int(42))));
+    assert!(matches!(nbt::get(&w, e, "sitting_damage_received"), Some(Tag::Float(b)) if f32::from_bits(b) == 12.5));
 }
 
 #[test]
 fn the_dragon_fields_survive_a_save_and_a_load() {
-    let mut w = bevy_ecs::world::World::new();
-    let e = w.spawn((PhaseId(10), DeathTime(0), SittingDamage(0.0))).id();
-    let fields = save::save(&w, e);
-    let read = save::read(|k| fields.iter().find(|(n, _)| *n == k).map(|(_, t)| t));
-    assert_eq!(read, save::Saved { phase: Some(10), death_time: 0, sitting_damage: 0.0 });
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(40, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the ender dragon");
+    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+    h.world.entity_mut(e).insert((DeathTime(42), SittingDamage(12.5)));
+    let saved = nbt::save(&h.world, e).expect("an NBT");
 
-    let f = w.spawn_empty().id();
-    save::load(&mut w, f, save::Saved { phase: None, death_time: 150, sitting_damage: 33.0 });
-    assert_eq!(w.get::<DeathTime>(f).map(|d| d.0), Some(150));
-    assert_eq!(w.get::<SittingDamage>(f).map(|s| s.0), Some(33.0));
+    let f = spawn_species(&mut h.world, &sp, 4.5, 4.5, 8);
+    nbt::load(&mut h.world, f, &saved);
+    assert_eq!(h.world.get::<PhaseId>(f).map(|p| p.0), h.world.get::<PhaseId>(e).map(|p| p.0));
+    assert_eq!(h.world.get::<DeathTime>(f).map(|d| d.0), Some(42));
+    assert_eq!(h.world.get::<SittingDamage>(f).map(|s| s.0), Some(12.5));
 }
 
 #[test]
-fn a_save_without_the_fields_reads_as_absent() {
-    let read = save::read(|_| None);
-    assert_eq!(read, save::Saved { phase: None, death_time: 0, sitting_damage: 0.0 });
+fn a_load_without_the_fields_leaves_the_dragon_as_it_is() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab(40, true, false);
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:ender_dragon").expect("the ender dragon");
+    let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+    let before = h.world.get::<DeathTime>(e).map(|d| d.0);
+    nbt::load(&mut h.world, e, &Compound::new());
+    assert_eq!(h.world.get::<DeathTime>(e).map(|d| d.0), before);
 }

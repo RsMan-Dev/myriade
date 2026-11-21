@@ -106,6 +106,16 @@ impl Herd {
         let _ = species;
         world.insert_resource(species_table());
         crate::type_tags::register(&mut world, crate::effects::TYPED_TAGS);
+        let tags = [crate::nbt::Field {
+            key: "Tags".into(),
+            owner: None,
+            accepts: crate::nbt::accept::any,
+            write: crate::nbt_tag::write,
+            read: crate::nbt_tag::read,
+        }];
+        for fields in [crate::nbt::COMMON, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, &tags[..]] {
+            crate::nbt::register(&mut world, fields);
+        }
         world.insert_resource(Config { sleep, parallel, ordered_push: false, keep_touching: std::env::var_os("TOUCHING").is_some(), path_budget: std::env::var("PATH_BUDGET").ok().and_then(|v| v.parse().ok()).unwrap_or(0), push_form: if std::env::var("PUSH_FORM").as_deref() == Ok("b") { 1 } else { 0 }, push_k: std::env::var("PUSH_K").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0) });
         world.insert_resource(OrderedStats::default());
         world.insert_resource(Clock::default());

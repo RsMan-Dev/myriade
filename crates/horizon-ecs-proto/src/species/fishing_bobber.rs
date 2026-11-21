@@ -5,5 +5,6 @@ use crate::behaviours::Cap;
 pub static DEF: Def = Def {
     name: "minecraft:fishing_bobber",
     caps: Some(&[Cap::Transform, Cap::Projectile]),
+    saved: false,
     ..Def::EMPTY
 };

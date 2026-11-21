@@ -132,4 +132,5 @@ pub static DEF: Def = Def {
     locomotion: &[],
     spawn: None,
     despawn: None,
+    saved: true,
 };
