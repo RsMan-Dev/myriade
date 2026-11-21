@@ -181,5 +181,6 @@ mod lot_v3_village;
 mod lot_v2_trade;
 // lot V1
 mod lot_v1_poi;
+mod lot_e5;
 mod revue_marchand_v1_v2;
 mod revue_v3_v4;
