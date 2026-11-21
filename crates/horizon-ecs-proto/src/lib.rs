@@ -55,6 +55,7 @@ pub mod vehicle;
 pub mod targeting;
 pub mod touch;
 pub mod zone;
+pub mod world_push;
 pub mod spawn_finalize;
 pub mod spawn_spawner;
 pub mod spawn_trial;
