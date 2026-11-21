@@ -40,7 +40,8 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
 }
 fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
     crate::goals::arm(w, e, inst.slot, PERIOD);
-    true
+    // No village point anywhere: `can_use` could only say no (`sectionsToVillage` is 7), so the goal is not even asked.
+    w.resource::<PoiRegistry>().village_sections().next().is_some()
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(v) = w.get::<Village>(e) else { return false };
@@ -49,12 +50,12 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     }
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let here = [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32];
-    let visited = v.visited.clone();
     let reg = w.resource::<PoiRegistry>();
     // `ServerLevel.isCloseToVillage(pos, 6)`.
     if reg.sections_to_village([here[0] >> 4, here[1] >> 4, here[2] >> 4]) > 6 {
         return false;
     }
+    let visited = v.visited.clone();
     let Some(poi) = reg.occupied_in_range(here, 32).into_iter().find(|p| !visited.contains(p)) else { return false };
     w.get_mut::<Village>(e).unwrap().poi = poi;
     true
