@@ -270,7 +270,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &play_tag::BEHAVIOUR, activity: "play", priority: 5, params: &PLAY_TAG, needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "play", priority: 5, params: &(), needs: &[(&nearby_babies::NEARBY_BABIES, Need::Absent)], duration: None, kids: PLAY_KIDS },
             BEntry { behaviour: &ring_bell::BEHAVIOUR, activity: "pre_raid", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &victory_celebrate::BEHAVIOUR, activity: "raid", priority: 0, params: &VICTORY, needs: &[(&raid::RAID_STATUS, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &victory_celebrate::BEHAVIOUR, activity: "raid", priority: 0, params: &VICTORY, needs: &[(&raid::RAID_STATUS, Need::Present), (&raid::RAID_VICTORY_ON, Need::Present)], duration: None, kids: &[] },
             CORE[0], CORE[1], CORE[2], CORE[3], CORE[4], CORE[5], CORE[6],
             BEntry { behaviour: &gossip::DECAY, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &summon_defender::MEMORY, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
@@ -314,7 +314,9 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &hide::REACT_TO_BELL, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &raid_status::SET, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &raid_status::RESET, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "raid", priority: 1, params: &(), needs: &[], duration: None, kids: RAID_WIN_KIDS },
+            // The raid package's `LocateHidingPlace(24, 0.7, 1)` behind `raidExistsAndActive`: a raid on and not won (the activity's requirement holds the first part).
+            BEntry { behaviour: &hide::BEHAVIOUR, activity: "raid", priority: 2, params: &hide::Params { homes: village_home_walk::homes, radius: 24, speed: 0.7, close: 1, home: &HOME }, needs: &[(&raid::RAID_VICTORY_ON, Need::Absent)], duration: None, kids: &[] },
+            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "raid", priority: 1, params: &(), needs: &[(&raid::RAID_VICTORY_ON, Need::Present)], duration: None, kids: RAID_WIN_KIDS },
             // lot V2 : commerce et vie sociale (`FollowTradingPlayer` core 3 ; `GoToWantedItem` core 5 ; `ShowTrades` work 10, meet 10, idle 3 ;
             // `trade_gate` = `TradeWithVillager` meet 3, idle 3 ; `RestockIfDue` dans `WorkAtPoi` (run_one work 5) ; `SocializeAtBell` dans un trigger_gate meet 2 ;
             // `GiveGiftToHero` work, meet, idle 3)

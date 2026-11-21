@@ -20,13 +20,13 @@ fn no_player_means_every_creature_sleeps_and_a_player_wakes_only_its_radius() {
     if !have_data() {
         return;
     }
-    // An object (armor stand, crystal...) is not a creature: the zone does not put it to sleep.
+    let mut h = Herd::with_slab(HALF, true, false);
+    // (the registry exists once a herd is built) An object (armor stand, crystal...) is not a creature: the zone does not put it to sleep.
     if let Ok(id) = std::env::var("HORIZON_SPECIES")
         && !crate::nbt_conformance::is_creature(&id)
     {
         return;
     }
-    let mut h = Herd::with_slab(HALF, true, false);
     let near = h.populate(&grid(0.5, 0.5, 25), 1);
     let far = h.populate(&grid(200.5, 200.5, 25), 2);
     let all: Vec<Entity> = near.iter().chain(far.iter()).copied().collect();

@@ -45,7 +45,8 @@ pub static HIDDEN_STATE: Behaviour = Behaviour { name: "minecraft:villager_set_h
 
 fn locate(w: &mut World, e: Entity, c: &Ctx) -> bool {
     // `SetHiddenState` ran earlier in this step and ended the hiding: the jar changes the activity at once, here it changes at the step's end.
-    if present(w, e, &WALK_TARGET) || !present(w, e, &HIDE_ON) {
+    // The bell's `hide` activity holds `HIDE_ON`; the raid package's `LocateHidingPlace` runs in the `raid` activity (`RAID_ON`).
+    if present(w, e, &WALK_TARGET) || !(present(w, e, &HIDE_ON) || present(w, e, &raid::RAID_ON)) {
         return false;
     }
     let p = c.get::<Params>();

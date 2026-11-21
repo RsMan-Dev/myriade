@@ -11,7 +11,7 @@ use horizon_ecs_proto::{
 #[test]
 fn a_pause_lasts_between_its_min_and_max() {
     let mut h = Herd::with_slab_awake(60, true, false);
-    let p: &'static timed_idle::Params = Box::leak(Box::new(timed_idle::Params { min: 30, max: 60, interval: 1, chance: 1.0 }));
+    let p: &'static timed_idle::Params = Box::leak(Box::new(timed_idle::Params { min: 30, max: 60, chance: 1.0 }));
     let entries: &'static [Entry] = Box::leak(vec![Entry::new(&timed_idle::MODULE, 10, p)].into_boxed_slice());
     let mut sp = *species();
     sp.goals = Config { entries };

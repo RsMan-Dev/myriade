@@ -10,6 +10,10 @@ pub static RAID_ON: MemKey = MemKey::new("horizon:raid_on", Shape::Unit);
 /// Present while the villager is in the `pre_raid` activity.
 pub static PRE_RAID_ON: MemKey = MemKey::new("horizon:pre_raid_on", Shape::Unit);
 
+/// Present while the raid of the villager is won: the trigger of the jar's `raidExistsAndNotVictory` (its bytecode answers `Raid.isVictory`),
+/// the sky-seeking spot and the stroll of the raid package go with it only.
+pub static RAID_VICTORY_ON: MemKey = MemKey::new("horizon:raid_victory_on", Shape::Unit);
+
 pub const RAID_NONE: i64 = 0;
 pub const RAID_ACTIVE: i64 = 1;
 pub const RAID_VICTORY: i64 = 2;
@@ -42,6 +46,11 @@ pub fn set_status(w: &mut World, at: [f64; 3], radius: f64, status: i64) {
     for o in near {
         if w.get::<Brain>(o).is_some() {
             set(w, o, &RAID_STATUS, MemValue::Int(status), None);
+            if status == RAID_VICTORY {
+                set(w, o, &RAID_VICTORY_ON, MemValue::Unit, None);
+            } else {
+                erase(w, o, &RAID_VICTORY_ON);
+            }
             let mut d = 1;
             while crate::goals::with_rng(w, o, |r| r.next_int(20)) != 0 && d < 400 {
                 d += 1;

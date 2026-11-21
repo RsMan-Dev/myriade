@@ -51,9 +51,8 @@ pub static DEF: Def = Def {
         Entry::new(&go_to_disturbance::MODULE, 6, &go_to_disturbance::Params { speed: 0.7 }),
         Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff", radius: 24.0 }),
         Entry::new(&darkness_pulse::MODULE, 8, &darkness_pulse::Params { radius: 20.0, interval: 120 }),
-        // The idle activity's RunOne: the pause (weight 1 of 3) before the stroll (weight 2 of 3, speed 0.5 as `RandomStroll.stroll(0.5)`).
-        // DOUBT: the wait between two asks (120, the stroll's own) is not read in the `Mob`.
-        Entry::new(&timed_idle::MODULE, 10, &timed_idle::Params { min: 30, max: 60, interval: 120, chance: 1.0 / 3.0 }),
+        // The idle activity's RunOne: the pause (weight 1 of 3) before the stroll (weight 2 of 3, speed 0.5 as `RandomStroll.stroll(0.5)`); `RunOne` has no wait.
+        Entry::new(&timed_idle::MODULE, 10, &timed_idle::Params { min: 30, max: 60, chance: 1.0 / 3.0 }),
         Entry::new(&stroll::MODULE, 11, &stroll::Params { speed: 0.5, ..stroll::Params::DEFAULT }),
         Entry::new(&float::MODULE, 9, &float::Params::DEFAULT),
         // lot V4 : `SetWardenLookTarget` (core 1), `StopAttackingIfTargetInvalid` (Fight 11, `set_dig_cooldown` 1200)

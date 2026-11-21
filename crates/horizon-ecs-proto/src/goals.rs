@@ -925,7 +925,11 @@ pub(crate) fn phase_of(w: &World, e: Entity) -> u64 {
 /// Asks every module of the animal for its first deadlines.
 pub fn arm_timers(w: &mut World, e: Entity) {
     crate::brain::arm(w, e);
-    let Some(g) = w.get::<GoalSet>(e) else { return };
+    let Some(g) = w.get::<GoalSet>(e) else {
+        // No goals (a mannequin, a display...): it is still an entity the zone puts to sleep where no chunk ticks.
+        crate::zone::admit(w, &[e]);
+        return;
+    };
     let (entries, n) = (g.entries, g.len());
     let insts: [Inst; MAX_ENTRIES] = std::array::from_fn(|i| Inst { slot: i as u8, nth: g.nth[i] });
     for (i, en) in entries.iter().enumerate().take(n) {
@@ -941,6 +945,9 @@ pub fn arm_all(world: &mut World) {
     for e in ids {
         arm_timers(world, e);
     }
+    // The entities without goals have nothing to arm, but the zone owns them like any other non-player entity.
+    let bare: Vec<Entity> = world.query_filtered::<Entity, (With<crate::cow::Cell>, Without<GoalSet>, Without<crate::zone::Dormant>)>().iter(world).collect();
+    crate::zone::admit(world, &bare);
 }
 fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
     if !en.0.is_empty() {

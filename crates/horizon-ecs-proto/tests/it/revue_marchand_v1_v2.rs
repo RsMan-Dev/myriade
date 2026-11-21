@@ -168,11 +168,9 @@ fn timed_idle_pause_lasts_thirty_to_sixty_ticks_vs_mob() {
     assert!((mean(&de) - mean(&dm)).abs() <= 8.0, "mean pause: ecs {} against mob {}", mean(&de), mean(&dm));
 }
 
-/// The interval between two pauses (start to start). Measured: the Mob re-asks its `RunOne` at once (a pause every 46 ticks, 24 in
-/// 1200 ticks), the ECS asks after a wait of about 120 ticks at 1 chance in 3 (3 in 1000). A known deviation (`suivi/ecs-ecarts.md`),
-/// not closed: the assertion stays, the test is ignored so the gap is not forgotten.
+/// The interval between two pauses (start to start). The Mob re-asks its `RunOne` at once (a pause every 46 ticks, 24 in 1200 ticks);
+/// the ECS draws once, at each end of a pause, the number of re-asks until the pause is picked (jar: `RunOne` has no wait).
 #[test]
-#[ignore = "known deviation: timed_idle cadence (ECS ~1 pause per 300 ticks, Mob 1 per 46)"]
 fn timed_idle_pauses_come_as_often_as_the_mobs() {
     if !have_data() || wrong_species(&["minecraft:warden"]) {
         return;

@@ -1,7 +1,8 @@
 //! `RunOne[Stroll 2, DoNothing 1]` of an idle activity (`mobs/warden_brain.rs:317-318`, `:913`): a goal that holds MOVE and LOOK for a
-//! stay drawn in `min..=max` ticks at its start (`DoNothing(Timed::new(30, 60))`). The framework has no weights: the choice against the
-//! stroll is a chance per ask (`chance`, 1/3 for 2:1). Asks come from the wheel: one is armed after each refusal and after each stay.
-//! DOUBT: the `Mob` chooses at each start of the activity, here at each ask; a stale stay deadline left by a stop is ignored (no ask).
+//! stay drawn in `min..=max` ticks at its start (`DoNothing(Timed::new(30, 60))`). The jar's `RunOne` has no wait: it is asked again as soon
+//! as its goal ends and picks the stay with the weight 1 of 3 against the stroll. The framework has no weights and no per-tick draw: at each
+//! end of a stay (and at the creation) the number of asks until the stay is picked is drawn ONCE (geometric of the chance, 1 tick at least)
+//! and one wheel deadline is armed for it. A stale stay deadline left by a stop is ignored (no ask).
 use super::*;
 use crate::{cow::*, goals::*};
 
@@ -10,9 +11,7 @@ pub struct Params {
     /// The shortest and longest stay, in ticks.
     pub min: i32,
     pub max: i32,
-    /// The mean wait between two asks, in ticks (`idle_wait`).
-    pub interval: i32,
-    /// The chance per ask that the stay starts instead of the other goals of the same flags.
+    /// The chance per re-ask of the `RunOne` that the stay is picked instead of the other goals of the same flags.
     pub chance: f64,
 }
 
@@ -51,7 +50,7 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     if s.armed || s.slot != inst.slot {
         return;
     }
-    let wait = with_rng(w, e, |r| idle_wait(r, s.p.interval));
+    let wait = with_rng(w, e, |r| asks_until_picked(r, s.p.chance));
     crate::goals::arm(w, e, inst.slot, wait);
     with(w, e, |s| s.armed = true);
 }
@@ -71,13 +70,17 @@ fn fired(w: &mut World, e: Entity, inst: Inst) -> bool {
     with(w, e, |s| s.armed = false);
     s.armed
 }
+/// The number of re-asks (one per tick, the jar's `RunOne` has no wait) until the stay is picked: geometric of `chance`, 1 at least.
+fn asks_until_picked(r: &mut Rng, chance: f64) -> i32 {
+    if chance >= 1.0 {
+        return 1;
+    }
+    let u = r.next_f64().max(1.0e-12);
+    (1 + (u.ln() / (1.0 - chance.max(1.0e-6)).ln()).floor() as i64).min(4000) as i32
+}
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(s) = w.get::<Pause>(e).copied() else { return false };
     if s.slot != inst.slot {
-        return false;
-    }
-    if with_rng(w, e, |r| r.next_f64()) >= s.p.chance {
-        arm(w, e, inst);
         return false;
     }
     let dur = with_rng(w, e, |r| s.p.min + r.next_int(s.p.max - s.p.min + 1));
