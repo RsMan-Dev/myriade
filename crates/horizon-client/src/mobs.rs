@@ -7210,3 +7210,8 @@ pub fn apply_mob_pushes(m: &mut Mob, pending: &mut PendingPushes) {
 }
 #[cfg(test)]
 mod guardian_tests;
+
+pub mod control;
+
+pub mod anim;
+pub mod body_anim;
