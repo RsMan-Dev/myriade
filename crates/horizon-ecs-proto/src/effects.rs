@@ -7,7 +7,7 @@
 //! instant effects, absorption and health boost, the undead that poison does not hurt, the particles and the icons.
 use crate::cow::*;
 use crate::goals::Events;
-use crate::type_tags::{self, TagId};
+use crate::type_tags;
 use bevy_ecs::prelude::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -234,13 +234,13 @@ pub fn due(w: &mut World, e: Entity) {
     for (kind, _) in acts {
         match kind {
             Kind::Poison => {
-                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && !type_tags::has(w, *IGNORES_POISON_AND_REGEN, e) {
+                if w.get::<Health>(e).is_some_and(|h| h.0 > 1.0) && !type_tags::is::<IgnoresPoisonAndRegen>(w, e) {
                     w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Magic);
                 }
             }
             Kind::Wither => w.resource_mut::<DamageQueue>().add(e, 1.0, Cause::Wither),
             Kind::Regeneration => {
-                if type_tags::has(w, *IGNORES_POISON_AND_REGEN, e) {
+                if type_tags::is::<IgnoresPoisonAndRegen>(w, e) {
                     continue;
                 }
                 if let Some(mut h) = w.get_mut::<Health>(e) {
@@ -291,12 +291,17 @@ pub static BEE_STING: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 200)]);
 pub static WITHER_SKELETON: OnHitParams = OnHitParams(&[(Kind::Wither, 0, 200)]);
 pub static HUSK: OnHitParams = OnHitParams(&[(Kind::Hunger, 0, 140)]);
 pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, 1200)]);
-/// The entity type tags the effects read (resolved at their first read, once the level is built): poison and regeneration do nothing to
-/// a creature `ignores_poison_and_regen` names; harming heals and healing hurts one `inverted_healing_and_harm` names (`potions.rs`).
-pub static IGNORES_POISON_AND_REGEN: std::sync::LazyLock<TagId> =
-    std::sync::LazyLock::new(|| type_tags::id("ignores_poison_and_regen").expect("the tag ignores_poison_and_regen"));
-pub static INVERTED_HEALING_AND_HARM: std::sync::LazyLock<TagId> =
-    std::sync::LazyLock::new(|| type_tags::id("inverted_healing_and_harm").expect("the tag inverted_healing_and_harm"));
+/// The entity type tags the effects read, as typed markers: poison and regeneration do nothing to a creature `ignores_poison_and_regen`
+/// names; harming heals and healing hurts one `inverted_healing_and_harm` names (`potions.rs`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct IgnoresPoisonAndRegen;
+#[derive(Component, Clone, Copy, Debug)]
+pub struct InvertedHealingAndHarm;
+/// The typed tags of the effects, for the world's builder (`type_tags::register`).
+pub static TYPED_TAGS: &[type_tags::Typed] = &[
+    type_tags::typed::<IgnoresPoisonAndRegen>("ignores_poison_and_regen"),
+    type_tags::typed::<InvertedHealingAndHarm>("inverted_healing_and_harm"),
+];
 /// The effects of the players (they are not entities): a list per player, read at the tick it is asked (an effect has its end; nothing ticks).
 /// The periodic damage and the speed of a player are the player's own system's; here the reading (a witch's choice, the sight a creature has
 /// of an invisible player, the hunger a husk gives) and the writing.
@@ -396,7 +401,7 @@ pub fn splash(w: &mut World, at: horizon_core::geometry::Vec3, hit: Option<Entit
                     }
                 }
                 Brew::Harm(amp) | Brew::Heal(amp) => {
-                    let undead = type_tags::has(w, *INVERTED_HEALING_AND_HARM, c);
+                    let undead = type_tags::is::<InvertedHealingAndHarm>(w, c);
                     let harms = matches!(brew, Brew::Harm(_)) != undead;
                     let base = if matches!(brew, Brew::Harm(_)) { 6 } else { 4 };
                     let amount = (scale * f64::from(base.wrapping_shl(amp as u32)) + 0.5).floor() as f32;

@@ -155,7 +155,7 @@ fn affect(w: &mut World, cloud: Entity, at: Vec3, v: Victim, brews: &[Brew], c: 
         match v {
             Victim::Player(id) if harm => area::hurt_player(w, id, amount, source_entity(c, cloud)),
             Victim::Player(id) => heal_player(w, id, amount),
-            Victim::Creature(k) if harm != crate::type_tags::has(w, *effects::INVERTED_HEALING_AND_HARM, k) => match c.owner {
+            Victim::Creature(k) if harm != crate::type_tags::is::<effects::InvertedHealingAndHarm>(w, k) => match c.owner {
                 Some(Who::Entity(o)) => w.resource_mut::<DamageQueue>().add_by_entity(k, amount, (at.x, at.z), o),
                 _ => w.resource_mut::<DamageQueue>().add(k, amount, Cause::Magic),
             },

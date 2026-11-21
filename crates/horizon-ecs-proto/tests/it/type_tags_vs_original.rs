@@ -1,13 +1,15 @@
-//! The entity type tags read by `type_tags` against the original's loader (`items::load_tags` over `entity_type`, members flattened): for
-//! each tag and each species of the table, the same membership. And the effects that read them: a harming splash heals a zombie
-//! (`inverted_healing_and_harm`) and hurts a cow.
+//! The entity type tags, as marker components, against the original's loader (`items::load_tags` over `entity_type`, members flattened):
+//! for each tag and each species of the table, the entity of that species is in the tag exactly when the original lists it. A query
+//! of a tag gives those entities alone. An entity with no species has no marker. And the effects that read them: a harming splash heals
+//! a zombie (`inverted_healing_and_harm`) and hurts a cow.
 use crate::common::*;
-use horizon_ecs_proto::{
-    cow::{spawn_species, species_table, DamageQueue, Health},
-    effects::{self, Brew},
-    type_tags::{self, TypeTags},
-};
+use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+use horizon_ecs_proto::{
+    cow::{spawn_species, species_table, DamageQueue, Health, Species},
+    effects::{self, Brew},
+    type_tags,
+};
 
 /// The original's members of a tag (`ns:name`, nested `#tag` already flattened by the loader).
 fn original(name: &str) -> std::collections::HashSet<String> {
@@ -16,21 +18,46 @@ fn original(name: &str) -> std::collections::HashSet<String> {
     tags.get(&format!("minecraft:{name}")).cloned().unwrap_or_default()
 }
 
+/// One entity of each species of the table, at its own place.
+fn one_of_each(h: &mut Herd) -> Vec<(Entity, Species)> {
+    species_table().0.into_iter().enumerate().map(|(i, sp)| (spawn_species(&mut h.world, &sp, 0.5 + 4.0 * i as f64, 0.5, 9 + i as u64), sp)).collect()
+}
+
+const TAGS: [&str; 6] = ["undead", "inverted_healing_and_harm", "ignores_poison_and_regen", "arthropod", "powder_snow_walkable_mobs", "skeletons"];
+
 #[test]
 fn entity_type_tags_are_the_original_s_for_every_species() {
     if !have_data() {
         return;
     }
-    let (_, h) = flat_pair();
-    let tags = h.world.resource::<TypeTags>();
-    let table = species_table();
-    for name in ["undead", "inverted_healing_and_harm", "ignores_poison_and_regen", "arthropod", "powder_snow_walkable_mobs", "skeletons"] {
+    let (_, mut h) = flat_pair();
+    let made = one_of_each(&mut h);
+    for name in TAGS {
         let tag = type_tags::id(name).expect(name);
         let members = original(name);
-        for sp in &table.0 {
-            assert_eq!(tags.has(tag, sp.id), members.contains(sp.name), "{name} for {}", sp.name);
+        for (e, sp) in &made {
+            assert_eq!(type_tags::has(&h.world, tag, *e), members.contains(sp.name), "{name} for {}", sp.name);
         }
     }
+}
+
+#[test]
+fn a_query_of_a_tag_gives_exactly_the_entities_of_its_members() {
+    if !have_data() {
+        return;
+    }
+    let (_, mut h) = flat_pair();
+    let made = one_of_each(&mut h);
+    let members = original("undead");
+    let mut expected: Vec<Entity> = made.iter().filter(|(_, sp)| members.contains(sp.name)).map(|(e, _)| *e).collect();
+    let mut got: Vec<Entity> = {
+        let mut q = type_tags::query(&mut h.world, type_tags::id("undead").expect("undead"));
+        q.iter(&h.world).collect()
+    };
+    expected.sort();
+    got.sort();
+    assert!(!expected.is_empty());
+    assert_eq!(got, expected);
 }
 
 #[test]
@@ -38,27 +65,30 @@ fn a_nested_tag_is_flattened_into_the_tag_naming_it() {
     if !have_data() {
         return;
     }
-    let (_, h) = flat_pair();
-    let tags = h.world.resource::<TypeTags>();
-    let table = species_table();
+    let (_, mut h) = flat_pair();
+    let made = one_of_each(&mut h);
     let undead = original("undead");
     assert!(!undead.is_empty());
     let ignores = type_tags::id("ignores_poison_and_regen").expect("ignores_poison_and_regen");
-    for sp in table.0.iter().filter(|sp| undead.contains(sp.name)) {
-        assert!(tags.has(ignores, sp.id), "{} is undead, so it is in ignores_poison_and_regen", sp.name);
+    for (e, sp) in made.iter().filter(|(_, sp)| undead.contains(sp.name)) {
+        assert!(type_tags::has(&h.world, ignores, *e), "{} is undead, so it is in ignores_poison_and_regen", sp.name);
     }
 }
 
 #[test]
-fn an_unknown_tag_has_no_id_and_the_name_forms_agree() {
+fn an_entity_without_a_species_has_no_marker_and_an_unknown_tag_has_no_id() {
     if !have_data() {
         return;
     }
-    let _ = flat_pair();
+    let (_, mut h) = flat_pair();
+    let bare = h.world.spawn_empty().id();
+    for name in TAGS {
+        assert!(!type_tags::has(&h.world, type_tags::id(name).expect(name), bare), "{name}");
+    }
+    assert!(!type_tags::is::<effects::IgnoresPoisonAndRegen>(&h.world, bare));
     assert_eq!(type_tags::id("no_such_entity_tag"), None);
     assert_eq!(type_tags::id("undead"), type_tags::id("#minecraft:undead"));
     assert_eq!(type_tags::id("undead"), type_tags::id("minecraft:undead"));
-    assert!(type_tags::id("undead").is_some());
 }
 
 #[test]

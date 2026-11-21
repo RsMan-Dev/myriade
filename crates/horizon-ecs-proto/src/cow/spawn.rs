@@ -155,7 +155,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     {
         e.insert(crate::brain::bundle(plan));
     }
-    e.id()
+    let id = e.id();
+    crate::type_tags::mark(world, id, sp.id);
+    id
 }
 
 /// A new entity of the species of `parent` (a baby), in the index; the framework looks the species up, the module does not.
