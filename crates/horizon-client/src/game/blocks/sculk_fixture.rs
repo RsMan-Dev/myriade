@@ -470,10 +470,10 @@ impl Game<'_> {
                     return Err(format!("cannot spawn {}", spec.kind).into());
                 };
                 if spec.flags.iter().any(|f| f == "persistent") {
-                    self.ecs.set_persistent(id, true);
+                    self.ecs_persist(id);
                 }
                 if spec.flags.iter().any(|f| f == "noai") {
-                    self.ecs.set_no_ai(id);
+                    self.ecs.set_ai_paused(id, true);
                 }
                 self.ecs.set_random_seed(id, spec.seed);
                 names.insert(id, format!("m{}", sources.len()));
@@ -599,8 +599,8 @@ impl Game<'_> {
                 let seed = 0x5eed + names.len() as i64;
                 if seeded.insert(id) {
                     if self.ecs.is_active() {
+                        // The ECS warden has no Mob brain: its shuffles draw on the entity's own generator.
                         self.ecs.set_random_seed(id, seed);
-                        self.ecs.init_warden_brain(id, seed);
                     } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                         seed_fresh(m, seed);
                     }
@@ -847,7 +847,6 @@ impl Game<'_> {
             if seeded.insert(id) {
                 if self.ecs.is_active() {
                     self.ecs.set_random_seed(id, seed);
-                    self.ecs.init_warden_brain(id, seed);
                 } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
                     seed_fresh(m, seed);
                 }
@@ -858,7 +857,7 @@ impl Game<'_> {
         // Entities: the player's warden spawn tracker, then the mobs.
         self.tick_sculk_entities();
         // (ServerChunkCache.tick, natural spawning and its chunk shuffle, is not run.)
-        self.tick_creature_entities()?;
+        self.tick_ecs()?;
         self.tick_items();
         // Block entities.
         self.tick_sculk_blocks()?;

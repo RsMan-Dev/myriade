@@ -151,6 +151,17 @@ pub fn mark(w: &mut World, e: Entity, species: u8) {
     if ignores {
         w.entity_mut(e).insert(crate::inside::IgnoresTriggers);
     }
+    let piston_ignored = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::PistonIgnored));
+    if piston_ignored {
+        w.entity_mut(e).insert(crate::world_push::PistonIgnored);
+    }
+    let caps = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).map(|r| r.caps);
+    if caps.is_some_and(|c| c.contains(&crate::behaviours::Cap::Collidable)) {
+        w.entity_mut(e).insert(crate::world_push::Collidable);
+    }
+    if caps.is_some_and(|c| c.contains(&crate::behaviours::Cap::CollidableWhenStill)) {
+        w.entity_mut(e).insert(crate::world_push::CollidableWhenStill);
+    }
     let no_berry = w.get_resource::<crate::cow::SpeciesTable>().and_then(|t| t.0.get(usize::from(species)).map(|s| s.name)).and_then(|n| crate::species::registry().by_name(n).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::IgnoresBerryBush));
     if no_berry {
         w.entity_mut(e).insert(crate::inside_effects::IgnoresBerryBush);

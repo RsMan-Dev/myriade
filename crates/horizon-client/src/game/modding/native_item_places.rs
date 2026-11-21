@@ -38,6 +38,14 @@ impl Game<'_> {
             at(&c.position)
         } else if let Some(b) = self.boats.iter().find(|b| b.id == id && b.chest) {
             at(&b.position)
+        } else if let Some(columns) = self.ecs.mount_columns(id) {
+            let size = columns * 3;
+            let (saddle, body, mut items) = self.ecs.mount_contents(id)?;
+            items.resize(size, None);
+            let position = self.ecs.position(id)?;
+            let r = edit(&mut items[..size], position);
+            self.ecs.mount_store(id, saddle, body, items);
+            return Some(r);
         } else {
             let m = self
                 .remote_entities
@@ -110,6 +118,9 @@ impl Game<'_> {
     /// `entity_slots` reaches them: none for an entity without one, and on a client.
     pub(super) fn entity_container_size(&self, entity: u32) -> Option<usize> {
         self.entity_automation_size(entity).or_else(|| {
+            if let Some(columns) = self.ecs.mount_columns(entity) {
+                return Some(columns * 3);
+            }
             let m = self
                 .remote_entities
                 .iter()
@@ -142,7 +153,8 @@ impl Game<'_> {
         if !self.places_simulated() {
             return None;
         }
-        (self.remote_entities.iter().any(|m| m.id == entity && !m.removed)
+        (self.ecs.exists(entity)
+            || self.remote_entities.iter().any(|m| m.id == entity && !m.removed)
             || self.armor_stands.iter().any(|a| a.id == entity))
         .then_some(7)
     }
@@ -433,6 +445,9 @@ impl Game<'_> {
     fn equipment_stack(&self, entity: u32, slot: EquipmentSlot) -> Option<Option<ItemStack>> {
         if !self.places_simulated() {
             return None;
+        }
+        if self.ecs.exists(entity) {
+            return Some(self.ecs.equipment_stack(entity, slot as usize));
         }
         if let Some(mob) = self.remote_entities.iter().find(|m| m.id == entity && !m.removed) {
             return Some(mob.equipment_stacks().get(slot as usize).cloned());

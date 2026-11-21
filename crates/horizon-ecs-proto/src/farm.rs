@@ -12,13 +12,11 @@ use bevy_ecs::prelude::*;
 pub struct EggDef {
     pub base: i32,
     pub range: i32,
+    /// What falls at each laying (`Chicken.aiStep`: the egg, its sound and the game event); none: the timer only counts.
+    pub gift: Option<&'static crate::gift_drop::GiftDrop>,
 }
 /// The rule `lay_egg` (params `EggDef`): a hen's egg timer, a rule of its tick in `Mob` (`Chicken.aiStep`), not a goal.
 pub static LAY_EGG: Rule = Rule { name: "lay_egg", equip: equip_egg, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
-/// The rule `wool` (no params): the sheep's wool, sheared until the animal eats again.
-pub static WOOL: Rule = Rule { name: "wool", equip: |w, e, _| {
-    w.entity_mut(e).insert(Wool::default());
-}, attrs: crate::rules::no_attrs, interact: |w, e, _, i| i.item == crate::goals::shears() && shear(w, e) };
 /// The parameters of `wing_flap`: the hen's wings and her glide (a fall in the air has its downward speed multiplied by
 /// `fall_factor` each tick) and whether `causeFallDamage` answers no.
 #[derive(Clone, Copy, Debug)]
@@ -62,7 +60,7 @@ pub struct Egg {
     pub left: u64,
     pub at: u64,
 }
-/// The eggs laid (animal, tick): the egg item itself and the sound are out of scope (no item entities here).
+/// The eggs laid (animal, tick), kept for the tests; the egg, its sound and its game event are `EggDef::gift`.
 #[derive(Resource, Default)]
 pub struct LaidEggs(pub Vec<(Entity, u64)>);
 
@@ -91,6 +89,9 @@ pub fn lay_deadline(w: &mut World, e: Entity) {
     }
     let tick = w.resource::<Clock>().0;
     w.resource_mut::<LaidEggs>().0.push((e, tick));
+    if let Some(g) = egg.def.gift {
+        crate::gift_drop::drop_gift(w, e, g);
+    }
     let left = {
         let d = egg.def;
         let mut r = w.get_mut::<Rng>(e).unwrap();
@@ -107,6 +108,7 @@ pub fn on_grown(w: &mut World) {
         if w.get::<Egg>(e).is_some_and(|g| g.at == u64::MAX) {
             arm_egg(w, e);
         }
+        crate::gift_drop::on_grown(w, e);
     }
 }
 /// The wings: `flapSpeed` rises in the air and falls on the ground, `flapping` restarts at 1 in the air and decays, and
@@ -150,21 +152,6 @@ pub fn flap_system(
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(flap_system.after(crate::cow::move_control).before(crate::cow::travel));
 }
-/// Shearing (`Sheep.shear`): an adult with wool loses it; the drops and the sound are out of scope. Returns whether it
-/// was shorn.
-pub fn shear(world: &mut World, e: Entity) -> bool {
-    if world.get::<crate::cow::GrowAt>(e).is_some() {
-        return false;
-    }
-    match world.get_mut::<Wool>(e) {
-        Some(mut w) if !w.sheared => {
-            w.sheared = true;
-            true
-        }
-        _ => false,
-    }
-}
-
 /// Sets the ticks of an adult until the hen's next egg (a test imposes the `Mob`'s draw).
 pub fn set_egg(w: &mut World, e: Entity, left: u64) {
     w.get_mut::<Egg>(e).unwrap().left = left;

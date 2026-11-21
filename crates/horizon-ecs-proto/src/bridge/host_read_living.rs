@@ -45,6 +45,8 @@ const NAMES: [(&str, Kind); 16] = [
     ("minecraft:jump_boost", Kind::JumpBoost),
     ("minecraft:glowing", Kind::Glowing),
     ("minecraft:weaving", Kind::Weaving),
+    ("minecraft:strength", Kind::Strength),
+    ("minecraft:infested", Kind::Infested),
 ];
 
 /// The kind of the effect named `name` (`minecraft:poison`); None for any other name, a mod's effect included.
@@ -61,6 +63,11 @@ pub fn effect_name(kind: Kind) -> &'static str {
 const STANDING: u8 = 0;
 
 impl EcsWorld {
+    /// The loot-predicate facts of the entity `e` (see `loot::entity_for_loot`).
+    pub fn loot_entity(&self, e: Entity) -> Option<horizon_world::loot::LootEntity> {
+        crate::loot::entity_for_loot(self.world(), e)
+    }
+
     /// The world, when `e` exists: a dead entity answers no flag.
     fn existing(&self, e: Entity) -> Option<&World> {
         let w = self.world();
@@ -100,7 +107,11 @@ impl EcsWorld {
     pub fn attribute(&self, e: Entity, name: &str) -> Option<f64> {
         let w = self.world();
         Some(match name.strip_prefix("minecraft:").unwrap_or(name) {
-            "max_health" => f64::from(w.get::<MaxHealth>(e)?.0),
+            "max_health" => match w.get::<MaxHealth>(e) {
+                Some(m) => f64::from(m.0),
+                // The base only: the modifiers come with `attribute_modifiers`.
+                None => f64::from(w.get::<crate::cow::SpeciesId>(e).map(|_| crate::cow::base_max_health(w, e))?),
+            },
             "knockback_resistance" => w.get::<Resist>(e)?.0,
             "attack_damage" => f64::from(w.get::<AttackDamage>(e)?.0),
             "follow_range" => w.get::<FollowRange>(e)?.0,
@@ -116,11 +127,17 @@ impl EcsWorld {
         let name = name.strip_prefix("minecraft:").unwrap_or(name);
         if name == "armor" {
             let armour = |m: &ArmorModifiers| {
-                m.0.iter().map(|(id, amount)| Modifier { id: (*id).to_owned(), amount: *amount, operation: Operation::AddValue }).collect()
+                m.0.iter().map(|(id, amount)| Modifier { id: (*id).to_owned(), amount: *amount, operation: Operation::AddValue, permanent: false }).collect()
             };
-            return self.world().get::<ArmorModifiers>(e).map_or_else(Vec::new, armour);
+            let mut out: Vec<Modifier> = self.world().get::<ArmorModifiers>(e).map_or_else(Vec::new, armour);
+            out.extend(self.world().get::<AttrMods>(e).and_then(|l| l.0.iter().find(|x| x.0 == name)).map_or_else(Vec::new, |x| x.2.clone()));
+            out.extend(crate::equip_attrs::of_attribute(self.world(), e, name));
+            return out;
         }
-        self.world().get::<AttrMods>(e).and_then(|l| l.0.iter().find(|x| x.0 == name)).map_or_else(Vec::new, |x| x.2.clone())
+        let mut out = self.world().get::<AttrMods>(e).and_then(|l| l.0.iter().find(|x| x.0 == name)).map_or_else(Vec::new, |x| x.2.clone());
+        out.extend(crate::equip_attrs::of_attribute(self.world(), e, name));
+        out.extend(crate::effects::attribute_modifiers(self.world(), e, name));
+        out
     }
     /// The width, the height and the eyes' height of a pose. Only the standing pose is modelled; `Body` already holds the adult or
     /// baby size that `set_baby` wrote.

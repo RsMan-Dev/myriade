@@ -371,24 +371,18 @@ impl Game<'_> {
                         if horizon_client::lan::playerdata::ints_uuid(actual) != uuid {
                             return Err("anger state: UUID mismatch".into());
                         }
-                        let m = g
-                            .remote_entities
-                            .iter()
-                            .find(|m| m.id == id && m.alive() && !m.removed)
-                            .ok_or("anger state: missing live actor")?;
-                        if Some(m.kind.id.as_str()) != op["kind"].as_str() {
+                        if !g.ecs.alive(id) {
+                            return Err("anger state: missing live actor".into());
+                        }
+                        let kind = g.ecs.kind(id).ok_or("anger state: missing live actor")?;
+                        if Some(kind) != op["kind"].as_str() {
                             return Err("anger state: wrong actor type".into());
                         }
-                        let hub = &g.lan.as_ref().ok_or("anger state: no connected hub")?.hub;
-                        let (mut meta, mut defaults) = (Vec::new(), Vec::new());
-                        super::lan::mob_meta(
-                            m,
-                            hub,
-                            None,
-                            g.world.game_time,
-                            &mut meta,
-                            &mut defaults,
-                        );
+                        g.lan.as_ref().ok_or("anger state: no connected hub")?;
+                        let mut meta = Vec::new();
+                        let defaults: Vec<(u8, i32, horizon_protocol::entity_data::Value)> = Vec::new();
+                        let e = g.ecs.entity_of(id).ok_or("anger state: missing live actor")?;
+                        g.ecs.metadata(e, &mut meta);
                         let entry = meta
                             .iter()
                             .find(|e| e.0 == index)
@@ -400,7 +394,7 @@ impl Game<'_> {
                         let horizon_protocol::entity_data::Value::Long(value) = &entry.2 else {
                             return Err("anger state: metadata value is not long".into());
                         };
-                        Ok(json!({"uuid":actual,"kind":m.kind.id,"index":index,
+                        Ok(json!({"uuid":actual,"kind":kind,"index":index,
                             "serializer":entry.1,"value":value,"game_time":g.world.game_time}))
                     })?;
                     out.push_str(
@@ -696,7 +690,7 @@ impl Game<'_> {
                     self.in_owner_level(|g| -> Result<()> {
                         let id = g
                             .mob_by_uuid(horizon_client::lan::playerdata::uuid_ints(uuid))
-                            .filter(|id| g.remote_entities.iter().any(|m| m.id == *id && !m.removed))
+                            .filter(|id| g.ecs.alive(*id))
                             .ok_or("mob click: missing live mob")?;
                         let owner = g.serving.as_ref().ok_or("mob click: no server")?.owner;
                         let conn = g

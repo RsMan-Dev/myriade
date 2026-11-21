@@ -11,9 +11,13 @@ use crate::{cow::*, goals::*};
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub radius: f64,
+    /// `playAmbientSound`: the species' ambient sound, said on the 1-in-50 draw while it only looks (empty: none).
+    pub voice: &'static str,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { radius: 10.0 };
+    pub const DEFAULT: Self = Self { radius: 10.0, voice: "" };
+    pub const PILLAGER: Self = Self { voice: "minecraft:entity.pillager.ambient", ..Self::DEFAULT };
+    pub const VINDICATOR: Self = Self { voice: "minecraft:entity.vindicator.ambient", ..Self::DEFAULT };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct HoldGround {
@@ -86,13 +90,15 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 fn tick(w: &mut World) {
     crate::goals::tick_state(w, run);
 }
-fn run(tg: targeting::Targets, mut q: Query<(Aim, &HoldGround, Option<&Target>, &mut Rng), With<Holding>>, mut cmd: Commands) {
+fn run(tg: targeting::Targets, mut ev: ResMut<Events>, mut q: Query<(Aim, &HoldGround, Option<&Target>, &mut Rng), With<Holding>>, mut cmd: Commands) {
     for ((e, pos, mut look, looking, ..), h, t, mut rng) in &mut q {
         let Some(i) = t.and_then(|t| tg.info(t.who)) else { continue };
         let d = (i.pos.x - pos.0.x).powi(2) + (i.pos.y - pos.0.y).powi(2) + (i.pos.z - pos.0.z).powi(2);
         if beyond_radius(d, h.p.radius) {
             aim(&mut cmd, e, &mut look, looking, [i.pos.x, i.eye, i.pos.z], None);
-            let _voice = rng.next_int(50) == 0;
+            if rng.next_int(50) == 0 && !h.p.voice.is_empty() {
+                ev.host.sound(h.p.voice, [pos.0.x, pos.0.y, pos.0.z], 1.0, 1.0);
+            }
         } else {
             cmd.entity(e).insert(Aggressive);
         }

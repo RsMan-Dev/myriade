@@ -29,16 +29,13 @@ impl Game<'_> {
     pub(super) fn fishing_hook_hooked_in(&self, hook: FishingHookRef) -> Option<EntityRef> {
         self.fishing_hook(hook.entity())?;
         // A player holds nothing a mob id can name: `Who::Player` keeps no entity here.
-        match self.ecs.hook_attached(hook.entity().id())? {
-            horizon_client::mobs::Who::Mob(id) => self.entity(id),
-            horizon_client::mobs::Who::Player => None,
-        }
+        self.entity(self.ecs.hook_attached_id(hook.entity().id())?)
     }
 
     /// `FishingHook.isOpenWaterFishing`, which the `fishing` loot's
     /// `in_open_water` predicate reads. None for a stale handle.
     pub(super) fn fishing_hook_open_water(&self, hook: FishingHookRef) -> Option<bool> {
         self.fishing_hook(hook.entity())?;
-        self.ecs_view(hook.entity().id())?.fishing_open_water
+        self.ecs.hook_open_water(hook.entity().id())
     }
 }

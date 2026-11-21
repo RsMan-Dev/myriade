@@ -26,7 +26,7 @@ impl Game<'_> {
             self.hot_level(5, 2)?;
             self.hot_mobs(128, 2)?;
             let dimension = self.dim.id().to_owned();
-            let entities: Vec<u32> = self.remote_entities.iter().map(|mob| mob.id).collect();
+            let entities = self.hot_mob_ids();
             recorder.measure(hook, CALLS, || {
                 let mut canceled = 0u64;
                 for call in 0..CALLS as usize {
@@ -48,11 +48,7 @@ impl Game<'_> {
         if recorder.wants("mod.attachment") {
             self.hot_level(6, 2)?;
             self.hot_mobs(128, 2)?;
-            let holders: Vec<_> = self
-                .remote_entities
-                .iter()
-                .map(|mob| mod_api::Holder::Entity(mob.id))
-                .collect();
+            let holders: Vec<_> = self.hot_mob_ids().into_iter().map(mod_api::Holder::Entity).collect();
             // A mod reads and writes attachments from a hook, inside the server's tick.
             self.with_residency_tick(|game| {
                 let mut failed: std::result::Result<(), String> = Ok(());

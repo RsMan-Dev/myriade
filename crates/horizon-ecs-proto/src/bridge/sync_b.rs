@@ -2,7 +2,7 @@
 //! reader reads a component that exists in the ECS; a state with none is not here (see the greftes report). The indices are vanilla's
 //! (the entry's own index after its parents'), and a reader gives an entry only when the value differs from the default.
 use crate::behaviours::{
-    armadillo_state, attached_face, burst_shot, cat_state, charged_shot, convert_timer, flier_goals, panda_state, random_stand,
+    armadillo_state, attached_face, burst_shot, cat_state, charged_shot, convert_timer, flier_goals, golem_state, panda_state, random_stand,
     turtle_state,
 };
 use super::sync::{SyncSlot, SyncValue};
@@ -94,6 +94,18 @@ fn armadillo(w: &World, e: Entity) -> Option<SyncValue> {
     (state != armadillo_state::IDLE).then_some(SyncValue::Id(serializer::ARMADILLO_STATE, i32::from(state)))
 }
 
+/// CopperGolem.DATA_WEATHER_STATE, UNAFFECTED (0) is the default.
+fn copper_weather(w: &World, e: Entity) -> Option<SyncValue> {
+    let stage = w.get::<crate::coating::Coat>(e).map_or(0, |c| c.stage);
+    (stage != 0).then_some(SyncValue::Id(serializer::WEATHERING_COPPER_STATE, i32::from(stage)))
+}
+
+/// CopperGolem.COPPER_GOLEM_STATE, IDLE (0) is the default.
+fn copper_golem(w: &World, e: Entity) -> Option<SyncValue> {
+    let state = golem_state::of(w, e);
+    (state != 0).then_some(SyncValue::Id(serializer::COPPER_GOLEM_STATE, i32::from(state)))
+}
+
 /// The conversion in progress (a zombie's shaking under water, a skeleton's freezing).
 fn converting(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<convert_timer::Converting>(e).map(|_| SyncValue::Bool(true))
@@ -114,8 +126,33 @@ fn turtle_laying(w: &World, e: Entity) -> Option<SyncValue> {
     w.get::<turtle_state::Turtle>(e).filter(|t| t.laying).map(|_| SyncValue::Bool(true))
 }
 
+/// Camel.DASH (index 19, after AbstractHorse's flags): the `Dashing` marker (set by the dash, cleared by `mount::ridden_drive` at the
+/// landing once the cooldown is under 50); sent only while true (the default is false).
+fn camel_dashing(w: &World, e: Entity) -> Option<SyncValue> {
+    w.get::<crate::mount::Dashing>(e).map(|_| SyncValue::Bool(true))
+}
+
+/// Sniffer.DATA_STATE (index 18, after AgeableMob's two): IDLING (0) is the default.
+fn sniffer_state(w: &World, e: Entity) -> Option<SyncValue> {
+    let s = crate::brain::behaviours::sniff::state(w, e);
+    (s != crate::brain::behaviours::sniff::IDLING).then_some(SyncValue::Id(serializer::SNIFFER_STATE, i32::from(s)))
+}
+
+/// Sniffer.DATA_DROP_SEED_AT_TICK (index 19, an int in the sniffer's own `tickCount`): 0 is the default.
+fn sniffer_seed_at(w: &World, e: Entity) -> Option<SyncValue> {
+    Some(crate::brain::behaviours::sniff::seed_at(w, e)).filter(|t| *t != 0).map(SyncValue::Int)
+}
+
+/// Camel.LAST_POSE_CHANGE_TICK (index 20, a long): the game time of the last change of pose, negative while sitting. Always sent: the
+/// default is 0 and a standing camel born at game time 0 is the only one that would match it.
+fn camel_pose_tick(w: &World, e: Entity) -> Option<SyncValue> {
+    crate::behaviours::posture::last_pose_tick(w, e).map(SyncValue::Long)
+}
+
 /// Each species' slots, by registry id (a species not listed has none here).
 pub static TABLE: &[(&str, &[SyncSlot])] = &[
+    ("minecraft:camel", &[SyncSlot { index: 19, read: camel_dashing }, SyncSlot { index: 20, read: camel_pose_tick }]),
+    ("minecraft:camel_husk", &[SyncSlot { index: 19, read: camel_dashing }, SyncSlot { index: 20, read: camel_pose_tick }]),
     (
         "minecraft:creeper",
         &[
@@ -149,7 +186,9 @@ pub static TABLE: &[(&str, &[SyncSlot])] = &[
             SyncSlot { index: 18, read: shulker_color },
         ],
     ),
-    ("minecraft:armadillo", &[SyncSlot { index: 18, read: armadillo }]),
+    ("minecraft:copper_golem", &[SyncSlot { index: 16, read: copper_weather }, SyncSlot { index: 17, read: copper_golem }]),
+    ("minecraft:sniffer", &[SyncSlot { index: 18, read: sniffer_state }, SyncSlot { index: 19, read: sniffer_seed_at }]),
+    ("minecraft:armadillo",&[SyncSlot { index: 18, read: armadillo }]),
     ("minecraft:zombie", &[SyncSlot { index: 18, read: converting }]),
     ("minecraft:husk", &[SyncSlot { index: 18, read: converting }]),
     ("minecraft:skeleton", &[SyncSlot { index: 16, read: converting }]),

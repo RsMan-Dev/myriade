@@ -7,7 +7,7 @@ use horizon_client::{
     beehive::{self, Beehive, BeehiveExt, HiveHost, Release},
     containers::BlockEntity,
     items::ItemStack,
-    mobs::{Mob, Who, bee},
+    mobs::{Who, bee},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -54,23 +54,23 @@ impl HiveHost for GameHive<'_, '_> {
             let _ = self.game.level_set(at, state);
         }
     }
-    fn load(&mut self, tag: &Tag) -> Option<Mob> {
-        let kind = horizon_client::entity_nbt::kind(tag)?;
-        if !self
-            .game
-            .res
-            .mob_data()
-            .entity_has("minecraft:beehive_inhabitors", &kind)
-        {
+    fn spawn(&mut self, tag: Tag, at: [i32; 3], facing: [i32; 2], blocked: bool, delivered: bool) -> Option<u32> {
+        let kind = horizon_client::entity_nbt::kind(&tag)?;
+        if !self.game.res.mob_data().entity_has("minecraft:beehive_inhabitors", &kind) {
             return None;
         }
-        let id = self.game.load_mob(tag.clone(), None)?;
-        let i = self.game.remote_entities.iter().position(|m| m.id == id)?;
-        Some(self.game.remote_entities.remove(i))
-    }
-    fn add(&mut self, m: Mob) -> bool {
-        self.game.remote_entities.push(m);
-        true
+        let Tag::Compound(c) = &tag else { return None };
+        let center = at.map(|v| f64::from(v) + 0.5);
+        let id = self.game.ecs_spawn(&kind, center, Some(c))?;
+        self.game.ecs_with(|ecs, mw| {
+            if let Some(e) = ecs.entity_of(id) {
+                ecs.bee_exited(mw, e, at, facing, blocked, delivered);
+            }
+        });
+        // `releaseOccupant`: GameEvent.BLOCK_CHANGE with the bee as the actor and the hive's state.
+        let state = self.game.world.block(at[0], at[1], at[2]);
+        self.game.post_block_game_event("minecraft:block_change", at, Some(Who::Mob(id)), Some(state));
+        Some(id)
     }
     fn sound(&mut self, name: &'static str, at: [f64; 3]) {
         self.game
@@ -102,11 +102,7 @@ impl Game<'_> {
         {
             return false;
         }
-        let is_brain = self
-            .remote_entities
-            .iter()
-            .find(|mob| mob.id == id)
-            .is_some_and(|mob| horizon_client::mobs::ai::brain_target(mob).is_some());
+        let is_brain = self.ecs.has_brain(id);
         let mut chosen = target;
         let mut redirected = false;
         if self.native_authoritative()
@@ -157,13 +153,14 @@ impl Game<'_> {
                 }
             }
         }
-        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return false;
+        let who = match chosen {
+            Some(w) => match self.ecs_who(w) {
+                Some(w) => Some(w),
+                None => return false,
+            },
+            None => None,
         };
-        if !is_brain || !horizon_client::mobs::ai::set_brain_target(mob, chosen) {
-            mob.set_target(chosen);
-        }
-        true
+        self.ecs.set_target(id, who)
     }
     fn hive_with_honey(&self, state: BlockStateId, level: i32) -> Option<BlockStateId> {
         let registry = self.pack.assets.registry;
@@ -220,58 +217,48 @@ impl Game<'_> {
             hive.release_all(at, facing, honey, Release::Emergency, &mut host);
         }
         hive.server_tick(at, facing, honey, &mut host);
+        // A hive loaded full is told to the bees on its first tick, not only when its occupants change here.
+        if self.ecs.hive_is_full(at) != hive.full() {
+            self.ecs.set_hive_full(at, hive.full());
+        }
         self.world
             .block_entities
             .put(lease, BlockEntity::Beehive(hive));
     }
-    /// `BeehiveBlockEntity.addOccupant` for a bee its `BeeEnterHiveGoal`
-    /// sent in: off its lead, its tag stored, the bee gone.
-    pub(super) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
+    /// `BeehiveBlockEntity.addOccupant` for a bee its `BeeEnterHiveGoal` sent in: off its lead, its saved tag stored in the block, the
+    /// entity removed from the level. A hive that is gone or full makes the bee forget it.
+    pub(in crate::game) fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
-        let Some(i) = self
-            .remote_entities
-            .iter()
-            .position(|m| m.id == mob && m.alive() && !m.removed)
-        else {
-            return;
-        };
-        if !matches!(self.world.block_entities.get(&key), Some(BlockEntity::Beehive(h)) if !h.full())
-        {
+        let Some(bee) = self.ecs.entity_of(mob) else { return };
+        if !matches!(self.world.block_entities.get(&key), Some(BlockEntity::Beehive(h)) if !h.full()) {
+            self.ecs.bee_forget_hive(bee);
             return;
         }
-        if self.remote_entities[i].extra.leash.is_some() {
+        // `addOccupant`: stopRiding, ejectPassengers, dropLeash (leash with its item, synchronized), in that order, before the tag is saved.
+        self.ecs_dismount(mob);
+        self.ecs.eject_passengers(bee);
+        if self.ecs_view(mob).is_some_and(|v| v.leash.is_some()) {
             self.break_leash(mob, true, false);
-            self.remote_entities[i].extra.leash = None;
         }
-        self.remote_entities[i].extra.mount = None;
-        let tag = self.mob_tree_nbt(i);
-        let flower = bee::get(&self.remote_entities[i]).and_then(|b| b.flower);
-        let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key)
-        else {
+        let Some(nbt) = self.ecs.entity_nbt(bee) else { return };
+        let tag = Tag::Compound(nbt);
+        let Some(kind) = horizon_client::entity_nbt::kind(&tag) else { return };
+        let flower = match tag.get("flower_pos") {
+            Some(Tag::IntArray(p)) if p.len() == 3 => Some([p[0], p[1], p[2]]),
+            _ => None,
+        };
+        let Some((lease, BlockEntity::Beehive(mut hive))) = self.world.block_entities.take(&key) else {
             return;
         };
         let stored = hive.add_occupant(at, tag, flower, &mut GameHive::new(self));
-        self.world
-            .block_entities
-            .put(lease, BlockEntity::Beehive(hive));
+        let full = hive.full();
+        self.world.block_entities.put(lease, BlockEntity::Beehive(hive));
         if stored {
+            self.ecs.set_hive_full(at, full);
             let state = self.world.block(at[0], at[1], at[2]);
-            self.post_block_game_event(
-                "minecraft:block_change",
-                at,
-                Some(Who::Mob(mob)),
-                Some(state),
-            );
-            let kind = self.remote_entities[i].kind.id.clone();
-            let block = self
-                .res
-                .facts()
-                .get(self.world.block(at[0], at[1], at[2]))
-                .name
-                .clone();
-            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                m.removed = true;
-            }
+            self.post_block_game_event("minecraft:block_change", at, Some(Who::Mob(mob)), Some(state));
+            let block = self.res.facts().get(state).name.clone();
+            self.ecs.despawn(bee);
             self.native_entity_enter_block(mob, &kind, at, &block);
         }
     }
@@ -283,6 +270,7 @@ impl Game<'_> {
             return;
         };
         hive.release_all(at, facing, None, status, &mut GameHive::new(self));
+        self.ecs.set_hive_full(at, hive.full());
         self.world
             .block_entities
             .put(lease, BlockEntity::Beehive(hive));
@@ -305,18 +293,12 @@ impl Game<'_> {
             &mut GameHive::new(self),
         );
         let sedated = beehive::smokey(&self.mob_world_base(&[]), at);
+        self.ecs.set_hive_full(at, false);
         if let Some(p) = self.player_view().map(|p| p.position) {
-            let ids: Vec<u32> = self
-                .remote_entities
-                .iter()
-                .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
-                .map(|m| m.id)
-                .collect();
+            let ids = self.bees_within_of(&released, p);
             for id in ids {
                 if sedated {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                        bee::set_stay_out_of_hive_countdown(m);
-                    }
+                    self.ecs.bee_stay_out(id, horizon_ecs_proto::behaviours::bee::SMOKED_STAY_OUT);
                 } else {
                     self.set_event_ai_target(id, Some(Who::Player), self.lan_acting);
                 }
@@ -421,14 +403,9 @@ impl Game<'_> {
             self.world
                 .block_entities
                 .put(lease, BlockEntity::Beehive(hive));
+            self.ecs.set_hive_full(pos, false);
             if let Some(p) = self.player_view().map(|p| p.position) {
-                let ids: Vec<u32> = self
-                    .remote_entities
-                    .iter()
-                    .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
-                    .map(|m| m.id)
-                    .collect();
-                for id in ids {
+                for id in self.bees_within_of(&released, p) {
                     self.set_event_ai_target(id, Some(Who::Player), self.lan_acting);
                 }
             }
@@ -467,24 +444,25 @@ impl Game<'_> {
         if players.is_empty() {
             return;
         }
-        let mut bees: Vec<usize> = (0..self.remote_entities.len())
-            .filter(|&i| {
-                let m = &self.remote_entities[i];
-                m.species() == horizon_client::mobs::Species::Bee
-                    && !m.removed
-                    && m.bounds().intersects(area)
-            })
-            .collect();
-        bees.retain(|&i| self.remote_entities[i].ai.target.is_none());
-        for i in bees {
+        let bees = self.ecs.untargeted_bees_in(area);
+        for e in bees {
+            let id = self.ecs_id_of(e);
             // Util.getRandom over the players.
-            let pick = self
-                .world
-                .random
-                .next_int_bound(players.len() as i32)
-                .unwrap_or(0) as usize;
-            self.set_event_ai_target(self.remote_entities[i].id, Some(Who::Player), players[pick]);
+            let pick = self.world.random.next_int_bound(players.len() as i32).unwrap_or(0) as usize;
+            self.set_event_ai_target(id, Some(Who::Player), players[pick]);
         }
+    }
+    /// The ids among `ids` of the ECS creatures within 4 blocks of `p` (`distanceToSqr <= 16`).
+    fn bees_within_of(&self, ids: &[u32], p: Vec3) -> Vec<u32> {
+        ids.iter()
+            .copied()
+            .filter(|&id| {
+                self.ecs.position(id).is_some_and(|q| {
+                    let d = [q[0] - p.x, q[1] - p.y, q[2] - p.z];
+                    d[0] * d[0] + d[1] * d[1] + d[2] * d[2] <= 16.0
+                })
+            })
+            .collect()
     }
 }
 
@@ -590,10 +568,11 @@ mod stay_tests {
             };
             game.world.day_time = 13_000;
             game.tick_beehive(key);
-            assert_eq!((inside(game), game.mobs.len()), (3, 0), "night");
+            let out = |game: &Game<'_>| game.ecs.ids_near([8.5, 64.5, 8.5], 4.0).len();
+            assert_eq!((inside(game), out(game)), (3, 0), "night");
             game.world.day_time = 1_000;
             game.tick_beehive(key);
-            assert_eq!((inside(game), game.mobs.len()), (0, 3), "day");
+            assert_eq!((inside(game), out(game)), (0, 3), "day");
         });
     }
 }
@@ -604,9 +583,7 @@ mod changed_tests {
     use horizon_client::{
         beehive::{Beehive, Occupant},
         containers::BlockEntity,
-        mobs::Mob,
     };
-    use horizon_core::geometry::Vec3;
     use horizon_core::nbt::Tag;
 
     fn hive_at(game: &mut super::Game<'_>, key: (i32, i32, i32), hive: Beehive) {
@@ -652,7 +629,7 @@ mod changed_tests {
             panic!("no hive");
         };
         assert!(h.bees.is_empty(), "the ready bee was let out");
-        assert_eq!(game.mobs.len(), 1, "the bee reached the level");
+        assert_eq!(game.ecs.ids_near([8.5, 64.5, 8.5], 4.0).len(), 1, "the bee reached the level");
         assert!(
             game.world.modified.contains(&(0, 0)),
             "a released bee left the chunk unmarked"
@@ -668,12 +645,11 @@ mod changed_tests {
         let mut game = server_game(&mut game_resources);
         let key = (8, 64, 8);
         hive_at(&mut game, key, Beehive::default());
-        let kind = game.res.mob_types().get("minecraft:bee").unwrap().clone();
-        game.mobs
-            .push(Mob::new(42, kind, Vec3::new(8.0, 64.0, 8.0), 0.0));
+        let id = game.ecs_spawn("minecraft:bee", [8.0, 64.0, 8.0], None).unwrap();
         game.world.modified.clear();
 
-        game.bee_enter_hive(42, [8, 64, 8]);
+        game.bee_enter_hive(id, [8, 64, 8]);
+        assert!(!game.ecs.exists(id), "the bee left the world: its data is in the block");
 
         let Some(BlockEntity::Beehive(h)) = game.world.block_entities.get(&key) else {
             panic!("no hive");
@@ -683,5 +659,47 @@ mod changed_tests {
             game.world.modified.contains(&(0, 0)),
             "a stored bee left the chunk unmarked"
         );
+    }
+}
+
+#[cfg(test)]
+mod ecs_hive_tests {
+    use crate::game::ecs::test_support::ecs_game_with;
+    use horizon_client::{beehive::{Beehive, Occupant}, containers::BlockEntity};
+    use horizon_core::nbt::{Compound, Tag};
+
+    fn hive(game: &mut super::Game<'_>, bees: usize) {
+        let state = game.pack.assets.registry.default_state("minecraft:beehive").unwrap();
+        game.world.set(8, 64, 8, state).unwrap();
+        let mut tag = Compound::new();
+        tag.insert("id".into(), Tag::String("minecraft:bee".into()));
+        let bee = || Occupant { entity_data: Tag::Compound(tag.clone()), ticks_in_hive: 0, min_ticks_in_hive: 600 };
+        let hive = Beehive { bees: (0..bees).map(|_| bee()).collect(), flower: None };
+        game.world.block_entities.insert((8, 64, 8), BlockEntity::Beehive(Box::new(hive)));
+    }
+
+    /// `addOccupant`: the entering bee is let off its vehicle and drops its riders before it leaves the world.
+    #[test]
+    #[ignore = "daily"]
+    fn a_ridden_bee_entering_a_hive_frees_its_rider() {
+        let (mut g, bee) = ecs_game_with("minecraft:bee", [8.5, 65.0, 8.5]);
+        let rider = g.ecs_spawn("minecraft:zombie", [8.5, 65.0, 8.5], None).unwrap();
+        assert!(g.ecs_mount(rider, bee));
+        hive(&mut g, 0);
+        g.bee_enter_hive(bee, [8, 64, 8]);
+        assert_eq!(g.ecs_vehicle_of(rider), None);
+        assert!(g.ecs.entity_of(bee).is_none());
+        assert!(matches!(g.world.block_entities.get(&(8, 64, 8)), Some(BlockEntity::Beehive(h)) if h.bees.len() == 1));
+    }
+
+    /// A hive loaded full is known as full to the bees from its first tick, without any change of occupants.
+    #[test]
+    #[ignore = "daily"]
+    fn a_hive_loaded_full_is_told_to_the_bees_on_its_first_tick() {
+        let (mut g, _) = ecs_game_with("minecraft:bee", [8.5, 65.0, 8.5]);
+        hive(&mut g, 3);
+        assert!(!g.ecs.hive_is_full([8, 64, 8]));
+        g.tick_beehive((8, 64, 8));
+        assert!(g.ecs.hive_is_full([8, 64, 8]));
     }
 }

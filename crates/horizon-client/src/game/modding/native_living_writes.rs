@@ -136,7 +136,7 @@ impl Game<'_> {
         match self.native_living_target(living)? {
             Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
             Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.item_use_remaining(id),
+            Target::Mob(id) if self.ecs.is_active() => self.mob_item_use_remaining_ecs(id),
             Target::Mob(id) => self.mob_item_use_remaining(id),
             _ => None,
         }
@@ -155,7 +155,7 @@ impl Game<'_> {
     /// the dragon.
     pub(super) fn living_set_item_use_remaining(&mut self, living: LivingRef, ticks: i32) -> bool {
         match self.native_living_target(living) {
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_item_use_remaining(id, ticks),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.mob_set_item_use_remaining_ecs(id, ticks),
             Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
             Some(Target::Player) => {
                 super::item_use::set_remaining(self.using, &mut self.use_duration, ticks)
@@ -210,7 +210,7 @@ impl Game<'_> {
         hand: Hand,
     ) -> bool {
         match self.native_living_target(living) {
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.start_using_item(id, hand),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.start_mob_using_item_ecs(id, hand),
             Some(Target::Mob(id)) => self.start_mob_using_item(id, hand),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, |game| {
@@ -229,7 +229,7 @@ impl Game<'_> {
     /// trident has no release of its own, as in vanilla.
     pub(in crate::game) fn living_release_using_item(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.release_using_item(id),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.release_mob_using_item_ecs(id),
             Some(Target::Mob(id)) => self.release_mob_using_item(id),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, Self::release_using_item)

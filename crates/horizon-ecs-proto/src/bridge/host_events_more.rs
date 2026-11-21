@@ -42,6 +42,11 @@ impl EcsWorld {
         self.world_mut().insert_resource(crate::item::ItemResists(f));
     }
 
+    /// The host's table of the attribute modifiers an item grants in a slot, set once at the level's creation.
+    pub fn set_item_modifiers_table(&mut self, f: crate::equip_attrs::ItemModifiersFn) {
+        self.world_mut().insert_resource(crate::equip_attrs::ItemModifiers(f));
+    }
+
     /// The answer to a `ConversionAsk`: the new entity, born while the old one stays (None when `cancel`).
     pub fn resolve_conversion(&mut self, e: Entity, cancel: bool) -> Option<Entity> {
         crate::conversion::resolve(self.world_mut(), e, cancel)
@@ -95,16 +100,21 @@ pub fn resolve_death(w: &mut World, e: Entity, veto: Option<f32>) {
             crate::loot::on_death(w, e);
             crate::item::spill_destroyed(w, e);
             crate::spawn_trial::forget(w, e);
-            if let Ok(mut m) = w.get_entity_mut(e) {
-                m.despawn();
+            if crate::remove_killed::silent(w, e) {
+                if let Ok(m) = w.get_entity_mut(e) {
+                    m.despawn();
+                }
+            } else {
+                crate::tear_down::linger(w, e);
             }
         }
     }
 }
 
 /// `Spawned`: the creature `e` has just appeared (the host's spawn calls it once the entity is armed and indexed).
-pub fn said_spawned(w: &mut World, e: Entity, natural: bool) {
-    w.resource_mut::<Events>().host.spawned(e, natural);
+pub fn said_spawned(w: &mut World, e: Entity, natural: bool, reason: crate::spawn_reason::SpawnReason) {
+    w.entity_mut(e).insert(crate::spawn_reason::Spawn(reason));
+    w.resource_mut::<Events>().host.spawned(e, natural, reason);
 }
 
 impl HurtSource {
@@ -112,6 +122,7 @@ impl HurtSource {
     pub fn damage_type(&self) -> &'static str {
         match self {
             HurtSource::Generic => "generic",
+            HurtSource::Typed { damage, .. } => *damage,
             HurtSource::Player(_) => "player_attack",
             HurtSource::Entity(_) => "mob_attack",
             HurtSource::Fall => "fall",

@@ -6,6 +6,7 @@
 //! (`CopperGolem.mobInteract`).
 use super::super::*;
 use horizon_client::chunk::Chunk;
+use horizon_client::containers::BlockEntity;
 use horizon_client::mobs::{Species, Who};
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
@@ -62,11 +63,19 @@ fn heart_with_a_creaking(game: &mut Game<'_>) -> (u32, [f64; 3]) {
     }
     for _ in 0..300 {
         game.tick_creaking_heart((0, 202, 0)).unwrap();
-        if let Some(m) = game.mobs.iter().find(|m| m.species() == Species::Creaking) {
-            return (m.id, [m.position.x, m.position.y, m.position.z]);
+        // The creaking is an ECS entity: the heart holds its network id.
+        let held = match game.world.block_entities.get(&(0, 202, 0)) {
+            Some(BlockEntity::CreakingHeart(h)) => h.creaking.and_then(|(id, _)| id),
+            _ => None,
+        };
+        if let Some(id) = held
+            && let Some(p) = game.ecs.creaking_feet(id)
+        {
+            assert!(game.ecs.heart_link(id).is_some(), "the creaking is linked to its heart");
+            return (id, [p.x, p.y, p.z]);
         }
     }
-    panic!("the heart spawned no creaking: {:?}", game.mobs.len());
+    panic!("the heart spawned no creaking");
 }
 
 #[test]
@@ -95,12 +104,8 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
         // The packet carries only the entity id and event; clients resolve
         // the poof's position from that entity, not a packet coordinate.
         .map(|&(mob, event)| {
-            let entity = game.mobs.iter().find(|m| m.id == mob as u32).unwrap();
-            (
-                mob,
-                event,
-                [entity.position.x, entity.position.y, entity.position.z],
-            )
+            let p = game.ecs.creaking_feet(mob as u32).unwrap();
+            (mob, event, [p.x, p.y, p.z])
         })
         .collect();
     assert_eq!(

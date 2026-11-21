@@ -206,7 +206,7 @@ fn fly(world: &mut World) {
             match who {
                 Hitter::Creature(c) => {
                     let amount = crate::trident_hit::hit_entity(world, e, c).damage;
-                    world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount, cause: Cause::Entity, damage: "trident", from: Some(stack_pos), by: owner, direct: false, power: None });
+                    world.resource_mut::<DamageQueue>().0.push(crate::cow::Hit { target: c, amount, cause: Cause::Entity, damage: "trident", from: Some(stack_pos), by: owner, direct: false, power: None, projectile: Some(crate::species::lists::TRIDENT) });
                 }
                 Hitter::Player(id) => {
                     let amount = crate::trident_hit::hit_player(world, e, id, at).damage;

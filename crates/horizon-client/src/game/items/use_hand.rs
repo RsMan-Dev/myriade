@@ -800,7 +800,8 @@ impl Game<'_> {
                             return None;
                         };
                         if self.ecs.is_active() {
-                            self.ecs_vec3(id)?
+                            let p = self.ecs_vec3(id)?;
+                            horizon_core::geometry::Vec3::new(p[0], p[1], p[2])
                         } else {
                             self.remote_entities.iter().find(|m| m.id == id).map(|m| m.position)?
                         }

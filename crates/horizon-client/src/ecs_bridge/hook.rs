@@ -50,6 +50,21 @@ impl EcsLevel {
         w.hook_attached(w.entity_of(hook_id)?)
     }
 
+    /// `FishingHook.openWater` of the hook `hook_id`; None when it is not a hook.
+    pub fn hook_open_water(&self, hook_id: u32) -> Option<bool> {
+        let w = self.ecs()?;
+        w.hook_open_water(w.entity_of(hook_id)?)
+    }
+
+    /// The target the hook `hook_id` holds, as a network id; None when it holds none, a player, or an entity with no id yet.
+    pub fn hook_attached_id(&self, hook_id: u32) -> Option<u32> {
+        let w = self.ecs()?;
+        match w.hook_attached(w.entity_of(hook_id)?)? {
+            Who::Entity(e) => id_of(w.world(), e),
+            Who::Player(_) => None,
+        }
+    }
+
     /// The network id of the hook of `owner`, None when it has none (or `owner` is not a player).
     pub fn hook_of(&self, owner: Who) -> Option<u32> {
         let Who::Player(id) = owner else { return None };

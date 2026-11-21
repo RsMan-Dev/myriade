@@ -72,39 +72,29 @@ impl Game<'_> {
                         .unwrap_or(false)
                 }
                 Target::Mob(id) => {
-                    let Some(kind) = self
-                        .remote_entities
-                        .iter()
-                        .find(|m| m.id == id && !m.removed)
-                        .map(|m| m.kind.id.clone())
-                    else {
+                    let Some(view) = self.ecs_view(id) else {
                         tracker.track(t, false);
                         continue;
                     };
                     let name = namespaced(effect.id);
                     // `LivingEntity.addEffect` refuses what the mob cannot
                     // be affected by.
-                    if !self.can_be_affected(Some(id as i32), &kind, name) {
+                    if !self.can_be_affected(Some(id as i32), view.kind, name) {
                         false
                     } else {
-                        match self.remote_entities.iter_mut().find(|m| m.id == id) {
-                            Some(m) => {
-                                let new = !m.has_effect(name);
-                                // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
-                                let changed =
-                                    m.add_effect_with(name, duration, amplifier, false, particles);
-                                if new
-                                    && changed
-                                    && let Some(sound) = super::super::potions::sound_on_added(name)
-                                {
-                                    let at = [m.position.x, m.position.y, m.position.z];
-                                    self.audio.play(sound, Some(at), 1.0, 1.0);
-                                }
-                                self.mod_effect_added(name, Some(id as i32), amplifier, new);
-                                changed
-                            }
-                            None => false,
+                        let new = !self.ecs.has_effect(id, effect.index);
+                        // `new MobEffectInstance(effect, duration, amplifier, false, particles)`.
+                        let instance = EffectInstance::new(effect.id, duration, amplifier)
+                            .with_flags(false, particles);
+                        let changed = self.ecs.add_effect(id, instance);
+                        if new
+                            && changed
+                            && let Some(sound) = super::super::potions::sound_on_added(name)
+                        {
+                            self.audio.play(sound, Some(view.position), 1.0, 1.0);
                         }
+                        self.mod_effect_added(name, Some(id as i32), amplifier, new);
+                        changed
                     }
                 }
                 _ => continue,
@@ -149,10 +139,19 @@ impl Game<'_> {
                 (Target::Player | Target::Guest(_), Some(e)) => self
                     .for_player(t, |g| g.remove_player_effects(Some(e.index)))
                     .unwrap_or(false),
-                (Target::Mob(id), e) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    Some(m) => m.retain_effects(|x| e.is_some_and(|e| x.id != namespaced(e.id))),
-                    None => false,
-                },
+                (Target::Mob(id), e) => {
+                    let keep: Vec<i32> = match e {
+                        Some(e) => self
+                            .ecs
+                            .effects(id)
+                            .iter()
+                            .filter(|x| x.id != e.id)
+                            .filter_map(|x| x.registry_index.map(|i| i as i32))
+                            .collect(),
+                        None => Vec::new(),
+                    };
+                    self.ecs.retain_effects(id, &keep)
+                }
                 _ => continue,
             };
             tracker.track(t, changed);
@@ -235,11 +234,7 @@ impl Game<'_> {
                     }
                 }
                 Target::Mob(mob) => {
-                    let held = self
-                        .remote_entities
-                        .iter()
-                        .find(|m| m.id == mob)
-                        .and_then(|m| m.extra.main_hand_id().map(str::to_owned));
+                    let held = self.ecs_item(mob, horizon_ecs_proto::goals::Slot::Main);
                     if single {
                         return Err(match held {
                             None => err(

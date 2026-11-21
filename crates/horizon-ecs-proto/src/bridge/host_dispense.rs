@@ -11,18 +11,15 @@ use horizon_client_lib::items::ItemStack;
 use horizon_core::nbt::Compound;
 
 impl EcsWorld {
-    /// `Shearable.shear` / unshear: sets `Sheared` on `e`. False when `e` is not shearable or the state
-    /// already holds.
-    pub fn set_sheared(&mut self, e: Entity, on: bool) -> bool {
-        let w = self.world_mut();
-        if !dispense::set_sheared(w, e, on) {
-            return false;
-        }
-        true
+    /// `behaviours::shear::shear_entity` with no player (a dispenser): state, loot and sound of the species. False when not shorn now.
+    pub fn shear(&mut self, e: Entity) -> bool {
+        crate::behaviours::shear::shear_entity(self.world_mut(), e, None)
     }
 
-    pub fn is_sheared(&self, e: Entity) -> bool {
-        dispense::is_sheared(self.world(), e)
+    /// `readyForShearing` of the species' definition: false for a creature with none.
+    pub fn can_shear(&self, e: Entity) -> bool {
+        let w = self.world();
+        w.get::<crate::behaviours::shear::Shearing>(e).is_some_and(|s| (s.0.ready)(w, e))
     }
 
     /// `TntBlock.prime` on an entity: its fuse is the TNT's (`FUSE` ticks, `POWER`), credited to `owner`; false when `e` is gone or already lit.
@@ -49,6 +46,25 @@ impl EcsWorld {
         if let Some(name) = stack.custom_name() {
             custom_name::set(self.world_mut(), e, Some(name));
         }
+    }
+
+    /// `Bucketable.setFromBucket(true)` after a bucket emptied a creature: `FromBucket` is saved and the creature is kept
+    /// (`requiresCustomPersistence` reads it). False when `e` is gone or its species is not bucketable (the tadpole's is always true).
+    pub fn set_from_bucket(&mut self, e: Entity) -> bool {
+        let w = self.world_mut();
+        let bits = w.get::<crate::cow::SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
+        if bits & (crate::cow::tag::BUCKETABLE | crate::cow::tag::TADPOLE) == 0 {
+            return false;
+        }
+        if bits & crate::cow::tag::BUCKETABLE != 0 {
+            let mut c = Compound::new();
+            c.insert("FromBucket".into(), horizon_core::nbt::Tag::Byte(1));
+            if crate::nbt::load(w, e, &c).is_none() {
+                return false;
+            }
+        }
+        crate::despawn::keep(w, e);
+        true
     }
 
     /// One brush stroke on `e`: every stack it rolls from `BRUSH_TABLE` is returned. Empty when `e` is not

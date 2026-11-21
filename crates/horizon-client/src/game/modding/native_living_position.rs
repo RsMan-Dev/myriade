@@ -68,7 +68,10 @@ impl Game<'_> {
                     f64::from(d.eye_height),
                 ])
             }
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.pose_dimensions(id, pose).map(|(w, h, e)| [w, h, e]),
+            Target::Mob(id) if self.ecs.is_active() => self
+                .ecs
+                .pose_dimensions(id, pose as u8)
+                .map(|(w, h, e)| [f64::from(w), f64::from(h), f64::from(e)]),
             Target::Mob(id) => {
                 let (w, h, e) = self.remote_mob(id)?
                     .dims_in_pose(pose);
@@ -138,7 +141,7 @@ impl Game<'_> {
                     game.player.is_some() && game.random_teleport(at, avoid)
                 })
             }
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.random_teleport(id, at, avoid),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs_with(|ecs, mw| ecs.random_teleport(mw, id, at, avoid)),
             Some(Target::Mob(id)) => {
                 if !self.remote_mob(id).is_some() {
                     return false;

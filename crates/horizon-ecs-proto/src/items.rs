@@ -14,7 +14,9 @@ struct Table {
     slot: Vec<Option<Slot>>,
     armor: Vec<(f64, f64)>,
     food: Vec<bool>,
+    nutrition: Vec<u32>,
     attack: Vec<f64>,
+    dye: Vec<Option<String>>,
 }
 static TABLE: OnceLock<Table> = OnceLock::new();
 
@@ -26,7 +28,9 @@ pub fn install(items: &Items) {
         let mut slot = vec![None; names.len() + 1];
         let mut armor = vec![(0.0, 0.0); names.len() + 1];
         let mut food = vec![false; names.len() + 1];
+        let mut nutrition = vec![0; names.len() + 1];
         let mut attack = vec![0.0; names.len() + 1];
+        let mut dye = vec![None; names.len() + 1];
         for (i, n) in names.iter().enumerate() {
             let Some(info) = items.get(n) else { continue };
             slot[i + 1] = match info.equip_slot.as_deref() {
@@ -47,13 +51,15 @@ pub fn install(items: &Items) {
                 }
             }
             food[i + 1] = info.food.is_some();
+            nutrition[i + 1] = info.food.map_or(0, |f| f.0);
             attack[i + 1] = f64::from(info.attack_damage);
+            dye[i + 1].clone_from(&info.dye);
         }
         let mut tags: HashMap<String, Vec<u32>> = HashMap::new();
         for (t, members) in &items.item_tags {
             tags.insert(t.trim_start_matches('#').to_owned(), members.iter().filter_map(|m| ids.get(m.as_str()).copied()).collect());
         }
-        Table { names, ids, tags, slot, armor, food, attack }
+        Table { names, ids, tags, slot, armor, food, nutrition, attack, dye }
     });
 }
 pub fn installed() -> bool {
@@ -63,6 +69,10 @@ pub fn installed() -> bool {
 pub fn item_id(name: &str) -> u32 {
     let Some(t) = TABLE.get() else { return 0 };
     t.ids.get(name).copied().unwrap_or(0)
+}
+/// The colour name of the item's `minecraft:dye` component.
+pub fn dye_name(id: u32) -> Option<&'static str> {
+    TABLE.get()?.dye.get(id as usize)?.as_deref()
 }
 pub fn item_name(id: u32) -> Option<&'static str> {
     TABLE.get()?.names.get((id as usize).checked_sub(1)?).map(|n| &**n)
@@ -81,6 +91,10 @@ pub fn armor_of(id: u32) -> (f64, f64) {
 }
 pub fn attack_damage_of(id: u32) -> f64 {
     TABLE.get().and_then(|t| t.attack.get(id as usize)).copied().unwrap_or(0.0)
+}
+/// `FoodProperties.nutrition` of the item, `None` without the component.
+pub fn nutrition_of(id: u32) -> Option<u32> {
+    is_food(id).then(|| TABLE.get().and_then(|t| t.nutrition.get(id as usize)).copied().unwrap_or(0))
 }
 pub fn is_food(id: u32) -> bool {
     TABLE.get().and_then(|t| t.food.get(id as usize)).copied().unwrap_or(false)

@@ -9,5 +9,6 @@ pub static DEF: Def = Def {
     reference: Some(&skeleton::DEF),
     // `undead.rs:950`: its arrows carry slowness (level 0, 600 ticks); the bow's interval is the skeleton's (40).
     changes: &[Change::Set { module: &ranged_bow::MODULE, nth: 0, params: &ranged_bow::Params { interval: 40, effect: Some((Kind::Slowness, 0, 600)), ..ranged_bow::Params::DEFAULT } }],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

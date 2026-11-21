@@ -525,7 +525,8 @@ impl Game<'_> {
         Some(match self.native_entity_body(entity)? {
             Body::Player(p) => player_pose(p.pose),
             Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
-            Body::Ecs(id) => self.ecs.pose(id)?,
+            // `mod_api::Pose` is declared in `Pose.id` order, so its discriminant indexes POSES.
+            Body::Ecs(id) => self.ecs.pose(id).map_or(POSES[0], |p| POSES[p as usize]),
             Body::Other(_) => POSES[0],
         })
     }

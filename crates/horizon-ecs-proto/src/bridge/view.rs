@@ -28,6 +28,16 @@ pub struct EntityView {
     /// A creature: a species and its health. A vehicle: a boat or a cart (`minecart::Kind`). Read from the components, no scan.
     pub is_creature: bool,
     pub is_vehicle: bool,
+    /// A fishing hook: what its add packet and metadata carry (the thrower, the hooked target, the bite).
+    pub hook: Option<HookView>,
+}
+
+/// `FishingHook`: the thrower's network id (`data` of the add packet), DATA_HOOKED_ENTITY and DATA_BITING.
+#[derive(Clone, Copy, Debug)]
+pub struct HookView {
+    pub owner: u32,
+    pub hooked: Option<crate::fishing_hook::Target>,
+    pub biting: bool,
 }
 
 /// The view of `e`, or None when it has no position or sleeps (`Disabled`: not ticked, not tracked).
@@ -52,6 +62,14 @@ pub fn view(world: &World, e: Entity) -> Option<EntityView> {
         rider: mount.and_then(|m| m.rider),
         passenger: mount.and_then(|m| m.passenger),
         leash: r.get::<Leash>().map(|l| l.holder),
+        hook: r.get::<crate::fishing_hook::Hook>().map(|h| HookView {
+            owner: h.owner,
+            hooked: match h.phase {
+                crate::fishing_hook::Phase::Hooked(t) => Some(t),
+                _ => None,
+            },
+            biting: h.nibble > 0,
+        }),
         is_creature: r.contains::<SpeciesId>() && r.contains::<Health>(),
         is_vehicle: r.contains::<crate::boat::Boat>() || r.contains::<crate::minecart::Kind>(),
     })

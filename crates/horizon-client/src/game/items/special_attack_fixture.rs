@@ -110,7 +110,7 @@ impl Game<'_> {
                 if kind == "filled_frame" {
                     let stack = horizon_client::items::ItemStack::new("minecraft:stone", 1);
                     if let Some(id) = id {
-                        self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, id, Some(stack)));
+                        self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, id, stack));
                     }
                 }
                 let f = id.and_then(|id| self.ecs.entity_of(id)).and_then(|e| self.frame_from_ecs(e)).ok_or("special attack frame not hung")?;

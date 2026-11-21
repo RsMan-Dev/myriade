@@ -1,10 +1,12 @@
 //! `Allay`: a flier that wanders in the air, keeps close to its owner, takes the item it is given and flies it back, looks at players,
-//! runs when hurt, and fetches the item of its hand from the ground into its pocket (`go_to_wanted` with `hand`). Left out, outside this
-//! species: the throw at arrival (a brain step), the jukebox dance, the duplication, the note block and vibrations (no vibration event
-//! in the frame), and the `interact` entry point (not called yet: the owner is set by `tame::set_owner`).
+//! runs when hurt, fetches the item of its hand from the ground into its pocket (`go_to_wanted` with `hand`), likes the note block it
+//! heard for 600 ticks and dances to a jukebox within 10 blocks (`event_listen`, fed by `EcsWorld::allays_hear`). Left out, outside this
+//! species: the throw at arrival (a brain step), the duplication, the deposit at the liked block (`event_listen::liked_deposit` is not
+//! called by `give_to_owner` yet), the wool occlusion of vibrations, and the `interact` entry point (not called yet: the owner is set
+//! by `tame::set_owner`).
 //! DOUBT: the glide damping of the allay's flight is not checked against vanilla (the default value is used).
 use super::Def;
-use crate::behaviours::{animal_panic, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
+use crate::behaviours::{animal_panic, event_listen, fly_stroll, give_to_owner, go_to_wanted, look_at_player, random_look, stay_close_to_owner, Cap, Entry};
 use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
@@ -18,8 +20,20 @@ pub static DEF: Def = Def {
         Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params::DEFAULT),
         Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
+        Entry::new(&event_listen::MODULE, 7, &event_listen::Params {
+            note_event: "minecraft:note_block_play",
+            note_radius: 16,
+            note_block: "minecraft:note_block",
+            forget: 600,
+            liked_reach: 1024,
+            play_event: "minecraft:jukebox_play",
+            stop_event: "minecraft:jukebox_stop_play",
+            dance_radius: 10,
+            dance_block: "minecraft:jukebox",
+        }),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Tamable, Cap::Locomotion]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { max_turn: 20.0, hovers: true, free: true, drive_air: true, ..fly::Params::DEFAULT }))],
+    rules: &[crate::rules::RuleEntry::new(&crate::duplicate_item::DUPLICATE_ITEM, &crate::duplicate_item::DuplicateParams::ALLAY), crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::ALLAY)],
     ..Def::EMPTY
 };

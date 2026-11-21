@@ -28,7 +28,17 @@ fn a_wave_walks_to_the_village() {
     }
     let mut h = village_herd(160);
     assert!(h.world.resource::<PoiRegistry>().is_village([0, 0, 0]), "the village is in the registry");
-    let id = raids::start(&mut h.world, [0, 2, 0], 77);
+    // The host owns the raid and its waves: it writes the view and enlists the raiders it spawned, here a ring of vindicators 60 blocks out.
+    let id = 1;
+    raids::set_view(&mut h.world, id, Some(raids::RaidView { center: [0, 2, 0], active: true, over: false, loss: false, wave: 0 }));
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let sp = *table.iter().find(|s| s.name == "minecraft:vindicator").unwrap();
+    for i in 0..4 {
+        let a = f64::from(i) * std::f64::consts::FRAC_PI_2;
+        let e = spawn_species(&mut h.world, &sp, 60.0 * a.cos() + 0.5, 60.0 * a.sin() + 0.5, 77 + u64::from(i as u32));
+        h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
+        raids::enlist_raider(&mut h.world, e, id, 1, i == 0);
+    }
     let mut first_spawn = None;
     let mut dist_at = Vec::new();
     for t in 0..2600 {
@@ -43,7 +53,7 @@ fn a_wave_walks_to_the_village() {
     }
     eprintln!("raid {id}: first raiders at tick {first_spawn:?}; (tick, raiders, mean distance) {dist_at:?}");
     let first = first_spawn.expect("a wave spawned");
-    assert!(first >= 250, "the countdown comes first: {first}");
+    assert_eq!(first, 0, "the raiders are there from the start");
     let last = dist_at.last().unwrap();
     assert!(dist_at[0].2 > 30.0, "they start far: {dist_at:?}");
     assert!(last.2 < 40.0, "and come to the village: {dist_at:?}");
@@ -80,7 +90,8 @@ fn arrivals(id: u32, seed: u64, far: f64) -> (usize, usize) {
     h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
     h.world.insert_resource(horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots::default());
-    let rid = raids::start(&mut h.world, [0, 2, 0], 5);
+    let rid = 1;
+    raids::set_view(&mut h.world, rid, Some(raids::RaidView { center: [0, 2, 0], active: true, over: false, loss: false, wave: 0 }));
     raids::enlist(&mut h.world, e, raids::Raider { raid: Some(rid), wave: 1, leader: false }, true);
 
     let (mut m_at, mut e_at, mut last_target) = (None, None, None);

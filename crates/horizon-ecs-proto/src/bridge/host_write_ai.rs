@@ -46,6 +46,11 @@ impl EcsWorld {
         queue.apply(w);
     }
 
+    /// `PatrollingMonster.setPatrolLeader`: the raider's `Patrol` is made if it has none.
+    pub fn set_patrol_leader(&mut self, e: Entity, on: bool) {
+        crate::raids::set_patrol_leader(self.world_mut(), e, on);
+    }
+
     /// The raider's aggression: the marker is posed or taken (sparse, only the raiders carry it).
     pub fn set_aggressive(&mut self, e: Entity, on: bool) {
         let w = self.world_mut();

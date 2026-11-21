@@ -2,7 +2,7 @@
 //! born by `cow::spawn_species`, the old one leaves by `despawn::remove` (no loot). The callers go through `convert_or_ask`
 //! (`behaviours/convert_timer.rs`): while the host listens (`ConversionWatched`) it asks first (`HostEvent::ConversionAsk`) and the
 //! host answers with `resolve` (the new entity is born, the old one stays) then `finish` (the old one leaves); else it converts at once.
-use crate::cow::{self, Bounds, Health, Pos, Yaw};
+use crate::cow::{self, Bounds, Pos, Yaw};
 use crate::despawn;
 use crate::goals::{Equipment, Events, HandStack};
 use bevy_ecs::prelude::*;
@@ -13,10 +13,19 @@ use horizon_core::geometry::Vec3;
 pub struct ConvertKeep {
     /// `keepEquipment`: the worn and held items move to the new entity.
     pub equipment: bool,
+    /// The step the conversion tracker runs on the new entity (`ConversionTracker.doConversion`).
+    pub post: Post,
+}
+/// What follows `convertTo` in a tracker's conversion (`postConversionStep`, then the level event unless the creature is silent).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Post {
+    None,
+    /// `handleAttributes(specialMultiplier, CONVERSION)` on the new entity, and the level event `sound`.
+    Tracker { sound: i32 },
 }
 impl ConvertKeep {
-    pub const ALL: Self = Self { equipment: true };
-    pub const NONE: Self = Self { equipment: false };
+    pub const ALL: Self = Self { equipment: true, post: Post::None };
+    pub const NONE: Self = Self { equipment: false, post: Post::None };
 }
 
 /// Set by the host while a mod hears `living_conversion_pre` or `_post`: a conversion then waits for the host (`convert_or_ask`).
@@ -49,10 +58,16 @@ pub fn convert_or_ask(w: &mut World, e: Entity, into: &'static str, keep: Conver
 /// the `living_conversion_post` hook, until `finish`. None when cancelled, not asked, or `into` unknown.
 pub fn resolve(w: &mut World, e: Entity, cancel: bool) -> Option<Entity> {
     let asked = w.get_entity_mut(e).ok()?.take::<ConvertAsked>()?;
+    // A shearing's burst and loot follow the conversion (`finalizeConversion`) and are lost with a refusal.
+    let shear = w.entity_mut(e).take::<crate::behaviours::shear::PendingShear>();
     if cancel {
         return None;
     }
-    build(w, e, asked.into, asked.keep)
+    let born = build(w, e, asked.into, asked.keep)?;
+    if let Some(shear) = shear {
+        shear.finish(w);
+    }
+    Some(born)
 }
 
 /// The old entity of a conversion leaves (no loot), once the host has told its mods.
@@ -71,7 +86,8 @@ fn build(w: &mut World, e: Entity, into: &'static str, keep: ConvertKeep) -> Opt
     let sp = cow::species_table().0.into_iter().find(|s| s.name == into)?;
     let pos = w.get::<Pos>(e)?.0;
     let yaw = w.get::<Yaw>(e).map(|y| y.0);
-    let health = w.get::<Health>(e).map(|h| h.0);
+    let vel = w.get::<cow::Vel>(e).map(|v| v.0);
+    let silent = w.get::<crate::behaviours::elder_curse::Silent>(e).is_some();
     let worn = if keep.equipment { w.get::<Equipment>(e).copied() } else { None };
     let held = if keep.equipment { w.get::<HandStack>(e).cloned() } else { None };
     let seed = w.get::<cow::Rng>(e).map_or(1, |r| r.0);
@@ -81,10 +97,11 @@ fn build(w: &mut World, e: Entity, into: &'static str, keep: ConvertKeep) -> Opt
     if let Some(y) = yaw {
         w.get_mut::<Yaw>(n)?.0 = y;
     }
-    if let Some(h) = health {
-        if let Some(mut c) = w.get_mut::<Health>(n) {
-            c.0 = h;
-        }
+    // `ConversionType.SINGLE`: the position, rotation and motion carry over; the health does not (the new creature is born at its own maximum).
+    if let Some(v) = vel
+        && let Some(mut c) = w.get_mut::<cow::Vel>(n)
+    {
+        c.0 = v;
     }
     if let Some(mut b) = w.get_mut::<Bounds>(n) {
         b.0 = cow::box_at(Vec3::new(pos.x, pos.y, pos.z), sp.width, sp.height);
@@ -94,6 +111,13 @@ fn build(w: &mut World, e: Entity, into: &'static str, keep: ConvertKeep) -> Opt
     }
     if let Some(h) = held {
         w.entity_mut(n).insert(h);
+    }
+    if let Post::Tracker { sound } = keep.post {
+        let special = w.get_resource::<crate::spawn_finalize::Special>().map_or(0.0, |s| s.0);
+        crate::reinforcements::handle_attributes(w, n, special, crate::spawn_reason::SpawnReason::Conversion, &mut horizon_core::random::LegacyRandom::new(seed as i64));
+        if !silent {
+            w.resource_mut::<Events>().host.level_event(sound, [pos.x.floor() as i32, pos.y.floor() as i32, pos.z.floor() as i32], 0);
+        }
     }
     crate::goals::arm_timers(w, n);
     Some(n)

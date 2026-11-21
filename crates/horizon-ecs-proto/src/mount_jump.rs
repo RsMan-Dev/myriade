@@ -22,3 +22,14 @@ impl Default for JumpSound {
         Self { sound: "entity.horse.jump", volume: 0.4 }
     }
 }
+
+/// Gives the entity the `JumpSound` of the rule's parameters: the sound of `handleStartJump` of a mount that dashes
+/// (`Camel.getDashingSound`, `CamelHusk.getDashingSound`).
+pub static JUMP_SOUND: crate::rules::Rule = crate::rules::Rule {
+    name: "jump_sound",
+    equip: |w, e, p| {
+        w.entity_mut(e).insert(*crate::rules::params::<JumpSound>(p));
+    },
+    attrs: crate::rules::no_attrs,
+    interact: crate::rules::no_interact,
+};

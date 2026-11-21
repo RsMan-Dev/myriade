@@ -17,5 +17,11 @@ pub static DEF: Def = Def {
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 0.4, ..stroll::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
     ],
+    // `Zoglin`: `xpReward` 5 (`Mob`'s reward, the equipment adds), a baby keeps its loot and its experience (`Monster`).
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
+        crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::MONSTER),
+    ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

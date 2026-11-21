@@ -15,6 +15,10 @@ impl NetIds {
     pub fn entity(&self, id: u32) -> Option<Entity> {
         self.by_id.get(&id).copied()
     }
+    /// Every network id held.
+    pub fn ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.by_id.keys().copied()
+    }
 }
 
 /// The network ids of the followed entities removed (despawned or unbound) since the last `EcsWorld::drain_removed`.

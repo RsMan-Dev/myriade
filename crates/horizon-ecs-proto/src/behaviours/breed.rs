@@ -81,7 +81,18 @@ fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
     if i.item == 0 || !b.foods.iter().any(|f| crate::items::is(f, i.item)) {
         return false;
     }
-    feed(w, e)
+    // `isFood` of a wild adult is its taming items (`AbstractNautilus.isFood`): they are for the `tame` rule, not for love.
+    if w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_none())
+        && w.get::<GrowAt>(e).is_none()
+        && w.get::<crate::tame::TameRule>(e).is_some_and(|t| t.0.items.iter().any(|n| crate::items::is(n, i.item)))
+    {
+        return false;
+    }
+    let fed = feed(w, e);
+    if fed {
+        crate::give_item::take_from_hand(w, i);
+    }
+    fed
 }
 /// `Animal.actuallyHurt`: damage taken ends love.
 fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
@@ -262,6 +273,7 @@ pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
     // The baby is of its parents' species (the mate was checked to be the same).
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
     crate::species::goat::inherit_screaming(w, baby, a, b);
+    crate::behaviours::variant::inherit_baby(w, baby, a, b);
     // The parent's deadline is in its own time: the baby's own time is the world's.
     let active_baby = inherited_deadline(active, now, crate::cow::now_of(w, baby));
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;

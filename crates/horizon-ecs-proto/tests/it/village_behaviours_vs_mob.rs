@@ -217,9 +217,9 @@ fn celebrate_ecs(ticks: usize) -> (Option<usize>, u64) {
     h.tick();
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 31);
     h.world.resource_mut::<Entered>().0.push(e);
-    let id = raids::start(&mut h.world, [0, 1, 0], 5);
+    let id = 1;
+    raids::set_view(&mut h.world, id, Some(raids::RaidView { center: [0, 1, 0], active: true, over: true, loss: true, wave: 0 }));
     raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, false);
-    h.world.resource_mut::<raids::RaidState>().raids.get_mut(id).unwrap().status = horizon_client_lib::raid::Status::Loss;
     raids::wake_raiders(&mut h.world, id);
     let mut start = None;
     for t in 0..ticks {
@@ -270,9 +270,9 @@ fn banner_ecs(at: usize, ticks: usize) -> Option<usize> {
     let mut h = crate::raids_vs_mob::village_herd(40);
     let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 31);
     h.world.resource_mut::<Entered>().0.push(e);
-    let id = raids::start(&mut h.world, [0, 1, 0], 5);
+    let id = 1;
+    raids::set_view(&mut h.world, id, Some(raids::RaidView { center: [0, 1, 0], active: true, over: false, loss: false, wave: 0 }));
     raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, false);
-    h.world.resource_mut::<raids::RaidState>().raids.get_mut(id).unwrap().active = true;
     for t in 0..ticks {
         if t == at {
             horizon_ecs_proto::item::drop_item(&mut h.world, horizon_client_lib::mobs::raider::ominous_banner(), Vec3::new(8.5, 1.0, 0.5), Vec3::ZERO, 0);
@@ -330,11 +330,11 @@ fn homeward_ecs(n: usize, ticks: usize) -> (Option<usize>, Vec<Option<usize>>) {
     for &e in &es {
         h.world.resource_mut::<Entered>().0.push(e);
     }
-    let id = raids::start(&mut h.world, [0, 1, 0], 5);
+    let id = 1;
+    raids::set_view(&mut h.world, id, Some(raids::RaidView { center: [0, 1, 0], active: true, over: false, loss: false, wave: 0 }));
     for &e in &es {
         raids::enlist(&mut h.world, e, raids::Raider { raid: Some(id), wave: 1, leader: false }, false);
     }
-    h.world.resource_mut::<raids::RaidState>().raids.get_mut(id).unwrap().active = true;
     raids::wake_raiders(&mut h.world, id);
     let (mut start, mut arrive) = (None, vec![None; n]);
     for t in 0..ticks {

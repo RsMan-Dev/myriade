@@ -14,7 +14,7 @@ fn setup() -> HostSetup {
 }
 
 fn fact() -> PlayerFact {
-    PlayerFact { alive: true, targetable: true }
+    PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() }
 }
 
 fn player(id: u32, x: f64, z: f64) -> Player {
@@ -119,7 +119,7 @@ fn an_apparition_is_said() {
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let out = h.step(mw);
-    assert!(out.iter().any(|ev| matches!(ev, HostEvent::Spawned { entity, natural: false } if *entity == e)));
+    assert!(out.iter().any(|ev| matches!(ev, HostEvent::Spawned { entity, natural: false, .. } if *entity == e)));
 }
 
 #[test]
@@ -169,4 +169,31 @@ fn a_totem_saves_from_a_lethal_hit_unless_the_host_refuses() {
     assert!(h.equipment_stack(b, 0).is_some(), "the totem waits for the answer");
     assert!(!h.resolve_totem(b, true), "refused: it dies");
     assert!(h.step(mw).iter().any(|ev| matches!(ev, HostEvent::Death { entity, .. } if *entity == b)));
+}
+
+/// The host's view of a raid gives a raider its target, and the raider's death is told to the host with the host's raid id.
+#[test]
+fn raid_view_gives_the_raider_its_centre_and_its_death_says_raider_died() {
+    use horizon_ecs_proto::raids::{self, RaidView};
+    have_data();
+    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
+    let mut h = EcsWorld::new(&setup(), mw, types, &tags());
+    let e = h.spawn(mw, "minecraft:vindicator", [0.5, 1.0, 0.5], None).expect("a known species");
+    let mut next = 40;
+    let id = h.id_for(e, &mut || {
+        next += 1;
+        next
+    });
+    h.set_player(player(1, 0.5, 0.5), fact());
+    assert_eq!(raids::raid_centre(h.world(), e), None, "no raid yet");
+    h.set_raid_view(7, Some(RaidView { center: [3, 64, 5], active: true, over: false, loss: false, wave: 0 }));
+    h.enlist_raider(e, 7, 2, true);
+    assert_eq!(raids::raid_centre(h.world(), e), Some([3, 64, 5]), "the view is the raider's target");
+    assert_eq!(h.raiders_of(7).len(), 1);
+    h.hurt(mw, e, 1000.0, HurtSource::Generic);
+    let out = h.step(mw);
+    assert!(
+        out.iter().any(|ev| matches!(ev, HostEvent::RaiderDied { raid: 7, id: i, wave: 2, leader: true, .. } if *i == id)),
+        "the death says the host's raid id and the raider's id"
+    );
 }

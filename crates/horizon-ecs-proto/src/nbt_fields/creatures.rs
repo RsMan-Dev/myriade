@@ -9,7 +9,7 @@ use crate::behaviours::pufferfish_puff::Puff;
 use crate::behaviours::long_jump::LongJumpState;
 use crate::behaviours::ram::{Rammer, Shed};
 use crate::goals::{Occupied, OCC_SITTING};
-use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant};
+use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant, UnresolvedProfession, UNRESOLVED};
 use crate::behaviours::do_nothing::Invulnerable;
 use crate::behaviours::forget_target::LlamaStrength;
 use crate::cow::{arm_at, now_of, Due, GrowAt};
@@ -61,6 +61,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Peek"), write: write_peek, read: read_peek, accepts: byte, owner: Some(owner::<Peek>) },
     Field { key: Cow::Borrowed("has_egg"), write: write_has_egg, read: read_has_egg, accepts: byte, owner: Some(owner::<Turtle>) },
     Field { key: Cow::Borrowed("VillagerData"), write: write_villager, read: read_villager, accepts: compound, owner: Some(owner::<Merchant>) },
+    Field { key: Cow::Borrowed("AgeLocked"), write: write_age_locked, read: read_age_locked, accepts: byte, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("IsBaby"), write: write_baby, read: read_baby, accepts: byte, owner: Some(owner::<GrowAt>) },
     Field { key: Cow::Borrowed("HasNectar"), write: write_nectar, read: read_nectar, accepts: byte, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("HasStung"), write: write_stung, read: read_stung, accepts: byte, owner: Some(owner::<Bee>) },
@@ -72,6 +73,8 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<Occupied>) },
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
+    Field { key: Cow::Borrowed("scute_time"), write: write_scute_time, read: read_scute_time, accepts: accept::int, owner: Some(owner::<crate::gift_drop::GiftDue>) },
+    Field { key: Cow::Borrowed("LastPoseTick"), write: write_last_pose, read: read_last_pose, accepts: accept::long, owner: Some(owner::<crate::behaviours::posture::Posture>) },
     Field { key: Cow::Borrowed("Color"), write: write_wool_color, read: read_wool_color, accepts: byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
     Field { key: Cow::Borrowed("Crouching"), write: write_fox_crouching, read: read_fox_crouching, accepts: byte, owner: Some(owner::<FoxFlags>) },
@@ -256,7 +259,7 @@ fn read_strength(w: &mut World, e: Entity, t: &Tag) -> bool {
 /// `Age`: negative, the ticks left as a baby (`GrowAt` is the tick it grows at); zero or more, grown up (`GrowAt` goes).
 fn write_age(w: &World, e: Entity, c: &mut Compound) {
     if let Some(g) = w.get::<GrowAt>(e) {
-        let left = g.0.saturating_sub(now_of(w, e));
+        let left = w.get::<crate::age_lock::AgeLocked>(e).map_or_else(|| g.0.saturating_sub(now_of(w, e)), |l| l.0);
         c.insert("Age".into(), Tag::Int(-i32::try_from(left).unwrap_or(i32::MAX)));
     }
 }
@@ -266,6 +269,9 @@ fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
     if *v < 0 {
         let at = now_of(w, e) + u64::from(v.unsigned_abs());
         w.entity_mut(e).insert(GrowAt(at));
+        if w.get::<crate::age_lock::AgeLocked>(e).is_some() {
+            w.entity_mut(e).insert(crate::age_lock::AgeLocked(u64::from(v.unsigned_abs())));
+        }
     } else {
         w.entity_mut(e).remove::<GrowAt>();
     }
@@ -412,7 +418,11 @@ fn write_villager(w: &World, e: Entity, c: &mut Compound) {
     }
     let mut d = Compound::new();
     d.insert("type".into(), Tag::String(JavaString::from(variant_name(m.variant).as_str())));
-    d.insert("profession".into(), Tag::String(JavaString::from(profession_name(w, m.profession).as_str())));
+    let job = match w.get::<UnresolvedProfession>(e) {
+        Some(u) => u.0.clone(),
+        None => profession_name(w, m.profession),
+    };
+    d.insert("profession".into(), Tag::String(JavaString::from(job.as_str())));
     d.insert("level".into(), Tag::Int(i32::from(m.level)));
     c.insert("VillagerData".into(), Tag::Compound(d));
 }
@@ -430,7 +440,18 @@ fn read_villager(w: &mut World, e: Entity, t: &Tag) -> bool {
         let ww: &World = w;
         ((0..=u8::MAX).find(|&i| variant_name(i) == kind), (0..=u8::MAX).find(|&p| profession_name(ww, p) == job))
     };
-    let (Some(variant), Some(profession)) = (variant, profession) else { return false };
+    let Some(variant) = variant else { return false };
+    // A profession the table lacks (a mod's) is kept by name and the merchant left opaque, not refused.
+    let profession = match profession {
+        Some(p) => {
+            w.entity_mut(e).remove::<UnresolvedProfession>();
+            p
+        }
+        None => {
+            w.entity_mut(e).insert(UnresolvedProfession(job));
+            UNRESOLVED
+        }
+    };
     let Some(mut m) = w.get_mut::<Merchant>(e) else { return false };
     m.variant = variant;
     m.profession = profession;
@@ -443,6 +464,25 @@ fn write_baby(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<GrowAt>(e).is_some() {
         c.insert("IsBaby".into(), Tag::Byte(1));
     }
+}
+
+/// `AgeLocked`: the marker that freezes the growth; written for a locked baby only.
+fn write_age_locked(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<crate::age_lock::AgeLocked>(e).is_some() {
+        c.insert("AgeLocked".into(), Tag::Byte(1));
+    }
+}
+
+/// Read in either order with `Age`: the ticks left come from `GrowAt` when it is already there, else `read_age` fills them.
+fn read_age_locked(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v == 0 {
+        w.entity_mut(e).remove::<crate::age_lock::AgeLocked>();
+    } else {
+        let left = w.get::<GrowAt>(e).map_or(0, |g| g.0.saturating_sub(now_of(w, e)));
+        w.entity_mut(e).insert(crate::age_lock::AgeLocked(left));
+    }
+    true
 }
 
 fn read_baby(_: &mut World, _: Entity, t: &Tag) -> bool {
@@ -515,6 +555,18 @@ fn write_egg_time(w: &World, e: Entity, c: &mut Compound) {
     c.insert("EggLayTime".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
 }
 
+/// `scute_time` of an armadillo: the ticks until its next scute (`Armadillo.scuteTime`), the due tick less now.
+fn write_scute_time(w: &World, e: Entity, c: &mut Compound) {
+    let Some(d) = w.get::<crate::gift_drop::GiftDue>(e) else { return };
+    let left = d.0.saturating_sub(now_of(w, e));
+    c.insert("scute_time".into(), Tag::Int(i32::try_from(left).unwrap_or(i32::MAX)));
+}
+fn read_scute_time(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    crate::gift_drop::rearm_gift(w, e, *v);
+    true
+}
+
 /// A read of a running timer re-arms it at the new due tick; an idle one keeps the ticks left until it runs.
 fn read_egg_time(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
@@ -530,6 +582,18 @@ fn read_egg_time(w: &mut World, e: Entity, t: &Tag) -> bool {
         g.at
     };
     arm_at(w, e, at, Due::Egg);
+    true
+}
+
+/// `LastPoseTick` of a camel: the game time of its last change of pose, negative while it sits (a long).
+fn write_last_pose(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(t) = crate::behaviours::posture::last_pose_tick(w, e) {
+        c.insert("LastPoseTick".into(), Tag::Long(t));
+    }
+}
+fn read_last_pose(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Long(v) = t else { return false };
+    crate::behaviours::posture::load_pose_tick(w, e, *v);
     true
 }
 

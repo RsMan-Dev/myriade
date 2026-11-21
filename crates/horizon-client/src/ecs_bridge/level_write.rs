@@ -35,6 +35,10 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         self.ecs_mut().is_some_and(|w| w.set_health(e, value))
     }
+    pub fn set_head_yaw(&mut self, id: u32, yaw: f32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.set_head_yaw(e, yaw))
+    }
     pub fn set_rotation(&mut self, e: Entity, yaw: f32, pitch: f32) {
         if let Some(w) = self.ecs_mut() {
             w.set_rotation(e, yaw, pitch);
@@ -89,6 +93,14 @@ impl EcsLevel {
     pub fn add_effect_named(&mut self, e: Entity, name: &str, duration: i32, amp: i32) -> bool {
         let Some(kind) = kind_named(name) else { return false };
         self.ecs_mut().is_some_and(|w| w.add_effect(e, kind, amp, duration, 0))
+    }
+    /// Ends every warden's minute of calm; how many were reached (0 when inert).
+    pub fn expire_dig_cooldowns(&mut self) -> usize {
+        self.ecs_mut().map_or(0, |w| w.expire_dig_cooldowns())
+    }
+    /// `/raid glow`: Glowing on every raider of raid `raid`; how many were reached (0 when inert).
+    pub fn glow_raiders(&mut self, raid: i32, ticks: i32, amp: i32) -> usize {
+        self.ecs_mut().map_or(0, |w| w.glow_raiders(raid, ticks, amp))
     }
     /// Removes the effect at registry index `index` from the entity `id`; true when it was there.
     pub fn remove_effect(&mut self, id: u32, index: i32) -> bool {

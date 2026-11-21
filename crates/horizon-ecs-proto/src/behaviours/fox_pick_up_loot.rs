@@ -36,9 +36,8 @@ pub struct Loot {
     pub rest_delay: i64,
     pub picks_up: bool,
 }
-/// `Fox.ticksSinceEaten` as the own time it was set (`took_item`, eating): its value is `now - at`, so it is `> 0` from the next tick.
-#[derive(Component, Clone, Copy, Debug)]
-pub struct Eaten(pub u64);
+/// `Fox.ticksSinceEaten`: owned by `eat_held`, which also eats the item taken here.
+pub use super::eat_held::Eaten;
 
 pub static MODULE: Module = Module {
     name: "fox_pick_up_loot",
@@ -130,6 +129,7 @@ fn take(w: &mut World, e: Entity, it: Entity, l: Loot) {
     if let Some(mut t) = w.get_mut::<Eaten>(e) {
         t.0 = now;
     }
+    super::eat_held::restart(w, e);
 }
 
 /// The spot ahead of the fox's mouth: one block out along its heading, one block up (`Mob.aiStep` spits from there).

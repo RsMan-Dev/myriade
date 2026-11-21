@@ -19,6 +19,10 @@ pub struct Params {
     pub sound: &'static str,
     pub needed: usize,
 }
+/// The meeting of two villagers (`Villager.gossip`: `spawnGolemIfNeeded(.., 5)`). The iron golem has no ambient sound.
+pub const MEETING: Params = Params { species: "minecraft:iron_golem", sound: "", needed: 5 };
+/// The panic trigger (`VillagerPanicTrigger`, every 100 ticks: `spawnGolemIfNeeded(.., 3)`).
+pub const PANIC: Params = Params { species: "minecraft:iron_golem", sound: "", needed: 3 };
 const BOX: f64 = 10.0;
 const SLEPT: u64 = 24000;
 const CALM: u64 = 599;

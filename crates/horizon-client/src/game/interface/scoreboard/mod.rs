@@ -266,7 +266,7 @@ impl Game<'_> {
     }
     /// `Entity.getTags` (the `Tags` list of the saved entity).
     pub(super) fn tags_of(&self, t: Target) -> Vec<String> {
-        if let Target::Mob(id) | Target::Ecs(id) = t
+        if let Target::Mob(id) = t
             && self.ecs.is_active()
         {
             return self.ecs_mob_tags(id);

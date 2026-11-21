@@ -14,6 +14,10 @@ pub static DEF: Def = Def {
         Change::Add(Section::Targets, Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params { types: &["minecraft:piglin", "minecraft:piglin_brute"], ..nearest_target::Params::DEFAULT })),
     ],
     // The wither it puts on what it hits (`on_hit_effects`); fire immune (it does not burn in the day): the skeleton's `sun_burn` is not kept.
-    rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::WITHER_SKELETON)],
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::WITHER_SKELETON),
+        crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::WITHER_SKELETON),
+    ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

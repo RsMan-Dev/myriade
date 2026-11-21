@@ -23,5 +23,6 @@ pub static DEF: Def = Def {
     ],
     rules: &[crate::rules::RuleEntry::new(&crate::hostile::SUN_FLEE, &())],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

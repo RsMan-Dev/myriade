@@ -376,7 +376,7 @@ mod tests {
         );
         let border = game.dropped.last().unwrap().id;
         escaping.push(border);
-        let boxes = game.item_entity_collisions();
+        let boxes = game.item_entity_collisions(game.dropped.iter().map(reach));
         for id in [caught, border] {
             let item = game.dropped.iter().find(|i| i.id == id).unwrap();
             assert!(item.inside_block(

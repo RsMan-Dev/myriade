@@ -143,6 +143,16 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
         amount: dealt,
     });
     if full {
+        // The hurt animation of the guests (`host.hurt`), as `cow::health` emits it.
+        let cause = match b.by {
+            Some(Who::Player(p)) => p,
+            Some(Who::Entity(a)) => w.get::<crate::bridge::ids::NetId>(a).map_or(0, |n| n.0),
+            None => 0,
+        };
+        if let Some(id) = w.get::<crate::bridge::ids::NetId>(e).map(|n| n.0) {
+            let name = crate::cow::cause_name(b.cause, b.by);
+            w.resource_mut::<Events>().host.hurt(id, name, cause, b.by.is_some() && !b.arrow, at);
+        }
         w.resource_mut::<Events>().host.sound("minecraft:entity.ender_dragon.hurt", at, 5.0, 1.0);
     }
     if is_sitting(phase_of(w, e)) {

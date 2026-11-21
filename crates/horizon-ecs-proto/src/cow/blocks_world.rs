@@ -208,6 +208,7 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             goals: crate::species::config(name),
             rules: crate::species::registry().by_name(name).unwrap().rules,
             knockback_resistance: mob.attrs.knockback_resistance,
+            attack_knockback: mob.attrs.attack_knockback,
             armor: (kind.armor as f32, kind.armor_toughness as f32),
             attack_damage: mob.attrs.attack_damage,
             walk: walk_value_of(&mob, &kind),
@@ -220,6 +221,7 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             screaming,
             lost_horn,
             llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
+            not_in_peaceful: crate::species::registry().by_name(name).unwrap().not_in_peaceful,
         });
     }
     table

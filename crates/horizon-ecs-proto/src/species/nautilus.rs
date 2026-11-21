@@ -24,7 +24,20 @@ pub static DEF: Def = Def {
         Entry::new(&charge_attack::MODULE, 3, &charge_attack::Params { speed: 0.6, ..charge_attack::Params::DEFAULT }),
         Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params { speed: 1.0, interval: 1 }),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune]),
+    caps: Some(CAPS),
     locomotion: LOCOMOTION,
+    rules: RULES,
     ..Def::EMPTY
 };
+/// The capabilities of `AbstractNautilus` (a `TamableAnimal` that carries a rider), shared with the zombie nautilus.
+pub const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::PoisonImmune, Cap::Tamable, Cap::Rideable];
+/// `AbstractNautilus.interact` (persistence) and `mobInteract`: taming by `#nautilus_taming_items`, the saddle and armor, riding, the lead.
+/// The order is the order of the answers: taming and equipment before boarding.
+pub const RULES: &[crate::rules::RuleEntry] = &[
+    crate::rules::RuleEntry::new(&crate::keep_on_use::KEEP_ON_USE, &()),
+    crate::rules::RuleEntry::new(&crate::tame::TAME, &crate::tame::TameParams::NAUTILUS),
+    crate::rules::RuleEntry::new(&crate::heal_by_food::HEAL_BY_FOOD, &crate::heal_by_food::HealParams::NAUTILUS),
+    crate::rules::RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::TAME_SADDLE_BODY),
+    crate::rules::RuleEntry::new(&crate::mount::RIDE, &crate::mount::RideParams::NAUTILUS),
+    crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT),
+];

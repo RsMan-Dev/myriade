@@ -35,6 +35,10 @@ pub enum Kind {
     Glowing,
     /// `MobEffects.WEAVING`: a cobweb it stands in slows it less (`WebBlock.entityInside`: 0.5, 0.25, 0.5).
     Weaving,
+    /// `MobEffects.STRENGTH`: what a cure gives the zombie villager it starts (`startConverting`).
+    Strength,
+    /// `MobEffects.INFESTED`: a hit on the bearer may let silverfish out (`hurt_spawn`).
+    Infested,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).
@@ -147,6 +151,35 @@ pub fn remove(w: &mut World, e: Entity, kind: Kind) -> bool {
     }
     removed
 }
+/// The attribute modifiers the effects of `e` give to `name` (without `minecraft:`), derived from the list on read (`MobEffect.addAttributeModifiers`,
+/// id `minecraft:effect.<effect>`, amount scaled by `amp + 1`): the same amounts `modifiers` applies to `Body.speed` and `AttackDamage`.
+pub fn attribute_modifiers(w: &World, e: Entity, name: &str) -> Vec<crate::attr_mod::Modifier> {
+    use crate::attr_mod::{Modifier, Operation};
+    let Some(f) = w.get::<Effects>(e) else { return Vec::new() };
+    let make = |id: &str, amount: f64, operation| Modifier { id: id.to_owned(), amount, operation, permanent: false };
+    f.list
+        .iter()
+        .filter_map(|x| {
+            let n = f64::from(x.amp + 1);
+            match (name, x.kind) {
+                ("movement_speed", Kind::Speed) => Some(make("minecraft:effect.speed", 0.2 * n, Operation::AddMultipliedTotal)),
+                ("movement_speed", Kind::Slowness) => Some(make("minecraft:effect.slowness", -0.15 * n, Operation::AddMultipliedTotal)),
+                ("attack_damage", Kind::Weakness) => Some(make("minecraft:effect.weakness", -4.0 * n, Operation::AddValue)),
+                ("attack_damage", Kind::Strength) => Some(make("minecraft:effect.strength", 3.0 * n, Operation::AddValue)),
+                _ => None,
+            }
+        })
+        .collect()
+}
+/// The attributes whose modifiers the effects of `e` give.
+pub fn attribute_names(w: &World, e: Entity) -> impl Iterator<Item = &'static str> + '_ {
+    let list = w.get::<Effects>(e).map_or(&[][..], |f| &f.list[..]);
+    list.iter().filter_map(|x| match x.kind {
+        Kind::Speed | Kind::Slowness => Some("movement_speed"),
+        Kind::Weakness | Kind::Strength => Some("attack_damage"),
+        _ => None,
+    })
+}
 /// What the list changes in the entity: its speed, its attack, its immunities, its markers.
 fn modifiers(w: &mut World, e: Entity) {
     let Some(f) = w.get::<Effects>(e).cloned() else { return };
@@ -172,9 +205,10 @@ fn modifiers(w: &mut World, e: Entity) {
             }
         }
     }
-    let weak: f32 = f.list.iter().filter(|x| x.kind == Kind::Weakness).map(|x| 4.0 * (x.amp + 1) as f32).sum();
+    let weak: f32 = f.list.iter().filter(|x| x.kind == Kind::Weakness).map(|x| 4.0 * (x.amp + 1) as f32).sum::<f32>()
+        - f.list.iter().filter(|x| x.kind == Kind::Strength).map(|x| 3.0 * (x.amp + 1) as f32).sum::<f32>();
     if let Some(mut a) = w.get_mut::<AttackDamage>(e) {
-        if weak > 0.0 && f.base_attack.is_none() {
+        if weak != 0.0 && f.base_attack.is_none() {
             f.base_attack = Some(a.0);
         }
         if let Some(base) = f.base_attack {
@@ -212,6 +246,7 @@ fn modifiers(w: &mut World, e: Entity) {
         }
     }
     *w.get_mut::<Effects>(e).unwrap() = f;
+    w.get_resource_or_insert_with(crate::attr_mod::AttrDirty::default).0.insert(e);
 }
 /// The nearest tick something happens: a periodic act or an end.
 fn nearest(f: &Effects) -> Option<u64> {
@@ -287,17 +322,62 @@ pub fn difficulty(w: &World) -> u8 {
 }
 /// The effects a creature's blow puts on a creature it hits (`CaveSpider.doHurtTarget`, `WitherSkeleton`, `Husk`): (kind, level, ticks).
 #[derive(Component, Clone, Copy, Debug)]
-pub struct OnHit(pub &'static [(Kind, i32, i32)]);
+pub struct OnHit(pub &'static [(Kind, i32, Span)]);
+/// How long an effect of a blow lasts, from the level's difficulty (`CaveSpider.doHurtTarget`, `Husk.doHurtTarget`).
+#[derive(Clone, Copy, Debug)]
+pub enum Span {
+    Ticks(i32),
+    /// Ticks at peaceful, easy, normal, hard; 0 puts no effect.
+    ByDifficulty([i32; 4]),
+    /// Ticks per whole point of the effective difficulty (`(int) getEffectiveDifficulty()`).
+    PerEffective(i32),
+    /// `PerEffective`, only while the attacker's main hand is empty (`Husk.doHurtTarget`).
+    PerEffectiveBare(i32),
+}
+/// `getCurrentDifficultyAt(blockPosition()).getEffectiveDifficulty()` at `e`, read from the level's world (the chunk's inhabited time, the
+/// moon, the day) when a blow lands; nothing is stored. Without a level: the formula's floor, `base * 0.75`.
+pub fn effective_difficulty(w: &World, e: Entity) -> f32 {
+    let at = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]);
+    match (w.get_resource::<Level>(), at) {
+        (Some(level), Some(at)) => horizon_client_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).effective,
+        _ => if difficulty(w) == 0 { 0.0 } else { f32::from(difficulty(w)) * 0.75 },
+    }
+}
+/// `getCurrentDifficultyAt(blockPosition()).getSpecialMultiplier()` at `e`, read like `effective_difficulty`; without a level, the host's last `Special`.
+pub fn special_difficulty(w: &World, e: Entity) -> f32 {
+    let at = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]);
+    match (w.get_resource::<Level>(), at) {
+        (Some(level), Some(at)) => horizon_client_lib::mobs::spawning::LocalDifficulty::at(level.mw.0.world, at).special(),
+        _ => w.get_resource::<crate::spawn_finalize::Special>().map_or(0.0, |s| s.0),
+    }
+}
+impl Span {
+    /// The ticks of this span for a blow of `from`.
+    pub fn ticks(self, w: &World, from: Entity) -> i32 {
+        match self {
+            Span::Ticks(t) => t,
+            Span::ByDifficulty(t) => t[usize::from(difficulty(w).min(3))],
+            Span::PerEffective(t) => t * effective_difficulty(w, from) as i32,
+            Span::PerEffectiveBare(t) => {
+                if crate::equip_stack::get(w, from, 0).is_some() { 0 } else { t * effective_difficulty(w, from) as i32 }
+            }
+        }
+    }
+}
 /// The rule that gives it (`species` configuration: no code per species). Not done: a player target has no `Effects`.
 pub static ON_HIT: crate::rules::Rule = crate::rules::Rule { name: "on_hit_effects", equip: equip_on_hit, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
-pub struct OnHitParams(pub &'static [(Kind, i32, i32)]);
+pub struct OnHitParams(pub &'static [(Kind, i32, Span)]);
 fn equip_on_hit(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(OnHit(crate::rules::params::<OnHitParams>(p).0));
 }
 /// The blow landed: the effects of `from` are put on `target` (a creature, or a player: the player's list is `PlayerEffects`).
 pub fn hit_effects(w: &mut World, from: Entity, target: crate::targeting::Who) {
     let Some(OnHit(list)) = w.get::<OnHit>(from).copied() else { return };
-    for &(kind, amp, ticks) in list {
+    for &(kind, amp, span) in list {
+        let ticks = span.ticks(w, from);
+        if ticks <= 0 {
+            continue;
+        }
         match target {
             crate::targeting::Who::Entity(t) => {
                 add(w, t, kind, amp, ticks);
@@ -308,11 +388,11 @@ pub fn hit_effects(w: &mut World, from: Entity, target: crate::targeting::Who) {
 }
 /// What the creatures of some species put on what they hit, at the normal difficulty (`CaveSpider`, `Bee`, `WitherSkeleton`, `Husk`, a puffed
 /// `Pufferfish`): the parameters of the rule `on_hit_effects`.
-pub static CAVE_SPIDER: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 140)]);
-pub static BEE_STING: OnHitParams = OnHitParams(&[(Kind::Poison, 0, 200)]);
-pub static WITHER_SKELETON: OnHitParams = OnHitParams(&[(Kind::Wither, 0, 200)]);
-pub static HUSK: OnHitParams = OnHitParams(&[(Kind::Hunger, 0, 140)]);
-pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, 1200)]);
+pub static CAVE_SPIDER: OnHitParams = OnHitParams(&[(Kind::Poison, 0, Span::ByDifficulty([0, 0, 140, 300]))]);
+pub static BEE_STING: OnHitParams = OnHitParams(&[(Kind::Poison, 0, Span::Ticks(200))]);
+pub static WITHER_SKELETON: OnHitParams = OnHitParams(&[(Kind::Wither, 0, Span::Ticks(200))]);
+pub static HUSK: OnHitParams = OnHitParams(&[(Kind::Hunger, 0, Span::PerEffectiveBare(140))]);
+pub static PUFFERFISH: OnHitParams = OnHitParams(&[(Kind::Poison, 1, Span::Ticks(1200))]);
 /// The entity type tags the effects read, as typed markers: poison and regeneration do nothing to a creature `ignores_poison_and_regen`
 /// names; harming heals and healing hurts one `inverted_healing_and_harm` names (`potions.rs`).
 #[derive(Component, Clone, Copy, Debug)]

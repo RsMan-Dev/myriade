@@ -133,7 +133,9 @@ impl Game<'_> {
                 Some(tag) => {
                     self.ecs_put(id, "CustomName", tag);
                 }
-                None => self.ecs.clear_name(id),
+                None => {
+                    self.ecs.clear_name(id);
+                }
             }
             return true;
         }

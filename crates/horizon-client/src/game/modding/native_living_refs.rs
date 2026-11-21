@@ -450,7 +450,7 @@ impl Game<'_> {
                 let p = g.motion.as_deref()?;
                 Some(self.can_use_portal_of(p, g.vehicle.is_some(), g.sleeping))
             }
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.portal_eligible(id),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.can_use_portal(id),
             Target::Mob(id) => {
                 let m = self.remote_mob(id)?;
                 Some(self.mob_portal_eligible(m))
@@ -674,7 +674,7 @@ impl Game<'_> {
                     g.apply_effect_action(horizon_client::effects::EffectAction::Heal(amount));
                 })
                 .is_some(),
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.heal(id, amount),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.heal_id(id, amount),
             Some(Target::Mob(id)) => {
                 let Some(m) = self.remote_mob_mut(id) else {
                     return false;
@@ -844,7 +844,7 @@ impl Game<'_> {
         }
         match target {
             Target::Mob(id) if self.ecs.is_active() => {
-                if !self.ecs.set_equipment_stack(id, slot as usize, updated) {
+                if !self.ecs.put_equipment_slot(id, slot as usize, updated) {
                     return None;
                 }
             }
@@ -985,7 +985,7 @@ impl Game<'_> {
                 (Some(a), Some(b)) => !a.same_item_same_components(b),
                 _ => true,
             };
-            if !self.ecs.set_equipment_stack(id, slot as usize, stack) {
+            if !self.ecs.put_equipment_slot(id, slot as usize, stack) {
                 return false;
             }
             if changed && !self.ecs.first_tick(id) {
@@ -994,7 +994,7 @@ impl Game<'_> {
                     .as_ref()
                     .and_then(|(equip_slot, sound)| {
                         (*equip_slot as usize == slot as usize)
-                            .then(|| self.ecs.equip_sound(id, *equip_slot, Some(sound.clone())))
+                            .then(|| self.ecs.equip_sound(id, *equip_slot as usize, Some(sound.clone())))
                             .flatten()
                     });
                 let sound = match (sound, &hook_stack) {
@@ -1015,7 +1015,6 @@ impl Game<'_> {
                     self.equip_item_effects(at, sound, equippable.is_some(), ctx);
                 }
             }
-            self.collect_mob_equipment_attributes(id);
             return true;
         }
         if let Target::Mob(id) = t {
@@ -1062,9 +1061,6 @@ impl Game<'_> {
                     self.equip_item_effects([at.x, at.y, at.z], sound, equippable.is_some(), ctx);
                 }
             }
-            // The stack's attribute modifiers go on the live map at once, so
-            // the next read — a hit's armor, a `LivingRef`'s — sees them (arismoko/horizon#941).
-            self.collect_mob_equipment_attributes(id);
             return true;
         }
         // `LivingEntity.onEquipItem` for the entities that keep no equip state
@@ -1233,7 +1229,7 @@ impl Game<'_> {
             return None;
         };
         if self.ecs.is_active() {
-            return self.ecs.tamable_values(id);
+            return self.ecs.tamable_values(id).map(|(tame, owner)| TamableView { tame, owner });
         }
         self.native_tamable(living).map(|m| TamableView {
             tame: m.extra.tame,

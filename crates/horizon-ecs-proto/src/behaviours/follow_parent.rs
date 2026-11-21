@@ -81,6 +81,13 @@ pub fn make_baby(world: &mut World, e: Entity, ticks: u64) {
     b.width = sizes.baby.0;
     b.height = sizes.baby.1;
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(p, sizes.baby.0, sizes.baby.1);
+    // `Mob.setBaby` of a creature that does not age (`Zombie`): the baby form stays, nothing grows it up.
+    let ages = world.get::<crate::cow::SpeciesId>(e).is_none_or(|s| world.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].tags & crate::cow::tag::AGEING != 0);
+    if !ages {
+        world.entity_mut(e).insert(GrowAt(u64::MAX));
+        wake(world, e, &MODULE);
+        return;
+    }
     world.entity_mut(e).insert(GrowAt(now + ticks));
     wake(world, e, &MODULE);
     crate::cow::arm_at(world, e, now + ticks, Due::Grow);

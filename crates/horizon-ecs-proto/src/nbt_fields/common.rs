@@ -8,6 +8,8 @@ use crate::cow::{tag, now_of, Burning, Frozen, HurtAt, LastHurtBy, Yaw};
 use crate::despawn::Persistent;
 use crate::effects::{self, Effects, Kind, AMBIENT, HIDDEN};
 use crate::nbt::{accept, owner, Field};
+use crate::behaviours::stare_freeze::StareFreeze;
+use crate::bridge::host_creaking::HeartLink;
 use crate::spots::Home;
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
@@ -18,6 +20,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("HurtTime"), write: write_hurt_time, read: read_hurt_time, accepts: accept::short, owner: Some(owner::<HurtAt>) },
     Field { key: Cow::Borrowed("HurtByTimestamp"), write: write_hurt_by, read: read_hurt_by, accepts: accept::int, owner: Some(owner::<LastHurtBy>) },
     Field { key: Cow::Borrowed("anger_end_time"), write: write_anger_end, read: read_anger_end, accepts: accept::long, owner: Some(owner::<Anger>) },
+    Field { key: Cow::Borrowed("home_pos"), write: write_heart_pos, read: read_heart_pos, accepts: is_int_array, owner: Some(owner::<HeartLink>) },
 ];
 
 /// The keys whose presence poses their component (`nbt::register_creators`).
@@ -25,6 +28,8 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("Fire"), write: write_fire, read: read_fire, accepts: accept::short, owner: Some(owner::<Burning>) },
     Field { key: Cow::Borrowed("TicksFrozen"), write: write_frozen, read: read_frozen, accepts: accept::int, owner: Some(owner::<Frozen>) },
     Field { key: Cow::Borrowed("InLove"), write: write_love, read: read_love, accepts: accept::int, owner: Some(owner::<Love>) },
+    Field { key: Cow::Borrowed("InWaterTime"), write: write_in_water, read: read_in_water, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
+    Field { key: Cow::Borrowed("DrownedConversionTime"), write: write_conversion, read: read_conversion, accepts: accept::int, owner: Some(owner::<crate::behaviours::convert_in_water::Soak>) },
     Field { key: Cow::Borrowed("PersistenceRequired"), write: write_persistent, read: read_persistent, accepts: is_byte, owner: None },
     Field { key: Cow::Borrowed("Rotation"), write: write_rotation, read: read_rotation, accepts: is_list, owner: Some(owner::<Yaw>) },
     Field { key: Cow::Borrowed("Silent"), write: write_silent, read: read_silent, accepts: is_byte, owner: Some(owner::<Silent>) },
@@ -73,7 +78,7 @@ fn always(_: &World, _: Entity) -> bool {
 }
 /// A horse without an owner (a tamed one saves its own `Tame`).
 fn untamed(w: &World, e: Entity) -> bool {
-    w.get::<crate::cow::SpeciesId>(e).is_none_or(|id| crate::cow::tags_of_id(*id) & tag::CAMEL == 0) && w.get::<crate::tame::Owner>(e).is_none_or(|o| o.0.is_none())
+    w.get::<crate::cow::SpeciesId>(e).is_none_or(|id| crate::cow::tags_of_id(*id) & tag::CAMEL == 0) && w.get::<crate::tame::Owner>(e).is_none_or(|o| o.0.is_none()) && w.get::<crate::spring_trap::Tamed>(e).is_none()
 }
 
 pub const TAGGED_DEFAULTS: &[Tagged] = &[
@@ -227,6 +232,32 @@ fn read_love(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `InWaterTime` / `DrownedConversionTime` (`Zombie`'s conversion tracker): a count in progress, from `convert_in_water::Soaking`.
+fn write_in_water(w: &World, e: Entity, c: &mut Compound) {
+    if let Some((soaked, _)) = crate::behaviours::convert_in_water::saved(w, e) {
+        c.insert("InWaterTime".into(), Tag::Int(soaked));
+    }
+}
+fn write_conversion(w: &World, e: Entity, c: &mut Compound) {
+    if let Some((_, left)) = crate::behaviours::convert_in_water::saved(w, e) {
+        c.insert("DrownedConversionTime".into(), Tag::Int(left));
+    }
+}
+fn read_in_water(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    if *v > 0 && w.get::<crate::behaviours::convert_in_water::Soaking>(e).is_none() {
+        crate::behaviours::convert_in_water::resume(w, e, false, *v);
+    }
+    true
+}
+fn read_conversion(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    if *v >= 0 {
+        crate::behaviours::convert_in_water::resume(w, e, true, *v);
+    }
+    true
+}
+
 /// `PersistenceRequired`: a byte, written as 1 by a mob the world keeps (`Persistent`); 0 takes the marker away.
 fn write_persistent(w: &World, e: Entity, c: &mut Compound) {
     if w.get::<Persistent>(e).is_some() {
@@ -296,8 +327,38 @@ fn write_home_pos(w: &World, e: Entity, c: &mut Compound) {
 fn read_home_pos(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::IntArray(v) = t else { return false };
     let [x, y, z] = v.as_slice() else { return false };
+    // A creaking (it stares) keeps its heart there, not a home with a radius.
+    if w.get::<Home>(e).is_none() && w.get::<StareFreeze>(e).is_some() {
+        return read_heart_pos(w, e, t);
+    }
     let radius = w.get::<Home>(e).map_or(0, |h| h.radius);
     w.entity_mut(e).insert(Home { center: [*x, *y, *z], radius });
+    true
+}
+
+/// `home_pos` of a creaking: the heart it protects, as an int array (`Creaking.homePos`).
+fn write_heart_pos(w: &World, e: Entity, c: &mut Compound) {
+    let Some(l) = w.get::<HeartLink>(e) else { return };
+    c.insert("home_pos".into(), Tag::IntArray(l.pos.to_vec()));
+}
+
+fn read_heart_pos(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::IntArray(v) = t else { return false };
+    let [x, y, z] = v.as_slice() else { return false };
+    let link = w.get::<HeartLink>(e).copied().unwrap_or(HeartLink { pos: [0; 3], stuck: 0, tearing_down: false });
+    let guard = w.get::<crate::damage_link::DamageLink>(e).copied().unwrap_or_default();
+    w.entity_mut(e).insert((HeartLink { pos: [*x, *y, *z], ..link }, guard));
+    // `Creaking.tick` checks the heart: asked at the load (and again when it wakes or the heart's block changes).
+    crate::bridge::host_creaking::ask_heart(w, e);
+    true
+}
+
+/// A removal of the key `home_pos` of a creaking (`/data remove`): the link and its damage guard go. False when `e` has no link.
+pub fn remove_heart_key(w: &mut World, e: Entity, key: &str) -> bool {
+    if key != "home_pos" || w.get::<HeartLink>(e).is_none() {
+        return false;
+    }
+    crate::bridge::host_creaking::unlink(w, e);
     true
 }
 
@@ -383,6 +444,8 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::JumpBoost => "minecraft:jump_boost",
         Kind::Glowing => "minecraft:glowing",
         Kind::Weaving => "minecraft:weaving",
+        Kind::Strength => "minecraft:strength",
+        Kind::Infested => "minecraft:infested",
     }
 }
 
@@ -404,6 +467,8 @@ fn kind_of(name: &str) -> Option<Kind> {
         Kind::JumpBoost,
         Kind::Glowing,
         Kind::Weaving,
+        Kind::Strength,
+        Kind::Infested,
     ]
     .into_iter()
     .find(|&k| kind_name(k) == name)

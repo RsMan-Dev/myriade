@@ -4,9 +4,13 @@ use super::super::{Game, Result};
 use horizon_client::command::args::GameMode;
 use horizon_client::items::ItemStack;
 use horizon_client::lan::playerdata::uuid_ints;
+use bevy_ecs::entity::Entity;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::{
-    bridge::{host::PlayerFact, players::PlayerFacts},
+    bridge::{
+        host::PlayerFact,
+        players::PlayerFacts,
+    },
     goals::{Online, Player},
     items::item_id,
 };
@@ -64,7 +68,7 @@ impl Game<'_> {
     }
 
     /// The place, items and facts of the player `id` as this `Game` holds them (the host, or a guest swapped in).
-    fn player_fact(&self, id: u32) -> Option<(Player, PlayerFact)> {
+    fn player_fact(&mut self, id: u32) -> Option<(Player, PlayerFact)> {
         let at: Vec3 = self.player.as_ref()?.position;
         let p = Player {
             id,
@@ -81,7 +85,15 @@ impl Game<'_> {
         // A player who is dead or in creative or spectator is not a target. Its team is the board's (`Game::push_team_event`).
         let alive = !self.player.as_ref()?.health.dead_or_dying();
         let targetable = !matches!(self.mode, GameMode::Creative | GameMode::Spectator);
-        Some((p, PlayerFact { alive, targetable }))
+        Some((p, PlayerFact { alive, targetable, hero: self.hero_amplifier() }))
+    }
+
+    /// What a death reads of the player `player` that hurts `e`: its luck attribute and the stack in its main hand (Looting). Told with
+    /// the hit, not with the facts of every synchronisation; the loot stack is made at the death.
+    pub(in crate::game) fn ecs_note_killer(&mut self, e: Entity, player: u32) {
+        let luck = self.player.as_mut().and_then(|pl| pl.attribute("minecraft:luck").ok()).unwrap_or(0.0) as f32;
+        let weapon = self.held().cloned();
+        self.ecs.note_killer(e, player, luck, weapon);
     }
 
     /// Calls the ECS only for a place or a fact that changed since the world last held it.

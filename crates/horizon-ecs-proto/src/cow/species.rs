@@ -157,6 +157,8 @@ pub struct Species {
     pub rules: &'static [crate::rules::RuleEntry],
     /// `Attributes.KNOCKBACK_RESISTANCE`.
     pub knockback_resistance: f64,
+    /// `Attributes.ATTACK_KNOCKBACK` (`Mob.doHurtTarget`'s extra push, half of it).
+    pub attack_knockback: f64,
     /// The base armor and toughness of the type (`Attributes.ARMOR`, `ARMOR_TOUGHNESS`): worn pieces add to it.
     pub armor: (f32, f32),
     /// `Attributes.ATTACK_DAMAGE` (0 for a species that does not attack).
@@ -182,6 +184,8 @@ pub struct Species {
     pub lost_horn: Option<f64>,
     /// `Def::llama_strength`: the strength is drawn at the pose (`spawn_declared`).
     pub llama_strength: bool,
+    /// `Def::not_in_peaceful`.
+    pub not_in_peaceful: bool,
 }
 
 /// The class bits of a type, as data of its row (no per-entity byte): the groups of species whose class saves a state at its default.

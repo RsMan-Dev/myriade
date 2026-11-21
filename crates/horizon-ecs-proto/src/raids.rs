@@ -1,16 +1,9 @@
-//! The raids socle: `Raids` (the `Mob` side's own pure state machine, `horizon_client_lib::raid`: waves, the countdown, the bar, the leader per wave,
-//! heroes) driven over the ECS world. A raid is a deadline of the wheel (`Due::Raids`, one entry per tick while some raid runs, none when
-//! none does): `raid_due` ticks the raids with this world as their `RaidLevel` (the registry of the points of interest says what is a village,
-//! the players are `Online`) and does what the raids ask: a wave spawns (`Action::Spawn`: each raider of the species table at the spot, with the
-//! `Raider` component: raid, wave, leader), a raider leaves the raid. The goals read `Raider` and the raid's centre (`PathfindToRaid`). Species that
-//! the table lacks (evoker, ravager) are not spawned. Not done: the omen's trigger, heroes' reward, the bar for players, the horn, `ticks_outside`,
-//! the raiders' buffs (enchantments, banners' head item), the ravager rider, recruitment of the raiders around a raider, saving.
-use crate::cow::*;
-use crate::goals::{Entered, Online, Req, Requests};
-use crate::poi::PoiRegistry;
-use crate::rules::raids::spawn_seed;
+//! The raids' view in the ECS. The state of a raid (waves, boss bar, victory, defeat, heroes) lives at the host (`horizon_client_lib::raid`);
+//! this world keeps only what the goals read: per raid its centre and whether it is active, over, lost (`RaidView`, written by the host
+//! through `set_view`, which wakes the raiders when the phase changes), the difficulty, and the components `Raider`, `Patrol`,
+//! `Celebrating`, `Aggressive`. A raider's death is told to the host (`HostEvent::RaiderDied`).
+use crate::goals::{Req, Requests};
 use bevy_ecs::prelude::*;
-use horizon_client_lib::raid::{self, Action, RaidLevel, RaidPlayer, RaiderInfo, Raids};
 use std::collections::HashMap;
 
 /// A raider: which raid it is in, the wave it came with, whether it leads the wave.
@@ -20,140 +13,47 @@ pub struct Raider {
     pub wave: i32,
     pub leader: bool,
 }
+/// What the goals read of a raid, as the host last wrote it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RaidView {
+    pub center: [i32; 3],
+    pub active: bool,
+    pub over: bool,
+    pub loss: bool,
+    /// `Raid.getGroupsSpawned`: the wave a creature that joins the raid takes.
+    pub wave: i32,
+}
+impl RaidView {
+    pub fn is_over(&self) -> bool {
+        self.over
+    }
+    pub fn is_loss(&self) -> bool {
+        self.loss
+    }
+}
 #[derive(Resource)]
 pub struct RaidState {
-    pub raids: Raids,
+    pub views: HashMap<i32, RaidView>,
     pub difficulty: i32,
-    host: Entity,
-    /// The ids the raids know the raiders by (the entity's index) and the entities.
-    by_id: HashMap<u32, Entity>,
-    armed: bool,
 }
-/// Created at the first raid (a resource is made at its first use, never at the world's construction).
-fn ensure(w: &mut World) {
-    if !w.contains_resource::<RaidState>() {
-        let host = w.spawn_empty().id();
-        w.insert_resource(RaidState { raids: Raids::default(), difficulty: 2, host, by_id: HashMap::new(), armed: false });
-    }
-}
-fn id_of(e: Entity) -> u32 {
-    e.index().index()
-}
-
-/// The world as a raid sees it.
-struct Level<'a> {
-    w: &'a World,
-    difficulty: i32,
-}
-impl RaidLevel for Level<'_> {
-    fn difficulty(&self) -> i32 {
-        self.difficulty
-    }
-    fn has_chunk_at(&self, pos: [i32; 3]) -> bool {
-        self.w.resource::<crate::cow::Level>().mw.0.world.loaded(pos[0], pos[2])
-    }
-    fn has_chunks_at(&self, x0: i32, z0: i32, x1: i32, z1: i32) -> bool {
-        let mw = self.w.resource::<crate::cow::Level>().mw.0;
-        mw.world.loaded(x0, z0) && mw.world.loaded(x1, z1)
-    }
-    fn sections_to_village(&self, pos: [i32; 3]) -> i32 {
-        self.w.resource::<PoiRegistry>().sections_to_village([pos[0] >> 4, pos[1] >> 4, pos[2] >> 4])
-    }
-    fn surface_height(&self, x: i32, z: i32) -> i32 {
-        // `Heightmap.Types.WORLD_SURFACE`: the first block from the top that is not air, plus one.
-        let mw = self.w.resource::<crate::cow::Level>().mw.0;
-        let mut y = mw.world.top_y() - 1;
-        while y > mw.world.bottom_y() && mw.facts.is_air(mw.world.block(x, y, z)) {
-            y -= 1;
-        }
-        y + 1
-    }
-    fn is_position_entity_ticking(&self, _: [i32; 3]) -> bool {
-        true
-    }
-    fn ravager_can_spawn(&self, _: [i32; 3]) -> bool {
-        true
-    }
-    fn players(&self) -> Vec<RaidPlayer> {
-        let on = self.w.resource::<Online>();
-        let mut v = Vec::new();
-        on.for_all(|p| v.push(RaidPlayer { uuid: u128::from(p.id), position: [p.x, p.y, p.z], block: [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32], alive: true }));
-        v
+impl Default for RaidState {
+    fn default() -> Self {
+        Self { views: HashMap::new(), difficulty: 2 }
     }
 }
 
-/// A raid at `center` (`Raids.createOrExtendRaid`), and its first tick is armed.
-pub fn start(w: &mut World, center: [i32; 3], seed: i64) -> i32 {
-    ensure(w);
-    let mut st = w.resource_mut::<RaidState>();
-    let d = st.difficulty;
-    let (id, _) = st.raids.create_or_extend(center, d, None, seed);
-    arm(w);
-    id
-}
-fn arm(w: &mut World) {
-    let mut st = w.resource_mut::<RaidState>();
-    if st.armed {
-        return;
+/// The host's view of raid `id` (None: the raid is gone). The raiders of the raid are asked once when its view changes
+/// (it appears, starts, is won or lost), never every tick.
+pub fn set_view(w: &mut World, id: i32, view: Option<RaidView>) {
+    let mut st = w.get_resource_or_insert_with(RaidState::default);
+    let before = st.views.get(&id).copied();
+    match view {
+        Some(v) => st.views.insert(id, v),
+        None => st.views.remove(&id),
+    };
+    if before != view {
+        wake_raiders(w, id);
     }
-    st.armed = true;
-    let host = st.host;
-    let now = w.resource::<Clock>().0;
-    w.resource_mut::<Wheel>().push(now + 1, host, Due::Raids);
-}
-/// The raiders of a raid, as the raid reads them.
-fn members(w: &mut World, id: i32) -> Vec<RaiderInfo> {
-    let mut q = w.query::<(Entity, &Raider, &Health, &Pos)>();
-    q.iter(w)
-        .filter(|(_, r, ..)| r.raid == Some(id))
-        .map(|(e, r, h, p)| RaiderInfo { id: id_of(e), wave: r.wave, health: h.0, position: [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32], in_level: true, ..Default::default() })
-        .collect()
-}
-/// The deadline: the raids tick, what they ask is done, and the next tick is armed while some raid runs.
-pub fn raid_due(w: &mut World) {
-    let now = w.resource::<Clock>().0;
-    let _ = now;
-    w.resource_mut::<RaidState>().armed = false;
-    let ids: Vec<i32> = w.resource::<RaidState>().raids.ids();
-    let before: Vec<(i32, (bool, bool, bool))> = ids.iter().filter_map(|&i| Some((i, phase(w, i)?))).collect();
-    let mut all: HashMap<i32, Vec<RaiderInfo>> = HashMap::new();
-    for id in ids {
-        all.insert(id, members(w, id));
-    }
-    let mut actions: Vec<(i32, Action)> = Vec::new();
-    w.resource_scope(|w: &mut World, mut st: Mut<RaidState>| {
-        let d = st.difficulty;
-        let level = Level { w, difficulty: d };
-        let st = &mut *st;
-        actions = st.raids.tick(&level, true, &|id| all.get(&id).cloned().unwrap_or_default());
-    });
-    for (id, a) in actions {
-        match a {
-            Action::Spawn { pos, wave, spawns } => spawn_wave(w, id, pos, wave, &spawns),
-            Action::Remove { id: mob } => {
-                if let Some(e) = w.resource::<RaidState>().by_id.get(&mob).copied()
-                    && let Some(mut r) = w.get_mut::<Raider>(e)
-                {
-                    r.raid = None;
-                }
-            }
-            _ => {}
-        }
-    }
-    // The goals that read the raid's phase are asked once when it changes (a raid starts, is won or lost), never every tick.
-    for (id, was) in before {
-        if phase(w, id) != Some(was) {
-            wake_raiders(w, id);
-        }
-    }
-    if !w.resource::<RaidState>().raids.map.is_empty() {
-        arm(w);
-    }
-}
-/// What the goals read of a raid: active, over, lost.
-fn phase(w: &World, id: i32) -> Option<(bool, bool, bool)> {
-    let r = w.resource::<RaidState>().raids.get(id)?;
-    Some((r.active, r.is_over(), r.is_loss()))
 }
 /// Every raider of the raid asks its raid goals (`Req::Start`: the goal asks its own `can_use`).
 pub fn wake_raiders(w: &mut World, id: i32) {
@@ -168,16 +68,16 @@ pub fn wake_raiders(w: &mut World, id: i32) {
         }
     }
 }
-/// The raid of the raider, when it has one the game still knows.
-pub fn raid_of(w: &World, e: Entity) -> Option<&raid::Raid> {
+/// The raid of the raider, when it has one the host last described.
+pub fn raid_of(w: &World, e: Entity) -> Option<&RaidView> {
     let id = w.get::<Raider>(e)?.raid?;
-    w.get_resource::<RaidState>()?.raids.get(id)
+    w.get_resource::<RaidState>()?.views.get(&id)
 }
 /// `Raider.hasActiveRaid`: the raider's raid is active and not over.
 pub fn has_active_raid(w: &World, e: Entity) -> bool {
     raid_of(w, e).is_some_and(|r| r.active && !r.is_over())
 }
-/// The level's difficulty (0 peaceful .. 3 hard): the raids' own, 2 when no raid ever ran.
+/// The level's difficulty (0 peaceful .. 3 hard): the raids' own, 2 when none was set.
 pub fn difficulty(w: &World) -> i32 {
     w.get_resource::<RaidState>().map_or(2, |s| s.difficulty)
 }
@@ -188,6 +88,15 @@ pub struct Patrol {
     pub patrolling: bool,
     pub target: Option<[i32; 3]>,
     pub cooldown_until: u64,
+}
+/// `PatrollingMonster.setPatrolLeader`: the leader flag and `patrolling = true`; the raider's `Patrol` is made if it has none.
+pub fn set_patrol_leader(w: &mut World, e: Entity, on: bool) {
+    if let Some(mut p) = w.get_mut::<Patrol>(e) {
+        p.leader = on;
+        p.patrolling = true;
+    } else {
+        w.entity_mut(e).insert(Patrol { leader: on, patrolling: true, ..Default::default() });
+    }
 }
 /// A raider shouted at by its patrol, or one that attacks for good (`Raider.hasAggressiveTarget`).
 #[derive(Component, Clone, Copy, Debug)]
@@ -202,35 +111,198 @@ pub struct Celebrating;
 /// vindicator that walks off 96 blocks keeps it: see `suivi/ecs-ecarts.md`); then the raider is asked to walk to the raid.
 pub fn enlist(w: &mut World, e: Entity, r: Raider, opens_doors: bool) {
     w.entity_mut(e).insert(r);
-    if opens_doors && let Some(mut n) = w.get_mut::<NavParams>(e) {
+    if opens_doors && let Some(mut n) = w.get_mut::<crate::cow::NavParams>(e) {
         n.can_open_doors = true;
     }
     crate::behaviours::pathfind_to_raid::wake(w, e);
 }
-fn spawn_wave(w: &mut World, raid_id: i32, pos: [i32; 3], wave: i32, spawns: &[raid::Spawn]) {
-    let table = w.resource::<SpeciesTable>().0.clone();
-    for sp in spawns {
-        let Some(species) = table.iter().find(|s| s.name == sp.kind.entity()).copied() else { continue };
-        let at = (f64::from(pos[0]) + 0.5, f64::from(pos[2]) + 0.5);
-        let e = spawn_species(w, &species, at.0, at.1, spawn_seed(pos, wave));
-        teleport(w, e, horizon_core::geometry::Vec3::new(at.0, f64::from(pos[1]) + 1.0, at.1));
-        enlist(w, e, Raider { raid: Some(raid_id), wave, leader: sp.leader }, w.get::<crate::behaviours::break_door::BreakDoor>(e).is_some_and(|b| b.p.raid));
-        w.resource_mut::<Entered>().0.push(e);
-        let health = w.get::<Health>(e).map_or(24.0, |h| h.0);
-        let living: f32 = members(w, raid_id).iter().map(|m| m.health).sum();
-        let mut st = w.resource_mut::<RaidState>();
-        st.by_id.insert(id_of(e), e);
-        if let Some(r) = st.raids.get_mut(raid_id) {
-            if sp.leader {
-                r.set_leader(wave, id_of(e));
-            }
-            r.add_wave_mob(health, true, living);
+/// A creature the host made joins raid `raid` in wave `wave` (`Raid.joinRaid`): `enlist`, the doors opened as its `BreakDoor` says.
+pub fn enlist_raider(w: &mut World, e: Entity, raid: i32, wave: i32, leader: bool) {
+    let opens = w.get::<crate::behaviours::break_door::BreakDoor>(e).is_some_and(|b| b.p.raid);
+    enlist(w, e, Raider { raid: Some(raid), wave, leader }, opens);
+    // `Raid.joinRaid`: `setCanJoinRaid(true)`, `setTicksOutsideRaid(0)`.
+    set_can_join_raid(w, e, true);
+    w.entity_mut(e).remove::<RaidOutside>();
+}
+/// `Raider.setCanJoinRaid`, saved as `CanJoinRaid` (false when the entity is not `Saved`).
+pub fn set_can_join_raid(w: &mut World, e: Entity, on: bool) -> bool {
+    let mut patch = horizon_core::nbt::Compound::new();
+    patch.insert("CanJoinRaid".into(), horizon_core::nbt::Tag::Byte(i8::from(on)));
+    crate::nbt::merge(w, e, &patch)
+}
+/// `Raider.canJoinRaid`.
+pub fn can_join_raid(w: &World, e: Entity) -> bool {
+    matches!(crate::nbt::get(w, e, "CanJoinRaid"), Some(horizon_core::nbt::Tag::Byte(v)) if v != 0)
+}
+/// `Raider.ticksOutsideRaid`: what `Raid.updateRaiders` counted of the ticks the raider spent idle outside the village.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct RaidOutside(pub i32);
+/// A raider that came from a save with a `RaidId`: the host's raid does not know it yet. Told once it has a network id.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Unannounced;
+/// `Raids.getNearbyRaid`'s radius, squared (96 blocks).
+pub const VALID_RAID_RADIUS_SQR: f64 = 9216.0;
+/// `Raids.canJoinRaid`: the idle time past which a raider no longer joins.
+pub const MAX_NO_ACTION_TIME: i32 = 2400;
+/// The ticks of a raider's raid at the host: `Raider.ticksOutsideRaid` written by the host's `Raid.updateRaiders`.
+pub fn set_ticks_outside(w: &mut World, e: Entity, ticks: i32) {
+    if ticks == 0 {
+        w.entity_mut(e).remove::<RaidOutside>();
+    } else {
+        w.entity_mut(e).insert(RaidOutside(ticks));
+    }
+}
+/// `Raider.getTicksOutsideRaid`.
+pub fn ticks_outside(w: &World, e: Entity) -> i32 {
+    w.get::<RaidOutside>(e).map_or(0, |t| t.0)
+}
+/// `Raider.setCurrentRaid(null)` (the raid dropped it): no raid, no count outside.
+pub fn leave_raid(w: &mut World, e: Entity) {
+    if let Some(mut r) = w.get_mut::<Raider>(e) {
+        r.raid = None;
+    }
+    w.entity_mut(e).remove::<RaidOutside>();
+}
+/// `ServerLevel.getRaidAt`: the nearest active raid within 96 blocks of `at`.
+pub fn raid_at(w: &World, at: [i32; 3]) -> Option<(i32, RaidView)> {
+    let st = w.get_resource::<RaidState>()?;
+    let mut best: Option<(i32, RaidView, f64)> = None;
+    for (&id, v) in &st.views {
+        let d: f64 = (0..3).map(|i| (f64::from(v.center[i]) - f64::from(at[i])).powi(2)).sum();
+        if v.active && d < best.map_or(VALID_RAID_RADIUS_SQR, |b| b.2) {
+            best = Some((id, *v, d));
+        }
+    }
+    best.map(|(id, v, _)| (id, v))
+}
+
+pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
+    s.add_systems((announce.run_if(|w: &World| crate::goals::sparse_any::<Unannounced>(w)), step.run_if(any_active)));
+}
+fn any_active(w: &World) -> bool {
+    w.get_resource::<RaidState>().is_some_and(|s| s.views.values().any(|v| v.active))
+}
+/// The loaded raiders the host's raid has not heard of: `RaiderJoined` with `loaded` (`readAdditionalSaveData`: `addWaveMob` without
+/// counting the health, and the wave's leader, `PatrolLeader`). A raider with no network id yet waits.
+fn announce(w: &mut World) {
+    let mut q = w.query_filtered::<(Entity, &Raider, Option<&Patrol>), With<Unannounced>>();
+    let list: Vec<(Entity, Raider, bool)> = q.iter(w).map(|(e, r, p)| (e, *r, p.is_some_and(|p| p.leader))).collect();
+    for (e, r, patrol_leader) in list {
+        let Some(id) = crate::bridge::ids::id_of(w, e) else { continue };
+        w.entity_mut(e).remove::<Unannounced>();
+        let Some(raid) = r.raid else { continue };
+        let leader = r.leader || patrol_leader;
+        if let Some(mut m) = w.get_mut::<Raider>(e) {
+            m.leader = leader;
+        }
+        w.resource_mut::<crate::goals::Events>().host.raider_joined(raid, id, r.wave, leader, true);
+    }
+}
+/// `Raider.aiStep` while a raid is active: a raider fighting a player in a raid is never idle (`noActionTime = 0`), and every 20 ticks
+/// a raider with no raid that can join one joins the raid it stands in (`Raid.joinRaid` at the raid's wave). Runs only while the host
+/// holds an active raid view, over the raiders (the `Raider` component), never the whole world.
+fn step(w: &mut World) {
+    use crate::targeting::{Target, Who};
+    let mut fighting = w.query::<(Entity, &Raider, &Target)>();
+    let busy: Vec<Entity> = fighting
+        .iter(w)
+        .filter(|(_, r, t)| r.raid.is_some() && match t.who {
+            Who::Player(_) => true,
+            Who::Entity(x) => w.get::<RaidBait>(x).is_some(),
+        })
+        .map(|(e, ..)| e)
+        .collect();
+    for e in busy {
+        crate::despawn::touch(w, e);
+    }
+    if w.resource::<crate::cow::Clock>().0 % 20 != 0 {
+        return;
+    }
+    let mut free = w.query::<(Entity, &Raider, &crate::cow::Pos)>();
+    let cands: Vec<(Entity, [i32; 3])> = free
+        .iter(w)
+        .filter(|(_, r, _)| r.raid.is_none())
+        .map(|(e, _, p)| (e, [p.0.x.floor() as i32, p.0.y.floor() as i32, p.0.z.floor() as i32]))
+        .collect();
+    for (e, at) in cands {
+        if let Some((raid, view)) = raid_at(w, at) {
+            join_raid(w, e, raid, view.wave);
+        }
+    }
+}
+/// A creature a raider fighting it never idles for (`Raider.aiStep`: a target that is an iron golem sets `noActionTime = 0`), as the player is.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct RaidBait;
+pub static BAIT: crate::rules::Rule = crate::rules::Rule { name: "raid_bait", equip: equip_bait, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_bait(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(RaidBait);
+}
+/// A raider that, born by natural spawning, can not join a raid (`Raider.finalizeSpawn`: the witch).
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct NoRaidWhenNatural;
+pub static NO_RAID_WHEN_NATURAL: crate::rules::Rule =
+    crate::rules::Rule { name: "no_raid_when_natural", equip: equip_no_raid, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_no_raid(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(NoRaidWhenNatural);
+}
+/// `Raider.finalizeSpawn` then `PatrollingMonster.finalizeSpawn` (the species' own gear and `Mob`'s draws come around it): `canJoinRaid`; a
+/// spawn that is not a patrol, an event or a structure leads one time in 17 when the species can; a leader wears the banner; a patrol patrols.
+pub fn finalize_raider(w: &mut World, e: Entity, reason: crate::spawn_reason::SpawnReason, r: &mut impl horizon_core::random::RandomSource) {
+    use crate::spawn_reason::SpawnReason as Why;
+    let bits = w.get::<crate::cow::SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
+    if bits & crate::cow::species::tag::RAIDER == 0 {
+        return;
+    }
+    set_can_join_raid(w, e, !(reason == Why::Natural && w.get::<NoRaidWhenNatural>(e).is_some()));
+    let roll = !matches!(reason, Why::Patrol | Why::Event | Why::Structure);
+    if roll && r.next_float() < 0.06 && crate::behaviours::obtain_banner::can_be_leader(w, e) {
+        let p = w.get::<Patrol>(e).copied().unwrap_or_default();
+        w.entity_mut(e).insert(Patrol { leader: true, ..p });
+    }
+    if w.get::<Patrol>(e).is_some_and(|p| p.leader) {
+        crate::behaviours::obtain_banner::wear_banner(w, e);
+    }
+    if reason == Why::Patrol {
+        let mut p = w.get::<Patrol>(e).copied().unwrap_or_default();
+        p.patrolling = true;
+        w.entity_mut(e).insert(p);
+    }
+}
+/// `Raids.canJoinRaid`: alive, `canJoinRaid`, and idle for no more than `MAX_NO_ACTION_TIME`.
+pub fn can_join(w: &World, e: Entity) -> bool {
+    w.get::<crate::cow::Health>(e).is_some_and(|h| h.0 > 0.0) && can_join_raid(w, e) && crate::despawn::idle_for(w, e).unwrap_or(0) <= MAX_NO_ACTION_TIME
+}
+/// `Raid.joinRaid(level, groupsSpawned, raider, null, true)` for a raider that has no raid and may join one: it is enlisted at the raid's
+/// wave and the host is told. False when it cannot join or has no network id.
+pub fn join_raid(w: &mut World, e: Entity, raid: i32, wave: i32) -> bool {
+    if !can_join(w, e) {
+        return false;
+    }
+    let Some(id) = crate::bridge::ids::id_of(w, e) else { return false };
+    enlist_raider(w, e, raid, wave, false);
+    w.resource_mut::<crate::goals::Events>().host.raider_joined(raid, id, wave, false, false);
+    true
+}
+/// `PathfindToRaidGoal.recruitNearby`: the raiders without a raid within 16 blocks of `e`'s box that can join one join `e`'s raid, when
+/// that raid is active. One bounded spatial query, run by the goal every 20 ticks of its own.
+pub fn recruit_nearby(w: &mut World, e: Entity) {
+    const REACH: f64 = 16.0;
+    let Some(raid) = w.get::<Raider>(e).and_then(|r| r.raid) else { return };
+    let Some(view) = w.get_resource::<RaidState>().and_then(|s| s.views.get(&raid)).copied().filter(|v| v.active && !v.is_over()) else { return };
+    let area = crate::area::reach_box(w, e, REACH);
+    for c in crate::area::creatures_in(w, area, e) {
+        if w.get::<Raider>(c).is_some() && !has_active_raid(w, c) {
+            join_raid(w, c, raid, view.wave);
         }
     }
 }
 /// `Raider.getCurrentRaid`'s centre, when the raid is active and not over: where `PathfindToRaid` walks to.
 pub fn raid_centre(w: &World, e: Entity) -> Option<[i32; 3]> {
     let id = w.get::<Raider>(e)?.raid?;
-    let r = w.get_resource::<RaidState>()?.raids.get(id)?;
+    let r = w.get_resource::<RaidState>()?.views.get(&id)?;
     (r.active && !r.is_over()).then_some(r.center)
 }

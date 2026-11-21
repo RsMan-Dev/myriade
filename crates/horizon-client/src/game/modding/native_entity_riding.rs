@@ -316,22 +316,24 @@ impl Game<'_> {
     /// holder or saved holder is unavailable, stale or in a parked level. Does not load a level.
     pub(super) fn entity_leash_holder(&self, entity: EntityRef) -> Option<LeashHolder> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => {
-                let mob = self.remote_entities.iter().find(|m| m.id == id)?;
-                if mob.extra.leash_pending.is_some() {
-                    return None;
-                }
-                self.native_leash_holder(mob.extra.leash, mob.extra.leash_player)
-            }
-            Target::Boat(id) => {
-                let boat = self.boats.iter().find(|b| b.id == id)?;
-                if boat.leash_pending.is_some() {
-                    return None;
-                }
-                self.native_leash_holder(boat.leash, self.boat_leash_player(boat))
-            }
+            Target::Mob(id) | Target::Boat(id) => self.ecs_leash_holder_ref(id),
             _ => None,
         }
+    }
+    /// The live holder of the lead on the ECS entity `id` as a handle: `Unleashed` with no lead; `None` when the entity or the
+    /// holder is not in the level.
+    fn ecs_leash_holder_ref(&self, id: u32) -> Option<LeashHolder> {
+        use horizon_ecs_proto::leash::Holder as EcsHolder;
+        self.ecs.entity_of(id)?;
+        Some(match self.ecs_leash_holder(id) {
+            None => LeashHolder::Unleashed,
+            Some(EcsHolder::Knot(pos)) => LeashHolder::Knot(pos),
+            Some(EcsHolder::Player(player)) => LeashHolder::Entity(self.entity(player)?),
+            Some(EcsHolder::Entity(e)) => {
+                let held = horizon_ecs_proto::bridge::ids::id_of(self.ecs.world()?, e)?;
+                LeashHolder::Entity(self.entity(held)?)
+            }
+        })
     }
     /// Gives the holder the mob's or boat's lead (`Leashable.setLeashedTo`): the entity lets go
     /// of any other holder and gets off its vehicle, where a mod's `mob_ride` lets it. As
@@ -551,7 +553,10 @@ impl Game<'_> {
                 Target::Player if self.keys.held(horizon_client::actions::Action::Sneak) => {
                     return None;
                 }
-                Target::Mob(id) if self.ecs.exists(id) && !self.ecs.boarding_ready(id) => {
+                Target::Mob(id)
+                    if self.ecs.exists(id)
+                        && !self.ecs.entity_of(id).is_some_and(|e| self.ecs.boarding_ready(e)) =>
+                {
                     return None;
                 }
                 Target::Mob(id)
@@ -572,9 +577,9 @@ impl Game<'_> {
         }
         match vehicle {
             Target::Boat(id) => {
-                let index = self.boats.iter().position(|b| b.id == id)?;
-                if self.boat_passengers(id) >= self.boats[index].max_passengers()
-                    || (!force && !self.boat_has_room(index))
+                let max = self.ecs.boat_max_passengers(id)?;
+                if self.boat_passengers(id) >= max
+                    || (!force && !self.boat_has_room(id))
                 {
                     return None;
                 }

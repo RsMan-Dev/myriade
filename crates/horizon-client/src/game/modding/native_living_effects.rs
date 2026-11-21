@@ -296,7 +296,7 @@ impl Game<'_> {
                 if cancel {
                     return false;
                 }
-                self.ecs.remove_effect(id, def.index)
+                self.ecs.remove_effect(id, def.index as i32)
             }
             Some(Target::Mob(id)) => {
                 let Some(amplifier) = self.remote_mob(id)
@@ -339,7 +339,7 @@ impl Game<'_> {
                     .iter()
                     .filter_map(|e| e.registry_index.map(|index| (index, e.amplifier)))
                     .collect();
-                let keep: Vec<usize> = held
+                let keep: Vec<i32> = held
                     .iter()
                     .filter(|(name, amplifier)| {
                         let mut cancel = false;
@@ -348,7 +348,7 @@ impl Game<'_> {
                         }
                         cancel
                     })
-                    .map(|(name, _)| *name)
+                    .map(|(name, _)| *name as i32)
                     .collect();
                 self.ecs.retain_effects(id, &keep)
             }

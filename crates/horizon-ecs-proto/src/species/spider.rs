@@ -36,5 +36,6 @@ pub static DEF: Def = Def {
     rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Rideable, Cap::PoisonImmune]),
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

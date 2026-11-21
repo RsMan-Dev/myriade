@@ -15,7 +15,7 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 4, &nearest_target::Params { players: false, types: &["minecraft:iron_golem"], must_see: true, ..nearest_target::Params::DEFAULT }),
     ],
     goals: &[
-        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::CANNOT_LEAD),
         Entry::new(&crate::behaviours::pathfind_to_raid::MODULE, 3, &crate::behaviours::pathfind_to_raid::Params::DEFAULT),
         Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
         Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
@@ -42,5 +42,6 @@ pub static DEF: Def = Def {
     caps: Some(&[crate::behaviours::Cap::Transform, crate::behaviours::Cap::Solid, crate::behaviours::Cap::Body, crate::behaviours::Cap::Living, crate::behaviours::Cap::Goals, crate::behaviours::Cap::Head, crate::behaviours::Cap::Targets, crate::behaviours::Cap::Locomotion]),
     // The raider's seat (`Ravager.getPassengers`): a carrier that only takes creatures, one seat at the centre.
     rules: &[RuleEntry::new(&RIDE, &RideParams::CARRIER)],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

@@ -500,7 +500,7 @@ impl Game<'_> {
         if let Some(i) = self.boats.iter().position(|b| b.id as i32 == id) {
             // ChestBoat.interact, then AbstractBoat.interact.
             let boat = &self.boats[i];
-            let room = self.boat_has_room(i);
+            let room = self.boat_has_room(boat.id);
             if boat.chest && (sneaking || self.riding.is_some() || !room) {
                 return Some(Verb::Open);
             }

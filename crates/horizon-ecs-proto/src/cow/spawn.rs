@@ -76,6 +76,7 @@ pub fn living_bundle(sp: &Species) -> impl Bundle {
         Frozen(0),
         Air(sp.max_air),
         Resist(sp.knockback_resistance),
+        Restitution(LIVING_RESTITUTION),
         Immune(crate::rules::attrs_of(sp.rules).immune | cap_bit(sp, crate::behaviours::Cap::FireImmune, crate::effects::IMMUNE_FIRE) | cap_bit(sp, crate::behaviours::Cap::WitherImmune, crate::effects::IMMUNE_WITHER) | cap_bit(sp, crate::behaviours::Cap::PoisonImmune, crate::effects::IMMUNE_POISON) | cap_bit(sp, crate::behaviours::Cap::WeaknessImmune, crate::effects::IMMUNE_WEAKNESS)),
     )
 }
@@ -172,6 +173,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     if sp.persistent {
         e.insert(crate::despawn::Persistent);
     }
+    if sp.not_in_peaceful {
+        e.insert(crate::bridge::host_peaceful::NotInPeaceful);
+    }
     if has(crate::behaviours::Cap::Rideable) {
         e.insert(crate::mount::Mount::default());
     }
@@ -265,6 +269,7 @@ pub fn schedule() -> Schedule {
     crate::cart_variants::register(&mut s);
     crate::general::register(&mut s);
     crate::colony_register::register(&mut s);
+    crate::raids::register(&mut s);
     crate::tnt_tick::register(&mut s);
     crate::move_events::register(&mut s);
     crate::vehicle_push::register(&mut s);

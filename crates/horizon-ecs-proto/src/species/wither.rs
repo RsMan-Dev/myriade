@@ -35,5 +35,6 @@ pub static DEF: Def = Def {
     ],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Steer { speed: 0.5, accel: 0.6 }, max_turn: 10.0, hovers: false, ..fly::Params::DEFAULT }))],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune, Cap::WitherImmune]),
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

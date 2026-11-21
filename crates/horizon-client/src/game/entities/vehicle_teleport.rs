@@ -47,7 +47,7 @@ pub(super) fn absolute_pitch(pitch: f32) -> Option<f32> {
 
 /// The saved form of a carried entity, placed at `at` as a teleport places it (`set_arrival_pose`), turned to `rotation` (NaN axes
 /// keep the entity's own), keeping its motion when `keep`; then a fresh add (`mark_fresh`).
-fn arrival_pose(tag: &mut Tag, at: [f64; 3], rotation: Option<[f32; 2]>, keep: bool) {
+pub(in crate::game) fn arrival_pose(tag: &mut Tag, at: [f64; 3], rotation: Option<[f32; 2]>, keep: bool) {
     let [yaw, pitch] = horizon_client::entity_nbt::rotation(tag);
     let [yaw, pitch] = rotation.map_or([yaw, pitch], |[y, p]| {
         [if y.is_finite() { y } else { yaw }, absolute_pitch(p).unwrap_or(pitch)]

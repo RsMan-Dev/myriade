@@ -135,7 +135,7 @@ pub struct TotemAsked {
 /// The end of a lethal hit that `apply_damage` queued: a totem in a hand saves the entity (the host is asked first while it listens,
 /// `TotemWatched`), except from the void (`#bypasses_invulnerability`); else it dies.
 pub(crate) fn lethal(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeting::Who>, at: [f64; 3], health: f32) {
-    if w.get_entity(e).is_err() || w.get::<TotemAsked>(e).is_some() {
+    if w.get_entity(e).is_err() || w.get::<TotemAsked>(e).is_some() || crate::tear_down::is_dead(w, e) {
         return;
     }
     if damage != "out_of_world"
@@ -168,7 +168,21 @@ pub fn resolve_totem(w: &mut World, e: Entity, cancel: bool) -> bool {
 /// `LivingEntity.die`: the death is said, the entity leaves the index; under `DeathPolicy.vetoable` it stays `Dying` for the host's
 /// hook, else its loot and its drops leave and it goes.
 fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeting::Who>, at: [f64; 3], health: f32) {
+    // The death happens once: a body already dying (lingering or held) is not killed again.
+    if w.get_entity(e).is_err() || crate::tear_down::is_dead(w, e) {
+        return;
+    }
     w.resource_mut::<crate::goals::Events>().host.death(e, damage, by, at);
+    if let Some(id) = crate::bridge::ids::id_of(w, e) {
+        if !crate::remove_killed::silent(w, e) {
+            w.resource_mut::<crate::goals::Events>().host.death_animation(id, at);
+        }
+        if let Some(r) = w.get::<crate::raids::Raider>(e).copied()
+            && let Some(raid) = r.raid
+        {
+            w.resource_mut::<crate::goals::Events>().host.raider_died(raid, id, by, r.wave, r.leader, health);
+        }
+    }
     if let Some(c) = w.get::<crate::cow::Cell>(e).map(|c| c.0)
         && c != u32::MAX
     {
@@ -183,8 +197,12 @@ fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeti
     crate::loot::on_death(w, e);
     crate::item::spill_destroyed(w, e);
     crate::spawn_trial::forget(w, e);
-    if let Ok(m) = w.get_entity_mut(e) {
-        m.despawn();
+    if crate::remove_killed::silent(w, e) {
+        if let Ok(m) = w.get_entity_mut(e) {
+            m.despawn();
+        }
+    } else {
+        crate::tear_down::linger(w, e);
     }
 }
 

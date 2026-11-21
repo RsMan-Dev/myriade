@@ -685,8 +685,9 @@ impl Game<'_> {
     fn interact_armor_stand_ecs(&mut self, target: Option<InteractTarget>) -> bool {
         let (id, point) = match target {
             Some(t) => {
-                let Some(p) = self.ecs.position(t.id) else { return false };
-                (t.id, [p[0] + t.location[0], p[1] + t.location[1], p[2] + t.location[2]])
+                let Ok(tid) = u32::try_from(t.id) else { return false };
+                let Some(p) = self.ecs.position(tid) else { return false };
+                (tid, [p[0] + t.location[0], p[1] + t.location[1], p[2] + t.location[2]])
             }
             None => {
                 let Some((id, d, point)) = self.ecs_stand_hit() else { return false };
@@ -700,10 +701,13 @@ impl Game<'_> {
         let at = pos;
         let held = self.held().cloned();
         if let Some(stack) = held.as_ref().filter(|h| &*h.item == "minecraft:name_tag") {
-            let name = self.ecs.world_mut().and_then(|w| ecs_stand::name_with_tag(w, e, stack));
+            let name = stack.custom_name();
             let Some(name) = name else { return false };
             let alive = self.ecs.world().and_then(|w| w.get::<Health>(e)).is_some_and(|h| h.0 > 0.0);
             if alive {
+                if let Some(w) = self.ecs.world_mut() {
+                    horizon_ecs_proto::custom_name::set(w, e, Some(name.clone()));
+                }
                 self.consume_held();
                 if let (Some(player), Some(player_name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
                     self.native_player_name_entity(player, &player_name, id, &name);
@@ -837,7 +841,7 @@ impl Game<'_> {
     /// `ArmorStand.hurtServer` for a blow on an ECS stand: P's `stand::blow` says wobble or break; the host plays the sounds and
     /// posts the game events from that answer. True: the blow was taken.
     fn break_armor_stand_by_hit_ecs(&mut self, e: EcsEntity, creative: bool, always_kills: bool, by: Option<super::commands::Target>) -> bool {
-        let now = self.world.game_time;
+        let now = self.world.game_time.max(0) as u64;
         let Some(at) = self.ecs.world().and_then(|w| w.get::<Pos>(e)).map(|p| [p.0.x, p.0.y, p.0.z]) else { return false };
         let Some(w) = self.ecs.world_mut() else { return false };
         match ecs_stand::blow(w, e, now, creative, always_kills) {
@@ -1272,7 +1276,6 @@ impl Game<'_> {
         // the first stand travels. A server's stand rides nothing (`vehicle`
         // is set on a server's client only), but mobs can ride it (`/ride`):
         // `isPassengerOfSameVehicle` leaves those riders out.
-        let mut obstacles: Option<horizon_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
         for i in 0..self.armor_stands.len() {
             let at = self.armor_stands[i].position;
@@ -1288,9 +1291,6 @@ impl Game<'_> {
             self.armor_stand_location_effects(i, false);
             // ArmorStand.travel: a marker or a NoGravity stand does not move.
             let travels = !self.armor_stands[i].marker && !self.armor_stands[i].no_gravity;
-            if travels && obstacles.is_none() {
-                obstacles = Some(self.stand_entity_collisions());
-            }
             // LivingEntity.baseTick: air below the max refills by 4 a tick
             // (increaseAirSupply), in water too, as armor_stand is in the
             // can_breathe_under_water tag. A stand's air is its loaded tag's.
@@ -1325,10 +1325,10 @@ impl Game<'_> {
             // Entity.collide asks for the entities meeting the box stretched
             // by this tick's movement (the fluid push is already in it).
             nearby.clear();
-            if let Some(grid) = obstacles.as_mut().filter(|_| travels) {
-                let area = a.bounds().expand_towards(a.velocity);
-                let area = area.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-                grid.near_except(area, Some(a.id), &mut nearby);
+            if travels {
+                // The ECS leaves out the stand itself and what shares its vehicle (`collides_with`).
+                let bounds = a.bounds().inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
+                nearby = self.ecs.solid_colliders(a.id, bounds, [a.velocity.x, a.velocity.y, a.velocity.z]);
             }
             let (world, registry, facts, collision) = (
                 &self.world,
@@ -1451,23 +1451,19 @@ impl Game<'_> {
     /// before mobs here, while vanilla ticks a stand that joined after the
     /// pushing `shulker` (one placed on it) after the shulker: `shove` makes
     /// up for the order. A shulker box's lid moves it after every entity's tick.
-    /// `grid` holds the stands' obstacles, built once per lid at its first stand.
     pub(super) fn lid_shoves_armor_stand(
         &mut self,
         i: usize,
         shulker: Option<u32>,
         delta: Vec3,
-        grid: &mut Option<horizon_client::entities::ObstacleGrid>,
     ) {
         // `join` (the shulker's grip on a mob) has no component in P yet: an ECS mob is not read here (see the report).
         let joined = shulker.and_then(|id| self.remote_entities.iter().find(|m| m.id == id).map(|m| m.join));
-        let grid = grid.get_or_insert_with(|| self.stand_entity_collisions());
-        let mut nearby = Vec::new();
         let a = &mut self.armor_stands[i];
         // Entity.collide: the entities meeting the box stretched by the push.
         let reach = a.bounds().expand_towards(delta);
         let reach = reach.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        grid.near_except(reach, Some(a.id), &mut nearby);
+        let nearby = self.ecs.solid_colliders(a.id, reach, [0.0; 3]);
         let scene = horizon_client::collisions::SceneCollisions {
             world: &self.world,
             binding: self.collision,
@@ -1492,7 +1488,7 @@ impl Game<'_> {
     /// ravager's box grown by 4) takes `strongKnockback` from the ravager at
     /// `from`. Its `mobAttack` leaves the stand whole (`ArmorStand.hurtServer`:
     /// not a damage type that breaks one).
-    pub(super) fn roar_pushes_armor_stands(&mut self, area: Aabb, from: [f64; 3]) {
+    pub(in crate::game) fn roar_pushes_armor_stands(&mut self, area: Aabb, from: [f64; 3]) {
         for a in self.armor_stands.iter_mut() {
             let (width, height) = stand_box(a);
             let half = f64::from(width) / 2.0;
@@ -1729,8 +1725,8 @@ impl Game<'_> {
             .world()
             .and_then(|w| w.get::<EcsStand>(e))
             .is_some_and(|s| s.flags & (ecs_stand::INVISIBLE | ecs_stand::MARKER) != 0);
-        let from_player = matches!(causing, Some(Target::Player | Target::Guest(_)));
-        let immune = self.ecs.world().is_some_and(|w| ecs_equipment::immune_to_damage(w, e, damage_type, from_player));
+        let equipment = (0..6).map(|slot| self.ecs.equipment_stack(id, slot)).collect();
+        let immune = self.stand_immune_to_damage(equipment, damage_type, causing);
         if (invulnerable && !creative) || hidden || immune {
             return false;
         }
@@ -1833,7 +1829,7 @@ impl Game<'_> {
         if (invulnerable && !creative)
             || a.invisible
             || a.marker
-            || self.stand_immune_to_damage(i, damage_type, causing)
+            || self.stand_immune_to_damage(self.armor_stands[i].equipment.iter().cloned().collect(), damage_type, causing)
         {
             return false;
         }
@@ -1900,13 +1896,12 @@ impl Game<'_> {
     /// effect whose requirements hold for `damage_type` and `causing`.
     fn stand_immune_to_damage(
         &mut self,
-        i: usize,
+        equipment: Vec<Option<ItemStack>>,
         damage_type: &str,
         causing: Option<super::commands::Target>,
     ) -> bool {
         use super::commands::Target;
         let mut checks = Vec::new();
-        let equipment = &self.armor_stands[i].equipment;
         for (stack, slot) in equipment.iter().zip(ArmorStand::SLOTS) {
             let Some(stack) = stack else { continue };
             let armor = matches!(slot, "head" | "chest" | "legs" | "feet");

@@ -18,6 +18,7 @@ pub fn set(w: &mut World, e: Entity, name: Option<String>) {
         Some(n) => w.entity_mut(e).insert(CustomName(n)),
         None => w.entity_mut(e).remove::<CustomName>(),
     };
+    crate::bridge::view::mark(w, e);
 }
 
 pub fn get(w: &World, e: Entity) -> Option<String> {
@@ -31,4 +32,5 @@ pub fn set_visible(w: &mut World, e: Entity, on: bool) {
     } else {
         w.entity_mut(e).remove::<NameVisible>();
     }
+    crate::bridge::view::mark(w, e);
 }

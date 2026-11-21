@@ -38,6 +38,24 @@ impl EcsWorld {
         seat::unseat_player(self.world_mut(), player)
     }
     /// The network id of an entity that has one (no id is bound here).
+    /// The vehicles that carry a rider: the index `RiddenVehicles` marked at each boarding (`seat::take`, `mount::ride`), pruned of the
+    /// vehicles found empty or gone. Costs the number of ridden vehicles; nothing walks the mounts.
+    pub fn ridden_vehicles(&mut self) -> Vec<Entity> {
+        let w = self.world_mut();
+        let Some(mut index) = w.remove_resource::<seat::RiddenVehicles>() else { return Vec::new() };
+        index.0.retain(|&v| {
+            w.get::<crate::mount::Mount>(v).is_some_and(|m| m.rider.is_some() || m.passenger.is_some())
+                || w.get::<seat::Seats>(v).is_some_and(|s| s.riders.iter().any(Option::is_some))
+        });
+        let mut vehicles: Vec<Entity> = index.0.iter().copied().collect();
+        w.insert_resource(index);
+        vehicles.sort_unstable();
+        vehicles
+    }
+    /// The creature riders of `vehicle` as `Passengers` writes them: its seats, then its mount's riders (`rides::passengers_of`).
+    pub fn passengers_of(&self, vehicle: Entity) -> Vec<Entity> {
+        crate::nbt_fields::rides::passengers_of(self.world(), vehicle)
+    }
     pub fn id_of(&self, e: Entity) -> Option<u32> {
         ids::id_of(self.world(), e)
     }

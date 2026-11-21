@@ -602,6 +602,7 @@ impl Game<'_> {
                             .find(|m| m.id == id)
                             .map(|m| self.mob_entity(m))
                     })
+                    .or_else(|| self.ecs_view(id))
             }
         });
         let projectile = match damage.as_str() {
@@ -697,6 +698,9 @@ impl Game<'_> {
         if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
             return Some(m.kind.id.clone());
         }
+        if let Some(kind) = self.ecs_kind(id) {
+            return Some(kind);
+        }
         // A mob that blew up this tick has left the list, but vanilla's player
         // dies inside that blast, before the source is discarded.
         if let Some((_, kind)) = self.combat.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
@@ -762,6 +766,7 @@ impl Game<'_> {
                     .find(|m| m.id == id)
                     .map(|m| self.mob_entity(m))
             })
+            .or_else(|| self.ecs_view(id))
     }
 
     /// The scalar death-tail/death-message source. `living_death` uses the

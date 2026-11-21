@@ -1049,6 +1049,8 @@ macro_rules! define_entity_handles {
                         if self$(.$list)+.get(i).is_some_and(|e| e.id() == id) { Some(hint) }
                         else { self$(.$list)+.iter().position(|e| e.id() == id).map(EntityHandle::$kind) }
                     })*
+                    // An ECS entity has no index: its id is the handle.
+                    EntityHandle::Ecs(_) => Some(hint),
                 }
             }
 
@@ -1058,6 +1060,12 @@ macro_rules! define_entity_handles {
                     $(EntityHandle::$kind(i) => {
                         self$(.$list)+.remove(i);
                     })*
+                    // No typed list holds an ECS entity: the level despawns it (`Entity.discard`).
+                    EntityHandle::Ecs(id) => {
+                        if let Some(e) = self.ecs.entity_of(id) {
+                            self.ecs.despawn(e);
+                        }
+                    }
                 }
             }
 

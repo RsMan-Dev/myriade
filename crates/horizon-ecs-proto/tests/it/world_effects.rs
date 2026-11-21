@@ -49,7 +49,7 @@ fn cube() -> [Aabb; 1] {
 fn push(h: &mut Herd, piston: MovingPistonState, movement: Direction, slime: bool) {
     let boxes = cube();
     let block = PushBlock { boxes: &boxes, slime, honey: false, sticky_top: 0.0 };
-    piston_push(&mut h.world, HERE, piston, 0.5, movement, &block);
+    piston_push(&mut h.world, HERE, piston, 0.5, movement, &block, None);
 }
 
 /// The displacement the kernels give the cow's box for that push, alone in its tick: the collided amount, then the 0.51 limit.
@@ -182,7 +182,7 @@ fn a_downward_column_of_bubbles_sinks_a_cow_faster_than_no_column() {
 fn honey_push(h: &mut Herd, movement: Direction) {
     let boxes = [Aabb::new(Vec3::ZERO, Vec3::new(1.0, 0.9375, 1.0))];
     let block = PushBlock { boxes: &boxes, slime: false, honey: true, sticky_top: 0.9375 };
-    piston_push(&mut h.world, HERE, piston(Direction::East, true), 0.5, movement, &block);
+    piston_push(&mut h.world, HERE, piston(Direction::East, true), 0.5, movement, &block, None);
 }
 
 #[test]
@@ -224,4 +224,96 @@ fn honey_leaves_a_cow_standing_beside_it() {
     honey_push(&mut h, Direction::East);
     let x1 = h.world.get::<Pos>(e).unwrap().0.x;
     assert!((x1 - x0).abs() < 1e-9, "the honey moved a cow it does not stick: {} -> {x1}", x0);
+}
+
+#[test]
+fn a_cow_loses_its_velocity_against_the_wall_a_piston_pushes_it_into() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    for y in 1..=14 {
+        for z in -3..=3 {
+            h.set_block(2, y, z, "minecraft:stone");
+        }
+    }
+    h.tick();
+    let e = indexed_cow(&mut h, 1.55 - f64::from(horizon_ecs_proto::cow::species().width) / 2.0, 1.0, 0.5, 20);
+    h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::new(0.3, 0.0, 0.2);
+    for _ in 0..4 {
+        push(&mut h, piston(Direction::East, true), Direction::East, false);
+    }
+    let v = h.world.get::<Vel>(e).unwrap().0;
+    assert_eq!(v.x, 0.0, "the wall left the cow its east velocity");
+    assert_eq!(v.z, 0.2, "an axis the push did not cut lost its velocity");
+}
+
+#[test]
+fn a_cow_is_pushed_at_most_half_a_block_a_tick_per_axis() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 21);
+    let x0 = h.world.get::<Pos>(e).unwrap().0.x;
+    for _ in 0..3 {
+        push(&mut h, piston(Direction::East, true), Direction::East, false);
+    }
+    let moved = h.world.get::<Pos>(e).unwrap().0.x - x0;
+    assert!(moved > 0.0 && moved <= 0.51 + 1e-9, "three pushes in one tick moved the cow {moved}, the limit is 0.51");
+}
+
+#[test]
+fn a_sideways_push_clears_the_cows_ground_flag() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 22);
+    h.world.get_mut::<Contact>(e).unwrap().on_ground = true;
+    push(&mut h, piston(Direction::East, true), Direction::East, false);
+    assert!(!h.world.get::<Contact>(e).unwrap().on_ground, "Entity.move by a sideways push sets the flag from the downward part only");
+}
+
+#[test]
+fn a_piston_leaves_an_ignore_entity_creature_where_it_is() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 23);
+    h.world.entity_mut(e).insert(horizon_ecs_proto::world_push::PistonIgnored);
+    let x0 = h.world.get::<Pos>(e).unwrap().0.x;
+    push(&mut h, piston(Direction::East, true), Direction::East, false);
+    assert_eq!(h.world.get::<Pos>(e).unwrap().0.x, x0, "an IGNORE_ENTITY creature was moved by the piston");
+}
+
+/// One push with a mod's gate: it answers `answer` to the asked displacement; returns how many times it was asked.
+fn gated_push(h: &mut Herd, answer: impl Fn(Vec3) -> Option<Vec3>) -> u32 {
+    let boxes = cube();
+    let block = PushBlock { boxes: &boxes, slime: false, honey: false, sticky_top: 0.0 };
+    let (mut calls, mut next) = (0_u32, 100_u32);
+    let mut alloc = || {
+        next += 1;
+        next
+    };
+    let mut arm = |_id: u32, _kind: &str, want: Vec3| {
+        calls += 1;
+        answer(want)
+    };
+    let gate = horizon_ecs_proto::world_push::PushGate { alloc: &mut alloc, arm: &mut arm };
+    piston_push(&mut h.world, HERE, piston(Direction::East, true), 0.5, Direction::East, &block, Some(gate));
+    calls
+}
+
+#[test]
+fn a_mod_cancelling_the_move_keeps_the_cow_still() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 24);
+    let x0 = h.world.get::<Pos>(e).unwrap().0.x;
+    let calls = gated_push(&mut h, |_| None);
+    assert!(calls >= 1, "the gate was not asked");
+    assert_eq!(h.world.get::<Pos>(e).unwrap().0.x, x0, "a cancelled move still moved the cow");
+}
+
+#[test]
+fn a_mod_replacing_the_move_changes_the_push() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = indexed_cow(&mut h, 0.1, 1.0, 0.5, 25);
+    let x0 = h.world.get::<Pos>(e).unwrap().0.x;
+    gated_push(&mut h, |want| Some(Vec3::new(want.x * 0.5, want.y, want.z)));
+    let half = h.world.get::<Pos>(e).unwrap().0.x - x0;
+    let mut free = Herd::new_awake(0, 6.0, true, false, 3);
+    let f = indexed_cow(&mut free, 0.1, 1.0, 0.5, 25);
+    push(&mut free, piston(Direction::East, true), Direction::East, false);
+    let whole = free.world.get::<Pos>(f).unwrap().0.x - x0;
+    assert!(half > 0.0 && (half - whole * 0.5).abs() < 1e-6, "the replaced move gave {half}, half of the plain push {whole}");
 }

@@ -56,6 +56,9 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
         return false;
     }
     lie_down(w, e, p);
+    // `Villager.startSleeping`: the time of the night, read by `summon_defender::wants`.
+    let now = now_of(w, e);
+    w.entity_mut(e).insert(crate::behaviours::summon_defender::LastSlept(now));
     true
 }
 fn stop(w: &mut World, e: Entity, _: &Ctx) {

@@ -12,6 +12,7 @@ pub fn set(w: &mut World, e: Entity, on: bool) {
     } else {
         w.entity_mut(e).remove::<NoGravity>();
     }
+    crate::bridge::view::mark(w, e);
 }
 
 pub fn get(w: &World, e: Entity) -> bool {

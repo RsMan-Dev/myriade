@@ -34,7 +34,10 @@ pub(super) fn shoulder_variants(extra: Option<&Tag>) -> [Option<i32>; 2] {
 impl Game<'_> {
     /// `ServerPlayer.setEntityOnShoulder` for a parrot that touched its
     /// owner: stored in the first free slot, the parrot gone from the world.
-    pub(super) fn parrot_to_shoulder(&mut self, mob: u32) {
+    pub(in crate::game) fn parrot_to_shoulder(&mut self, mob: u32) {
+        if self.ecs.is_active() {
+            return self.ecs_parrot_to_shoulder(mob);
+        }
         let Some(i) = self
             .remote_entities
             .iter()
@@ -42,35 +45,42 @@ impl Game<'_> {
         else {
             return;
         };
-        let Some(p) = self.player.as_ref() else {
-            return;
-        };
         // The acting player must be the saved owner (`getOwner`).
         if !horizon_client::mobs::tame::owned_by(self.remote_entities[i].extra.owner, self.acting_uuid()) {
             return;
         }
+        if self.put_on_shoulder(|g| g.mob_tree_nbt(i)) {
+            self.remote_entities[i].removed = true;
+        }
+    }
+
+    /// The player's half of `setEntityOnShoulder`: the parrot's compound goes in the first free slot when the player may carry it.
+    pub(in crate::game) fn put_on_shoulder(&mut self, tag: impl FnOnce(&mut Self) -> Tag) -> bool {
+        let Some(p) = self.player.as_ref() else {
+            return false;
+        };
         if self.riding.is_some()
             || !p.ground.on_ground
             || p.fluids.was_touching_water
             || p.in_powder_snow
             || p.flying
         {
-            return;
+            return false;
         }
         let extra = self
             .level
             .player_extra
             .get_or_insert_with(|| Tag::Compound(Default::default()));
         let Some(key) = KEYS.into_iter().find(|k| !occupied(extra, k)) else {
-            return;
+            return false;
         };
-        let tag = self.mob_tree_nbt(i);
+        let tag = tag(self);
         if let Some(Tag::Compound(map)) = self.level.player_extra.as_mut() {
             map.insert(key.into(), tag);
         }
         let (uuid, now) = (self.acting_uuid(), self.world.game_time);
         self.creatures.shoulder_time.insert(uuid, now);
-        self.remote_entities[i].removed = true;
+        true
     }
 
     /// `ServerPlayer.handleShoulderEntities`: the parrots leave the shoulder

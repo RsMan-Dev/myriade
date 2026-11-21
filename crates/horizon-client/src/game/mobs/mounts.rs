@@ -325,9 +325,6 @@ impl Game<'_> {
         if species == Species::HappyGhast {
             return self.interact_happy_ghast(index, item);
         }
-        if horizon_client::mobs::nautilus::is_nautilus(species) {
-            return self.interact_nautilus(index, item);
-        }
         if !equine::is_equine(species) || !m.alive() || Some(m.id) == self.riding {
             return false;
         }
@@ -611,7 +608,8 @@ impl Game<'_> {
         }
         let strafe = f32::from(u8::from(keys.left)) - f32::from(u8::from(keys.right));
         let forward = f32::from(u8::from(keys.forward)) - f32::from(u8::from(keys.backward));
-        let jump = self.charge_mount_jump_ecs(id, keys);
+        // A server's player charges the bar on its own client; its power comes with START_RIDING_JUMP (`start_riding_jump_ecs`).
+        let jump = if self.lan_acting.is_some() { 0.0 } else { self.charge_mount_jump_ecs(id, keys) };
         self.ecs.ride_input(e, [strafe, forward], jump, keys.jump, keys.sprint || self.keys.held(Action::Sprint), keys.shift, self.yaw, self.pitch);
         true
     }
@@ -851,8 +849,8 @@ impl Game<'_> {
         yaw: f32,
         p: &PlayerMotion,
     ) -> Option<Vec3> {
-        if let Some(i) = self.boats.iter().position(|b| b.id == vehicle) {
-            return Some(self.boat_player_dismount_target(i, yaw));
+        if self.ecs.boat_status(vehicle).is_some() {
+            return Some(self.boat_player_dismount_target(vehicle, yaw));
         }
         if self.ecs.cart_kind(vehicle).is_some() {
             return Some(self.cart_player_dismount_target(vehicle));

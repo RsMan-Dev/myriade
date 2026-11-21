@@ -63,10 +63,10 @@ fn mob_slot(name: &str) -> Option<usize> {
     Some(match name {
         "mainhand" => 0,
         "offhand" => 1,
-        "feet" => 2,
-        "legs" => 3,
-        "chest" => 4,
-        "head" => 5,
+        "head" => 2,
+        "chest" => 3,
+        "legs" => 4,
+        "feet" => 5,
         "body" => 6,
         "saddle" => 7,
         _ => return None,
@@ -449,8 +449,7 @@ impl Game<'_> {
             Slot::Equipment(i) => self.equipment.get(*i).cloned(),
             Slot::Ender(i) => self.ender_items.get(*i).cloned().flatten(),
             Slot::Mob(id, key) => {
-                let m = self.remote_entities.iter().find(|m| m.id == *id)?;
-                m.equipment_stacks()[mob_slot(key)?].clone()
+                self.ecs.equipment_stack(*id, mob_slot(key)?)
             }
             Slot::Stand(id, i) => self
                 .armor_stands
@@ -598,10 +597,7 @@ impl Game<'_> {
         };
         // SulfurCube.getEquipmentSlotForItem: swallowable items occupy the body slot.
         if let Slot::Mob(id, "body") = slot
-            && self.remote_entities.iter().find(|m| m.id == *id).is_some_and(|m| {
-                m.species() == horizon_client::mobs::Species::SulfurCube
-                    && horizon_client::mobs::sulfur_cube::swallowable(m, &stack.item)
-            })
+            && self.ecs.swallows(*id, &stack.item)
         {
             return true;
         }
@@ -714,16 +710,14 @@ impl Game<'_> {
                 None => false,
             },
             Slot::Mob(id, key) => {
-                let Some(index) = self.remote_entities.iter().position(|m| m.id == *id) else {
-                    return false;
-                };
                 let Some(slot) = mob_slot(key) else {
                     return false;
                 };
-                let m = &self.remote_entities[index];
-                let old = m.equipment_stacks()[slot].clone();
-                let first_tick = m.first_tick;
-                let at = [m.position.x, m.position.y, m.position.z];
+                let Some(view) = self.ecs_view(*id) else {
+                    return false;
+                };
+                let old = self.ecs.equipment_stack(*id, slot);
+                let at = view.position;
                 let same = match (&old, &stack) {
                     (None, None) => true,
                     (Some(a), Some(b)) => a.same_item_same_components(b),
@@ -738,8 +732,8 @@ impl Game<'_> {
                                 .get(&s.item)
                                 .is_some_and(|i| i.equip_slot.is_some()))
                 });
-                let changed = self.remote_entities[index].set_equipment_stack(slot, stack);
-                if changed && !first_tick && !same && self.remote.is_none() {
+                let changed = self.ecs.put_equipment_slot(*id, slot, stack);
+                if changed && !same && self.remote.is_none() {
                     self.mob_equip_event(*id, at, equippable);
                 }
                 changed
@@ -802,7 +796,10 @@ impl Game<'_> {
                 }
                 None => false,
             },
-            Slot::Frame(id) => self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, *id, stack)),
+            Slot::Frame(id) => {
+                let stack = stack.unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
+                self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, *id, stack))
+            }
             Slot::Cart(id, i) => self
                 .edit_cart_slots(*id, |slots| match slots.get_mut(*i) {
                     Some(slot) => {

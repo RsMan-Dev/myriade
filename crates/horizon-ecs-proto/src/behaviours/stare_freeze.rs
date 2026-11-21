@@ -45,7 +45,7 @@ pub struct Roused;
 /// The knockback resistance an entity had before it was stilled (restored when it moves again).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
-struct Braced(f64);
+pub(crate) struct Braced(pub(crate) f64);
 
 pub static MODULE: Module = Module {
     name: "stare_freeze",
@@ -127,6 +127,14 @@ fn looked_at(w: &World, pos: Vec3, eye_y: f64, p: Player, p_: &Params) -> bool {
     })
 }
 
+/// `gameEvent(ENTITY_ACTION)` then `makeSound(sound)`: what `Creaking` does on each change of its activity or of its freeze.
+fn act(w: &mut World, e: Entity, sound: &'static str) {
+    if let Some(p) = w.get::<Pos>(e).map(|p| [p.0.x, p.0.y, p.0.z]) {
+        w.resource_mut::<Events>().host.game_event_by(e, "minecraft:entity_action", p, false, false, false);
+    }
+    crate::tear_down::voice(w, e, sound);
+}
+
 /// `Creaking.checkCanMove`, asked at an event: rouses, calms, stills or frees the entity.
 pub fn evaluate(w: &mut World, e: Entity) {
     let (Some(&StareFreeze(p)), Some(pos), Some(eye)) = (w.get::<StareFreeze>(e), w.get::<Pos>(e).map(|v| v.0), w.get::<Eye>(e).map(|v| v.0)) else { return };
@@ -152,16 +160,19 @@ pub fn evaluate(w: &mut World, e: Entity) {
     }
     if let Some(id) = wake {
         w.entity_mut(e).insert(Roused);
+        act(w, e, "entity.creaking.activate");
         brain::set(w, e, &brain::ATTACK_TARGET, MemValue::Who(Who::Player(id)), None);
         targeting::set_target(w, e, Target::new(Who::Player(id), u16::MAX, u8::MAX));
     } else if roused && !potential {
         w.entity_mut(e).remove::<Roused>();
+        act(w, e, "entity.creaking.deactivate");
         brain::erase(w, e, &brain::ATTACK_TARGET);
         targeting::clear_target(w, e);
     }
     if still == was_still {
         return;
     }
+    act(w, e, if still { "entity.creaking.freeze" } else { "entity.creaking.unfreeze" });
     if still {
         // `Mob.stopInPlace`, and no knockback while looked at.
         let old = w.get::<Resist>(e).map_or(0.0, |r| r.0);

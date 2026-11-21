@@ -231,8 +231,8 @@ impl Game<'_> {
             return;
         }
         let (keys, dead) = (input_keys(g.input), g.dead || g.health <= 0.0);
-        let boat = self.boats.iter().position(|b| b.id == vehicle);
-        let cart = self.carts.iter().any(|c| c.id == vehicle);
+        let boat = self.ecs.boat_status(vehicle).is_some();
+        let cart = self.ecs.cart_kind(vehicle).is_some();
         let mount = self.mob_exists(vehicle);
         let cushion = self.cushions.iter().any(|c| c.id == vehicle);
         let seat = self.seat(vehicle).is_some();
@@ -241,24 +241,19 @@ impl Game<'_> {
         };
         // The vehicle is gone (broken, in another level) or the rider died:
         // its client drops it with the entity or the death screen.
-        if dead || (boat.is_none() && !cart && !mount && !cushion && !seat) {
+        if dead || (!boat && !cart && !mount && !cushion && !seat) {
             host.hub.guests.update(gi, |g| {
                 (g.vehicle, g.vehicle_good) = (None, None);
             });
             return;
-        }
-        let mut ejected = false;
-        if let Some(i) = boat {
-            // `Entity.ejectPassengers`: every player in the boat must see
-            // the request; the common boat tick clears it once nobody rides.
-            ejected = self.boats[i].eject_riders;
         }
         // ServerGamePacketListenerImpl.tick: the vehicle's last good position
         // is where it is now, so a move the server made (a piston, a push)
         // is not held against the rider's next move, which would fail, be
         // sent back, and fail again on every answer.
         let at = boat
-            .map(|i| self.boats[i].position)
+            .then(|| self.ecs.position(vehicle).map(|p| Vec3::new(p[0], p[1], p[2])))
+            .flatten()
             .or_else(|| self.mount_steered_at(vehicle));
         if let Some(p) = at {
             {
@@ -288,12 +283,12 @@ impl Game<'_> {
                 let p = game.tick_seat_riding(keys)?;
                 return Some([p.x, p.y, p.z]);
             }
-            if let Some(i) = game.boats.iter().position(|b| Some(b.id) == game.riding) {
-                if keys.shift || ejected {
-                    game.dismount(i);
+            if let Some(id) = game.riding.filter(|&id| game.ecs.boat_status(id).is_some()) {
+                if keys.shift {
+                    game.dismount_boat(id);
                     return None;
                 }
-                let p = game.player_boat_seat(i);
+                let p = game.player_boat_seat(id);
                 return Some([p.x, p.y, p.z]);
             }
             // The minecart moves with the rider's input, and lets it out when
@@ -341,10 +336,10 @@ impl Game<'_> {
             return;
         }
         let at = self
-            .boats
-            .iter()
-            .position(|b| b.id == vehicle)
-            .map(|i| (self.boats[i].position, self.player_boat_seat(i)))
+            .ecs
+            .boat_status(vehicle)
+            .and_then(|_| self.ecs_view(vehicle))
+            .map(|v| (Vec3::new(v.position[0], v.position[1], v.position[2]), self.player_boat_seat(vehicle)))
             .or_else(|| {
                 self.carts
                     .iter()
@@ -436,14 +431,22 @@ impl Game<'_> {
         // Only a boat, and a horse its rider's client moves, are driven by
         // their rider (getControllingPassenger); a minecart that is elsewhere
         // on the client is put back.
-        let boat = vehicle.and_then(|v| self.boats.iter().position(|b| b.id == v));
+        let boat = vehicle.filter(|&v| self.ecs.boat_status(v).is_some());
         if self.ecs.is_active()
             && boat.is_none()
             && let Some(v) = vehicle
             && self.mount_moved_by_client(v)
         {
             let target = Vec3::new(x, y, z);
-            self.ecs_mount_move(conn, v, target, p.yaw, owner);
+            // The player's own move gate (`.clamp`) is the boat's below; here the rider's client is the authority.
+            let target = Vec3::new(target.x.clamp(-3.0E7, 3.0E7), target.y.clamp(-2.0E7, 2.0E7), target.z.clamp(-3.0E7, 3.0E7));
+            if self.ecs_mount_move(conn, v, target, p.yaw, p.pitch, owner) {
+                // `lastGoodX/Y/Z` of the vehicle: where the accepted move left it.
+                self.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
+                    g.release_tickets();
+                    g.vehicle_good = Some([target.x, target.y, target.z]);
+                });
+            }
             return;
         }
         let mount = vehicle.and_then(|v| {
@@ -453,16 +456,18 @@ impl Game<'_> {
         });
         // The vehicle's id, kind, position, rotation, motion, box, step height
         // and ground.
-        let (id, old, yaw, velocity, bounds, step, on_ground) = if let Some(i) = boat {
-            let b = &self.boats[i];
+        let (id, old, yaw, velocity, bounds, step, on_ground) = if let Some(v) = boat {
+            let (Some(m), Some(bounds)) = (self.ecs.motion(v), self.ecs.bounds(v)) else {
+                return;
+            };
             (
-                b.id,
-                b.position,
-                b.yaw,
-                b.velocity,
-                b.bounds(),
+                v,
+                Vec3::new(m.position[0], m.position[1], m.position[2]),
+                m.yaw,
+                Vec3::new(m.velocity[0], m.velocity[1], m.velocity[2]),
+                bounds,
                 0.0,
-                b.on_ground,
+                m.on_ground,
             )
         } else if let Some(i) = mount {
             let m = &self.remote_entities[i];
@@ -477,10 +482,11 @@ impl Game<'_> {
                 m.on_ground,
             )
         } else {
-            if let Some(c) = vehicle.and_then(|v| self.carts.iter().find(|c| c.id == v))
-                && c.position.distance_squared(Vec3::new(x, y, z)) > 1.0
+            if let Some(v) = vehicle
+                && let Some(m) = self.ecs.motion(v).filter(|_| self.ecs.cart_kind(v).is_some())
+                && Vec3::new(m.position[0], m.position[1], m.position[2]).distance_squared(Vec3::new(x, y, z)) > 1.0
             {
-                back(self.lan.as_mut().unwrap(), c.position, c.yaw);
+                back(self.lan.as_mut().unwrap(), Vec3::new(m.position[0], m.position[1], m.position[2]), m.yaw);
             }
             return;
         };
@@ -517,7 +523,7 @@ impl Game<'_> {
         // The vehicle's type name only if a listener asks for it (arismoko/horizon#2414: no
         // string on a move nobody listens to).
         let kind = || match (boat, mount) {
-            (Some(i), _) => std::borrow::Cow::Owned(self.boats[i].entity_type()),
+            (Some(v), _) => std::borrow::Cow::Borrowed(self.ecs.kind(v).unwrap_or("")),
             (None, Some(i)) => std::borrow::Cow::Borrowed(&*self.remote_entities[i].kind.id),
             // Unreachable: the vehicle was a boat or a mount, or it returned.
             (None, None) => std::borrow::Cow::Borrowed(""),
@@ -553,9 +559,11 @@ impl Game<'_> {
         if let Some(i) = mount {
             self.remote_entities[i].fall_distance =
                 self.vehicle_fall_reset(self.remote_entities[i].fall_distance, old, resolved);
-        } else if let Some(i) = boat {
-            let reset = self.vehicle_fall_reset(self.boats[i].fall_distance, old, resolved);
-            self.boats.update(i, |boat| boat.fall_distance = reset);
+        } else if let Some(v) = boat
+            && let Some(e) = self.ecs.entity_of(v)
+        {
+            let reset = self.vehicle_fall_reset(self.ecs.fall_distance(v), old, resolved);
+            self.ecs.set_fall_distance(e, reset);
         }
         // An overridden decision is put back from wherever the vehicle starts:
         // the free-old-box exemption is the distance test's (review round 1),
@@ -673,35 +681,25 @@ impl Game<'_> {
             }
             return;
         }
-        let Some(i) = boat else {
+        let (Some(v), Some(e)) = (boat, boat.and_then(|v| self.ecs.entity_of(v))) else {
             return;
         };
-        self.boats.update(i, |b| {
-            b.previous = old;
-            b.velocity = target.subtract(old);
-            b.position = target;
-            b.previous_yaw = b.yaw;
-            b.yaw = p.yaw;
-            b.on_ground = p.on_ground;
+        // absSnapTo of the accepted move; P holds no setter for the ground flag of a boat (listed in the report).
+        self.ecs_with(|ecs, mw| {
+            ecs.teleport(mw, e, [target.x, target.y, target.z]);
+            ecs.set_rotation(e, p.yaw, 0.0);
+            ecs.set_velocity(e, target.subtract(old));
         });
-        // handleMoveVehicle's `vehicle.move` counts the fall
-        // (AbstractBoat.checkFallDamage); the server's baseTick resets it in
-        // water (updateFluidInteraction), which this boat's skipped tick
-        // doesn't run.
-        use super::entity::Entity as _;
-        let mut probe = self.boats[i].clone();
-        let in_water = probe
-            .push_by_fluid(&self.world, &self.res.motion().fluids, &self.loop_context)
-            .0
-            > 0.0;
-        // The long move reset ran before collision validation.
+        // handleMoveVehicle's `vehicle.move` counts the fall (AbstractBoat.checkFallDamage); the server's
+        // baseTick resets it in water, which this boat's skipped tick doesn't run.
+        let in_water = self.ecs.boat_status(v).is_some_and(|s| s.in_liquid);
         let fall = if in_water {
             0.0
         } else {
-            self.boat_fall(&self.boats[i], resolved.y)
+            self.boat_fall_at(target, p.on_ground, self.ecs.fall_distance(v), resolved.y)
         };
-        self.boats.update(i, |b| b.fall_distance = fall);
-        let seat = self.player_boat_seat(i);
+        self.ecs.set_fall_distance(e, fall);
+        let seat = self.player_boat_seat(v);
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -746,12 +744,7 @@ impl Game<'_> {
         let Some(vehicle) = vehicle.filter(|&v| self.guest_controls_vehicle(conn, v)) else {
             return;
         };
-        if let Some(i) = self.boats.iter().position(|b| b.id == vehicle) {
-            self.boats.update(i, |b| {
-                b.paddling = paddles;
-                b.paddle_controller = true;
-            });
-        }
+        self.ecs.boat_paddle(vehicle, paddles);
     }
 }
 

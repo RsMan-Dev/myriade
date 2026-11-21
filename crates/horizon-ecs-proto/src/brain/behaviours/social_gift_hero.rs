@@ -75,7 +75,7 @@ fn tick(w: &mut World, e: Entity, c: &Ctx) -> bool {
     // `BehaviorUtils.throwItem`: from the eye minus 0.3, at 0.3 blocks per tick toward the player, a pickup delay of 10 ticks.
     let eye = w.get::<crate::goals::Look>(e).map_or(1.62, |l| l.eye);
     let from = Vec3::new(me.x, me.y + eye - 0.3, me.z);
-    let v = rules::throw_velocity(from, at);
+    let v = rules::throw_velocity(me, at);
     for stack in roll_table(w, &table, i64::from(seed)) {
         drop_item(w, stack, from, v, 10);
     }

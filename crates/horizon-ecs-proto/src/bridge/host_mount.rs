@@ -25,6 +25,10 @@ impl EcsWorld {
     /// `LocalPlayer.aiStep`'s jump charge of the mount `e`: pressed with a rider, the bar fills; released, the bar's scale is the result and
     /// the charge ends. 0.0 without a rider, a charge or a mount.
     pub fn charge_jump(&mut self, e: Entity, pressed: bool) -> f32 {
+        // A mount whose jump key does nothing (a stick mount, a happy ghast) has no bar to charge.
+        if !self.jumpable(e) {
+            return 0.0;
+        }
         let w = self.world_mut();
         let Some(rider) = w.get::<Mount>(e).map(|m| m.rider.is_some()) else { return 0.0 };
         if pressed && rider {
@@ -40,7 +44,8 @@ impl EcsWorld {
         if ticks.is_some() {
             w.entity_mut(e).remove::<JumpCharge>();
         }
-        ticks.filter(|_| rider && !pressed).map_or(0.0, mount::jump_bar)
+        // The packet's data is the bar's scale times 100; the server turns it into the power (`getPlayerJumpPendingScale`).
+        ticks.filter(|_| rider && !pressed).map_or(0.0, |t| crate::rules::mount::pending_scale((mount::jump_bar(t) * 100.0) as i32))
     }
 
     /// `Mount.input` of the mount `e` from its player rider's keys this tick. A mount with no player rider takes nothing. A sneak gets the
@@ -57,15 +62,53 @@ impl EcsWorld {
         }
         let held = w.resource::<Online>().get(id).map_or(0, |p| p.main);
         let steer = held == goals::carrot_on_a_stick() || held == goals::warped_fungus_on_a_stick();
-        let jump = if jump_held { 0.0 } else { jump };
+        // A flying mount (`HappyGhast.getRiddenInput`) reads the key held (`Player.isJumping`), not the bar: its jump is 1 while held.
+        let flies = w.get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Fly { .. }));
+        // A jump already pending (a guest's START_RIDING_JUMP, `start_jump`) stays until the drive uses it, as `playerJumpPendingScale` does.
+        let pending = w.get::<PilotInput>(e).map_or(0.0, |p| p.jump);
+        let jump = if flies { f32::from(jump_held) } else if jump_held { 0.0 } else if jump > 0.0 { jump } else { pending };
         pilot::set(w, e, PilotInput { who: Who::Player(id), forward: move_xz[1], strafe: move_xz[0], yaw, pitch, jump, sprint, sneak: false, steer, keys: pilot::keys_of(move_xz[1], move_xz[0]) });
     }
 
     /// `AbstractHorse.handleStartJump`: a jumpable mount with a rider starts its jump and plays its sound. None when refused.
-    pub fn start_jump(&mut self, e: Entity, _data: i32) -> Option<(&'static str, f32)> {
-        let rider = self.world().get::<Mount>(e).is_some_and(|m| m.rider.is_some());
-        if !rider {
+    /// `ServerGamePacketListenerImpl.handlePlayerCommand` START_RIDING_JUMP of a guest: the gate and the sound below, then the power
+    /// the packet carries (`getPlayerJumpPendingScale(data)`) becomes the pilot's pending jump, written on arrival.
+    pub fn start_jump(&mut self, e: Entity, data: i32) -> Option<(&'static str, f32)> {
+        let sound = self.jump_gate(e, data)?;
+        let w = self.world_mut();
+        if let Some(Who::Player(id)) = w.get::<Mount>(e).and_then(|m| m.rider) {
+            let power = crate::rules::mount::pending_scale(data);
+            match w.get::<PilotInput>(e).copied() {
+                Some(p) => {
+                    pilot::set(w, e, PilotInput { jump: power, ..p });
+                }
+                None => {
+                    let none = PilotInput { who: Who::Player(id), forward: 0.0, strafe: 0.0, yaw: 0.0, pitch: 0.0, jump: power, sprint: false, sneak: false, steer: false, keys: [false; 4] };
+                    pilot::set(w, e, none);
+                }
+            }
+        }
+        Some(sound)
+    }
+
+    fn jump_gate(&self, e: Entity, data: i32) -> Option<(&'static str, f32)> {
+        let w = self.world();
+        let m = w.get::<Mount>(e)?;
+        if m.rider.is_none() || data <= 0 {
             return None;
+        }
+        // `AbstractNautilus.handleStartJump`: the dash sound of the water or of the land.
+        if let Steer::Look { sounds, .. } = m.steer {
+            let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water);
+            return m.saddled.then_some((sounds[usize::from(!wet)], 1.0));
+        }
+        // `Camel.canJump` (saddled, not refusing to move) then `handleStartJump`: the dash sound its rule carries.
+        if matches!(m.steer, Steer::Dash { .. }) {
+            let refused = w.get::<crate::behaviours::posture::Posture>(e).is_some_and(|p| p.refuses(crate::cow::game_now(w)));
+            if !m.saddled || refused {
+                return None;
+            }
+            return w.get::<JumpSound>(e).map(|s| (s.sound, s.volume));
         }
         self.jump_config(e).map(|c| (c.sound, c.volume))
     }
@@ -77,21 +120,81 @@ impl EcsWorld {
 
     /// The jump capability of `e`: the mount jumps when it is jumpable, with the `JumpSound` it carries or the default one.
     fn jump_config(&self, e: Entity) -> Option<JumpSound> {
-        self.jumpable(e).then(|| self.world().get::<JumpSound>(e).copied().unwrap_or_default())
+        self.bar_jumps(e).then(|| self.world().get::<JumpSound>(e).copied().unwrap_or_default())
     }
 
-    /// A saddled mount that jumps with the bar: a charged steer with a jump strength. The marker of the jump, no species.
-    pub fn jumpable(&self, e: Entity) -> bool {
+    /// A saddled mount that jumps with the bar: a charged steer with a jump strength.
+    fn bar_jumps(&self, e: Entity) -> bool {
         self.world().get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Charged) && m.jump_strength > 0.0 && m.saddled)
+    }
+
+    /// `PlayerRideableJumping.canJump`: a saddled mount whose jump key does something, the bar of a horse, the dash of a camel (unless it
+    /// refuses to move) or of a nautilus. The marker of the jump (HUD bar, jump packet), no species.
+    pub fn jumpable(&self, e: Entity) -> bool {
+        let w = self.world();
+        let Some(m) = w.get::<Mount>(e) else { return false };
+        if !m.saddled {
+            return false;
+        }
+        match m.steer {
+            Steer::Charged => m.jump_strength > 0.0,
+            Steer::Look { .. } => true,
+            Steer::Dash { .. } => !w.get::<crate::behaviours::posture::Posture>(e).is_some_and(|p| p.refuses(crate::cow::game_now(w))),
+            Steer::Stick { .. } | Steer::Fly { .. } => false,
+        }
+    }
+
+    /// The player `player` leaves the mount `e` (a guest who disconnects): its seat, first or second, is freed. False when it did not ride it.
+    pub fn dismount_player(&mut self, e: Entity, player: u32) -> bool {
+        let Some(m) = self.world().get::<Mount>(e) else { return false };
+        let (first, second) = (m.rider == Some(Who::Player(player)), m.passenger == Some(Who::Player(player)));
+        if first {
+            mount::dismount(self.world_mut(), e).is_some()
+        } else if second {
+            mount::dismount_passenger(self.world_mut(), e).is_some()
+        } else {
+            false
+        }
+    }
+
+    /// A mount that dashes (`Steer::Dash`): its jump start also raises the ENTITY_ACTION game event (`Camel.handleStartJump`).
+    pub fn dashes(&self, e: Entity) -> bool {
+        self.world().get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Dash { .. } | Steer::Look { .. }))
+    }
+
+    /// A mount steered by the look of its rider (`Steer::Look`, the nautilus kind): the player's vehicle view reads it as one.
+    pub fn steers_by_look(&self, e: Entity) -> bool {
+        self.world().get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Look { .. }))
     }
 
     /// A dashing mount (`Steer::Dash`) that may not dash yet: its `ready_at` is ahead of its own time.
     pub fn has_jump_cooldown(&self, e: Entity) -> bool {
         let w = self.world();
-        w.get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Dash { .. }) && m.ready_at > now_of(w, e))
+        w.get::<Mount>(e).is_some_and(|m| matches!(m.steer, Steer::Dash { .. } | Steer::Look { .. }) && m.ready_at > now_of(w, e))
     }
 
     /// The max health and the health of `e`, None without health.
+    /// `getControllingPassenger` is a player: a saddled mount whose first rider is a player (a stick-steered one only while the rider
+    /// holds the stick). A harnessed happy ghast (`Steer::Fly`) steers when it is not on its still timeout.
+    pub fn player_steers(&self, e: Entity) -> bool {
+        let w = self.world();
+        let Some(m) = w.get::<crate::mount::Mount>(e) else { return false };
+        if !matches!(m.rider, Some(crate::targeting::Who::Player(_))) {
+            return false;
+        }
+        if matches!(m.steer, crate::mount::Steer::Fly { .. }) {
+            let still = w.get::<crate::behaviours::still_under_riders::Above>(e).is_some() || w.get::<crate::behaviours::still_under_riders::StillUntil>(e).is_some_and(|u| now_of(w, e) < u.0);
+            return w.get::<crate::behaviours::harness_worn::Harness>(e).is_some() && !still;
+        }
+        if !m.saddled {
+            return false;
+        }
+        match m.steer {
+            crate::mount::Steer::Stick { .. } => crate::pilot::input_of(w, e).is_some_and(|p| p.steer),
+            _ => true,
+        }
+    }
+
     pub fn vehicle_health(&self, e: Entity) -> Option<(f32, f32)> {
         let w = self.world();
         Some((w.get::<MaxHealth>(e)?.0, w.get::<Health>(e)?.0))

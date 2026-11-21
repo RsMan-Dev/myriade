@@ -69,6 +69,7 @@ impl Game<'_> {
         if !self.lightning_strike_allowed(self.lan_acting_uuid, [x, y, z], "trident") {
             return;
         }
+        self.ecs.set_next_bolt_cause(Some(guest.unwrap_or(0)));
         self.spawn_bolt(at, false);
         // The summon effect's owner is the thrower: LightningBolt.setCause.
         if let Some(bolt) = self.bolts.last_mut() {
@@ -205,13 +206,14 @@ impl Game<'_> {
             next += 1;
             next
         };
+        let thrower = horizon_ecs_proto::targeting::Who::Player(self.own_entity_id() as u32);
         let id = self.ecs_with(|ecs, mw| {
             ecs.throw_trident(
                 mw,
                 [start.x, start.y, start.z],
                 [vel.x, vel.y, vel.z],
-                Some(horizon_ecs_proto::targeting::Who::Player),
-                loyalty,
+                Some(thrower),
+                loyalty as u8,
                 channeling,
                 pickup,
                 thrown,

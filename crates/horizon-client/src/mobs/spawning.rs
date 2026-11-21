@@ -109,6 +109,25 @@ impl LocalDifficulty {
             id: base,
         }
     }
+    /// `ServerLevel.getCurrentDifficultyAt` in `world`: the difficulty, the level's clock, and the inhabited time and moon of the chunk
+    /// at `at` (both 0 when it is not loaded).
+    pub fn at(world: &crate::world::World, at: [f64; 3]) -> Self {
+        use horizon_world::food::Difficulty;
+        let base = match world.health_rules.difficulty {
+            Difficulty::Peaceful => 0,
+            Difficulty::Easy => 1,
+            Difficulty::Normal => 2,
+            Difficulty::Hard => 3,
+        };
+        let key = ((at[0].floor() as i32) >> 4, (at[2].floor() as i32) >> 4);
+        let (inhabited, moon) = if world.chunks.contains_key(&key) {
+            let phase = world.day_time.div_euclid(24000).rem_euclid(8) as usize;
+            (world.inhabited.get(&key).copied().unwrap_or(0), MOON_BRIGHTNESS[phase])
+        } else {
+            (0, 0.0)
+        };
+        Self::new(base, world.day_time, inhabited, moon)
+    }
     /// `getSpecialMultiplier`.
     pub fn special(&self) -> f32 {
         mod_api::Difficulty::from(*self).special_multiplier()

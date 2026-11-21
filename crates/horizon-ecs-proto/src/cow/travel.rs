@@ -281,6 +281,7 @@ pub(crate) fn travel(
         };
         let was_in_air = !c.on_ground;
         let was_on_ground = c.on_ground;
+        let fell = c.fall_distance;
         let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
         // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
         if was_on_ground && !c.on_ground && !b.object {
@@ -290,12 +291,18 @@ pub(crate) fn travel(
         }
         if was_in_air && c.on_ground && !b.object {
             par.command_scope(e, |mut cmd| {
-                cmd.queue(move |w: &mut World| w.resource_mut::<crate::goals::Events>().landed.push(e));
+                cmd.queue(move |w: &mut World| {
+                    w.resource_mut::<crate::goals::Events>().landed.push(e);
+                    crate::fall_passengers::land_sound(w, e, f64::from(fell));
+                });
             });
         }
         if fall > 0.0 && !b.object && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
             par.command_scope(e, |mut cmd| {
-                cmd.queue(move |w: &mut World| w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall));
+                cmd.queue(move |w: &mut World| {
+                    w.resource_mut::<DamageQueue>().add(e, fall, Cause::Fall);
+                    crate::fall_passengers::propagate(w, e, f64::from(fell), 1.0);
+                });
             });
         }
         // `Entity.checkBelowWorld`: under the world a creature is hurt 4 a tick (it dies: it does not fall for ever).

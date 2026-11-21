@@ -1435,8 +1435,8 @@ impl Game<'_> {
                 && g.ecs.is_active()
             {
                 // The ECS stops the mob's path and lands it (fall-flying kept there).
-                if let Some(e) = g.ecs.entity_of(id) {
-                    g.ecs.land(e);
+                if let (Some(e), Some(at)) = (g.ecs.entity_of(id), g.ecs.position(id)) {
+                    g.ecs.land(e, Vec3::new(at[0], at[1], at[2]));
                 }
                 return;
             }
@@ -1594,7 +1594,7 @@ impl Game<'_> {
                 // Entity.teleport, as the ECS's mob: the same stopRiding, then the place, the motion and the turn.
                 self.dismount_mob(id);
                 if let Some(e) = self.ecs.entity_of(id) {
-                    self.ecs.teleport(e, pos);
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, pos));
                     self.ecs.teleport_motion(e, relative);
                     if let Some([yaw, pitch]) = rotation {
                         self.ecs.set_rotation(e, yaw, pitch);
@@ -2167,37 +2167,9 @@ impl Game<'_> {
                 }
                 self.ui.death_cause = Some("death.attack.genericKill".into());
             }
-            Target::Mob(id) if self.ecs.is_active() => {
-                // LivingEntity.kill: a generic_kill hit of Float.MAX_VALUE, applied by the ECS at its next step; the death comes back as a host event.
-                if let Some(e) = self.ecs.entity_of(id) {
-                    self.ecs.hurt(e, f32::MAX, horizon_ecs_proto::bridge::host::HurtSource::Void);
-                }
-            }
             Target::Mob(id) => {
-                let mut killed = None;
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    // LivingEntity.kill: a generic_kill hit of Float.MAX_VALUE,
-                    // which its death message tells.
-                    let alive = m.alive();
-                    if alive {
-                        let source = horizon_client::mobs::Damage::of(
-                            horizon_client::mobs::DamageKind::GenericKill,
-                        );
-                        m.record_damage(source, f32::MAX);
-                        m.last_damage = Some((source, i64::from(m.age)));
-                    }
-                    m.health = 0.0;
-                    killed = alive.then(|| m.clone());
-                }
-                // The hit runs LivingEntity.die before the command returns:
-                // its ENTITY_DIE, loot and experience come now, not in the
-                // next tick's deaths, which skip it (as a frog's bite does).
-                if let Some(m) = killed
-                    && !m.removed
-                    && self.died.insert(id)
-                {
-                    self.mob_died(&m);
-                }
+                // LivingEntity.kill: a generic_kill death in the ECS, with its loot and its death event.
+                self.ecs_with(|ecs, mw| ecs.kill(mw, id));
             }
             Target::Item(id) => {
                 if let Some(i) = self.dropped.iter().position(|i| i.id == id) {

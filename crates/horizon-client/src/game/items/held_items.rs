@@ -99,7 +99,7 @@ impl Game<'_> {
     }
 
     /// Run `f` with `hand` acting (`held`, `consume_held`, `swing_arm`).
-    pub(super) fn with_hand<T>(&mut self, hand: Hand, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub(in crate::game) fn with_hand<T>(&mut self, hand: Hand, f: impl FnOnce(&mut Self) -> T) -> T {
         let prior = std::mem::replace(&mut self.hand, hand);
         let out = f(self);
         self.hand = prior;

@@ -1099,7 +1099,7 @@ impl Game<'_> {
                         can_use_slot(s, m.alive && !m.baby, m.tame, slot)
                             && allows(id, m.kind)
                             && self.ecs_item(id, slot.goal()).is_none()
-                            && can_dispenser_equip(s, self.ecs.can_pick_up_loot(id), m.tame, slot)
+                            && self.ecs.can_pick_up_loot(id).is_some_and(|loot| can_dispenser_equip(s, loot, m.tame, slot))
                     })
             }),
         });
@@ -1254,6 +1254,19 @@ impl Game<'_> {
     /// always true.
     pub(super) fn mob_placed(&mut self, id: u32, stack: &ItemStack) -> Result<()> {
         if self.ecs.is_active() {
+            // The bucket's components, its entity data (`updateCustomEntityTag`) and its bucket data (`loadFromBucketTag`), then the flag.
+            if let Some(kind) = self.ecs.kind(id) {
+                let op = self.acting_player_is_op();
+                let data = match horizon_client::block_entity_item::spawn_egg_entity_data(stack, &kind, op) {
+                    Some(horizon_core::nbt::Tag::Compound(c)) => Some(c),
+                    _ => None,
+                };
+                let bucket = match stack.data().and_then(|c| c.other("minecraft:bucket_entity_data")) {
+                    Some(horizon_core::nbt::Tag::Compound(c)) => Some(c),
+                    _ => None,
+                };
+                self.ecs.apply_egg_components(id, stack, data.as_ref(), bucket);
+            }
             self.ecs.set_from_bucket(id);
             return self.mob_ambient(id);
         }
@@ -1309,7 +1322,12 @@ impl Game<'_> {
             if matches!(s, Species::ElderGuardian | Species::CopperGolem) {
                 self.ecs_persist(id);
             }
-            self.ecs.apply_egg_components(id, &stack);
+            let op = self.acting_player_is_op();
+            let data = match horizon_client::block_entity_item::spawn_egg_entity_data(&stack, &kind, op) {
+                Some(horizon_core::nbt::Tag::Compound(c)) => Some(c),
+                _ => None,
+            };
+            self.ecs.apply_egg_components(id, &stack, data.as_ref(), None);
         }
         // EntityType.updateCustomEntityTag: a configured egg
         // (`/give @s pig_spawn_egg[minecraft:entity_data={…}]`) spawns the mob
@@ -1551,29 +1569,20 @@ impl Game<'_> {
         if !self.boat_models.has(&wood, chest) {
             return (self.dispense_default_in_level(pos, facing, stack), CLICK);
         }
-        self.next_entity += 1;
-        let mut boat = super::boats::Boat::new(
-            self.next_entity,
-            wood.as_str().into(),
-            Vec3::new(x, y + y_offset, z),
-            y_rot(facing),
-        );
+        let at = [x, y + y_offset, z];
+        let mut template = super::boats::Boat::new(0, wood.as_str().into(), Vec3::new(at[0], at[1], at[2]), 0.0);
         if chest {
-            boat = boat.with_chest();
+            template = template.with_chest();
         }
+        let kind = template.entity_type();
+        let Some(id) = self.spawn_boat_ecs(&wood, chest, at, y_rot(facing)) else {
+            return (self.dispense_default_in_level(pos, facing, stack), CLICK);
+        };
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
-        let (id, kind, yaw) = (boat.id, boat.entity_type(), boat.yaw);
-        self.boats.push(boat);
-        // BoatDispenseItemBehavior: createDefaultStackConfig with no user,
-        // then setYRot(direction.toYRot()).
+        // BoatDispenseItemBehavior: createDefaultStackConfig with no user.
         self.apply_item_stack_config(super::commands::Target::Boat(id), &kind, &stack, false);
-        self.set_boat_yaw(id, yaw);
         if self.serving.is_some() || self.options.dedicated.is_some() {
-            let boat = self.boats.last().unwrap();
-            self.native_vehicle_create(
-                boat.entity_type().as_str(),
-                [boat.position.x, boat.position.y, boat.position.z],
-            );
+            self.native_vehicle_create(kind.as_str(), at);
         }
         (shrink(stack), CLICK)
     }
@@ -1702,7 +1711,7 @@ impl Game<'_> {
             _ => None,
         });
         if let Some(id) = ecs_cube {
-            if self.ui.rules.bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES) && self.ecs.prime(id, false) {
+            if self.ui.rules.bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES) && self.ecs.prime(id, None) {
                 let at = self.ecs_mob(id).map_or([0.0; 3], |m| [m.at.x, m.at.y, m.at.z]);
                 self.audio.play("entity.tnt.primed", Some(at), 1.0, 1.0);
                 let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
@@ -2162,115 +2171,11 @@ impl Game<'_> {
     ) -> [f64; 3] {
         self.spawn_item_own(stack, [at.x, at.y + y_offset, at.z], 10)
     }
-    /// `MushroomCow.shear`: `player` is who sheared it, none for a dispenser.
-    /// `shear` on an ECS entity: the sheep's wool through `farm::shear`, the sulfur cube's body and the copper golem's antenna
-    /// through the equipment, the mooshroom through its conversion. None when it is not shorn now; the kind it returns is the
-    /// one the native hook reads.
-    fn shear_ecs(&mut self, id: u32, shears: &ItemStack) -> Option<&'static str> {
+    /// `shear` on an ECS entity by the species' own definition (`behaviours::shear::shear_entity`: state, loot, sound; the copper golem's
+    /// antenna too). None when it is not shorn now; the kind it returns is the one the native hook reads.
+    fn shear_ecs(&mut self, id: u32, _shears: &ItemStack) -> Option<&'static str> {
         let m = self.ecs_mob(id)?;
-        let at = m.at;
-        let at_arr = [at.x, at.y, at.z];
-        match m.species? {
-            Species::Sheep if !m.baby => {
-                let color = self.ecs_shear_wool(id)?;
-                let dye = horizon_client::mobs::render::DYE_NAMES[color as usize & 15];
-                self.audio.play("minecraft:entity.sheep.shear", Some(at_arr), 1.0, 1.0);
-                let drops = self.sequence_loot(
-                    "minecraft:shearing/sheep",
-                    &format!("minecraft:shearing/sheep/{dye}"),
-                    Some(shears),
-                );
-                for stack in drops {
-                    for _ in 0..stack.count {
-                        self.spawn_at_location(at, 1.0, ItemStack { count: 1, ..stack.clone() });
-                        // Sheep.shear nudges each item with the sheep's own random, drawn by the bridge.
-                        let base = self.just_spawned_item().map(|i| [i.velocity.x, i.velocity.y, i.velocity.z]);
-                        if let Some(base) = base {
-                            let v = self.ecs.nudge(id, base);
-                            if let Some(item) = self.just_spawned_item() {
-                                item.velocity = Vec3::new(v[0], v[1], v[2]);
-                            }
-                        }
-                    }
-                }
-            }
-            Species::Bogged => {
-                if !self.ecs.set_sheared(id, true) {
-                    return None;
-                }
-                self.audio.play("minecraft:entity.bogged.shear", Some(at_arr), 1.0, 1.0);
-                let drops = self.sequence_loot(
-                    "minecraft:shearing/bogged",
-                    "minecraft:shearing/bogged",
-                    Some(shears),
-                );
-                for stack in drops {
-                    self.spawn_at_location(at, m.height, stack);
-                }
-            }
-            // SnowGolem.shear: sheared first, then the pumpkin drops at the eye height.
-            Species::SnowGolem => {
-                if !self.ecs.set_sheared(id, true) {
-                    return None;
-                }
-                let eye = self.ecs.eye_height(id);
-                self.audio.play("minecraft:entity.snow_golem.shear", Some(at_arr), 1.0, 1.0);
-                let drops = self.sequence_loot(
-                    "minecraft:shearing/snow_golem",
-                    "minecraft:shearing/snow_golem",
-                    Some(shears),
-                );
-                for stack in drops {
-                    self.spawn_at_location(at, eye, stack);
-                }
-            }
-            Species::SulfurCube => {
-                let body = self.ecs_take(id, goals::Slot::Body)?;
-                self.spawn_at_location(at, m.height, body);
-                let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
-                self.post_game_event("minecraft:unequip", at_arr, ctx);
-                self.audio.play("minecraft:entity.sulfur_cube.eject", Some(at_arr), 1.0, 1.0);
-            }
-            // CopperGolem.shear: the antenna's flower drops 1.5 up.
-            Species::CopperGolem => {
-                let antenna = self.ecs_take(id, goals::Slot::Saddle)?;
-                self.audio.play("minecraft:entity.copper_golem.shear", Some(at_arr), 1.0, 1.0);
-                let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
-                self.post_game_event("minecraft:unequip", at_arr, ctx);
-                self.spawn_at_location(at, 1.5, antenna);
-            }
-            Species::Mooshroom if !m.baby => self.shear_mooshroom_ecs(id, shears)?,
-            _ => return None,
-        }
-        Some(m.kind)
-    }
-    /// `MushroomCow.shear` on an ECS entity: it becomes a cow (`conversion::convert`), and the drops come out where it stood.
-    /// The variant is not read on the ECS level yet, so the red table is always taken.
-    fn shear_mooshroom_ecs(&mut self, id: u32, tool: &ItemStack) -> Option<()> {
-        let m = self.ecs_mob(id)?;
-        let e = self.ecs.entity_of(id)?;
-        let (at, height) = (m.at, m.height);
-        let table = "minecraft:shearing/mooshroom/red";
-        self.audio.play("minecraft:entity.mooshroom.shear", Some([at.x, at.y, at.z]), 1.0, 1.0);
-        let w = self.ecs.world_mut()?;
-        horizon_ecs_proto::conversion::convert(w, e, "minecraft:cow", horizon_ecs_proto::conversion::ConvertKeep::NONE)?;
-        self.mooshroom_shear_puff([at.x, at.y, at.z], height);
-        let mut drops = self.sequence_loot("minecraft:shearing/mooshroom", table, Some(tool));
-        self.native_use_drops(
-            table,
-            [at.x, at.y, at.z],
-            None,
-            Some((id, "minecraft:mooshroom")),
-            None,
-            Some(tool),
-            &mut drops,
-        );
-        for stack in drops {
-            for _ in 0..stack.count {
-                self.spawn_item_own(ItemStack { count: 1, ..stack.clone() }, [at.x, at.y + height, at.z], 0);
-            }
-        }
-        Some(())
+        self.ecs.shear(id).then_some(m.kind)
     }
     pub(super) fn shear_mooshroom(&mut self, index: usize, player: Option<u128>, tool: &ItemStack) {
         let old = self.remote_entities[index].clone();
@@ -2342,7 +2247,21 @@ impl Game<'_> {
                 return Ok(true);
             }
             if let Target::Ecs(id) = t {
-                let Some(kind) = self.shear_ecs(id, &shears) else { continue };
+                let Some(m) = self.ecs_mob(id) else { continue };
+                let part = self.part_shearable_of(id, m.kind, None, &shears);
+                if !m.alive || part.is_some_and(|(_, shearable)| !shearable) {
+                    continue;
+                }
+                let kind = match part {
+                    Some((part, _)) => {
+                        self.part_shear_ecs(id, m.kind, part, None, &shears);
+                        m.kind
+                    }
+                    None => {
+                        let Some(kind) = self.shear_ecs(id, &shears) else { continue };
+                        kind
+                    }
+                };
                 self.native_block_shear_entity(self.dim.id(), [target.0, target.1, target.2], id, kind);
                 self.post_block_game_event("minecraft:shear", [target.0, target.1, target.2], None, None);
                 return Ok(true);

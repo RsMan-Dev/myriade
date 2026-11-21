@@ -5,10 +5,13 @@ use crate::behaviours::fox_sleep::Sleeping;
 use crate::behaviours::limited_life::Lifespan;
 use crate::behaviours::swim_to_treasure::GotFish;
 use crate::cow::now_of;
+use crate::dye::Collar;
 use crate::farm::Wool;
+use crate::species::snow_golem::Pumpkin;
 use crate::mount::Mount;
 use crate::nbt::{accept, owner, Field};
 use crate::raids::{Patrol, Raider};
+use crate::spring_trap::{self, Armed, Springs, Tamed};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, Tag};
 use std::borrow::Cow;
@@ -25,7 +28,22 @@ fn is_int_array(t: &Tag) -> bool {
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Sheared"), write: write_sheared, read: read_sheared, accepts: is_byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Temper"), write: write_temper, read: read_temper, accepts: accept::int, owner: Some(owner::<Mount>) },
+    Field { key: Cow::Borrowed("Pumpkin"), write: write_pumpkin, read: read_pumpkin, accepts: is_byte, owner: Some(owner::<Pumpkin>) },
 ];
+
+/// `Pumpkin`: a byte, 1 while the snow golem wears its pumpkin.
+fn write_pumpkin(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(p) = w.get::<Pumpkin>(e) {
+        c.insert("Pumpkin".into(), Tag::Byte(i8::from(p.0)));
+    }
+}
+
+fn read_pumpkin(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    let Some(mut p) = w.get_mut::<Pumpkin>(e) else { return false };
+    p.0 = *v != 0;
+    true
+}
 
 /// The keys whose presence poses their component (`nbt::register_creators`).
 pub const CREATORS: &[Field] = &[
@@ -37,7 +55,70 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("PatrolLeader"), write: write_patrol_leader, read: read_patrol_leader, accepts: is_byte, owner: Some(owner::<Patrol>) },
     Field { key: Cow::Borrowed("Patrolling"), write: write_patrolling, read: read_patrolling, accepts: is_byte, owner: Some(owner::<Patrol>) },
     Field { key: Cow::Borrowed("patrol_target"), write: write_patrol_target, read: read_patrol_target, accepts: is_int_array, owner: Some(owner::<Patrol>) },
+    Field { key: Cow::Borrowed("Tame"), write: write_tamed, read: read_tamed, accepts: is_byte, owner: Some(owner::<Tamed>) },
+    Field { key: Cow::Borrowed("SkeletonTrap"), write: write_trap, read: read_trap, accepts: is_byte, owner: Some(owner::<Armed>) },
+    Field { key: Cow::Borrowed("SkeletonTrapTime"), write: write_trap_time, read: read_trap_time, accepts: accept::int, owner: Some(owner::<Springs>) },
+    Field { key: Cow::Borrowed("CollarColor"), write: write_collar, read: read_collar, accepts: is_byte, owner: Some(owner::<Collar>) },
 ];
+
+/// `Tame`: a horse tamed without an owner.
+fn write_tamed(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Tamed>(e).is_some() {
+        c.insert("Tame".into(), Tag::Byte(1));
+    }
+}
+
+fn read_tamed(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        w.entity_mut(e).insert(Tamed);
+    }
+    true
+}
+
+/// `SkeletonTrap`: the mount waits for a player; reading it arms the mount with the time `SkeletonTrapTime` gave.
+fn write_trap(w: &World, e: Entity, c: &mut Compound) {
+    if w.get::<Armed>(e).is_some() {
+        c.insert("SkeletonTrap".into(), Tag::Byte(1));
+    }
+}
+
+fn read_trap(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if *v != 0 {
+        let elapsed = spring_trap::loaded_time(w, e);
+        spring_trap::arm(w, e, elapsed);
+    }
+    true
+}
+
+/// `SkeletonTrapTime`: the ticks an armed mount has waited.
+fn write_trap_time(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(t) = spring_trap::elapsed(w, e) {
+        c.insert("SkeletonTrapTime".into(), Tag::Int(t));
+    }
+}
+
+fn read_trap_time(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Int(v) = t else { return false };
+    spring_trap::set_elapsed(w, e, *v);
+    true
+}
+
+/// `CollarColor`: the dyed collar of a wolf or a cat, a byte (the `DyeColor` id); absent while it is red.
+fn write_collar(w: &World, e: Entity, c: &mut Compound) {
+    if let Some(v) = w.get::<Collar>(e) {
+        c.insert("CollarColor".into(), Tag::Byte(v.0 as i8));
+    }
+}
+
+fn read_collar(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let Tag::Byte(v) = t else { return false };
+    if (0..16).contains(v) {
+        w.entity_mut(e).insert(Collar(*v as u8));
+    }
+    true
+}
 
 /// `Sheared`: a byte, 1 while the sheep's wool is off.
 fn write_sheared(w: &World, e: Entity, c: &mut Compound) {
@@ -126,8 +207,13 @@ fn read_raid_id(w: &mut World, e: Entity, t: &Tag) -> bool {
     if w.get::<Raider>(e).is_none() {
         w.entity_mut(e).insert(Raider { raid: None, wave: 0, leader: false });
     }
+    // A raid the raider did not hold yet (a load): the host's raid is told once (`raids::announce`).
+    let changed = w.get::<Raider>(e).is_some_and(|r| r.raid != Some(*v));
     if let Some(mut r) = w.get_mut::<Raider>(e) {
         r.raid = Some(*v);
+    }
+    if changed {
+        w.entity_mut(e).insert(crate::raids::Unannounced);
     }
     true
 }

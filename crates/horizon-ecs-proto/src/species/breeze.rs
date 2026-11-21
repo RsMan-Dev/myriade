@@ -127,5 +127,6 @@ pub static DEF: Def = Def {
             },
         ],
     },
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

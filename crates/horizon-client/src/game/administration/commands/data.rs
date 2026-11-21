@@ -229,7 +229,7 @@ impl Game<'_> {
                 let tag = d.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
                 crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
             }
-            Target::Tnt(_) => None,
+            Target::Tnt(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Cushion(id) => {
                 let uuid = self.uuid_for(id);
                 let c = self.cushions.iter().find(|c| c.id == id)?;
@@ -1367,7 +1367,7 @@ impl Game<'_> {
             let Some(Tag::String(kind)) = tag.get("id") else { return None };
             let kind = kind.to_string_lossy();
             let Tag::Compound(c) = &tag else { return None };
-            return self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Ecs);
+            return self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob);
         }
         let key = {
             let p = entity_nbt::position(&tag)?;

@@ -680,7 +680,7 @@ impl Game<'_> {
                     .copied()
                     .unwrap_or(true)
             });
-            self.mobs
+            self.remote_entities
                 .restore(mobs, horizon_client::join_seq::RestoreOrder::SpawnsFirst);
             std::mem::swap(&mut self.last_hurt_by_player, &mut player_credit);
             std::mem::swap(&mut self.died, &mut died);
@@ -705,7 +705,7 @@ impl Game<'_> {
             if retry_rider.is_some() {
                 blocked = std::borrow::Cow::Owned(self.mobs_below_off_level());
             }
-            mobs = self.mobs.lift();
+            mobs = self.remote_entities.lift();
             std::mem::swap(&mut self.last_hurt_by_player, &mut player_credit);
             std::mem::swap(&mut self.died, &mut died);
             std::mem::swap(&mut self.creatures.ticked, &mut ticked);

@@ -141,6 +141,15 @@ pub fn detach(w: &mut World, e: Entity) -> Option<Holder> {
     w.resource_mut::<Events>().host.unleashed(e);
     Some(h)
 }
+/// `Leashable.tickLeash` ends a lead (the holder is gone: `sound` false; the creature went past the snapping distance: `sound` true, the lead
+/// snaps): the lead comes off and the host drops the lead item where the creature stands, under its game rules, and plays the snap.
+pub(crate) fn break_lead(w: &mut World, e: Entity, sound: bool) {
+    let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    if let Some(h) = detach(w, e) {
+        let knot = if let Holder::Knot(p) = h { Some(p) } else { None };
+        w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::LeashBroke { entity: e, at, sound, knot });
+    }
+}
 fn holder_state(w: &World, holder: Holder) -> Option<HolderState> {
     match holder {
         Holder::Player(id) => w.resource::<Online>().get(id).map(player_state),
@@ -206,7 +215,7 @@ pub(crate) fn tick(
             // The holder is gone: the lead drops (a player out of the bench keeps it).
             if !matches!(l.holder, Holder::Player(_)) {
                 commands.queue(move |w: &mut World| {
-                    detach(w, e);
+                    break_lead(w, e, false);
                 });
             }
             continue;
@@ -221,7 +230,7 @@ pub(crate) fn tick(
         let distance = mine.distance(state.center);
         if distance > k.snap {
             commands.queue(move |w: &mut World| {
-                detach(w, e);
+                break_lead(w, e, true);
             });
             continue;
         }

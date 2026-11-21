@@ -4,7 +4,6 @@
 use super::{Game, commands::Target};
 use horizon_client::{
     lan::playerdata::ints_uuid,
-    mobs::Mob,
     raid::{Raid, Raids, Status},
 };
 use mod_api::{EntityRef, LevelRef, MobRef, RaidRef, RaidStatus};
@@ -12,13 +11,13 @@ use mod_api::{EntityRef, LevelRef, MobRef, RaidRef, RaidStatus};
 impl Game<'_> {
     // Diverges from upstream: handles resolve the requested server level without
     // swapping it into place, including during hooks for another level.
-    fn native_level_raid_collections(&self, level: LevelRef) -> Option<(&Raids, &[Mob])> {
+    fn native_level_raid_collections(&self, level: LevelRef) -> Option<&Raids> {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
-            Some((self.raids_in_place()?, &self.remote_entities))
+            self.raids_in_place()
         } else {
             let parked = self.levels.parked_of(level.dimension_id())?;
-            Some((parked.raiding.raids(level.dimension_id())?, &parked.remote_entities))
+            parked.raiding.raids(level.dimension_id())
         }
     }
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
@@ -32,15 +31,16 @@ impl Game<'_> {
                 .raids_mut(level.dimension_id())
         }
     }
-    fn native_raid_members(&self, raid: RaidRef) -> Option<impl Iterator<Item = &Mob>> {
-        let (raids, mobs) = self.native_level_raid_collections(raid.level())?;
+    /// The living raiders of the raid in the level in place: id, wave, health (the ECS holds them; a parked level has none).
+    fn native_raid_members(&self, raid: RaidRef) -> Option<std::vec::IntoIter<(u32, i32, f32)>> {
+        let raids = self.native_level_raid_collections(raid.level())?;
         raids.get(raid.id())?;
-        Some(super::raids::members(mobs, raid.id()))
+        let here = raid.level().dimension() == self.dim.key();
+        Some(if here { self.ecs.raid_members(raid.id()) } else { Vec::new() }.into_iter())
     }
     /// The raid a handle names now, or None for a stale or foreign one.
     fn native_raid_data(&self, raid: RaidRef) -> Option<&Raid> {
         self.native_level_raid_collections(raid.level())?
-            .0
             .get(raid.id())
     }
 
@@ -54,7 +54,7 @@ impl Game<'_> {
     /// `ServerLevel.getRaidAt(pos)`: the closest active raid whose centre is
     /// less than 96 blocks away (`Raids.getNearbyRaid`, 9216 squared).
     pub(super) fn level_raid_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<RaidRef> {
-        let (id, _) = self.native_level_raid_collections(level)?.0.nearby(pos)?;
+        let (id, _) = self.native_level_raid_collections(level)?.nearby(pos)?;
         Some(RaidRef::new(level, id))
     }
 
@@ -63,7 +63,6 @@ impl Game<'_> {
     pub(super) fn level_raids(&self, level: LevelRef) -> Option<Vec<RaidRef>> {
         Some(
             self.native_level_raid_collections(level)?
-                .0
                 .ids()
                 .into_iter()
                 .map(|id| RaidRef::new(level, id))
@@ -77,8 +76,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let raider = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
-        let id = horizon_client::mobs::raider::state(raider)?.raid_id?;
+        let id = self.ecs.raider_raid(id)??;
         let level = self.entity_level(mob.entity())?;
         self.level_raid(level, id)
     }
@@ -149,7 +147,7 @@ impl Game<'_> {
     pub(super) fn raid_living_health(&self, raid: RaidRef) -> Option<f32> {
         Some(
             self.native_raid_members(raid)?
-                .fold(0.0, |a, m| a + m.health),
+                .fold(0.0, |a, m| a + m.2),
         )
     }
 
@@ -163,7 +161,7 @@ impl Game<'_> {
     pub(super) fn raid_raiders(&self, raid: RaidRef) -> Option<Vec<EntityRef>> {
         Some(
             self.native_raid_members(raid)?
-                .map(|m| EntityRef::new(raid.level().epoch(), m.id))
+                .map(|m| EntityRef::new(raid.level().epoch(), m.0))
                 .collect(),
         )
     }
@@ -172,8 +170,8 @@ impl Game<'_> {
     pub(super) fn raid_wave_raiders(&self, raid: RaidRef, wave: i32) -> Option<Vec<EntityRef>> {
         Some(
             self.native_raid_members(raid)?
-                .filter(|m| horizon_client::mobs::raider::state(m).is_some_and(|s| s.wave == wave))
-                .map(|m| EntityRef::new(raid.level().epoch(), m.id))
+                .filter(|m| m.1 == wave)
+                .map(|m| EntityRef::new(raid.level().epoch(), m.0))
                 .collect(),
         )
     }

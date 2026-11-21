@@ -32,7 +32,7 @@ use super::*;
 /// asleep (`zone.rs`), as a `Mob`'s `tickCount` does not count the ticks it is not ticked. Every deadline and every date a
 /// module or the frame keeps on an entity is in its OWN time; the wheel is in the world's (`at`, `arm`).
 #[derive(Resource, Default)]
-pub struct Clock(pub u64, pub(crate) Vec<u64>);
+pub struct Clock(pub u64, pub(crate) Vec<u64>, Option<i64>);
 
 impl Clock {
     /// The time of entity `e`: ticks it has been awake for since the world began (its `age`, with the world's start).
@@ -59,6 +59,32 @@ impl Clock {
             *x = 0;
         }
     }
+}
+
+impl Clock {
+    /// The game time (`getGameTime`) of the world's tick 0, noted by the host at each step (`mw.game_time` less the tick): one
+    /// field written per step, nothing per entity. Dates vanilla keeps in game time (`Camel.LAST_POSE_CHANGE_TICK`) are read against it.
+    pub fn set_game_base(&mut self, base: i64) {
+        self.2 = Some(base);
+    }
+    pub fn has_game_base(&self) -> bool {
+        self.2.is_some()
+    }
+    /// The game time now (`Level.getGameTime`): 0 until the host has noted a base.
+    #[inline]
+    pub fn game_now(&self) -> i64 {
+        self.0 as i64 + self.2.unwrap_or(0)
+    }
+}
+
+/// The game time at which the own time `local` of `e` falls (its sleeps counted out, as its own time does).
+pub fn game_time_at(w: &World, e: Entity, local: i64) -> i64 {
+    game_now(w) - now_of(w, e) as i64 + local
+}
+
+/// The game time now, for code with the world.
+pub fn game_now(w: &World) -> i64 {
+    w.get_resource::<Clock>().map_or(0, Clock::game_now)
 }
 
 /// On every animal: its own time starts with its creation (see `Clock`).
@@ -126,8 +152,6 @@ pub enum Due {
     Effect,
     /// A creeper's fuse may be at its end (`explosion.rs`).
     Fuse,
-    /// The raids tick (`raids.rs`).
-    Raids,
     /// `Mob.isSunBurnTick`'s draw came up (`hostile.rs`).
     Sun,
     /// The mob may go away from now on (`despawn.rs`).
@@ -258,7 +282,7 @@ pub(crate) fn due(
     fight: Option<ResMut<crate::dragon::fight::FightEvents>>,
     mut players: ResMut<crate::hostile::PlayerState>,
     mut sun: ResMut<crate::hostile::SunFired>,
-    mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds)>,
+    mut babies: Query<(&mut Body, &Sizes, &GrowAt, &Pos, &mut Bounds), Without<crate::age_lock::AgeLocked>>,
     burners: Query<(Entity, &Burning, Option<&Immune>)>,
     mut queue: ResMut<DamageQueue>,
     mut commands: Commands,
@@ -301,7 +325,6 @@ pub(crate) fn due(
             Due::Forget(l, t) => commands.queue(move |w: &mut World| crate::brain::forget_due(w, e, l, t)),
             Due::Sun => sun.0.push(e),
             Due::Effect => commands.queue(move |w: &mut World| crate::effects::due(w, e)),
-            Due::Raids => commands.queue(|w: &mut World| crate::raids::raid_due(w)),
             Due::Fuse => commands.queue(move |w: &mut World| crate::explosion::fuse_due(w, e)),
             Due::Despawn => commands.queue(move |w: &mut World| crate::despawn::due(w, e)),
             Due::Burn => {

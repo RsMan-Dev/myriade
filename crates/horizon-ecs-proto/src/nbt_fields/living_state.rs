@@ -76,13 +76,14 @@ fn write_attributes(w: &World, e: Entity, c: &mut Compound) {
     let list = a
         .0
         .iter()
+        .filter(|(_, base, mods)| !base.is_nan() || mods.iter().any(|md| md.permanent))
         .map(|(name, base, mods)| {
             let mut m = Compound::default();
             m.insert("id".into(), Tag::String(format!("{MINECRAFT}{name}").as_str().into()));
             if !base.is_nan() {
                 m.insert("base".into(), Tag::Double(base.to_bits()));
             }
-            let mods = mods.iter().map(|md| modifier_tag(md)).collect();
+            let mods = mods.iter().filter(|md| md.permanent).map(|md| modifier_tag(md)).collect();
             m.insert("modifiers".into(), Tag::List(mods));
             Tag::Compound(m)
         })
@@ -114,7 +115,7 @@ fn modifier_of(t: &Tag) -> Option<Modifier> {
         "add_multiplied_total" => Operation::AddMultipliedTotal,
         _ => return None,
     };
-    Some(Modifier { id: id.to_string_lossy(), amount: f64::from_bits(*amount), operation })
+    Some(Modifier { id: id.to_string_lossy(), amount: f64::from_bits(*amount), operation, permanent: true })
 }
 
 /// A refused list changes nothing; an empty one takes the component away.
@@ -142,7 +143,11 @@ fn read_attributes(w: &mut World, e: Entity, t: &Tag) -> bool {
     if out.is_empty() {
         w.entity_mut(e).remove::<AttrMods>();
     } else {
+        let names: Vec<String> = out.iter().map(|x| x.0.clone()).collect();
         w.entity_mut(e).insert(AttrMods(out));
+        for n in names {
+            crate::attr_mod::touched(w, e, &n);
+        }
     }
     true
 }
@@ -171,7 +176,11 @@ fn read_equipment(w: &mut World, e: Entity, t: &Tag) -> bool {
     }
     if slots.iter().all(Option::is_none) {
         w.entity_mut(e).remove::<Equipment>();
+        w.entity_mut(e).remove::<crate::equip_attrs::WornModifiers>();
     } else {
+        for (i, s) in slots.iter().enumerate() {
+            crate::equip_attrs::changed(w, e, i, s.as_ref());
+        }
         w.entity_mut(e).insert(Equipment { slots });
     }
     true

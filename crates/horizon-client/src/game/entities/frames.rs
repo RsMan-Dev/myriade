@@ -183,9 +183,10 @@ impl Game<'_> {
             return true;
         }
         let face = facing_of(hit.face);
+        let me = Who::Player(self.own_entity_id() as u32);
         let mut next = self.next_entity;
         let hung = self.ecs_with(|ecs, mw| {
-            ecs.hang_frame(mw, pos, face, glow, Some(Who::Player), &mut || {
+            ecs.hang_frame(mw, pos, face, glow, Some(me), &mut || {
                 next += 1;
                 next
             })
@@ -227,7 +228,8 @@ impl Game<'_> {
         if empty && over {
             return false;
         }
-        let used = self.ecs_with(|ecs, mw| ecs.frame_use(mw, id, Who::Player, stack));
+        let me = Who::Player(self.own_entity_id() as u32);
+        let used = self.ecs_with(|ecs, mw| ecs.frame_use(mw, id, me, stack));
         if used {
             self.swing_arm();
         }
@@ -241,8 +243,9 @@ impl Game<'_> {
         if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
+        let me = Who::Player(self.own_entity_id() as u32);
         let creative = self.creative;
-        if !self.ecs_with(|ecs, mw| ecs.frame_hit(mw, id, Who::Player, creative)) && !creative {
+        if !self.ecs_with(|ecs, mw| ecs.frame_hit(mw, id, me, creative)) && !creative {
             // A refused hit (a fixed frame): Player.attack goes on to onAttack, so the attack cooldown is not spent.
             self.attack_ticks = 0;
         }

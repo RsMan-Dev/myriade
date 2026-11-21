@@ -85,12 +85,18 @@ pub const BREATHES_WATER: u32 = 2;
 pub(crate) fn fluid_update(
     cfg: Res<Config>,
     level: Res<Level>,
-    mut q: Query<(&Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
+    mut q: Query<(Entity, &Pos, &Bounds, &mut Vel, &mut FluidState, &mut Contact, Option<&FluidParams>), With<InFluid>>,
+    mut commands: Commands,
 ) {
     let level = &*level;
-    let one = |pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, fp: Option<&FluidParams>| {
+    // The eyes going under or out while the body stays in a fluid: rare, queued after the pass as events (`eye_entered_water`, `eye_left_water`).
+    let flips = std::sync::Mutex::new(Vec::<(Entity, bool)>::new());
+    let one = |e: Entity, pos: &Pos, b: &Bounds, v: &mut Vel, fs: &mut FluidState, c: &mut Contact, fp: Option<&FluidParams>| {
         let mw = level.mw.0;
         let f = mw.fluids(b.0, pos.0.y + fp.unwrap_or(&FluidParams::DEFAULT).eye_height);
+        if f.eye_in_water != fs.eye_in_water {
+            flips.lock().unwrap().push((e, f.eye_in_water));
+        }
         *fs = FluidState {
             water: f.water,
             lava: f.lava,
@@ -110,11 +116,24 @@ pub(crate) fn fluid_update(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(p, b, mut v, mut fs, mut c, i)| one(p, b, &mut v, &mut fs, &mut c, i));
+        q.par_iter_mut().for_each(|(e, p, b, mut v, mut fs, mut c, i)| one(e, p, b, &mut v, &mut fs, &mut c, i));
     } else {
-        for (p, b, mut v, mut fs, mut c, i) in &mut q {
-            one(p, b, &mut v, &mut fs, &mut c, i);
+        for (e, p, b, mut v, mut fs, mut c, i) in &mut q {
+            one(e, p, b, &mut v, &mut fs, &mut c, i);
         }
+    }
+    let flips = flips.into_inner().unwrap();
+    if !flips.is_empty() {
+        commands.queue(move |w: &mut bevy_ecs::world::World| {
+            let mut ev = w.resource_mut::<crate::goals::Events>();
+            for (e, under) in flips {
+                if under {
+                    ev.eye_entered_water.push(e);
+                } else {
+                    ev.eye_left_water.push(e);
+                }
+            }
+        });
     }
 }
 
@@ -145,10 +164,15 @@ pub(crate) fn breathing(
         };
         let id = uid.0 as u32;
         let breath = horizon_client_lib::breathing::breathe(mw.loop_context, id, tn.0, vanilla);
-        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, fp.max_air, breath, true)
-            && let Some(damage) = d.damage
-        {
-            queue.add(e, damage, Cause::Drown);
+        if let Some(d) = horizon_client_lib::breathing::drown(mw.loop_context, id, tn.0, &mut air.0, fp.max_air, breath, true) {
+            if let Some(damage) = d.damage {
+                queue.add(e, damage, Cause::Drown);
+            }
+            // The bubbles and the sound (entity event 67) are the host's: one event a second, only when it drowns.
+            let (at, bubbles) = ([pos.0.x, pos.0.y + fp.eye_height, pos.0.z], d.bubbles);
+            commands.queue(move |w: &mut bevy_ecs::world::World| {
+                w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::Drowned { entity: e, at, bubbles });
+            });
         }
         if air.0 < fp.max_air && !low {
             commands.entity(e).insert(AirLow);

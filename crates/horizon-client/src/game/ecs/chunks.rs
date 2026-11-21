@@ -35,11 +35,13 @@ impl Game<'_> {
     /// Restores chunk (cx, cz) after it loaded. The world gives back the entities it kept when the chunk unloaded in this
     /// session; the file's entities are made only when it gave none back (a restart), so none is made twice.
     pub(in crate::game) fn ecs_load_chunk(&mut self, cx: i32, cz: i32, entities: &[Compound]) {
-        self.ecs.chunk_loaded(cx, cz);
+        self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));
         if self.ecs.save_chunk(cx, cz).is_empty() {
-            for c in entities {
-                self.ecs.load_entity(c);
-            }
+            self.ecs_with(|ecs, mw| {
+                for c in entities {
+                    ecs.load_entity(mw, c);
+                }
+            });
             self.ecs_resolve_pending_leashes();
         }
     }

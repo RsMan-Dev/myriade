@@ -31,4 +31,25 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         self.ecs_mut().is_some_and(|w| w.set_attribute_base(e, name, base))
     }
+    /// Gives attribute `name` of `id` the species' own base again; false when inert or unknown.
+    pub fn reset_attribute_base(&mut self, id: u32, name: &str) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.reset_attribute_base(e, name))
+    }
+    /// The entities whose attribute instances changed since the last call; empty when inert.
+    pub fn drain_attribute_changes(&mut self) -> Vec<bevy_ecs::entity::Entity> {
+        self.ecs_mut().map_or_else(Vec::new, |w| w.drain_attribute_changes())
+    }
+    /// `EcsWorld::attribute_instances` of `e`: (name, base written over the species', modifiers).
+    pub fn attribute_instances(&self, e: bevy_ecs::entity::Entity) -> Vec<(String, Option<f64>, Vec<Modifier>)> {
+        self.ecs().map_or_else(Vec::new, |w| w.attribute_instances(e))
+    }
+    /// The entities whose attribute instances changed since the last call; empty when inert.
+    pub fn drain_attribute_changes(&mut self) -> Vec<bevy_ecs::entity::Entity> {
+        self.ecs_mut().map_or_else(Vec::new, |w| w.drain_attribute_changes())
+    }
+    /// `EcsWorld::attribute_instances` of `e`: (name, base written over the species', modifiers).
+    pub fn attribute_instances(&self, e: bevy_ecs::entity::Entity) -> Vec<(String, Option<f64>, Vec<Modifier>)> {
+        self.ecs().map_or_else(Vec::new, |w| w.attribute_instances(e))
+    }
 }

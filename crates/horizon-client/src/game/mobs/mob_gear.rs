@@ -10,10 +10,9 @@ use horizon_client::{
     mobs::{
         drops::{self, SLOTS},
         finalize::equip_stack,
-        gear::{self, MAIN},
+        gear,
         spawner::equipment_table,
     },
-    raid::{self, RaiderType},
 };
 use horizon_core::random::RandomSource;
 use {horizon_core::nbt::Tag, horizon_world::loot::EntityLootParams};
@@ -78,12 +77,15 @@ impl Game<'_> {
     /// `EnchantmentsByCostWithDifficulty.enchant` on the stack the mob holds
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
     pub(super) fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
-        let Some(stack) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .and_then(|m| horizon_client::mobs::finalize::item_stack(m, slot))
-        else {
+        let ecs = self.ecs.is_active();
+        let Some(stack) = (if ecs {
+            self.ecs.equipment_stack(id, slot)
+        } else {
+            self.remote_entities
+                .iter()
+                .find(|m| m.id == id)
+                .and_then(|m| horizon_client::mobs::finalize::item_stack(m, slot))
+        }) else {
             return;
         };
         let random = &mut self.world.random;
@@ -94,50 +96,17 @@ impl Game<'_> {
         let e = &world_stations!(self).enchantments;
         let pool = e.tag("minecraft:on_mob_spawn_equipment");
         let picked = e.select(world_items!(self), random, &stack, cost, pool);
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
+        if ecs {
+            let mut out = stack;
+            for (enchantment, level) in picked {
+                out.enchant(&enchantment, level);
+            }
+            self.ecs.put_equipment_slot(id, slot, Some(out));
+        } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             let slot = horizon_client::mobs::finalize::gear_slot(slot);
             for (enchantment, level) in picked {
                 gear::upgrade(m, slot, &enchantment, level);
             }
-        }
-    }
-    /// `Pillager` / `Vindicator.applyRaidBuffs`: Quick Charge on a fresh
-    /// crossbow after waves 3 and 5, Sharpness on a fresh axe.
-    pub(super) fn apply_raid_buffs(&mut self, id: u32, kind: RaiderType, wave: i32, odds: f32) {
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return;
-        };
-        let enchant = m.random.next_float() <= odds;
-        match kind {
-            RaiderType::Pillager if enchant => {
-                let level = if wave > raid::num_groups(2) {
-                    2
-                } else if wave > raid::num_groups(1) {
-                    1
-                } else {
-                    0
-                };
-                if level > 0 {
-                    horizon_client::mobs::finalize::set_item(
-                        m,
-                        horizon_client::mobs::finalize::MAINHAND,
-                        "minecraft:crossbow",
-                    );
-                    gear::upgrade(m, MAIN, "minecraft:quick_charge", level);
-                }
-            }
-            RaiderType::Vindicator => {
-                horizon_client::mobs::finalize::set_item(
-                    m,
-                    horizon_client::mobs::finalize::MAINHAND,
-                    "minecraft:iron_axe",
-                );
-                if enchant {
-                    let level = if wave > raid::num_groups(2) { 2 } else { 1 };
-                    gear::upgrade(m, MAIN, "minecraft:sharpness", level);
-                }
-            }
-            _ => {}
         }
     }
 }

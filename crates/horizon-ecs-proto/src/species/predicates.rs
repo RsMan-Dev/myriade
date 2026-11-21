@@ -131,9 +131,10 @@ fn hostile_to_player(w: &World, e: Entity) -> bool {
 fn is_gold_armor(id: u32) -> bool {
     matches!(crate::items::item_name(id), Some("minecraft:golden_helmet" | "minecraft:golden_chestplate" | "minecraft:golden_leggings" | "minecraft:golden_boots"))
 }
-/// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`. The ECS has no coats yet: no animal is one (DOUTE: a coat component).
-fn rabbit_killer(_: &World, _: Entity) -> bool {
-    false
+/// `rabbit:killer`: the killer bunny of `Rabbit.Variant.EVIL`, read from the coat component, which the spawn
+/// draws (`behaviours::variant::draw_at_spawn`) and `RabbitType` restores.
+fn rabbit_killer(w: &World, e: Entity) -> bool {
+    w.get::<crate::behaviours::variant::Variant>(e).is_some_and(|v| v.0 == crate::rules::variant::RABBIT_EVIL)
 }
 use bevy_ecs::prelude::*;
 

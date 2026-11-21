@@ -1,6 +1,7 @@
 //! The host's navigation writes of a mod on a creature, by entity: a path it supplies (followed as given, no search), its flags and
 //! its path maluses. The reads are by entity too; the state lives in `nav_supplied`.
 use crate::bridge::host::EcsWorld;
+use crate::cow::{Nav, NavParams};
 use crate::nav_supplied;
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::mobs::MobWorld;
@@ -27,5 +28,21 @@ impl EcsWorld {
 
     pub fn set_nav_malus(&mut self, e: Entity, kind: &str, value: f32) -> bool {
         nav_supplied::set_malus(self.world_mut(), e, kind, value)
+    }
+
+    /// The malus override of the path type at index `kind` in `NavParams` (the outer None: no navigation or index out of range).
+    pub fn nav_malus_override(&self, e: Entity, kind: u8) -> Option<Option<f32>> {
+        self.world().get::<NavParams>(e)?.malus.get(usize::from(kind)).copied()
+    }
+
+    /// `Mob.setPathfindingMalus` by type index; false for a creature without `NavParams` or an index out of range.
+    pub fn set_nav_malus_at(&mut self, e: Entity, kind: u8, value: f32) -> bool {
+        let Some(mut n) = self.world_mut().get_mut::<NavParams>(e) else { return false };
+        n.malus.get_mut(usize::from(kind)).map(|s| *s = Some(value)).is_some()
+    }
+
+    /// `PathNavigation.setSpeedModifier`: the speed the current path is followed at; false for a creature without navigation.
+    pub fn set_nav_speed_modifier(&mut self, e: Entity, speed: f64) -> bool {
+        self.world_mut().get_mut::<Nav>(e).map(|mut n| n.speed = speed).is_some()
     }
 }

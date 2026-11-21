@@ -4,7 +4,7 @@
 use crate::game::Game;
 use horizon_client::{particles::ParticleLevel, potent_sulfur::can_be_reached_by_noxious_gas};
 use horizon_core::geometry::{Aabb, Vec3};
-use horizon_ecs_proto::bridge::host::HurtSource;
+use horizon_ecs_proto::bridge::host::{Flag, HurtSource};
 
 impl Game<'_> {
     /// The followed entities whose box meets `area`, from the level's spatial index (`EcsLevel::ids_near`).
@@ -73,12 +73,12 @@ impl Game<'_> {
         }
     }
 
-    /// `BellBlockEntity` heard, for the followed villager `id`: its brain reads the time (`EcsLevel::heard_bell`, still to be bridged).
-    pub(in crate::game) fn ecs_heard_bell(&mut self, id: u32, now: i64) {
+    /// `BellBlockEntity` heard, for the followed villager `id`: its brain keeps the time of its own clock (`EcsLevel::heard_bell`).
+    pub(in crate::game) fn ecs_heard_bell(&mut self, id: u32, _now: i64) {
         let Some(e) = self.ecs.entity_of(id) else {
             return;
         };
-        self.ecs.heard_bell(e, now);
+        self.ecs.heard_bell(e);
     }
 
     /// The conduit's target test of `conduit_attack` on the followed mob `id`: alive, and within 8 blocks of the conduit's block.
@@ -111,19 +111,19 @@ impl Game<'_> {
             let (dx, dy, dz) = (x - at.x, y - at.y, z - at.z);
             // WATER_SENSITIVE_OR_ON_FIRE, within 4 blocks of the splash.
             let sensitive = self.ecs.water_sensitive(id);
-            if !(sensitive || self.ecs.is_on_fire(id)) || dx * dx + dy * dy + dz * dz >= 16.0 || !self.mob_exists(id) {
+            if !(sensitive || (self.ecs.flag(id, Flag::OnFire) == Some(true))) || dx * dx + dy * dy + dz * dz >= 16.0 || !self.mob_exists(id) {
                 continue;
             }
             if hurts && sensitive {
-                let invulnerable = self.ecs.invulnerable(id);
+                let invulnerable = self.ecs_flag(id, "Invulnerable").unwrap_or(false) || self.ecs.invulnerable_time(id).unwrap_or(0) > 0;
                 // Magic kind of the indirect hit (HurtSource::Magic, missing in P: listed).
-                self.ecs_hurt(id, 1.0, HurtSource::Magic);
+                self.ecs_hurt(id, 1.0, HurtSource::IndirectMagic { owner: None });
                 // Enderman.hurtServer: the repeated teleport attempt, which the AI step runs.
                 if self.ecs.kind(id) == Some("minecraft:enderman") && !invulnerable && self.mob_alive(id) && !self.ecs.is_passenger(id) {
-                    self.ecs.set_counter2(id, 64);
+                    self.ecs_with(|ecs, mw| ecs.repeated_teleport(mw, id, 64));
                 }
             }
-            if extinguishes && self.ecs.is_on_fire(id) && self.mob_alive(id) {
+            if extinguishes && self.ecs.flag(id, Flag::OnFire) == Some(true) && self.mob_alive(id) {
                 self.ecs.extinguish(id);
             }
         }

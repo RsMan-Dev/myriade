@@ -34,6 +34,10 @@ pub fn tick(w: &mut World, e: Entity) {
         crate::orb::award(w, at, rule::orb_share(xp, 0.08), &mut rng.1);
     }
     if t == 1 {
+        // `LivingEntity.die`: entity event 3 (the death animation) for the guests.
+        if let Some(id) = w.get::<crate::bridge::ids::NetId>(e).map(|n| n.0) {
+            w.resource_mut::<Events>().host.death_animation(id, [at.x, at.y, at.z]);
+        }
         w.resource_mut::<Events>().host.level_event(1028, [at.x, at.y, at.z].map(|v| v.floor() as i32), 0);
     }
     w.entity_mut(e).insert(rng);

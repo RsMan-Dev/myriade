@@ -100,9 +100,10 @@ impl Game<'_> {
             let p = c.position;
             hits.push((c.id as i32, d, [p.x, p.y, p.z]));
         }
-        if let Some((i, d)) = self.boat_hit() {
-            let p = self.boats[i].position;
-            hits.push((self.boats[i].id as i32, d, [p.x, p.y, p.z]));
+        if let Some((id, d)) = self.boat_hit()
+            && let Some(v) = self.ecs_view(id)
+        {
+            hits.push((id as i32, d, v.position));
         }
         if let Some((i, d)) = self.remote_cart_hit() {
             let p = self.carts[i].position;
@@ -375,7 +376,7 @@ impl Game<'_> {
             self.rope_rot_old.0 += clamped;
             self.store_boat_back(i, b);
             // In front of a mob that shares the boat.
-            Some(self.player_boat_seat(i))
+            Some(self.player_boat_seat(id))
         } else if self.carts.iter().any(|c| c.id == id) {
             // Minecart.positionRider runs on the client after the cart tick.
             // The offset belongs to the cart, so switching vehicles cannot

@@ -2277,7 +2277,7 @@ impl Game<'_> {
         self.for_each_player(|g| g.splash_on_player(&effects, at, age, owner, duration_scale));
         // The ECS creatures take their share in `ecs_splash_mobs` (reaction included); the list below is empty on a server.
         if self.ecs.is_active() {
-            self.ecs_splash_mobs(at, age, &effects, duration_scale);
+            self.ecs_splash_mobs(at, age, &effects, duration_scale as f32);
         }
         // Mobs take the instant effects (undead invert healing and harming).
         let undead = &self.stations().enchantments.entity_tags;

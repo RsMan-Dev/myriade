@@ -102,7 +102,6 @@ impl Game<'_> {
             host.hub.riding = riding;
         }
         self.lan_entities(&mut states, true, 0, None);
-        self.lan_hook_states(&mut states);
         self.lan_entity_uuids(&mut states);
         self.lan_syncs_looked();
         states

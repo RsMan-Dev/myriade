@@ -122,6 +122,12 @@ pub enum Cap {
     IgnoresTriggers,
     /// `SweetBerryBushBlock.entityInside` skips it (the fox and the bee): `inside_effects::IgnoresBerryBush`, put at creation.
     IgnoresBerryBush,
+    /// `Entity.getPistonPushReaction` is `IGNORE_ENTITY` (marker, interaction, displays, effect cloud, ominous spawner): a piston never moves it (`world_push::PistonIgnored`, put at creation).
+    PistonIgnored,
+    /// `canBeCollidedWith` holds while it lives (the shulker): other entities stop at its box (`world_push::Collidable`, put at creation).
+    Collidable,
+    /// `HappyGhast.canBeCollidedWith`: an adult that is on its still timeout (`world_push::CollidableWhenStill`, put at creation).
+    CollidableWhenStill,
     /// `EntityType.fireImmune`: fire damage never hurts it (`Immune` bit `IMMUNE_FIRE`, put at creation).
     FireImmune,
     /// `WitherBoss`/`WitherSkeleton.canBeAffected`: the wither effect is refused (`Immune` bit `IMMUNE_WITHER`).
@@ -244,6 +250,9 @@ pub mod float;
 pub mod defend_leash_holder;
 pub mod follow_caravan;
 pub mod held_swap;
+pub mod shear;
+pub mod brush;
+pub mod stew_flower;
 pub mod pick_up_gear;
 pub mod follow_player_vehicle;
 pub mod follow_parent;
@@ -290,7 +299,10 @@ pub mod lay_spawn;
 pub mod shoot_tongue;
 pub mod fox_search_for_items;
 pub mod fox_pick_up_loot;
+pub mod eat_held;
 pub mod armadillo_state;
+pub mod golem_state;
+pub mod unhappy;
 pub mod baby_follow_adult;
 pub mod rolled;
 pub mod swell;
@@ -351,6 +363,7 @@ pub mod charge_attack;
 pub mod swim_to_treasure;
 pub mod item_pickup;
 pub mod cube_attack;
+pub mod contact_damage;
 pub mod move_towards_restriction;
 pub mod fox_stroll_village;
 pub mod try_find_water;
@@ -359,12 +372,14 @@ pub mod drowned_go_to_water;
 pub mod move_to_item;
 pub mod drowned_swim_up;
 pub mod strike_pause;
+pub mod target_toss;
 pub mod shield_stun;
 pub mod ravager_roar;
 pub mod hunt_speed;
 pub mod headbutt;
 pub mod ambient_sound;
 pub mod trust;
+pub mod spawn_draw;
 pub mod variant;
 pub mod defend_trusted;
 pub mod shelter;
@@ -373,7 +388,6 @@ pub mod harness_worn;
 pub mod still_under_riders;
 pub mod heal_weather;
 pub mod square_or_face;
-pub mod fly_steer;
 pub mod equip_decision;
 pub mod equip_source;
 
@@ -383,12 +397,14 @@ pub static TABLE: &[&Module] = &[
     &admire_seen::MODULE,
     &crate::dragon::flight::MODULE,
     &vibration_listen::MODULE,
+    &event_listen::MODULE,
     &move_emission::MODULE,
     &block_breaker::MODULE,
     &boss_bar::MODULE,
     &bounce_drag::MODULE,
     &burn_on_touch::MODULE,
     &celebrate::MODULE,
+    &convert_in_water::MODULE,
     &convert_timer::MODULE,
     &darkness_pulse::MODULE,
     &dig::MODULE,
@@ -482,6 +498,7 @@ pub static TABLE: &[&Module] = &[
     &fox_eat_berries::MODULE,
     &fox_search_for_items::MODULE,
     &fox_pick_up_loot::MODULE,
+    &eat_held::MODULE,
     &attack_turtle_egg::MODULE,
     &brute_stroll_home::MODULE,
     &silverfish_merge::MODULE,
@@ -544,6 +561,7 @@ pub static TABLE: &[&Module] = &[
     &swim_to_treasure::MODULE,
     &item_pickup::MODULE,
     &cube_attack::MODULE,
+    &contact_damage::MODULE,
     &move_towards_restriction::MODULE,
     &move_towards_restriction::MODULE_LOOK,
     &fox_stroll_village::MODULE,
@@ -553,6 +571,7 @@ pub static TABLE: &[&Module] = &[
     &move_to_item::MODULE,
     &drowned_swim_up::MODULE,
     &strike_pause::MODULE,
+    &target_toss::MODULE,
     &shield_stun::MODULE,
     &ravager_roar::MODULE,
     &hunt_speed::MODULE,
@@ -603,6 +622,7 @@ pub mod breed_love;
 pub mod burn_on_touch;
 pub mod celebrate;
 pub mod composter;
+pub mod convert_in_water;
 pub mod convert_timer;
 pub mod crop_harvest;
 pub mod darkness_pulse;
@@ -672,5 +692,6 @@ pub mod trade_session;
 pub mod trade_show;
 pub mod trample;
 pub mod vibration_listen;
+pub mod event_listen;
 pub mod victory_celebrate;
 pub mod walk_away;

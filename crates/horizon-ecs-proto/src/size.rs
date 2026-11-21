@@ -51,6 +51,7 @@ pub fn set_size(w: &mut World, e: Entity, size: i32) {
     if let (Some(at), Some(b)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Body>(e).copied()) {
         w.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);
         w.entity_mut(e).insert(Recheck);
+        crate::behaviours::contact_damage::widen(w, e);
     }
     if let Some(mut h) = w.get_mut::<Health>(e) {
         h.0 = health_of(r.p.health_per_sq, s);

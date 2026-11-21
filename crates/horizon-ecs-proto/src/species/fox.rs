@@ -5,7 +5,7 @@
 use super::Def;
 use crate::behaviours::{
     avoid_entity::{self, Avoid},
-    breed, climb_on_powder_snow, defend_trusted, float, follow_parent, fox_eat_berries, fox_faceplant, fox_pick_up_loot, fox_pounce,
+    breed, climb_on_powder_snow, defend_trusted, eat_held, float, follow_parent, fox_eat_berries, fox_faceplant, fox_pick_up_loot, fox_pounce,
     fox_search_for_items, fox_sleep, fox_stalk_prey, fox_stroll_village, leap_at_target, lookout, look_at_player, melee,
     nearest_target, panic, shelter, stroll, trust,
 };
@@ -34,9 +34,25 @@ fn player_when(ps: &crate::hostile::PlayerState, p: &crate::goals::Player) -> bo
     !ps.sneaking(p.id) && !ps.spectator(p.id)
 }
 
+/// `Fox.finalizeSpawn`: snow in a biome of the tag `spawns_snow_foxes`, else red, no draw; saved as the string `Type`.
+static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
+    bound: 0,
+    rows: &[crate::rules::variant::Row { tag: Some("minecraft:spawns_snow_foxes"), cuts: &[], last: crate::rules::variant::SNOW }],
+    otherwise: crate::rules::variant::Row { tag: None, cuts: &[], last: 0 },
+    key: "Type",
+    pick: crate::rules::variant::Pick::Rows,
+    redraw: false,
+    ids: &[0, crate::rules::variant::SNOW],
+    names: &["red", "snow"],
+    traits: &[],
+    group_baby: Some(2),
+    inherit: crate::rules::variant::Inherit::None,
+};
+
 pub static DEF: Def = Def {
     name: "minecraft:fox",
     reference: None,
+    variant: Some(&VARIANT),
     targets: &[
         Entry::new(&defend_trusted::MODULE, 3, &defend_trusted::Params { follow_range: 32.0, unseen_memory: 60, raise: DEFENDING, lower: SLEEPING, sound: "entity.fox.aggro" }),
         Entry::new(&nearest_target::MODULE, 4, &nearest_target::Params { types: PREY, must_see: false, ..nearest_target::Params::DEFAULT }).when(&RED),
@@ -69,9 +85,10 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 24.0, ..look_at_player::Params::DEFAULT }).when(&LOOK_FREE),
         Entry::new(&lookout::MODULE, 13, &lookout::Params { chance: 0.02, blocked: SLEEPING | POUNCING | CROUCHING, sit: SITTING, alarm: Some(fox_sleep::alarmed) }),
         Entry::new(&fox_pick_up_loot::MODULE, 0, &fox_pick_up_loot::Params { foods: FOOD, ..fox_pick_up_loot::Params::DEFAULT }),
+        Entry::new(&eat_held::MODULE, 0, &eat_held::Params { foods: FOOD, ..eat_held::Params::DEFAULT }),
     ],
     changes: &[],
-    rules: &[],
+    rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::FOX)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::IgnoresBerryBush]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],

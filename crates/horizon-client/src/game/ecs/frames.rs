@@ -6,7 +6,6 @@ use horizon_client::entities::{ItemFrame, Painting};
 use horizon_client::items::ItemStack;
 use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::bridge::select::Select;
-use horizon_client::mobs::Who;
 use horizon_ecs_proto::{host_out_frames::FrameEvent, targeting};
 
 /// The sound and item name prefix of a frame: `glow_item_frame` for a glow frame.
@@ -42,7 +41,7 @@ impl Game<'_> {
                     let ctx = self.who_context(host, None);
                     self.post_game_event("minecraft:block_change", c, ctx);
                     self.world.modified.insert((spot.at[0] >> 4, spot.at[2] >> 4));
-                    if matches!(who, Some(targeting::Who::Player)) && !self.creative {
+                    if matches!(who, Some(targeting::Who::Player(_))) && !self.creative {
                         self.consume_held();
                     }
                     if let Some(id) = stack.data().and_then(|d| d.map_id) {

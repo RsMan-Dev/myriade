@@ -26,9 +26,26 @@ impl EcsLevel {
     pub fn jumpable(&self, e: Entity) -> bool {
         self.ecs().is_some_and(|b| b.jumpable(e))
     }
+    /// The player `player` gets off the mount `id` (`EcsWorld::dismount_player`).
+    pub fn dismount_player(&mut self, id: u32, player: u32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|b| b.dismount_player(e, player))
+    }
+    pub fn dashes(&self, e: Entity) -> bool {
+        self.ecs().is_some_and(|b| b.dashes(e))
+    }
+    /// Whether the mount `id` is steered by its rider's look (`EcsWorld::steers_by_look`).
+    pub fn steers_by_look(&self, id: u32) -> bool {
+        self.entity_of(id).zip(self.ecs()).is_some_and(|(e, w)| w.steers_by_look(e))
+    }
     pub fn has_jump_cooldown(&self, e: Entity) -> bool {
         self.ecs().is_some_and(|b| b.has_jump_cooldown(e))
     }
+    /// A player is the controlling passenger of the mount `id` (saddled, and holding the stick when it steers by stick).
+    pub fn player_steers(&self, id: u32) -> bool {
+        self.entity_of(id).zip(self.ecs()).is_some_and(|(e, w)| w.player_steers(e))
+    }
+
     /// The max health and the health of `e`.
     pub fn vehicle_health(&self, e: Entity) -> Option<(f32, f32)> {
         self.ecs()?.vehicle_health(e)

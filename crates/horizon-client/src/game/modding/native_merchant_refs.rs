@@ -1,9 +1,6 @@
 //! Merchant handles for native server mods: villagers and wandering traders.
 use super::{Game, commands::Target};
-use horizon_client::{
-    merchant::{MerchantOffer, Trader},
-    mobs::{Species, render::VILLAGER_TYPES, villager},
-};
+use horizon_client::{merchant::MerchantOffer, mobs::render::VILLAGER_TYPES};
 use horizon_core::identifier::Identifier;
 use mod_api::{EntityRef, MerchantRef, PlayerRef};
 
@@ -33,86 +30,63 @@ impl Game<'_> {
                 .is_none_or(|b| self.merchant_real(&b.stack))
             && self.merchant_real(&offer.result)
     }
-    fn native_merchant_index(&self, merchant: MerchantRef) -> Option<usize> {
+    /// The id of the villager or wandering trader a handle names: the ECS entity must carry a `Merchant`.
+    fn native_merchant_id(&self, merchant: MerchantRef) -> Option<u32> {
         let Target::Mob(id) = self.native_entity_target(merchant.entity())? else {
             return None;
         };
-        self.remote_entities.iter().position(|m| {
-            m.id == id
-                && !m.removed
-                && matches!(m.species(), Species::Villager | Species::WanderingTrader)
-        })
+        self.ecs.is_villager(id).map(|_| id)
     }
 
-    fn native_villager_index(&self, merchant: MerchantRef) -> Option<usize> {
-        let index = self.native_merchant_index(merchant)?;
-        (self.remote_entities[index].species() == Species::Villager).then_some(index)
+    fn native_villager_id(&self, merchant: MerchantRef) -> Option<u32> {
+        let id = self.native_merchant_id(merchant)?;
+        (self.ecs.is_villager(id) == Some(true)).then_some(id)
     }
 
-    /// Reads the offers, experience and level (1 for a trader) of the mob at
-    /// `index`: from a guest's open trading screen if there is one, whose copy
+    /// Reads the offers, experience and level (1 for a trader) of the merchant
+    /// `id`: from a guest's open trading screen if there is one, whose copy
     /// is newer until it closes. A trader whose offers are not rolled yet has none.
     fn merchant_read<T>(
         &self,
-        index: usize,
+        id: u32,
         read: impl FnOnce(&[MerchantOffer], i32, i32) -> T,
     ) -> T {
-        self.merchant_read_lent(&self.remote_entities[index], read)
+        if self.ecs.trader_opaque(id) {
+            let level = self.ecs.trade_level(id).unwrap_or(1).max(1);
+            return read(&[], self.ecs.trade_xp(id).unwrap_or(0), level);
+        }
+        if let Some(session) = self
+            .lan_trade_conn(id)
+            .and_then(|conn| self.lan_trade_session(conn))
+        {
+            return read(&session.offers, session.xp, session.level);
+        }
+        let level = self.ecs.trade_level(id).unwrap_or(1).max(1);
+        let offers = self.ecs.trade_offers(id).unwrap_or_default();
+        read(&offers, self.ecs.trade_xp(id).unwrap_or(0), level)
     }
 
-    /// The same read while an AI tick lends this mob out of `self.mobs`.
+    /// The same read for a mob an AI tick lends out: it is read by its id.
     pub(super) fn merchant_read_lent<T>(
         &self,
         mob: &horizon_client::mobs::Mob,
         read: impl FnOnce(&[MerchantOffer], i32, i32) -> T,
     ) -> T {
-        if mob.species() == Species::Villager
-            && self
-                .stations()
-                .professions
-                .state_index(&mob.extra.profession)
-                .is_none()
-        {
-            return read(
-                &[],
-                mob.extra.trade.as_deref().map_or(0, |t| t.xp),
-                mob.extra.villager_level.max(1),
-            );
-        }
-        if let Some(session) = self
-            .lan_trade_conn(mob.id)
-            .and_then(|conn| self.lan_trade_session(conn))
-        {
-            return read(&session.offers, session.xp, session.level);
-        }
-        let level = mob.extra.villager_level.max(1);
-        match mob.extra.trade.as_deref() {
-            Some(t) if !t.unset => read(&t.offers, t.xp, level),
-            Some(t) => read(&[], t.xp, level),
-            None => read(&[], 0, level),
-        }
+        self.merchant_read(mob.id, read)
     }
 
-    /// Changes the offers, experience and level of the mob at `index`: on a
+    /// Changes the offers, experience and level of the merchant `id`: on a
     /// guest's open trading screen if there is one (and resent to them), else on
-    /// the mob. False when a trade is open somewhere this cannot reach (the host
-    /// window, or inside a hook of that trade's own click), or `edit` refused.
+    /// the merchant. False when a trade is open somewhere this cannot reach (the
+    /// host window, or inside a hook of that trade's own click), or `edit` refused.
     fn merchant_write(
         &mut self,
-        index: usize,
+        id: u32,
         edit: impl FnOnce(&mut Vec<MerchantOffer>, &mut i32, &mut i32) -> bool,
     ) -> bool {
-        let mob = &self.remote_entities[index];
-        if mob.species() == Species::Villager
-            && self
-                .stations()
-                .professions
-                .state_index(&mob.extra.profession)
-                .is_none()
-        {
+        if self.ecs.trader_opaque(id) {
             return false;
         }
-        let id = mob.id;
         if let Some(conn) = self.lan_trade_conn(id) {
             let mut done = false;
             let sent = self.lan_trade_edit(conn, |session| {
@@ -125,37 +99,40 @@ impl Game<'_> {
             });
             return sent && done;
         }
-        let mob = &mut self.remote_entities[index];
-        if mob.extra.flag2 {
+        if self.ecs.trade_busy(id) {
             return false;
         }
-        let trader = mob.extra.trade.get_or_insert_with(|| {
-            Box::new(Trader {
-                unset: true,
-                ..Trader::default()
-            })
-        });
-        let mut level = mob.extra.villager_level.max(1);
-        let done = edit(&mut trader.offers, &mut trader.xp, &mut level);
-        if done && mob.species() == Species::Villager {
-            mob.extra.villager_level = level.max(1);
+        let mut offers = self.ecs.trade_offers(id).unwrap_or_default();
+        let mut xp = self.ecs.trade_xp(id).unwrap_or(0);
+        let mut level = self.ecs.trade_level(id).unwrap_or(1).max(1);
+        let (offers0, xp0, level0) = (offers.clone(), xp, level);
+        if !edit(&mut offers, &mut xp, &mut level) {
+            return false;
         }
-        done
+        if offers != offers0 {
+            self.ecs.trade_store(id, offers, xp);
+        } else if xp != xp0 {
+            self.ecs.set_trade_xp(id, xp);
+        }
+        if level != level0 && self.ecs.is_villager(id) == Some(true) {
+            self.ecs.set_trade_level(id, level.max(1));
+        }
+        true
     }
 
     /// Narrows an entity to a villager or wandering trader, or None for
     /// another kind, a stale handle, or a client.
     pub(super) fn merchant(&self, entity: EntityRef) -> Option<MerchantRef> {
         let merchant = MerchantRef::new(entity);
-        self.native_merchant_index(merchant).map(|_| merchant)
+        self.native_merchant_id(merchant).map(|_| merchant)
     }
 
     /// `AbstractVillager.getOffers`, as they are now (a copy). Offers not
     /// rolled yet read as empty: they are rolled when a player first trades,
     /// or by `add_offer`; reading never draws a random.
     pub(super) fn merchant_offers(&self, merchant: MerchantRef) -> Option<Vec<MerchantOffer>> {
-        let index = self.native_merchant_index(merchant)?;
-        Some(self.merchant_read(index, |offers, _, _| offers.to_vec()))
+        let id = self.native_merchant_id(merchant)?;
+        Some(self.merchant_read(id, |offers, _, _| offers.to_vec()))
     }
 
     /// Replaces offer `index` (a player trading with it is sent the new
@@ -167,13 +144,13 @@ impl Game<'_> {
         index: u32,
         offer: MerchantOffer,
     ) -> bool {
-        let Some(mob) = self.native_merchant_index(merchant) else {
+        let Some(id) = self.native_merchant_id(merchant) else {
             return false;
         };
         if !self.merchant_valid_offer(&offer) {
             return false;
         }
-        self.merchant_write(mob, |offers, _, _| {
+        self.merchant_write(id, |offers, _, _| {
             let Some(slot) = offers.get_mut(index as usize) else {
                 return false;
             };
@@ -191,16 +168,16 @@ impl Game<'_> {
         merchant: MerchantRef,
         offer: MerchantOffer,
     ) -> bool {
-        let Some(mob) = self.native_merchant_index(merchant) else {
+        let Some(id) = self.native_merchant_id(merchant) else {
             return false;
         };
         if !self.merchant_valid_offer(&offer) {
             return false;
         }
-        if self.lan_trade_conn(self.remote_entities[mob].id).is_none() && !self.remote_entities[mob].extra.flag2 {
-            self.ensure_offers(mob);
+        if self.lan_trade_conn(id).is_none() && !self.ecs.trade_busy(id) {
+            self.ecs.ensure_offers(id);
         }
-        self.merchant_write(mob, |offers, _, _| {
+        self.merchant_write(id, |offers, _, _| {
             offers.push(offer);
             true
         })
@@ -209,10 +186,10 @@ impl Game<'_> {
     /// Removes offer `index`, the ones after it moving up. False for an index
     /// past the end or a stale handle.
     pub(super) fn merchant_remove_offer(&mut self, merchant: MerchantRef, index: u32) -> bool {
-        let Some(mob) = self.native_merchant_index(merchant) else {
+        let Some(id) = self.native_merchant_id(merchant) else {
             return false;
         };
-        self.merchant_write(mob, |offers, _, _| {
+        self.merchant_write(id, |offers, _, _| {
             if index as usize >= offers.len() {
                 return false;
             }
@@ -224,16 +201,15 @@ impl Game<'_> {
     /// `Merchant.getTradingPlayer`: the player whose trading screen is open on
     /// it. None when nobody trades, or the screen is the host window's.
     pub(super) fn merchant_trading_player(&self, merchant: MerchantRef) -> Option<PlayerRef> {
-        let index = self.native_merchant_index(merchant)?;
-        let conn = self.lan_trade_conn(self.remote_entities[index].id)?;
+        let id = self.native_merchant_id(merchant)?;
+        let conn = self.lan_trade_conn(id)?;
         self.player(self.lan_trade_player(conn)?)
     }
 
     /// `VillagerData.profession`, a registry id (`minecraft:farmer`; none is
     /// `minecraft:none`). None for a wandering trader.
     pub(super) fn merchant_profession(&self, merchant: MerchantRef) -> Option<String> {
-        let mob = &self.remote_entities[self.native_villager_index(merchant)?];
-        Some(mob.extra.profession.id())
+        self.ecs.trade_profession(self.native_villager_id(merchant)?)
     }
 
     /// `Villager.setVillagerData` with a new profession: a different one
@@ -245,35 +221,27 @@ impl Game<'_> {
         merchant: MerchantRef,
         profession: &str,
     ) -> bool {
-        let Some(index) = self.native_villager_index(merchant) else {
+        let Some(id) = self.native_villager_id(merchant) else {
             return false;
         };
-        let Some(profession) = Identifier::parse(profession)
+        let Some(index) = Identifier::parse(profession)
             .ok()
-            .and_then(|id| self.stations().professions.resolve(&id.to_string()))
+            .and_then(|p| self.stations().professions.resolve(&p.to_string()))
+            .and_then(|i| u8::try_from(i).ok())
         else {
             return false;
         };
-        let id = self.remote_entities[index].id;
-        if self
-            .stations()
-            .professions
-            .state_index(&self.remote_entities[index].extra.profession)
-            .is_none()
-            || self.remote_entities[index].extra.flag2
-            || self.lan_trade_conn(id).is_some()
-        {
+        if self.ecs.trader_opaque(id) || self.ecs.trade_busy(id) || self.lan_trade_conn(id).is_some() {
             return false;
         }
-        let table = self.stations().professions.clone();
-        villager::set_profession(&mut self.remote_entities[index], &table, profession);
+        self.ecs.set_trade_profession(id, index);
         true
     }
 
     /// `VillagerData.level`, at least 1.
     pub(super) fn merchant_level(&self, merchant: MerchantRef) -> Option<i32> {
-        let index = self.native_villager_index(merchant)?;
-        Some(self.merchant_read(index, |_, _, level| level.max(1)))
+        let id = self.native_villager_id(merchant)?;
+        Some(self.merchant_read(id, |_, _, level| level.max(1)))
     }
 
     /// `VillagerData.withLevel`: `Math.max(1, level)`, with no upper limit in
@@ -281,11 +249,11 @@ impl Game<'_> {
     /// (a level past 5 can't level up). A trading guest's session follows,
     /// and gets the sequences a level-up from the new level needs.
     pub(super) fn merchant_set_level(&mut self, merchant: MerchantRef, level: i32) -> bool {
-        let Some(index) = self.native_villager_index(merchant) else {
+        let Some(id) = self.native_villager_id(merchant) else {
             return false;
         };
         let level = level.max(1);
-        self.merchant_write(index, |_, _, current| {
+        self.merchant_write(id, |_, _, current| {
             *current = level;
             true
         })
@@ -293,46 +261,43 @@ impl Game<'_> {
 
     /// `VillagerData.type`, a registry id (`minecraft:plains`).
     pub(super) fn merchant_villager_type(&self, merchant: MerchantRef) -> Option<String> {
-        let mob = &self.remote_entities[self.native_villager_index(merchant)?];
-        let name = VILLAGER_TYPES[mob.extra.variant as usize % VILLAGER_TYPES.len()];
-        Some(format!("minecraft:{name}"))
+        self.ecs.trade_variant(self.native_villager_id(merchant)?)
     }
 
     /// `VillagerData.withType`: also the type a trading guest's session
     /// rolls its next level-up offers with. False for an unknown id, a
     /// wandering trader, or a trade open where this can't reach.
     pub(super) fn merchant_set_villager_type(&mut self, merchant: MerchantRef, kind: &str) -> bool {
-        let Some(index) = self.native_villager_index(merchant) else {
+        let Some(id) = self.native_villager_id(merchant) else {
             return false;
         };
         let Some(kind) = registry_index(kind, &VILLAGER_TYPES) else {
             return false;
         };
-        let id = self.remote_entities[index].id;
         if let Some(conn) = self.lan_trade_conn(id) {
             let variant = format!("minecraft:{}", VILLAGER_TYPES[kind as usize]);
             if !self.lan_trade_edit(conn, |session| session.variant = variant) {
                 return false;
             }
-        } else if self.remote_entities[index].extra.flag2 {
+        } else if self.ecs.trade_busy(id) {
             return false;
         }
-        self.remote_entities[index].extra.variant = kind;
+        self.ecs.set_trade_variant(id, kind);
         true
     }
 
     /// `Villager.getVillagerXp`.
     pub(super) fn merchant_xp(&self, merchant: MerchantRef) -> Option<i32> {
-        let index = self.native_villager_index(merchant)?;
-        Some(self.merchant_read(index, |_, xp, _| xp))
+        let id = self.native_villager_id(merchant)?;
+        Some(self.merchant_read(id, |_, xp, _| xp))
     }
 
     /// `Villager.setVillagerXp`: assigned as given, as vanilla does.
     pub(super) fn merchant_set_xp(&mut self, merchant: MerchantRef, xp: i32) -> bool {
-        let Some(index) = self.native_villager_index(merchant) else {
+        let Some(id) = self.native_villager_id(merchant) else {
             return false;
         };
-        self.merchant_write(index, |_, current, _| {
+        self.merchant_write(id, |_, current, _| {
             *current = xp;
             true
         })
@@ -344,8 +309,7 @@ pub(super) mod tests {
     use super::super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_client::{items::ItemStack, merchant::ItemCost, mobs::Mob};
-    use horizon_core::geometry::Vec3;
+    use horizon_client::{items::ItemStack, merchant::ItemCost};
     use mod_api::WorldEpoch;
 
     pub(in crate::game) fn offer(cost: &str, result: &str) -> MerchantOffer {
@@ -365,9 +329,17 @@ pub(super) mod tests {
         }
     }
 
+    /// Spawns `kind` on the ECS and gives it the network id `id`.
+    pub(in crate::game) fn spawn_id(game: &mut Game<'_>, id: u32, kind: &str) {
+        game.next_entity = id - 1;
+        let got = game
+            .ecs_spawn_mob(kind, [0.0; 3], true, None, crate::game::creatures::SpawnSite::Raw)
+            .unwrap();
+        assert_eq!(got, id);
+    }
+
     pub(in crate::game) fn spawn(game: &mut Game<'_>, id: u32, kind: &str) -> MerchantRef {
-        let kind = game.res.mob_types().get(kind).unwrap().clone();
-        game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+        spawn_id(game, id, kind);
         let entity = game.entity(id).unwrap();
         game.merchant(entity).unwrap()
     }
@@ -377,18 +349,28 @@ pub(super) mod tests {
     fn unresolved_profession_preserves_offers_but_cannot_trade_them() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            let villager = spawn(game, 40, "minecraft:villager");
-            game.mobs[0].extra.profession =
-                horizon_client::mobs::villager::ProfessionState::from_id("example:engineer");
-            game.mobs[0].extra.trade = Some(Box::new(Trader {
-                offers: vec![offer("minecraft:wheat", "minecraft:emerald")],
-                ..Trader::default()
-            }));
+            // A mod's profession that is not loaded: read from the save, kept by name.
+            use horizon_core::nbt::{Compound, JavaString, Tag};
+            let mut data = Compound::default();
+            data.insert("type".into(), Tag::String(JavaString::from("minecraft:plains")));
+            data.insert("profession".into(), Tag::String(JavaString::from("example:engineer")));
+            data.insert("level".into(), Tag::Int(1));
+            let mut saved = Compound::default();
+            saved.insert("id".into(), Tag::String(JavaString::from("minecraft:villager")));
+            saved.insert("Pos".into(), Tag::List(vec![Tag::Double(0.0f64.to_bits()); 3]));
+            saved.insert("VillagerData".into(), Tag::Compound(data));
+            saved.insert(
+                "Offers".into(),
+                horizon_client::entity_nbt::offers_to_nbt(&[offer("minecraft:wheat", "minecraft:emerald")]),
+            );
+            game.next_entity = 39;
+            assert_eq!(game.ecs_load(&saved), Some(40));
+            let villager = game.merchant(game.entity(40).unwrap()).unwrap();
             assert_eq!(villager.offers(game), Some(Vec::new()));
             assert!(!villager.set_profession(game, "minecraft:farmer"));
-            assert!(game.interact_trader(0, "minecraft:air").unwrap());
+            assert!(game.interact_trader_ecs(40, "minecraft:air").unwrap());
             assert!(game.station.is_none());
-            assert_eq!(game.mobs[0].extra.trade.as_ref().unwrap().offers.len(), 1);
+            assert_eq!(game.ecs.trade_offers(40).unwrap().len(), 1);
             assert_eq!(
                 villager.profession(game).as_deref(),
                 Some("example:engineer")
@@ -403,13 +385,7 @@ pub(super) mod tests {
             game.options.dedicated = Some(Vec::new());
             let villager = spawn(game, 40, "minecraft:villager");
             let trader = spawn(game, 41, "minecraft:wandering_trader");
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.mobs.push(Mob::new(42, zombie, Vec3::ZERO, 0.0));
+            spawn_id(game, 42, "minecraft:zombie");
             assert!(game.merchant(game.entity(42).unwrap()).is_none());
 
             // Nothing is rolled yet; reading and a refused write draw nothing.
@@ -425,7 +401,7 @@ pub(super) mod tests {
                 ),
                 Ok(false)
             );
-            assert!(game.mobs[0].extra.trade.as_ref().is_none_or(|t| t.unset));
+            assert_eq!(game.ecs.trade_offers(40), Some(Vec::new()));
 
             // A wandering trader has offers but no villager data.
             assert_eq!(
@@ -444,13 +420,13 @@ pub(super) mod tests {
             assert_eq!(trader.villager_type(game), None);
 
             // Put in known offers, as a rolled villager has them.
-            game.mobs[0].extra.trade = Some(Box::new(Trader {
-                offers: vec![
+            game.ecs.set_trade_offers(
+                40,
+                vec![
                     offer("minecraft:wheat", "minecraft:emerald"),
                     offer("minecraft:coal", "minecraft:emerald"),
                 ],
-                ..Trader::default()
-            }));
+            );
             let mut changed = offer("minecraft:carrot", "minecraft:diamond");
             changed.uses = 5;
             assert_eq!(
@@ -509,19 +485,18 @@ pub(super) mod tests {
             );
             // A new profession forgets the offers; the same one keeps them.
             assert_eq!(villager.offers(game), Some(Vec::new()));
-            game.mobs[0].extra.trade.as_mut().unwrap().unset = false;
-            game.mobs[0].extra.trade.as_mut().unwrap().offers =
-                vec![offer("minecraft:wheat", "minecraft:emerald")];
+            game.ecs
+                .set_trade_offers(40, vec![offer("minecraft:wheat", "minecraft:emerald")]);
             assert!(villager.set_profession(game, "minecraft:farmer"));
             assert_eq!(villager.offers(game).unwrap().len(), 1);
 
             assert_eq!(villager.level(game), Some(1));
             assert!(villager.set_level(game, 4));
             assert_eq!(villager.level(game), Some(4));
-            assert_eq!(game.mobs[0].extra.villager_level, 4);
+            assert_eq!(game.ecs.trade_level(40), Some(4));
             assert!(villager.set_level(game, 123456));
             assert_eq!(villager.level(game), Some(123456));
-            assert_eq!(game.mobs[0].extra.villager_level, 123456);
+            assert_eq!(game.ecs.trade_level(40), Some(123456));
             // Vanilla: `Math.max(1, level)`, no upper limit.
             assert!(villager.set_level(game, 0));
             assert_eq!(villager.level(game), Some(1));

@@ -1,6 +1,6 @@
 //! Fiche 100, posture assis / debout du chameau (`mobs/camel.rs:296-318`, `:172-183`, `living.rs:1535-1544`) : une RÈGLE,
 //! pas un but (priorité 255, sans drapeau, jamais demandée). Assis ou en transition, le chameau ne marche pas. La pose change
-//! en temps propre (`now_of`). L'occupation `OCC_SITTING` couvre l'assise ET le lever : c'est `refuse_to_move`, donc
+//! en temps de jeu (`game_now`). L'occupation `OCC_SITTING` couvre l'assise ET le lever : c'est `refuse_to_move`, donc
 //! `horizon:is_sitting` lu par les buts du chameau vaut `refuse_to_move`. Écarts : pas de crochet « un point à marcher est
 //! posé » (le lever de `camel.rs:172-183`), pas de boîte par pose (BESOIN DU CADRE).
 use super::*;
@@ -18,7 +18,7 @@ impl Params {
     pub const DEFAULT: Self = Self { sit_down: 40, stand_up: 52 };
 }
 
-/// The pose, and the own time of its last change (`since`, negative at creation: a camel is born standing, its pose done).
+/// The pose, and the GAME time of its last change (`since`, negative at creation: a camel is born standing, its pose done).
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Posture {
     pub sitting: bool,
@@ -45,12 +45,12 @@ fn never(_: &mut World, _: Entity, _: Inst) -> bool {
 }
 fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<Params>(p);
-    let now = now_of(w, e) as i64;
+    let now = crate::cow::game_now(w);
     w.entity_mut(e).insert(Posture { sitting: false, since: since_standing(now, p.stand_up), sit_down: p.sit_down, stand_up: p.stand_up });
 }
 
 impl Posture {
-    /// `refuse_to_move` at own time `now`: sitting, or in a transition.
+    /// `refuse_to_move` at game time `now`: sitting, or in a transition.
     pub fn refuses(&self, now: i64) -> bool {
         refuses(self.sitting, now - self.since, transition(self))
     }
@@ -64,11 +64,38 @@ fn transition(p: &Posture) -> i64 {
 }
 /// `pose_time` (`camel.rs:72-74`): own ticks since the last change of pose.
 pub fn pose_time(w: &World, e: Entity) -> i64 {
-    now_of(w, e) as i64 - w.get::<Posture>(e).map_or(0, |p| p.since)
+    crate::cow::game_now(w) - w.get::<Posture>(e).map_or(0, |p| p.since)
+}
+/// `Camel.LAST_POSE_CHANGE_TICK` (and the saved `LastPoseTick`): the game time of the last change of pose, negative while sitting
+/// (`sitDown` stores the opposite of the game time, at least -1 so that the sign survives a change at game time 0).
+pub fn last_pose_tick(w: &World, e: Entity) -> Option<i64> {
+    let p = w.get::<Posture>(e)?;
+    let tick = p.since.max(0);
+    Some(if p.sitting { -tick.max(1) } else { tick })
+}
+/// The read of `LastPoseTick` (`Camel.readAdditionalSaveData`): the sign is the pose, the absolute value the game time of its change,
+/// kept as it is (`since` is a game time); the transition and the occupation follow the pose as `sit_down` and `stand_up` leave them.
+pub fn load_pose_tick(w: &mut World, e: Entity, tick: i64) {
+    let since = tick.abs();
+    let now = crate::cow::game_now(w);
+    let Some(mut p) = w.get_mut::<Posture>(e) else { return };
+    p.sitting = tick < 0;
+    p.since = since;
+    let (sitting, running) = (p.sitting, now - since < transition(&p));
+    if sitting {
+        occupy(w, e, OCC_SITTING);
+    } else if !running {
+        release(w, e, OCC_SITTING);
+    }
+    if running {
+        w.entity_mut(e).insert(Holding);
+    } else {
+        w.entity_mut(e).remove::<Holding>();
+    }
 }
 /// `sit_down` (`camel.rs:300-306`): a standing camel sits; the walk is held for the sit-down, the occupation is taken.
 pub fn sit_down(w: &mut World, e: Entity) {
-    let now = now_of(w, e) as i64;
+    let now = crate::cow::game_now(w);
     let Some(mut p) = w.get_mut::<Posture>(e) else { return };
     if p.sitting {
         return;
@@ -81,7 +108,7 @@ pub fn sit_down(w: &mut World, e: Entity) {
 }
 /// `stand_up` (`camel.rs:307-313`): a sitting camel stands; the walk and the occupation stay held for the stand-up.
 pub fn stand_up(w: &mut World, e: Entity) {
-    let now = now_of(w, e) as i64;
+    let now = crate::cow::game_now(w);
     let Some(mut p) = w.get_mut::<Posture>(e) else { return };
     if !p.sitting {
         return;
@@ -93,7 +120,7 @@ pub fn stand_up(w: &mut World, e: Entity) {
 }
 /// `stand_up_instantly` (`camel.rs:315-318`): standing at once, no transition left.
 pub fn stand_up_instantly(w: &mut World, e: Entity) {
-    let now = now_of(w, e) as i64;
+    let now = crate::cow::game_now(w);
     let Some(mut p) = w.get_mut::<Posture>(e) else { return };
     p.sitting = false;
     p.since = since_standing(now, p.stand_up);
@@ -111,6 +138,7 @@ pub fn refuses_to_move(w: &World, e: Entity) -> bool {
 
 fn tick(w: &mut World) {
     tick_state(w, water_run);
+    tick_state(w, dash_run);
     tick_state(w, holding_run);
 }
 /// `ai_step` (`camel.rs:433-435`): a sitting camel that enters water stands up at once (the event is read once).
@@ -121,11 +149,19 @@ fn water_run(ev: Res<Events>, clock: Res<Clock>, mut cmds: Commands, mut q: Quer
             continue;
         }
         p.sitting = false;
-        p.since = since_standing(clock.of(e) as i64, p.stand_up);
+        p.since = since_standing(clock.game_now(), p.stand_up);
         if let Some(mut o) = occ {
             o.0 &= !OCC_SITTING;
         }
         cmds.entity(e).remove::<Holding>();
+    }
+}
+/// A dashing camel that lands or enters a fluid after its rider got off ends the dash (`mount::settle_dash`).
+fn dash_run(ev: Res<Events>, dashing: Query<(), With<crate::mount::Dashing>>, mut cmds: Commands) {
+    for e in ev.landed.iter().chain(ev.entered_fluid.iter()) {
+        if dashing.contains(e) {
+            cmds.queue(move |w: &mut World| crate::mount::settle_dash(w, e));
+        }
     }
 }
 /// The transitions in progress hold the walk (`Drive`); when the transition is over the mark goes, and a stand-up releases
@@ -136,7 +172,7 @@ fn holding_run(clock: Res<Clock>, mut cmds: Commands, mut q: Query<(Entity, &mut
             d.zza = 0.0;
             d.xxa = 0.0;
         }
-        if (clock.of(e) as i64) - p.since < transition_ticks(p.sitting, p.sit_down, p.stand_up) {
+        if clock.game_now() - p.since < transition_ticks(p.sitting, p.sit_down, p.stand_up) {
             continue;
         }
         if !p.sitting

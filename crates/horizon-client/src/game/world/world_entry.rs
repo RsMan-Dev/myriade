@@ -534,6 +534,8 @@ impl Game<'_> {
         self.world_tables = tables;
         let bonus = self.trident_hit_bonus_fn();
         self.ecs.set_trident_hit_bonus(bonus);
+        self.ecs.set_melee_gear(self.melee_gear_fn());
+        self.ecs.set_item_modifiers_table(self.item_modifiers_fn());
         self.health_resources = health;
         self.mods.datapack_registries = registries.map(Arc::new);
         self.data_map_registries = self
@@ -595,6 +597,8 @@ impl Game<'_> {
         self.world_tables = tables;
         let bonus = self.trident_hit_bonus_fn();
         self.ecs.set_trident_hit_bonus(bonus);
+        self.ecs.set_melee_gear(self.melee_gear_fn());
+        self.ecs.set_item_modifiers_table(self.item_modifiers_fn());
         self.data_map_registries = self
             .world_tables
             .as_ref()

@@ -296,6 +296,15 @@ pub(crate) fn push(
     objects: Query<&Body>,
     ordered: Query<(), With<Overlapping>>,
     touching: Query<(), With<Touching>>,
+    // `Creaking.isPushable` / `push`: not while it stands still under a stare (`canMove` false); a dead one (crumbling, `Dying`) is not pushable either.
+    fixed: Query<(), Or<(With<Stilled>, crate::tear_down::Dead)>>,
+    // `AbstractCubeMob.push(Entity)`: a body of contact damage and its victim, asked only for overlapping boxes.
+    (carriers, victims): (
+        Query<(), (With<crate::behaviours::contact_damage::ContactDamage>, Allow<Disabled>)>,
+        Query<(), (With<crate::behaviours::contact_damage::ContactVictim>, Allow<Disabled>)>,
+    ),
+    // `Player.aiStep` touches a body that moved onto a player standing still: a moved carrier asks the players near it.
+    online: Option<Res<crate::goals::Online>>,
     mut movers: Query<(Entity, &Bounds, &mut Vel, Has<Moving>, Has<Touching>), (Or<(Changed<Bounds>, With<Touching>)>, Without<Overlapping>, Without<PushFree>)>,
 ) {
     // `Entity.isPushable`: an object (an item on the ground) neither pushes nor is pushed; read only where two boxes overlap.
@@ -308,6 +317,18 @@ pub(crate) fn push(
         // An object (an item on the ground) neither pushes nor is pushed: it scans nothing.
         // (read lazily: a creature alone in its cells never asks).
         let mut e_object: Option<bool> = None;
+        let mut e_fixed: Option<bool> = None;
+        if let Some(on) = online.as_deref().filter(|_| carriers.contains(e)) {
+            let r = (mx.x - mn.x).max(mx.z - mn.z) / 2.0 + 1.3;
+            on.for_near(cx, cz, r, |p| {
+                if b.0.intersects(crate::behaviours::contact_damage::touch_area(&p)) {
+                    let id = p.id;
+                    par.command_scope(e, |mut cmd| {
+                        cmd.queue(move |w: &mut World| crate::behaviours::contact_damage::touch_player(w, e, id));
+                    });
+                }
+            });
+        }
         {
         idx.for_near_touching(cx, cz, (mn.x, mn.z), (mx.x, mx.z), |o| {
             if o == e {
@@ -321,6 +342,13 @@ pub(crate) fn push(
                 return;
             }
             overlapping += 1;
+            for (cube, victim) in [(o, e), (e, o)] {
+                if carriers.contains(cube) && victims.contains(victim) {
+                    par.command_scope(e, |mut cmd| {
+                        cmd.queue(move |w: &mut World| crate::behaviours::contact_damage::touch_victim(w, cube, victim));
+                    });
+                }
+            }
             let (omn, omx) = (ob.0.min_position(), ob.0.max_position());
             let (mut xa, mut za) = ((omn.x + omx.x) / 2.0 - cx, (omn.z + omx.z) / 2.0 - cz);
             let mut dd = xa.abs().max(za.abs());
@@ -341,8 +369,10 @@ pub(crate) fn push(
             // What the neighbour receives of this animal's call: its own call is the other one.
             xa = bx * gain(!lower);
             za = bz * gain(!lower);
-            dv.0 -= gx;
-            dv.1 -= gz;
+            if !*e_fixed.get_or_insert_with(|| fixed.contains(e)) {
+                dv.0 -= gx;
+                dv.1 -= gz;
+            }
             // An overlap begins: in the ordered mode this one and its neighbour are handled by `ordered_pass` from the
             // next tick (this tick's impulse was given above).
             if cfg.ordered_push {
@@ -356,7 +386,7 @@ pub(crate) fn push(
                     cmd.entity(o).insert(Touching);
                 });
             }
-            if (!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o) {
+            if ((!ob.is_changed() && !(cfg.keep_touching && touching.contains(o))) || ordered.contains(o)) && !fixed.contains(o) {
                 par.command_scope(e, |mut cmd| {
                     // A sleeper keeps the push (its velocity changes) and moves when it wakes, not before.
                     let (push, wake) = (Vec3::new(xa, 0.0, za), !asleep);

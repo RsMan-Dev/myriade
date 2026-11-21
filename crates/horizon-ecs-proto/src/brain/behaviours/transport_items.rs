@@ -54,12 +54,22 @@ struct Target {
 
 /// The trip's state. A component of the entity, as the door's state: a memory write would wake the brain at each step.
 #[derive(Component, Clone, Debug, Default)]
+#[component(on_remove = carry_removed)]
 pub struct Carry {
     target: Option<Target>,
     state: State,
     interaction: Option<Interaction>,
     ticks: u32,
     opened: Option<[i32; 3]>,
+}
+
+/// A golem that goes (killed, despawned) with a chest open lets it go: the host's opener count drops by event, as `recheckOpeners` finds the
+/// golem gone (no scan of the golems on the host side). The hinge sound needs the block's name, which a hook has no level to read.
+fn carry_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(p) = world.get::<Carry>(ctx.entity).and_then(|c| c.opened) else { return };
+    if let Some(mut events) = world.get_resource_mut::<Events>() {
+        events.host.chest_open(p, false, ctx.entity);
+    }
 }
 
 fn equip(w: &mut World, e: Entity, _: &Ctx) {
@@ -140,7 +150,7 @@ fn on_start_travelling(w: &mut World, e: Entity) {
         c.interaction = None;
         c.ticks = 0;
     }
-    w.resource_mut::<Events>().host.golem_state(e, cg::IDLE);
+    crate::behaviours::golem_state::set(w, e, cg::IDLE);
 }
 
 /// `stop_targeting`: the chest and the walk to it are dropped.
@@ -412,7 +422,7 @@ fn on_reached(w: &mut World, e: Entity, mw: &MobWorld, me: Vec3, size: Vec3, t: 
             if let Some(mut c) = w.get_mut::<Carry>(e) {
                 c.opened = Some(t.pos);
             }
-            w.resource_mut::<Events>().host.golem_state(e, state);
+            crate::behaviours::golem_state::set(w, e, state);
         }
         if phase.sound {
             w.resource_mut::<Events>().host.sound(sound, [me.x, me.y, me.z], 1.0, 1.0);

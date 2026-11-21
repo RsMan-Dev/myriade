@@ -26,7 +26,7 @@ fn bee(no_nectar_since: u64) -> Bee {
 }
 
 fn egg(left: u64) -> Egg {
-    Egg { def: EggDef { base: 6000, range: 6000 }, left, at: u64::MAX }
+    Egg { def: EggDef { base: 6000, range: 6000, gift: None }, left, at: u64::MAX }
 }
 
 #[test]

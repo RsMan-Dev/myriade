@@ -497,7 +497,7 @@ impl Game<'_> {
         self.post_game_event(event, p, ctx);
     }
     /// `start_mob_using_item` for the ECS mob `id`: the use counter is the bridge's (`ecs_start_using`, not yet on the bridge).
-    pub(super) fn start_mob_using_item_ecs(&mut self, id: u32, hand: Hand) -> bool {
+    pub(in crate::game) fn start_mob_using_item_ecs(&mut self, id: u32, hand: Hand) -> bool {
         let off_hand = hand == Hand::Off;
         if !self.ecs_mob_free(id) {
             return false;

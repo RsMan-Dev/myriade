@@ -115,6 +115,11 @@ fn an_absorbed_hit_still_rolls_the_infested_effect() {
     // Absorption IV: 20 above the health, more than the sting's 3.
     g.add_player_effect(EffectInstance::new("absorption", 600, 4));
     assert_eq!(g.player.as_ref().unwrap().health.absorption(), 20.0);
+    // The puffed fish is an ECS entity (`Pufferfish.playerTouch` goes through `ecs_puffer_sting`).
+    g.ecs = g.test_ecs_level();
+    let fish_id = g.ecs_spawn("minecraft:pufferfish", [8.5, 4.0, 8.5], None).unwrap();
+    let fish = g.ecs.entity_of(fish_id).unwrap();
+    let me = g.player.as_ref().unwrap().entity_id as u32;
     let mut rolls = 0;
     for i in 0..128i64 {
         // Small seeds share their first draw, so spread them over the state.
@@ -125,7 +130,7 @@ fn an_absorbed_hit_still_rolls_the_infested_effect() {
         p.health.hurt.cooldown = 0;
         g.mobs.retain(|m| m.kind.id != "minecraft:silverfish");
         g.world.random.set_seed(seed);
-        g.touch_pufferfish();
+        g.ecs_puffer_sting(fish, me, 2, false);
         let p = g.player.as_ref().unwrap();
         assert_eq!(
             (p.health.absorption(), p.health.health()),

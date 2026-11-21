@@ -627,6 +627,19 @@ pub fn born(w: &mut World, sp: &crate::cow::Species, at: [f64; 3], seed: u64, ne
     }
     e
 }
+/// Whether a creature of species `sp` fits at the corner of block `at` (`Zombie.hurtServer`'s reinforcement: `isSpawnPositionOk`, the
+/// species' spawn rule, then its box set there is free of creatures and collisions, and of liquid unless the species spawns in it).
+pub(crate) fn fits_at_corner(w: &World, sp: &crate::cow::Species, r: &mut LegacyRandom, at: [i32; 3]) -> bool {
+    let Some(def) = spawn_def(sp) else { return false };
+    let mw = w.resource::<Level>().mw.0;
+    let biome = w.get_resource::<Spawner>().map_or("", |s| s.biome.as_str());
+    let [x, y, z] = at;
+    if !place_ok(mw, def, x, y, z) || !rule_ok(mw, biome, def, r, x, y, z) {
+        return false;
+    }
+    let probe = box_at(Vec3::new(f64::from(x), f64::from(y), f64::from(z)), sp.width, sp.height);
+    !obstructed(w, probe) && mw.no_collision(probe) && (def.liquid || !mw.contains_any_liquid(probe))
+}
 /// One tick: the counts follow the creatures that changed chunk and the players that did; then the pass, if any category is open.
 pub fn step(world: &mut World) {
     if !world.contains_resource::<Spawner>() {

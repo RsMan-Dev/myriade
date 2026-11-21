@@ -81,6 +81,10 @@ pub(crate) fn on_shot(w: &mut bevy_ecs::world::DeferredWorld, e: Entity) {
     }
 }
 /// A creature was hurt by a player or a creature: the goal is woken at the selector's next tick.
+/// A player hit `e` less than `ticks` ticks ago (`PiglinAi.wasHurtBy` sets `ADMIRING_DISABLED` for 400 ticks): read from the last hit this goal kept.
+pub fn hit_by_player_within(w: &World, e: Entity, ticks: u64) -> bool {
+    w.get::<HurtByGoal>(e).and_then(|g| g.last).is_some_and(|(who, at)| matches!(who, Who::Player(_)) && now_of(w, e).saturating_sub(at) < ticks)
+}
 fn hurt_events(clock: Res<Clock>, mut by: ResMut<HurtBy>, mut q: Query<&mut HurtByGoal>, mut reqs: ResMut<Requests>) {
     for (e, who) in std::mem::take(&mut by.0) {
         if let Ok(mut g) = q.get_mut(e) {

@@ -8,6 +8,7 @@ use crate::locomotion::{fly, Medium};
 
 pub static DEF: Def = Def {
     name: "minecraft:parrot",
+    variant: Some(&super::variants::PARROT),
     // `register_parrot`: the panic and the float (0), the look (1), the sit and the owner (2), the wander (2), the mob (3).
     goals: &[
         Entry::new(&panic::MODULE, 0, &panic::Params { speed: 1.25, ..panic::Params::DEFAULT }),

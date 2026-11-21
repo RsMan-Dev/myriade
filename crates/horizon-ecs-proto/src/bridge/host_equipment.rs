@@ -6,6 +6,15 @@ use bevy_ecs::entity::Entity;
 use horizon_client_lib::items::ItemStack;
 
 impl EcsWorld {
+    /// The stacks of every slot of `e`, empty ones included; None when `e` is gone.
+    pub fn equipment_slots(&self, e: Entity) -> Option<[Option<ItemStack>; SLOTS]> {
+        self.world().get_entity(e).ok()?;
+        Some(std::array::from_fn(|slot| equip_stack::get(self.world(), e, slot)))
+    }
+    /// Puts `stack` (None empties the slot) in `slot` of `e`; false when `e` is gone or `slot` is out of range.
+    pub fn put_equipment_slot(&mut self, e: Entity, slot: usize, stack: Option<ItemStack>) -> bool {
+        equip_stack::set(self.world_mut(), e, slot, stack)
+    }
     /// Puts `stack` in `slot` of `e`; false when `e` is gone or `slot` is out of range.
     pub fn set_equipment_stack(&mut self, e: Entity, slot: usize, stack: ItemStack) -> bool {
         equip_stack::set(self.world_mut(), e, slot, Some(stack))
@@ -21,5 +30,10 @@ impl EcsWorld {
             return None;
         }
         Some(over.unwrap_or_else(|| EQUIP_GENERIC.to_string()))
+    }
+    /// `SulfurCube.isSwallowableItem`: whether `e` carries a swallowable list that names `item`.
+    pub fn swallows(&self, e: Entity, item: &str) -> bool {
+        use crate::behaviours::{swallow_hold::accepts, swallow_item::Swallowable};
+        self.world().get::<Swallowable>(e).is_some_and(|s| accepts(item, s.0))
     }
 }

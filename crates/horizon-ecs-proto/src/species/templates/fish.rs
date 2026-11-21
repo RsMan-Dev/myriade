@@ -15,7 +15,8 @@ pub static DEF: Def = Def {
         Entry::new(&fish_swim::MODULE, 4, &fish_swim::Params::DEFAULT),
     ],
     changes: &[],
-    rules: &[],
+    // `WaterAnimal.getBaseExperienceReward`: `1 + nextInt(3)`.
+    rules: &[crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 1, max: 3 })],
     brain: crate::brain::BrainDef::EMPTY,
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Locomotion]),
     locomotion: &[

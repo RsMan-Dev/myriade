@@ -15,6 +15,16 @@ impl Game<'_> {
         }
     }
 
+    /// The bridge `Who` of a command target: the acting player by its entity id, a mob by its ECS entity; others have none.
+    pub(in crate::game) fn bridge_who_of(&self, by: Option<crate::game::commands::Target>) -> Option<targeting::Who> {
+        use crate::game::commands::Target;
+        match by? {
+            Target::Player => u32::try_from(self.own_entity_id()).ok().map(targeting::Who::Player),
+            Target::Mob(m) => self.ecs.entity_of(m).map(targeting::Who::Entity),
+            _ => None,
+        }
+    }
+
     /// `host_who` of an optional bridge `Who` (an event whose cause may be absent).
     pub(in crate::game) fn host_who_opt(&mut self, who: Option<targeting::Who>) -> Option<Who> {
         who.map(|w| self.host_who(w))
@@ -37,7 +47,7 @@ impl Game<'_> {
             }
             TntEvent::Landed { entity, at, fall } => {
                 let id = self.ecs_id_of(entity);
-                if let Some(bounds) = self.ecs.bounds(entity) {
+                if let Some(bounds) = self.ecs.bounds_of(entity) {
                     self.tnt_landed(id, Vec3::new(at[0], at[1], at[2]), bounds, fall);
                 }
             }

@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod lists;
+pub mod variants;
 pub mod mob_heads;
 pub mod minecart;
 pub mod cushion;
@@ -259,6 +260,12 @@ pub struct Def {
     pub lost_horn: Option<f64>,
     /// `Llama.finalizeSpawn`: the strength drawn at the pose (`LlamaStrength`, the `Strength` key), for a llama and a trader's llama.
     pub llama_strength: bool,
+    /// `EntityType.notInPeaceful`: `Mob.checkDespawn` discards it in peaceful difficulty (`peaceful::NotInPeaceful`).
+    pub not_in_peaceful: bool,
+    /// The variant drawn at a spawn (`rules::variant::Table`, `Variant`): `None` for a species with no such draw.
+    pub variant: Option<&'static crate::rules::variant::Table>,
+    /// The extra draws of `finalizeSpawn` (`behaviours::spawn_draw`): marks, genes, colours, sizes, shared group values.
+    pub draws: Option<&'static crate::behaviours::spawn_draw::Draws>,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// `ALL_CAPS` for a species of `EntityType.fireImmune` (blaze, magma cube, zoglin, zombified piglin).
@@ -271,7 +278,7 @@ pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::B
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, draws: None };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -336,8 +343,14 @@ pub struct Resolved {
     pub screaming: Option<f64>,
     /// `Def::lost_horn`.
     pub lost_horn: Option<f64>,
+    /// `Def::variant`.
+    pub variant: Option<&'static crate::rules::variant::Table>,
+    /// `Def::draws`.
+    pub draws: Option<&'static crate::behaviours::spawn_draw::Draws>,
     /// `Def::llama_strength`.
     pub llama_strength: bool,
+    /// `Def::not_in_peaceful`.
+    pub not_in_peaceful: bool,
 }
 
 /// Why the registry could not be built: it names the source, the species and the change.
@@ -449,7 +462,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, draws: d.draws });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -693,9 +706,9 @@ mod tests {
         ("minecraft:creaking", &[("float", 0), ("stare_freeze", 0)]),
         ("minecraft:breeze", &[("float", 0)]),
         ("minecraft:hoglin", &[("hurt_by", 1), ("nearest_target", 2), ("retreat_on_hurt", 0), ("float", 0), ("convert_timer", 0), ("melee", 2), ("headbutt", 2), ("breed", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("ambient_sound", 7)]),
-        ("minecraft:fox", &[("defend_trusted", 3), ("nearest_target", 4), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 6), ("float", 0), ("climb_on_powder_snow", 0), ("fox_faceplant", 1), ("panic", 2), ("breed", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("fox_stalk_prey", 5), ("fox_pounce", 6), ("seek_shelter", 6), ("melee", 7), ("fox_sleep", 7), ("follow_parent", 8), ("fox_stroll_through_village", 9), ("fox_eat_berries", 10), ("leap_at_target", 10), ("stroll", 11), ("fox_search_for_items", 11), ("look_at_player", 12), ("lookout", 13), ("fox_pick_up_loot", 0)]),
+        ("minecraft:fox", &[("defend_trusted", 3), ("nearest_target", 4), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 6), ("float", 0), ("climb_on_powder_snow", 0), ("fox_faceplant", 1), ("panic", 2), ("breed", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("fox_stalk_prey", 5), ("fox_pounce", 6), ("seek_shelter", 6), ("melee", 7), ("fox_sleep", 7), ("follow_parent", 8), ("fox_stroll_through_village", 9), ("fox_eat_berries", 10), ("leap_at_target", 10), ("stroll", 11), ("fox_search_for_items", 11), ("look_at_player", 12), ("lookout", 13), ("fox_pick_up_loot", 0), ("eat_held", 0)]),
         ("minecraft:happy_ghast", &[("still_under_riders", 1), ("square_or_face", 0), ("heal_weather", 3), ("float", 3), ("animal_panic", 1), ("tempt", 4), ("float_around", 5)]),
-        ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
+        ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255), ("convert_in_water", 0)]),
         ("minecraft:sheep", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("eat_block", 5), ("stroll", 6), ("look_at_player", 7), ("random_look", 8)]),
         ("minecraft:chicken", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:skeleton", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("stroll", 5), ("look_at_player", 6), ("random_look", 6), ("restrict_sun", 2), ("ranged_bow", 4), ("pick_up_gear", 255), ("flee_sun", 3), ("avoid_entity", 3)]),
@@ -709,7 +722,7 @@ mod tests {
         ("minecraft:pufferfish", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4), ("pufferfish_puff", 1)]),
         ("minecraft:tadpole", &[("panic", 0), ("avoid_entity", 2), ("fish_swim", 4)]),
         ("minecraft:snow_golem", &[("nearest_target", 1), ("ranged_attack", 1), ("stroll", 2), ("snow_trail", 255), ("look_at_player", 3), ("random_look", 4)]),
-        ("minecraft:rabbit", &[("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
+        ("minecraft:rabbit", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("float", 1), ("climb_on_powder_snow", 1), ("panic", 1), ("breed", 2), ("tempt", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("melee", 4), ("raid_garden", 5), ("stroll", 6), ("look_at_player", 11)]),
         ("minecraft:spider", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 1), ("avoid_entity", 2), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:cave_spider", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 1), ("avoid_entity", 2), ("leap_at_target", 3), ("melee", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 6)]),
         ("minecraft:dolphin", &[("hurt_by", 1), ("breath_air", 0), ("try_find_water", 0), ("swim_to_treasure", 1), ("swim_with_player", 2), ("fish_swim", 4), ("random_look", 4), ("water_jump", 5), ("melee", 6), ("move_to_item", 7), ("item_pickup", 7), ("play_with_items", 8), ("look_at_player", 5), ("avoid_entity", 9), ("follow_player_vehicle", 8), ("follow_player_vehicle", 8)]),
@@ -724,7 +737,7 @@ mod tests {
         ("minecraft:phantom", &[("phantom_attack_player_target", 1), ("phantom_attack_strategy", 1), ("phantom_sweep_attack", 2), ("phantom_circle_around_anchor", 3)]),
         ("minecraft:turtle", &[("panic", 0), ("breed", 1), ("lay_egg", 1), ("tempt", 2), ("turtle_go_to_water", 3), ("turtle_go_home", 4), ("turtle_travel", 7), ("look_at_player", 8), ("turtle_stroll", 9)]),
         ("minecraft:parrot", &[("panic", 0), ("float", 0), ("look_at_player", 1), ("sit_when_ordered", 2), ("follow_owner", 2), ("fly_stroll", 2), ("land_on_shoulder", 3), ("follow_mob", 3)]),
-        ("minecraft:allay", &[("animal_panic", 0), ("go_to_wanted", 1), ("give_to_owner", 2), ("stay_close_to_owner", 3), ("fly_stroll", 4), ("look_at_player", 5), ("random_look", 6)]),
+        ("minecraft:allay", &[("animal_panic", 0), ("go_to_wanted", 1), ("give_to_owner", 2), ("stay_close_to_owner", 3), ("fly_stroll", 4), ("look_at_player", 5), ("random_look", 6), ("event_listen", 7)]),
         ("minecraft:giant", &[]),
         ("minecraft:mannequin", &[]),
         ("minecraft:ghast", &[("nearest_target", 1), ("float_around", 5), ("ghast_look", 7), ("charged_shot", 7)]),
@@ -748,15 +761,15 @@ mod tests {
         ("minecraft:panda", &[("hurt_by", 1), ("float", 0), ("panic", 2), ("breed", 2), ("melee", 3), ("tempt", 4), ("avoid_entity", 6), ("avoid_entity", 6), ("panda_sit", 7), ("panda_lie_on_back", 8), ("panda_sneeze", 8), ("look_at_player", 9), ("random_look", 10), ("panda_roll", 12), ("follow_parent", 13), ("stroll", 14)]),
         ("minecraft:zoglin", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("float", 0), ("melee", 2), ("stroll", 5), ("look_at_player", 6)]),
         ("minecraft:mooshroom", &[("float", 0), ("panic", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
-        ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
+        ("minecraft:husk", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255), ("convert_in_water", 0)]),
         ("minecraft:zombie_villager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255)]),
         ("minecraft:zombified_piglin", &[("hurt_by", 1), ("nearest_target", 2), ("break_door", 1), ("neutral_anger", 255), ("spear_use", 1), ("melee", 2), ("attack_turtle_egg", 4), ("stroll", 7), ("look_at_player", 8), ("random_look", 8)]),
         ("minecraft:horse", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:donkey", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:mule", &[("float", 0), ("panic", 1), ("run_around_like_crazy", 1), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:skeleton_horse", &[("run_around_like_crazy", 1), ("breed", 2), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
-        ("minecraft:slime", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
-        ("minecraft:magma_cube", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2)]),
+        ("minecraft:slime", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2), ("contact_damage", 2)]),
+        ("minecraft:magma_cube", &[("nearest_target", 1), ("nearest_target", 3), ("float", 1), ("cube_attack", 2), ("contact_damage", 2)]),
         ("minecraft:zombie_horse", &[("run_around_like_crazy", 1), ("float", 0), ("breed", 2), ("tempt", 3), ("follow_parent", 4), ("stroll", 6), ("look_at_player", 7), ("random_look", 8), ("random_stand", 9)]),
         ("minecraft:pillager", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("obtain_banner", 1), ("raid_move_through_village", 4), ("long_distance_patrol", 4), ("celebration", 5), ("avoid_entity", 1), ("hold_ground_attack", 2), ("float", 0), ("pathfind_to_raid", 3), ("ranged_crossbow", 3), ("stroll", 8), ("look_at_player", 9), ("look_at_player", 10)]),
         ("minecraft:vindicator", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("obtain_banner", 1), ("raid_move_through_village", 4), ("long_distance_patrol", 4), ("celebration", 5), ("hold_ground_attack", 4), ("raid_break_door", 2), ("raider_open_door", 3), ("float", 0), ("avoid_entity", 1), ("pathfind_to_raid", 3), ("melee", 5), ("stroll", 8), ("look_at_player", 9), ("look_at_player", 10)]),

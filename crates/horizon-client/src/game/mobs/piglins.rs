@@ -229,6 +229,9 @@ impl Game<'_> {
             return;
         }
         let at = p.position;
+        if let Some(id) = self.acting_player_uuid_id() {
+            self.ecs.alert_guards(id, only_if_seen);
+        }
         let eye = [at.x, at.y + 1.62, at.z];
         let player_uuid = self
             .lan_acting_uuid

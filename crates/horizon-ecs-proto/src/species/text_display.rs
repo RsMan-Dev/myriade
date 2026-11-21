@@ -2,4 +2,4 @@
 use crate::behaviours::Cap;
 use crate::species::Def;
 
-pub static DEF: Def = Def { name: "minecraft:text_display", caps: Some(&[Cap::Transform, Cap::Passive, Cap::IgnoresTriggers]), ..Def::EMPTY };
+pub static DEF: Def = Def { name: "minecraft:text_display", caps: Some(&[Cap::Transform, Cap::Passive, Cap::IgnoresTriggers, Cap::PistonIgnored]), ..Def::EMPTY };

@@ -40,5 +40,12 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Drowned, sinks: false, ..swim::Params::DEFAULT }))],
     spawn: Some(crate::spawning::SpawnDef { category: crate::spawning::Category::Monster, place: crate::spawning::Place::InWater, rule: crate::spawning::Rule::Drowned, cluster: 4, far: false, peaceful: false, liquid: true, despawn: crate::despawn::DespawnDef::MOB }), despawn: Some(crate::despawn::DespawnDef::MOB),
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
+        crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::ZOMBIE),
+        crate::rules::RuleEntry::new(&crate::reinforcements::RULE, &crate::reinforcements::Params::ZOMBIE),
+        crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::DROWNED),
+    ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

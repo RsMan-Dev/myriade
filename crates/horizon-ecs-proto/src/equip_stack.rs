@@ -45,6 +45,7 @@ pub fn set(world: &mut World, e: Entity, slot: usize, stack: Option<ItemStack>) 
     if empty {
         world.entity_mut(e).remove::<Equipment>();
     }
+    crate::equip_attrs::changed(world, e, slot, stack.as_ref());
     push(world, EquipmentEvent::Changed { entity: e, slot, from, to: stack });
     true
 }

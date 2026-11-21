@@ -857,10 +857,8 @@ impl Game<'_> {
                     // The level data holds the world's difficulty: it
                     // survives the reopen, so it follows the change.
                     self.level.set_difficulty(self.ui.difficulty);
+                    // `sync_rules` hands the difficulty to the ECS, which discards what peaceful does not allow.
                     self.sync_rules();
-                    if self.ui.difficulty == 0 {
-                        self.remote_entities.retain(|m| !m.hostile());
-                    }
                     let Some(host) = self.lan.as_mut() else {
                         return;
                     };

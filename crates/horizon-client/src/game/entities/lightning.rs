@@ -89,15 +89,7 @@ impl Game<'_> {
             if trap {
                 let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
                 // ServerLevel.tickChunk: a trap horse waits for a player.
-                if self.ecs.is_active() {
-                    // The trap flag and age are not on P's horse yet (QUESTION to the referent).
-                    self.ecs_spawn_trap_horse(at);
-                } else if let Some(id) = self.spawn_mob_raw("minecraft:skeleton_horse", at, false)
-                    && let Some(h) = self.remote_entities.iter_mut().find(|m| m.id == id)
-                {
-                    h.extra.trap = true;
-                    h.extra.age = 0;
-                }
+                self.ecs_spawn_trap_horse(at);
             }
             let at = [
                 f64::from(pos[0]) + 0.5,
@@ -177,17 +169,29 @@ impl Game<'_> {
             return Some(rod);
         }
         let sees_sky = |g: &Self, p: [i32; 3]| g.world.light(p[0], p[1], p[2]) >> 4 == 15;
-        let mut candidates: Vec<[i32; 3]> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.alive())
-            .map(|m| {
-                [
-                    m.position.x.floor() as i32,
-                    m.position.y.floor() as i32,
-                    m.position.z.floor() as i32,
-                ]
-            })
+        let floor = |p: [f64; 3]| [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
+        let living: Vec<[i32; 3]> = if self.ecs.is_active() {
+            // The living creatures of the column (box queried on the spatial index; y is free there).
+            let (lo, hi) = (f64::from(top.y - 4), f64::from(top.y) + 4096.0);
+            let area = horizon_core::geometry::Aabb::new(
+                horizon_core::geometry::Vec3::new(f64::from(x - 4), lo, f64::from(z - 4)),
+                horizon_core::geometry::Vec3::new(f64::from(x + 5), hi, f64::from(z + 5)),
+            );
+            self.ecs
+                .creatures_in(area)
+                .into_iter()
+                .filter(|&id| self.ecs.alive(id))
+                .filter_map(|id| self.ecs.position(id).map(floor))
+                .collect()
+        } else {
+            self.remote_entities
+                .iter()
+                .filter(|m| m.alive())
+                .map(|m| floor([m.position.x, m.position.y, m.position.z]))
+                .collect()
+        };
+        let mut candidates: Vec<[i32; 3]> = living
+            .into_iter()
             .filter(|p| (p[0] - x).abs() <= 3 && (p[2] - z).abs() <= 3 && p[1] >= top.y - 3)
             .filter(|p| sees_sky(self, *p))
             .collect();

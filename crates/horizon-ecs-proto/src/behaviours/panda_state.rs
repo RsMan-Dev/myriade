@@ -18,6 +18,7 @@ pub enum Gene {
     Lazy,
     Worried,
     Playful,
+    Brown,
     Weak,
     Aggressive,
 }

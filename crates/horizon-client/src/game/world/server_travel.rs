@@ -9,10 +9,9 @@
 
 use super::end::GatewayJob;
 use super::nether_portal::{PLAYER_DELAY, Plan};
-use super::persist::OffLevel;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
-use super::{Dim, Game, Mob, boats, lan::LanHost, minecarts};
+use super::{Dim, Game, lan::LanHost};
 use horizon_client::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
 use horizon_core::{geometry::Vec3, position::BlockPos};
 use horizon_protocol::packets::play::{self, Clientbound as C};
@@ -92,65 +91,6 @@ pub(super) struct Trip {
     pub(super) left: Option<Dim>,
 }
 
-/// A vehicle a player rides: an animal, a boat or a minecart. It travels
-/// with the player through a portal (`Entity.teleportCrossDimension` carries
-/// the passengers, and they ride the vehicle that is recreated in the other
-/// dimension).
-trait Rideable {
-    fn id(&self) -> u32;
-    /// The vehicle stands where its rider arrives, with the motion it crossed
-    /// with (none for the kinds that keep none).
-    fn arrive(&mut self, at: Vec3, yaw: f32, motion: Vec3);
-}
-
-impl Rideable for Mob {
-    fn id(&self) -> u32 {
-        self.id
-    }
-    fn arrive(&mut self, at: Vec3, yaw: f32, _motion: Vec3) {
-        self.position = at;
-        self.previous = at;
-        self.velocity = Vec3::ZERO;
-        self.yaw = yaw;
-        self.previous_yaw = yaw;
-        self.fall_distance = 0.0;
-    }
-}
-
-impl Rideable for boats::Boat {
-    fn id(&self) -> u32 {
-        self.id
-    }
-    fn arrive(&mut self, at: Vec3, yaw: f32, _motion: Vec3) {
-        self.position = at;
-        self.previous = at;
-        self.velocity = Vec3::ZERO;
-        self.yaw = yaw;
-        self.previous_yaw = yaw;
-        self.delta_rotation = 0.0;
-    }
-}
-
-impl Rideable for minecarts::Minecart {
-    fn id(&self) -> u32 {
-        self.id
-    }
-    fn arrive(&mut self, at: Vec3, yaw: f32, motion: Vec3) {
-        self.position = at;
-        self.previous = at;
-        // `PositionMoveRotation.of(this)` takes the cart's `getKnownMovement`
-        // (`OldMinecartBehavior` clamps it to 0.4 either way along x and z):
-        // it rolls on at that speed instead of arriving at rest.
-        self.velocity = Vec3::new(
-            motion.x.clamp(-0.4, 0.4),
-            motion.y,
-            motion.z.clamp(-0.4, 0.4),
-        );
-        self.yaw = yaw;
-        self.previous_yaw = yaw;
-    }
-}
-
 /// The hub's view of the server for packets sent outside its own tick.
 macro_rules! server_ctx {
     ($s:ident) => {{
@@ -177,30 +117,9 @@ macro_rules! server_ctx {
     }};
 }
 
-/// The vehicle `id` leaves the level it is in, at the point its rider
-/// arrives. It keeps its entity id, so the ride is never broken.
 /// A guest leaving for another level leaves its fishing hook behind in the old one: the hook is an entity of that level's
 /// ECS, whose own owner check (`FishingHook.shouldStopFishing`) ends it there, so nothing acts in the level of arrival.
 fn drop_hook(_host: &mut LanHost, _conn: u32) {}
-
-fn take_vehicle<
-    T: Rideable
-        + horizon_client::join_seq::Joined
-        + horizon_mod_runtime::attachments::HasAttachmentLifetime,
-    const DIRECT: bool,
->(
-    list: &mut horizon_client::join_seq::JoinList<T, DIRECT>,
-    id: u32,
-    at: Vec3,
-    yaw: f32,
-    motion: Vec3,
-) -> Option<T> {
-    let i = list.iter().position(|v| v.id() == id)?;
-    let mut v = list.remove_for_transfer(i);
-    v.arrive(at, yaw, motion);
-    v.set_join_seq(horizon_client::join_seq::JoinSeq::UNJOINED);
-    Some(v)
-}
 
 /// `TeleportCommand` into another level for a server's player: where, and
 /// the rotation it sets (none keeps the player's).
@@ -901,13 +820,9 @@ impl Game<'_> {
         // The vehicle the player rides travels with it: the player is its
         // passenger, and the vehicle is recreated in the other dimension,
         // where they ride it again (`Entity.teleportCrossDimension`). It
-        // keeps its entity id, so the ride is never broken.
+        // gets a new id there (the level's ECS world names it), which the ride follows.
         let direct_vehicle = g.vehicle;
-        let vehicle = direct_vehicle.filter(|id| {
-            self.mob_object(*id).is_some_and(|mob| !mob.removed)
-                || self.boats.iter().any(|b| b.id == *id)
-                || self.ecs.cart_kind(*id).is_some()
-        });
+        let vehicle = direct_vehicle.filter(|id| self.ecs.entity_of(*id).is_some());
         let source = self.dim;
         let end = plan.is_none();
         // Coordinates scale by the levels' coordinate scales (8 between the Overworld
@@ -1347,9 +1262,13 @@ impl Game<'_> {
             // The vehicle the player rode comes with it, and waits for it
             // where it arrives (`Entity.teleportCrossDimension` carries the
             // passengers).
-            if let Some(vehicle) = trip.vehicle {
-                self.arrive_vehicle(trip.source, vehicle, position, yaw);
-            }
+            // Its ids in the level of arrival are new: the player's mount follows (`arrive_vehicle`).
+            let mount = trip
+                .vehicle
+                .and_then(|vehicle| self.arrive_vehicle(trip.source, vehicle, position, yaw));
+            // A second rider's trip may be born later: an old id keeps its new one for as long as that entity lives (ids are never reused).
+            let ecs = &self.ecs;
+            self.portals.carried_ids.retain(|_, new| ecs.exists(*new));
             // Player.getDimensionChangingDelay.
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -1359,6 +1278,9 @@ impl Game<'_> {
             }
             host.hub.guests.update(i, |g| {
                 g.yaw = yaw;
+                if mount.is_some() {
+                    g.vehicle = mount;
+                }
                 if let Some(pitch) = pitch {
                     g.pitch = pitch;
                 }
@@ -1380,71 +1302,38 @@ impl Game<'_> {
     }
 
     /// The vehicle the player rode arrives with it, at the point the player
-    /// arrives: it keeps its entity id, so the ride is never broken
-    /// (`Entity.teleportCrossDimension` recreates the vehicle in the other
-    /// dimension, and its passengers ride it again).
-    pub(in crate::game) fn arrive_vehicle(&mut self, source: Dim, id: u32, at: Vec3, yaw: f32) {
-        let Some(id) = self.parked_vehicle_root(source, id) else {
-            return;
-        };
-        let motion = self
-            .portals
-            .carried_motion
-            .remove(&id)
-            .unwrap_or(Vec3::ZERO);
-        let carried = self.portals.carried_cooldown.remove(&id);
-        let Some(parked) = self.levels.parked_mut(source) else {
-            return;
-        };
-        let before = parked
-            .boats
-            .iter()
-            .find(|body| body.id == id)
-            .map(|body| (body.position, [body.yaw, 0.0]))
-            .or_else(|| {
-                parked
-                    .remote_entities
-                    .iter()
-                    .find(|body| body.id == id)
-                    .map(|body| (body.position, [body.yaw, body.head_pitch]))
-            });
-        let Some((from, rotation)) = before else {
-            return;
-        };
-        // Keep the root out of both levels until its passengers have been
-        // admitted: teleportCrossDimension copies passengers before the root.
-        let vehicle = if let Some(body) = take_vehicle(&mut parked.boats, id, at, yaw, motion) {
-            OffLevel::Boat(body)
-        } else if let Some(body) = take_vehicle(&mut parked.remote_entities, id, at, yaw, motion) {
-            OffLevel::Mob(body)
-        } else {
-            return;
-        };
-        let left = parked
-            .portal_states
-            .remove(&id)
-            .map_or(0, |state| state.cooldown);
-        // All object-owned metadata moves, including rejected intermediate bodies;
-        // ordinary destination queries still expose only admitted objects.
-        for mut mob in self.move_entity_memory(source, id) {
-            mob.position = super::vehicle_teleport::passenger_destination(from, at, mob.position);
-            mob.previous = mob.position;
-            let [turned_yaw, pitch] = super::vehicle_teleport::passenger_rotation(
-                rotation,
-                [yaw, rotation[1]],
-                [mob.yaw, mob.head_pitch],
-            );
-            mob.yaw = turned_yaw;
-            mob.previous_yaw = turned_yaw;
-            mob.body_yaw = turned_yaw;
-            mob.head_yaw = turned_yaw;
-            mob.head_pitch = pitch;
-            mob.previous_head_pitch = pitch;
-            self.admit_transferred_object(OffLevel::Mob(mob));
+    /// arrives (`Entity.teleportCrossDimension` recreates the vehicle in the
+    /// other dimension, and its passengers ride it again). The tree leaves the
+    /// parked level's ECS world and is loaded in the level in place under new
+    /// ids; returns the new id of `id`, None when nothing moved.
+    pub(in crate::game) fn arrive_vehicle(&mut self, source: Dim, id: u32, at: Vec3, yaw: f32) -> Option<u32> {
+        // A vehicle tree is moved once, by the first rider's arrival; the others find what it became.
+        if let Some(&moved) = self.portals.carried_ids.get(&id) {
+            return Some(moved);
         }
-        self.admit_transferred_object(vehicle);
-        // The source may have ticked while the player's destination was loading.
-        self.portals.entities.entry(id).or_default().cooldown = carried.unwrap_or(left);
+        let root = self.parked_vehicle_root(source, id)?;
+        let carried = self.portals.carried_cooldown.remove(&root);
+        // The tree's saved form leaves the parked level's ECS world; its root is loaded in the level in place, riders by `Passengers`.
+        let (old, saved) = self.take_parked_ecs_tree(source, root)?;
+        let mut tag = horizon_core::nbt::Tag::Compound(saved);
+        // The portal cooldowns travel in the NBT (`PortalCooldown`): the root's is the one the portal passage took (the source may
+        // have ticked while the player's destination was loading), a rider's is the one its level kept.
+        let mut parked = self.levels.parked_mut(source);
+        Self::stamp_cooldowns(&mut tag, &mut old.iter().copied(), &mut |i| {
+            let left = parked.as_mut().and_then(|p| p.portal_states.remove(&i)).map_or(0, |state| state.cooldown);
+            if i == root { carried.unwrap_or(left) } else { left }
+        });
+        super::vehicle_teleport::arrival_pose(&mut tag, [at.x, at.y, at.z], Some([yaw, f32::NAN]), true);
+        let horizon_core::nbt::Tag::Compound(c) = &tag else {
+            return None;
+        };
+        // The load gives each pair (old id, new id) itself, in the order of the NBT.
+        let pairs = self.ecs_load_tree(c, &old);
+        self.move_attachments(&pairs);
+        for (before, after) in pairs {
+            self.portals.carried_ids.insert(before, after);
+        }
+        self.portals.carried_ids.get(&id).copied()
     }
 
     /// Tells the mods of the teleports a command made inside a level, with
@@ -1609,7 +1498,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::ServerHost;
     use std::sync::Arc;
 
     #[test]
@@ -1665,501 +1553,33 @@ mod tests {
         });
     }
 
+    /// The boat a player rides travels with its rider (`Entity.teleportCrossDimension`): the tree leaves the parked level, comes back
+    /// in the level in place under new ids, the rider seated, its portal cooldown in the NBT; a second rider finds the boat moved.
     #[test]
     #[ignore = "daily"]
-    fn arriving_vehicle_is_announced_once_after_destination_entities() {
-        use mod_api::{self, EntityJoinLevelEvent, Flow, Hooks};
-        use std::sync::Mutex;
-        struct Observer(Arc<Mutex<Vec<u32>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Observer {
-            fn entity_join_level(
-                &self,
-                _: &mut dyn ServerHost,
-                event: &mut EntityJoinLevelEvent<'_>,
-            ) -> Flow {
-                self.0.lock().unwrap().push(event.entity);
-                Flow::Continue
-            }
-        }
-        let joins = Arc::new(Mutex::new(Vec::new()));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "arrival-observer",
-            Box::new(Observer(joins.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.native_joins_skip();
-                let base = game.next_entity;
-                game.next_entity += 2;
-                game.ecs_with(|ecs, mw| {
-                    ecs.spawn_cart_id(mw, minecarts::CartKind::Rideable.id(), [0.0; 3], 0.0, &mut || base + 1)
-                })
-                .unwrap();
-                let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-                let mut child = Mob::new(base + 10, kind, Vec3::ZERO, 0.0);
-                child.extra.mount = Some(base + 1);
-                game.persist
-                    .off_level
-                    .insert(base + 10, super::super::persist::OffLevel::Mob(child));
-                // It left with 7; the source level has run it down to 3 since.
-                game.portals.entities.entry(base + 1).or_default().cooldown = 3;
-                game.portals.carried_cooldown.insert(base + 1, 7);
-                let source = game.dim;
-                game.enter_level(Dim::Nether).unwrap();
-                game.ecs_with(|ecs, mw| {
-                    ecs.spawn_cart_id(mw, minecarts::CartKind::Rideable.id(), [0.0; 3], 0.0, &mut || base + 2)
-                })
-                .unwrap();
-                game.native_joins_flush(false, 0);
-                game.arrive_vehicle(source, base + 1, Vec3::ZERO, 0.0);
-                assert!(
-                    game.mob_object(base + 10).is_some(),
-                    "natural carrier arrival must transfer retained passenger"
-                );
-                assert_eq!(game.portals.entities[&(base + 1)].cooldown, 7);
-                assert!(
-                    !game
-                        .levels
-                        .parked_mut(source)
-                        .unwrap()
-                        .portal_states
-                        .contains_key(&(base + 1))
-                );
-                game.native_joins_flush(false, 0);
-                game.native_joins_flush(false, 0);
-                assert_eq!(*joins.lock().unwrap(), vec![base + 2, base + 10, base + 1]);
-            });
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn natural_carrier_moves_full_objects_and_readmits_the_tree_in_order() {
-        use mod_api::{AttachmentType, EntityConstructingEvent, Holder, Hooks, HostSide};
-        use std::sync::Mutex;
-        const STATE: AttachmentType<i32> = AttachmentType {
-            namespace: "natural_tree",
-            name: "state",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        struct Constructed(Arc<Mutex<Vec<Holder>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Constructed {
-            fn entity_constructing(&self, host: HostSide<'_>, event: &mut EntityConstructingEvent) {
-                self.0.lock().unwrap().push(event.holder);
-                if let HostSide::Server(host) = host {
-                    STATE.set(host, event.holder, 41).unwrap();
-                }
-            }
-        }
-        for conflict in [false, true] {
-            let calls = Arc::new(Mutex::new(Vec::new()));
-            let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-                "natural_tree",
-                Box::new(Constructed(calls.clone())),
-            )]
-            .into();
-            mod_platform::testing::with_mods(mods, || {
-                super::super::native_entity_refs::tests::with_game(|game| {
-                    game.options.dedicated = Some(Vec::new());
-                    let tag = horizon_core::nbt::parse_snbt(r#"{
-                    id:"minecraft:pig",UUID:[I;703,0,0,1],Pos:[1.0d,80.0d,2.0d],NoAI:1b,
-                    Passengers:[
-                        {id:"minecraft:cow",UUID:[I;703,0,0,1],Pos:[1.0d,81.0d,2.0d],NoAI:1b,
-                         Passengers:[{id:"minecraft:chicken",UUID:[I;703,0,0,2],Pos:[1.0d,82.0d,2.0d],NoAI:1b}]},
-                        {id:"minecraft:sheep",UUID:[I;703,0,0,2],Pos:[1.0d,81.0d,2.0d],NoAI:1b}
-                    ]
-                }"#).unwrap().0;
-                    let root = game.load_mob(tag, None).unwrap();
-                    let children = game.mob_passenger_ids(root);
-                    let (held, sibling) = (children[0], children[1]);
-                    let leaf = game.mob_passenger_ids(held)[0];
-                    let ids = [root, held, leaf, sibling];
-                    assert!(game.persist.off_level.contains_key(&held));
-                    assert!(game.persist.off_level.contains_key(&sibling));
-                    STATE.set(game, Holder::Entity(leaf), 77).unwrap();
-                    game.persist.forced_meta.insert(leaf, [5, 6, 7, 8]);
-                    game.portals.entities.entry(leaf).or_default().cooldown = 19;
-                    let source = game.dim;
-                    game.enter_level(Dim::Nether).unwrap();
-                    let owner = conflict.then(|| {
-                    let tag = horizon_core::nbt::parse_snbt(r#"{id:"minecraft:zombie",UUID:[I;703,0,0,1],Pos:[0.0d,70.0d,0.0d],NoAI:1b}"#).unwrap().0;
-                    game.load_mob(tag, None).unwrap()
-                });
-                    let before = calls.lock().unwrap().clone();
-                    // A player's direct mount may be nested below a retained object;
-                    // arrival must still carry the actual source root and every sibling.
-                    let destination = Vec3::new(32.0, 90.0, 48.0);
-                    game.arrive_vehicle(source, leaf, destination, 90.0);
-                    assert!(ids.iter().all(|id| game.mob_object(*id).is_some()));
-                    assert!(game.persist.off_level.contains_key(&root));
-                    assert!(game.persist.off_level.contains_key(&sibling));
-                    assert_eq!(game.persist.off_level.contains_key(&held), conflict);
-                    assert!(game.entity(root).is_none());
-                    assert!(game.entity(sibling).is_none());
-                    assert!(game.entity(leaf).is_some());
-                    assert_eq!(game.entity(held).is_some(), !conflict);
-                    if let Some(owner) = owner {
-                        assert!(game.entity(owner).is_some());
-                    }
-                    assert_eq!(game.mob_object(held).unwrap().extra.mount, Some(root));
-                    assert_eq!(game.mob_object(leaf).unwrap().extra.mount, Some(held));
-                    assert_eq!(game.mob_object(sibling).unwrap().extra.mount, Some(root));
-                    assert_eq!(game.mob_object(root).unwrap().position, destination);
-                    assert_eq!(
-                        game.mob_object(held).unwrap().position,
-                        Vec3::new(32.0, 91.0, 48.0)
-                    );
-                    assert_eq!(
-                        game.mob_object(leaf).unwrap().position,
-                        Vec3::new(32.0, 92.0, 48.0)
-                    );
-                    assert_eq!(
-                        game.mob_object(sibling).unwrap().position,
-                        Vec3::new(32.0, 91.0, 48.0)
-                    );
-                    assert_eq!(game.persist.forced_meta.get(&leaf), Some(&[5, 6, 7, 8]));
-                    assert_eq!(game.portals.entities[&leaf].cooldown, 19);
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
-                    if !conflict {
-                        assert_eq!(STATE.get(game, Holder::Entity(held)), Ok(41));
-                    }
-                    assert!(game.mobs_below_off_level().contains(&leaf));
-                    game.native_joins_flush(false, 0);
-                    assert_eq!(
-                        *calls.lock().unwrap(),
-                        before,
-                        "arrival must not construct again"
-                    );
-                    // Another player from the same stack arrives without duplicating it.
-                    game.arrive_vehicle(source, leaf, destination, 90.0);
-                    assert_eq!(
-                        game.mob_objects().filter(|m| ids.contains(&m.id)).count(),
-                        4
-                    );
-                    game.enter_level(source).unwrap();
-                    for id in ids {
-                        assert!(game.mob_object(id).is_none());
-                        assert!(!game.persist.uuids.contains_key(&id));
-                        assert!(!game.persist.raw.contains_key(&id));
-                        assert!(!game.persist.forced_meta.contains_key(&id));
-                    }
-                    game.enter_level(Dim::Nether).unwrap();
-                    assert_eq!(STATE.get(game, Holder::Entity(leaf)), Ok(77));
-                    game.native_joins_flush(false, 0);
-                    assert_eq!(*calls.lock().unwrap(), before);
-                })
-            });
-        }
-    }
-
-    /// `Entity.teleportCrossDimension` admits the passengers before the copied
-    /// vehicle, so a pig that shares its boat's or minecart's UUID takes it in
-    /// the destination and the vehicle is retained off-level below it.
-    #[test]
-    #[ignore = "daily"]
-    fn natural_carrier_retains_a_vehicle_root_refused_by_its_passenger() {
-        // Minecart roots left the host list: their off-level retention is the ECS's, not this host test.
-        for (kind, uuid) in [("minecraft:oak_boat", 705)] {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                let tag = horizon_core::nbt::parse_snbt(&format!(
-                    r#"{{id:"{kind}",UUID:[I;{uuid},0,0,1],Pos:[1.0d,80.0d,2.0d],
-                    Passengers:[{{id:"minecraft:pig",UUID:[I;{uuid},0,0,1],Pos:[1.0d,80.0d,2.0d],NoAI:1b,
-                     Passengers:[{{id:"minecraft:chicken",UUID:[I;{uuid},0,0,2],Pos:[1.0d,80.0d,2.0d],NoAI:1b}}]}}]}}"#
-                ))
-                .unwrap()
-                .0;
-                let root = game.load_boat_transferred(tag, Some([uuid, 0, 0, 1]), kind, None).unwrap();
-                let pig = game.mob_passenger_ids(root)[0];
-                let chicken = game.mob_passenger_ids(pig)[0];
-                assert!(game.persist.off_level.contains_key(&pig));
-                let source = game.dim;
-                game.enter_level(Dim::Nether).unwrap();
-                game.arrive_vehicle(source, chicken, Vec3::new(32.0, 90.0, 48.0), 0.0);
-                assert!(game.entity(pig).is_some());
-                assert!(game.entity(chicken).is_some());
-                assert!(game.entity(root).is_none());
-                assert!(game.boats.iter().all(|b| b.id != root));
-                assert!(game.ecs.cart_kind(root).is_none());
-                assert!(game.is_boat(root));
-                assert_eq!(game.mob_object(pig).unwrap().extra.mount, Some(root));
-                assert_eq!(game.mob_object(chicken).unwrap().extra.mount, Some(pig));
-                assert!(game.mobs_below_off_level().contains(&pig));
-                assert!(game.mobs_below_off_level().contains(&chicken));
-                game.enter_level(source).unwrap();
-                for id in [root, pig, chicken] {
-                    assert!(!game.persist.off_level.contains_key(&id));
-                    assert!(game.mob_object(id).is_none());
-                }
-                assert!(game.boats.iter().all(|b| b.id != root));
-                assert!(game.ecs.cart_kind(root).is_none());
-            });
-        }
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn natural_portal_schedules_a_player_on_a_retained_indirect_vehicle() {
+    fn the_vehicle_tree_a_player_rides_arrives_under_new_ids_with_its_riders() {
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            super::super::native_player_death::tests::add_guest(game);
             let source = game.dim;
-            let tag = horizon_core::nbt::parse_snbt(
-                r#"{
-                id:"minecraft:pig",UUID:[I;704,0,0,1],Pos:[1.0d,80.0d,2.0d],NoAI:1b,
-                Passengers:[{id:"minecraft:cow",UUID:[I;704,0,0,1],Pos:[1.0d,81.0d,2.0d],NoAI:1b}]
-            }"#,
-            )
-            .unwrap()
-            .0;
-            let root = game.load_mob(tag, None).unwrap();
-            let held = game.mob_passenger_ids(root)[0];
-            assert!(game.persist.off_level.contains_key(&held));
-            game.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                guest.vehicle = Some(held);
-            });
-            super::super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
-                game,
-                horizon_core::position::ChunkPos::new(0, 0),
-            );
-            game.tickets.add_portal((0, 0));
-            game.update_chunk_tickets();
-            assert!(game.entity_ticking_area()(1, 2));
-            // Supply the block's real inside notification, then exercise the actual
-            // entity portal processor, carrier routing and server trip scheduler.
-            let delay = horizon_client::nether_portal::ENTITY_DELAY;
-            game.portals
-                .entities
-                .entry(root)
-                .or_default()
-                .set_inside(BlockPos::new(1, 80, 2), delay);
-            game.handle_entity_portals();
-            assert!(
-                game.mob_object(root).is_some(),
-                "route through the player carrier path"
-            );
-            game.carry_riders_through_portals();
-            assert_eq!(game.server_trips.len(), 1);
-            let trip = &game.server_trips[0];
-            assert_eq!(trip.source, source);
-            assert_eq!(trip.dim, Dim::Nether);
-            assert_eq!(
-                trip.vehicle,
-                Some(held),
-                "keep the direct mount in the ticket"
-            );
-            assert_eq!(game.dim, source);
+            let base = game.next_entity;
+            let boat = game
+                .ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0, 64.0, 0.0], 0.0, &mut || base + 1))
+                .unwrap();
+            game.next_entity = boat;
+            let pig = game.ecs_spawn("minecraft:pig", [0.0, 64.0, 0.0], None).unwrap();
+            assert!(game.ecs_with(|ecs, mw| ecs.board(mw, pig, boat, None)));
+            game.portals.entities.entry(pig).or_default().cooldown = 5;
             game.enter_level(Dim::Nether).unwrap();
-            game.arrive_vehicle(source, held, Vec3::new(32.0, 90.0, 48.0), 0.0);
-            assert!(game.mob_object(root).is_some());
-            assert!(game.mob_object(held).is_some());
-            assert_eq!(game.mob_object(held).unwrap().extra.mount, Some(root));
-            assert_eq!(game.lan.as_ref().unwrap().hub.guests[0].vehicle, Some(held));
+            let at = Vec3::new(1.5, 65.0, -2.5);
+            let moved = game.arrive_vehicle(source, boat, at, 90.0).expect("the boat travels");
+            let tree = game.ecs_tree(moved);
+            assert_eq!(tree.len(), 2, "the boat and its rider");
+            assert_eq!(game.ecs.kind(tree[1]), Some("minecraft:pig"));
+            assert_eq!(game.ecs.vehicle_of(tree[1]), Some(moved));
+            assert_eq!(game.ecs.position(moved), Some([1.5, 65.0, -2.5]));
+            assert_eq!(game.portals.entities[&tree[1]].cooldown, 5, "the rider's delay came through the NBT");
+            assert!(!game.levels.parked_mut(source).unwrap().ecs.exists(boat), "it left the level it came from");
+            assert_eq!(game.arrive_vehicle(source, boat, at, 90.0), Some(moved), "a later rider finds it moved");
         });
-    }
-
-    /// The vehicle a player rides travels with it through a portal: it
-    /// leaves the level the player came from, keeps its entity id (so the
-    /// ride is never broken) and stands where its rider arrives
-    /// (`Entity.teleportCrossDimension` carries the passengers, and they
-    /// ride the vehicle that is recreated in the other dimension).
-    #[test]
-    fn the_vehicle_a_player_rides_travels_with_it() {
-        let mut boats: horizon_client::join_seq::JoinList<_> = [boats::Boat::new(
-            7,
-            Arc::from("oak"),
-            Vec3::new(0.0, 64.0, 0.0),
-            0.0,
-        )]
-        .into_iter()
-        .collect();
-        let mut mobs = horizon_client::join_seq::JoinList::<Mob>::default();
-        let at = Vec3::new(1.5, 65.0, -2.5);
-        let boat = take_vehicle(&mut boats, 7, at, 90.0, Vec3::ZERO)
-            .expect("the vehicle the player rides travels with it");
-        assert!(
-            boats.is_empty(),
-            "the vehicle left the level the player came from"
-        );
-        assert_eq!(boat.id, 7, "the vehicle keeps its entity id");
-        assert_eq!(boat.position, at, "it stands where its rider arrives");
-        assert_eq!(boat.yaw, 90.0, "it looks where its rider looks");
-        assert_eq!(boat.velocity, Vec3::ZERO, "it comes with no motion");
-        // A vehicle that is not in the level does not travel.
-        assert!(take_vehicle(&mut mobs, 9, at, 0.0, Vec3::ZERO).is_none());
-        assert!(mobs.is_empty());
-    }
-}
-
-#[cfg(test)]
-mod transfer_lifetime_tests {
-    use super::*;
-    use horizon_client::join_seq::Joined;
-    use horizon_mod_runtime::attachments::{
-        AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
-        index::AttachmentIndex,
-    };
-    use std::sync::{Arc, Mutex};
-
-    static VALUE: AttachmentType<i32> = AttachmentType {
-        namespace: "test",
-        name: "transfer",
-        default: || 0,
-        codec: None,
-        copy_on_death: false,
-        sync: false,
-    };
-
-    fn removal<T: Rideable + horizon_client::join_seq::Joined + HasAttachmentLifetime>(
-        mut owner: T,
-    ) {
-        let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-        let mut map = Attachments::default();
-        VALUE.set(&mut map, Holder::Entity(owner.id()), 17).unwrap();
-        owner.attachment_lifetime().bind(&mut map, &index, 42u32);
-        let mut list: horizon_client::join_seq::JoinList<T> = [owner].into_iter().collect();
-        let id = list[0].id();
-        let key = ("test".into(), "transfer".into());
-        let retained = index.lock().unwrap().snapshot(&key);
-        let moved = take_vehicle(&mut list, id, Vec3::ZERO, 0.0, Vec3::ZERO).unwrap();
-        assert!(list.is_empty());
-        assert!(index.lock().unwrap().snapshot(&key).is_empty());
-        VALUE.set(&mut map, Holder::Entity(id), 18).unwrap();
-        assert!(index.lock().unwrap().snapshot(&key).is_empty());
-        assert_eq!(retained[0].entry.read(&VALUE), Ok(&17));
-        drop(moved);
-    }
-
-    #[test]
-    fn transfer_removal_retires_before_returning_the_vehicle() {
-        removal(boats::Boat::new(72, Arc::from("oak"), Vec3::ZERO, 0.0));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn transfer_arrival_rebinds_only_bound_owners_with_the_same_id() {
-        for kind in ["minecraft:oak_boat", "minecraft:pig"] {
-            for bound in [true, false] {
-                super::super::native_entity_refs::tests::with_game(|game| {
-                    game.tickets.update(None);
-                    let target = game
-                        .summon_with_nbt(kind, [0.5, 70.0, 0.5], "{}")
-                        .unwrap()
-                        .unwrap();
-                    let id = match target {
-                        super::super::commands::Target::Cart(id)
-                        | super::super::commands::Target::Boat(id)
-                        | super::super::commands::Target::Mob(id) => id,
-                        _ => panic!("unexpected vehicle target"),
-                    };
-                    let old_join = match kind {
-                        "minecraft:oak_boat" => game.boats[0].join_seq(),
-                        _ => game.mobs[0].join_seq(),
-                    };
-                    assert!(old_join.is_joined());
-                    let uuid = game.uuid_for(id);
-                    let source = game.dim;
-                    let source_ref = game.entity(id).unwrap();
-                    let source_index = game.attachment_indexes.entry(source).or_default().clone();
-                    let mut map = Attachments::default();
-                    VALUE.set(&mut map, Holder::Entity(id), 17).unwrap();
-                    let old = if bound {
-                        Some(map.bind_index(
-                            &source_index,
-                            mod_api::AttachmentHolder::Entity(source_ref),
-                        ))
-                    } else {
-                        None
-                    };
-                    macro_rules! slot {
-                        ($list:ident) => {
-                            game.$list.update(0, |entity| {
-                                if let Some(old) = &old {
-                                    *entity.attachment_lifetime() =
-                                        AttachmentLifetime::new(old.clone());
-                                }
-                            })
-                        };
-                    }
-                    match kind {
-                        "minecraft:oak_boat" => slot!(boats),
-                        _ => slot!(mobs),
-                    }
-                    let key = ("test".into(), "transfer".into());
-                    let retained = source_index.lock().unwrap().snapshot(&key);
-                    let mut stale_map = map.clone();
-                    game.entity_attachments.insert(id, map);
-                    game.enter_level(Dim::Nether).unwrap();
-                    let destination_ref =
-                        mod_api::EntityRef::new(game.level(game.dim.id()).unwrap().epoch(), id);
-                    assert_eq!(source_ref, destination_ref);
-                    game.arrive_vehicle(source, id, Vec3::ZERO, 0.0);
-                    macro_rules! transferred {
-                        ($list:ident) => {{
-                            let parked = game.levels.parked_mut(source).unwrap();
-                            assert!(
-                                !parked
-                                    .$list
-                                    .iter()
-                                    .any(|e| e.id == id || e.join_seq() == old_join)
-                            );
-                            let arrived = game.$list.iter().find(|e| e.id == id).unwrap();
-                            assert!(arrived.join_seq().is_joined());
-                            assert_ne!(arrived.join_seq(), old_join);
-                            assert!(!game.$list.iter().any(|e| e.join_seq() == old_join));
-                        }};
-                    }
-                    match kind {
-                        "minecraft:oak_boat" => transferred!(boats),
-                        _ => transferred!(mobs),
-                    }
-                    assert!(source_index.lock().unwrap().snapshot(&key).is_empty());
-                    let destination_index =
-                        game.attachment_indexes.entry(game.dim).or_default().clone();
-                    let rows = destination_index.lock().unwrap().snapshot(&key);
-                    assert_eq!(rows.len(), usize::from(bound));
-                    if let Some(old) = old {
-                        let current = match kind {
-                            "minecraft:oak_boat" => game
-                                .boats
-                                .update(0, |e| e.attachment_lifetime().registration().unwrap()),
-                            _ => game.mobs[0].attachment_lifetime.registration().unwrap(),
-                        };
-                        assert!(!old.same_registration(&current));
-                        assert_eq!(
-                            rows[0].holder,
-                            mod_api::AttachmentHolder::Entity(destination_ref)
-                        );
-                        assert_eq!(rows[0].entry.read(&VALUE), Ok(&17));
-                        assert!(!old.unregister());
-                        drop(AttachmentLifetime::new(old));
-                        VALUE.set(&mut stale_map, Holder::Entity(id), 99).unwrap();
-                        assert_eq!(
-                            destination_index.lock().unwrap().snapshot(&key)[0]
-                                .entry
-                                .read(&VALUE),
-                            Ok(&17)
-                        );
-                        assert_eq!(retained[0].entry.read(&VALUE), Ok(&17));
-                        for index in [&source_index, &destination_index] {
-                            assert_eq!(index.lock().unwrap().validate_row(&retained[0]),
-                                Err(horizon_mod_runtime::attachments::AttachmentRowError::StaleHolder));
-                        }
-                        assert_eq!(
-                            destination_index.lock().unwrap().validate_row(&rows[0]),
-                            Ok(())
-                        );
-                    }
-                    assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
-                });
-            }
-        }
     }
 }
 

@@ -4,7 +4,7 @@
 //! changes the state wakes a goal by event (a target gained or lost, the dive set or cleared). The goals that tick (the charge, the dive,
 //! the circle, the strategy) have a marker that their system visits: a goal that does not run costs nothing.
 //! The `Mob` ticks a goal that is not `every_tick` every other tick: the counts here are in ticks (twice the `reduced` ones).
-//! Not ported: the cats that scare a diving phantom (`SweepAttack.can_continue`), the sounds, the owner link made at the summon.
+//! Not ported: the sounds, the owner link made at the summon. The cats that scare a diving phantom are `hiss::scare`.
 use crate::IFloor as _;
 use super::*;
 use crate::targeting::{self, Target, Who};
@@ -312,6 +312,12 @@ fn sweep_tick(w: &mut World) {
     for e in es {
         let Some((who, t)) = target_of(w, e) else { end(w, e, &PHANTOM_SWEEP_ATTACK); continue };
         if w.get::<Diving>(e).is_none() {
+            end(w, e, &PHANTOM_SWEEP_ATTACK);
+            continue;
+        }
+        // `canContinueToUse`: the cats near hiss every 20 ticks and a scared phantom ends the dive.
+        let now = w.resource::<Clock>().of(e);
+        if crate::hiss::scare(w, e, now) == Some(true) {
             end(w, e, &PHANTOM_SWEEP_ATTACK);
             continue;
         }

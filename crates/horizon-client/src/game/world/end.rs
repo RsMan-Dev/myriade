@@ -1609,7 +1609,8 @@ impl Game<'_> {
             .collect();
         // The ECS creatures, items and carts that moved (`portal_entries`): the legacy lists above are empty while the ECS is active.
         if self.ecs.is_active() {
-            for (id, can_sweep, at) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+            let entries = self.ecs_with(|ecs, mw| ecs.portal_entries(mw));
+            for (id, can_sweep, at) in entries {
                 let at = Vec3::new(at[0], at[1], at[2]);
                 if can_sweep && ticks(at) {
                     if let Some((width, height)) = self.ecs.portal_size(id) {
@@ -1858,9 +1859,27 @@ impl Game<'_> {
         let key = chunk(at);
         match arrival.traveller {
             Arriving::Live(id) => {
-                if let Some(e) = self.ecs.entity_of(id) {
+                if self.ecs.entity_of(id).is_some() {
                     // `Entity.teleportSameDimension` for an ECS entity: the place and the portal cooldown.
-                    self.ecs_with_mw(|ecs, mw| ecs.teleport(mw, e, [at.x, at.y, at.z]));
+                    // The riders move in the same operation, each by the root's shift (`ecs.teleport` moves one entity).
+                    let root_from = self.ecs.position(id);
+                    let moves: Vec<(bevy_ecs::entity::Entity, [f64; 3])> = self
+                        .ecs_tree(id)
+                        .into_iter()
+                        .filter_map(|g| {
+                            let (ge, p) = (self.ecs.entity_of(g)?, self.ecs.position(g)?);
+                            let to = match root_from {
+                                Some(r) if g != id => [p[0] - r[0] + at.x, p[1] - r[1] + at.y, p[2] - r[2] + at.z],
+                                _ => [at.x, at.y, at.z],
+                            };
+                            Some((ge, to))
+                        })
+                        .collect();
+                    self.ecs_with_mw(|ecs, mw| {
+                        for (ge, to) in moves {
+                            ecs.teleport(mw, ge, to);
+                        }
+                    });
                     self.set_portal_cooldown(id);
                     self.place_portal_ticket(key);
                 } else if let Some(target) = self.level_entity(id as i32) {

@@ -33,21 +33,21 @@ pub fn on_bump(w: &mut World, e: Entity) {
     if !can_grief(w, e) {
         return;
     }
-    let mut destroyed = false;
+    let mut destroyed = Vec::new();
     for p in cells_in(w, e, 0.2) {
         if block_has_class(w, p, t.bumped) {
-            break_block(w, p, true, Some(e), None);
-            destroyed = true;
+            break_block(w, p, true, Some(e), Some(e));
+            destroyed.push(p);
         }
     }
     if !is_on_ground(w, e) {
         return;
     }
-    if !destroyed {
+    if destroyed.is_empty() {
         jump(w, e);
     } else if asks_living_destroy_block(w) {
-        // The jump follows only when the game kept every leaf: `IfBroke` in vanilla (declared in the notes).
-        jump_if_kept(w, e);
+        // The jump follows only when the game kept every leaf: `IfBroke` in vanilla.
+        jump_if_kept(w, e, destroyed);
     }
 }
 /// The ravager entered a cell: a crop there is broken, named for the ravager (`breaker`), when mobs may grief.

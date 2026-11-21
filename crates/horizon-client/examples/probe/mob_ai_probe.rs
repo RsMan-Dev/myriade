@@ -452,33 +452,95 @@ fn seen(m: &Mob, items: &Items) -> Seen {
 
 /// The probe's mobs as a creaking heart sees them: creakings it creates take
 /// the n-th seed from 1000, as the oracle's do.
-struct Host<'a> {
+struct Host<'a, 'w> {
     mobs: &'a mut JoinList<Mob>,
     added: Vec<Mob>,
     types: &'a MobTypes,
     created: &'a mut i64,
     spawning: bool,
+    w: &'a MobWorld<'w>,
+    /// The creakings' own voices and effects, after what the heart reported.
+    events: Vec<MobEvent>,
 }
-impl HeartHost for Host<'_> {
-    fn mob(&self, id: u32) -> Option<&Mob> {
+impl Host<'_, '_> {
+    fn find(&self, id: u32) -> Option<&Mob> {
         self.mobs
             .iter()
             .chain(self.added.iter())
-            .find(|m| m.id == id)
+            .find(|m| m.id == id && !m.removed)
     }
-    fn mob_mut(&mut self, id: u32) -> Option<&mut Mob> {
+    fn find_mut(&mut self, id: u32) -> Option<&mut Mob> {
         self.mobs
             .iter_mut()
             .chain(self.added.iter_mut())
-            .find(|m| m.id == id)
+            .find(|m| m.id == id && !m.removed)
     }
-    fn mob_for_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
-        self.mob(uuid[3] as u32)
-            .filter(|m| !m.removed)
-            .map(|m| m.id)
+}
+impl HeartHost for Host<'_, '_> {
+    fn present(&self, id: u32) -> bool {
+        self.find(id).is_some()
+    }
+    fn for_uuid(&mut self, uuid: [i32; 4]) -> Option<u32> {
+        self.find(uuid[3] as u32).map(|m| m.id)
     }
     fn uuid_for(&mut self, id: u32) -> [i32; 4] {
         [0, 0, 0, id as i32]
+    }
+    fn persistent(&self, id: u32) -> bool {
+        self.find(id).is_some_and(|m| m.persistent)
+    }
+    fn feet(&self, id: u32) -> Option<Vec3> {
+        self.find(id).map(|m| m.position)
+    }
+    fn bounds(&self, id: u32) -> Option<Aabb> {
+        self.find(id).map(Mob::bounds)
+    }
+    fn set_tearing_down(&mut self, id: u32) {
+        if let Some(m) = self.find_mut(id) {
+            creaking::set_tearing_down(m);
+        }
+    }
+    fn kill(&mut self, id: u32) {
+        if let Some(m) = self.find_mut(id) {
+            m.health = 0.0;
+        }
+    }
+    fn voice(&mut self, id: u32, name: &'static str) {
+        let mut events = Vec::new();
+        if let Some(m) = self.find_mut(id) {
+            m.voice(name, &mut events);
+        }
+        self.events.append(&mut events);
+    }
+    fn tear_down(&mut self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        let mut events = Vec::new();
+        creaking::tear_down(self.find_mut(id)?, &mut events);
+        let mut torn = None;
+        for e in events {
+            match e {
+                MobEvent::CreakingTearDown { center, spread } => torn = Some((center, spread)),
+                other => self.events.push(other),
+            }
+        }
+        torn
+    }
+    fn player_is_stuck(&mut self, id: u32) -> bool {
+        let w = self.w;
+        self.find_mut(id).is_some_and(|m| {
+            let listed = horizon_client::mobs::monster_brain::nearest_players(m)
+                .contains(&horizon_client::mobs::Who::Player);
+            let eye = w.selected_player().filter(|_| listed).map(|p| p.eye);
+            creaking::player_is_stuck(m, eye)
+        })
+    }
+    fn player_near(&self, at: [f64; 3], range: f64) -> bool {
+        self.w.selected_player().is_some_and(|p| {
+            !p.spectator
+                && (p.position.x - at[0]).powi(2)
+                    + (p.position.y - at[1]).powi(2)
+                    + (p.position.z - at[2]).powi(2)
+                    < range * range
+        })
     }
     fn creaking_type(&self) -> Option<Arc<MobType>> {
         self.types
@@ -486,16 +548,23 @@ impl HeartHost for Host<'_> {
             .get("minecraft:creaking")
             .map(|t| Arc::new(t.clone()))
     }
-    fn create_mob(&mut self, kind: Arc<MobType>, at: Vec3) -> Mob {
+    fn spawn(&mut self, at: Vec3, yaw: f32, follow_bonus: f64, heart: [i32; 3]) -> Option<u32> {
+        let kind = self.creaking_type()?;
         let seed = 1000 + *self.created;
         *self.created += 1;
         let mut m = Mob::new(200_000 + seed as u32, kind, at, 0.0);
         m.random.set_seed(seed);
         horizon_client::mobs::monster_brain::init(&mut m, seed);
-        m
-    }
-    fn add_mob(&mut self, m: Mob) {
+        m.yaw = yaw;
+        m.previous_yaw = yaw;
+        m.head_yaw = yaw;
+        m.body_yaw = yaw;
+        m.attrs.follow_range += m.kind.follow_range * follow_bonus;
+        m.update_max_visited_nodes();
+        creaking::set_transient(&mut m, heart);
+        let id = m.id;
         self.added.push(m);
+        Some(id)
     }
     fn spawning_monsters(&self) -> bool {
         self.spawning
@@ -526,24 +595,35 @@ impl HiveHost for ProbeHive<'_, '_> {
     fn set_honey_level(&mut self, at: [i32; 3], level: i32) {
         self.honey.push((at, level));
     }
-    fn load(&mut self, tag: &horizon_core::nbt::Tag) -> Option<Mob> {
+    fn spawn(
+        &mut self,
+        tag: horizon_core::nbt::Tag,
+        at: [i32; 3],
+        facing: [i32; 2],
+        blocked: bool,
+        delivered: bool,
+    ) -> Option<u32> {
         let index = self.first + self.added.len();
-        let mut m = horizon_client::entity_nbt::mob_from_nbt(
-            tag,
-            self.types,
-            100_000 + index as u32,
-            None,
-        )?;
+        let id = 100_000 + index as u32;
+        let mut m = horizon_client::entity_nbt::mob_from_nbt(&tag, self.types, id, None)?;
         if m.species() != Species::Bee {
             return None;
         }
         m.random.set_seed(spawn_seed(index));
         horizon_client::mobs::bee::draw_cooldowns(&mut m);
-        Some(m)
-    }
-    fn add(&mut self, m: Mob) -> bool {
+        if delivered {
+            horizon_client::mobs::bee::drop_off_nectar(&mut m);
+        }
+        let delta = if blocked { 0.0 } else { 0.55 + f64::from(m.width() / 2.0) };
+        let p = Vec3::new(
+            f64::from(at[0]) + 0.5 + delta * f64::from(facing[0]),
+            f64::from(at[1]) + 0.5 - f64::from(m.height() / 2.0),
+            f64::from(at[2]) + 0.5 + delta * f64::from(facing[1]),
+        );
+        m.position = p;
+        m.previous = p;
         self.added.push(m);
-        true
+        Some(id)
     }
     fn sound(&mut self, name: &'static str, at: [f64; 3]) {
         self.events.push(MobEvent::Sound(name, at, 1.0, 1.0));
@@ -1609,6 +1689,8 @@ pub fn main() -> horizon_client::Result<()> {
                     types: &types,
                     created: &mut created,
                     spawning: s.spawning,
+                    w: &w,
+                    events: Vec::new(),
                 };
                 creaking_heart::server_tick(
                     h,
@@ -1619,6 +1701,7 @@ pub fn main() -> horizon_client::Result<()> {
                     &mut heart_events,
                 );
                 added.append(&mut host.added);
+                heart_events.extend(host.events.drain(..).map(HeartEvent::Mob));
             }
             drop(w);
             // Then the hives (BeehiveBlockEntity.serverTick).

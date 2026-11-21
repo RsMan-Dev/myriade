@@ -13,7 +13,7 @@ impl EcsWorld {
     /// leaves on the ground (`loot::on_death`) and it goes. Returns the item names it dropped (none while held `Dying`).
     pub fn kill(&mut self, mw: &MobWorld<'_>, e: Entity) -> Vec<&'static str> {
         self.lent(mw, |w| {
-            if w.get_entity(e).is_err() || w.get::<Dying>(e).is_some() {
+            if w.get_entity(e).is_err() || crate::tear_down::is_dead(w, e) {
                 return Vec::new();
             }
             if let Some(mut h) = w.get_mut::<crate::cow::Health>(e) {
@@ -26,6 +26,9 @@ impl EcsWorld {
             }
             let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
             w.resource_mut::<Events>().host.death(e, "generic_kill", None, at);
+            if let Some(id) = crate::bridge::ids::id_of(w, e) {
+                w.resource_mut::<Events>().host.death_animation(id, at);
+            }
             if w.get_resource::<DeathPolicy>().is_some_and(|p| p.vetoable) {
                 w.entity_mut(e).insert(Dying { health: 0.0 });
                 return Vec::new();
@@ -33,9 +36,7 @@ impl EcsWorld {
             let names = crate::loot::on_death(w, e);
             crate::item::spill_destroyed(w, e);
             crate::spawn_trial::forget(w, e);
-            if let Ok(mut m) = w.get_entity_mut(e) {
-                m.despawn();
-            }
+            crate::tear_down::linger(w, e);
             names
         })
     }

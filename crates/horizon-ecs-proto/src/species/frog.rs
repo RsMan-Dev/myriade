@@ -12,6 +12,7 @@ static NOT_PREGNANT: Cond = Cond::Not(&Cond::Is("frog:pregnant"));
 const FOOD: &[&str] = &["minecraft:slime_ball"];
 
 pub static DEF: Def = Def {
+    variant: Some(&super::variants::FROG),
     name: "minecraft:frog",
     goals: &[
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),

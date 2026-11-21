@@ -79,7 +79,7 @@ fn armor(special: f32, hard: bool, worn: &impl Fn(Slot) -> bool, random: &mut im
 }
 
 /// The weighted choice of a hand (`int(total)` against the cumulative weights); one entry draws nothing.
-fn pick(weapons: &'static [(&'static str, u32)], random: &mut impl RandomSource) -> &'static str {
+pub(crate) fn pick(weapons: &'static [(&'static str, u32)], random: &mut impl RandomSource) -> &'static str {
     if let [(only, _)] = weapons {
         return only;
     }

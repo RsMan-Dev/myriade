@@ -9,6 +9,8 @@ use std::collections::HashMap;
 pub struct PlayerFact {
     pub alive: bool,
     pub targetable: bool,
+    /// The amplifier of the player's Hero of the Village effect, if it has one (the villagers' discount).
+    pub hero: Option<i32>,
 }
 
 #[derive(Resource, Default)]
@@ -29,6 +31,8 @@ pub fn set_player(world: &mut World, p: Player, state: PlayerFact) {
     let moved = world.resource::<Online>().get(p.id).is_none_or(|o| !same(&o, &p));
     if moved {
         world.resource_mut::<Online>().set(p);
+        crate::spring_trap::player_changed(world);
+        crate::behaviours::contact_damage::player_moved(world, p);
     }
     crate::hook_wait::owner_changed(world, p.id, Some(p));
 }

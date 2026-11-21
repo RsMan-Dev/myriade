@@ -565,11 +565,9 @@ impl Game<'_> {
         let (kind, mut tag) = if let Some(object) = self.mob_object_slot(root) {
             (VehicleTreeKind::Mob, self.mob_object_nbt(object))
         } else if self.is_boat(root) {
-            let mut tag = match self.boat_object(root) {
-                Some(b) => {
-                    let uuid = self.uuid_for(root);
-                    b.to_nbt(uuid, self.persist.raw.get(&root))
-                }
+            let uuid = self.boat_object(root).is_some().then(|| self.uuid_for(root));
+            let mut tag = match uuid.zip(self.boat_object(root)) {
+                Some((uuid, b)) => b.to_nbt(uuid, self.persist.raw.get(&root)),
                 None => Tag::Compound(self.ecs_mob_tree(root)?),
             };
             self.save_portal_cooldown(root, &mut tag);

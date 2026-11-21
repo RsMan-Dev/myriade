@@ -18,7 +18,6 @@ mod projectile_targets;
 mod pufferfish_player;
 mod death_weapon;
 mod destroy_rules;
-mod knockback;
 mod player_loot_entity;
 mod projectile_world;
 pub(super) use projectile_world::ProjWorld;
@@ -477,25 +476,15 @@ impl Game<'_> {
             passenger: self.riding.is_some(),
             riding_vehicle: self.riding,
             vehicle: self.riding.and_then(|id| {
-                if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-                    // A boat's box: 1.375 wide and 0.5625 high around its position.
-                    let w = 0.6875;
-                    return Some(horizon_client::mobs::Vehicle {
-                        nautilus: false,
-                        bounds: Aabb::new(
-                            Vec3::new(b.position.x - w, b.position.y, b.position.z - w),
-                            Vec3::new(b.position.x + w, b.position.y + 0.5625, b.position.z + w),
-                        ),
-                        velocity: b.velocity,
-                    });
+                // A boat (`BoatMarker`) or a mount steered by the look of its rider (the nautilus kind); other vehicles are not followed.
+                let nautilus = self.ecs.boat_status(id).is_none();
+                if nautilus && !self.ecs.steers_by_look(id) {
+                    return None;
                 }
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                matches!(m.species(), Species::Nautilus | Species::ZombieNautilus).then(|| {
-                    horizon_client::mobs::Vehicle {
-                        nautilus: true,
-                        bounds: m.bounds(),
-                        velocity: m.velocity,
-                    }
+                Some(horizon_client::mobs::Vehicle {
+                    nautilus,
+                    bounds: self.ecs.bounds(id)?,
+                    velocity: self.ecs.velocity(id)?,
                 })
             }),
         })
@@ -519,6 +508,9 @@ impl Game<'_> {
         persistent: bool,
         site: SpawnSite,
     ) -> Option<u32> {
+        if self.ecs.is_active() {
+            return self.ecs_spawn_mob(kind, at, persistent, None, site);
+        }
         let mob = self.create_mob_reason(kind, at, persistent, site, None)?;
         self.insert_spawned_mob(mob)
     }
@@ -532,6 +524,9 @@ impl Game<'_> {
         site: SpawnSite,
         yaw: f32,
     ) -> Option<u32> {
+        if self.ecs.is_active() {
+            return self.ecs_spawn_mob(kind, at, persistent, Some(yaw), site);
+        }
         let mob = self.create_mob_reason(kind, at, persistent, site, Some(yaw))?;
         self.insert_spawned_mob(mob)
     }
@@ -1432,7 +1427,6 @@ impl Game<'_> {
         }
         laps.lap("creature_retain");
         self.sync_riders();
-        self.tick_skeleton_traps();
         self.guardian_bubbles();
         self.villager_reputation_tick();
         self.villager_item_sense();
@@ -1530,7 +1524,7 @@ impl Game<'_> {
         Ok(())
     }
     /// `LivingEntity.makePoofParticles` (entity event 60) about a mob's box.
-    pub(super) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
+    pub(in crate::game) fn death_poof(&mut self, at: [f64; 3], width: f64, height: f64) {
         let options = horizon_client::particles::ParticleOptions::simple(
             horizon_client::particles::ParticleType::Poof,
         );
@@ -1625,7 +1619,6 @@ impl Game<'_> {
         // the causing entity, not the credited player: a tame wolf's kill is
         // neither its owner's heroism nor a murder by them.
         let slain_by_player = by_player && !killed_by_mob(m);
-        self.raider_died(m, slain_by_player, killer.flatten());
         self.villager_murdered(m, slain_by_player, killer.flatten());
         let pos = [m.position.x, m.position.y + 0.5, m.position.z];
         let killer_entity = self.killer_loot_entity(killer.flatten());
@@ -1752,7 +1745,7 @@ impl Game<'_> {
     /// connection `conn` (None once they left), else the player in place
     /// (None on a server, which has none of its own).
     /// The entity id of the player `killer_uuid` names for `conn`.
-    pub(super) fn player_entity_id_by_connection(&self, conn: Option<u32>) -> Option<i32> {
+    pub(in crate::game) fn player_entity_id_by_connection(&self, conn: Option<u32>) -> Option<i32> {
         match conn {
             Some(conn) if self.lan_acting != Some(conn) => {
                 Some(self.lan.as_ref()?.hub.guest(conn)?.entity_id)
@@ -1960,18 +1953,12 @@ impl Game<'_> {
         let Some(Who::Mob(attacker)) = source.attacker else {
             return;
         };
-        let Some(owner) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == attacker && m.species() == Species::Wolf && m.extra.tame)
-            .map(|m| m.extra.owner)
-        else {
+        let Some((true, owner)) = self.ecs.tamable_values(attacker) else {
             return;
         };
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == victim) else {
+        if self.ecs.entity_of(victim).is_none() {
             return;
-        };
-        m.ai.last_hurt_by_player = if owner.is_some() { 100 } else { 0 };
+        }
         match owner {
             Some(uuid) => self.last_hurt_by_player.insert(
                 victim,
@@ -4610,6 +4597,10 @@ impl Game<'_> {
     /// crosshair or on the one a guest's interact packet named: returns true
     /// when consumed.
     pub(super) fn interact_mob(&mut self, target: Option<InteractTarget>) -> Result<bool> {
+        // The server's creatures live in the ECS: leads, mounts and P's modules and rules answer there (`ecs_interact`).
+        if self.ecs.is_active() {
+            return Ok(self.interact_mob_ecs(target));
+        }
         let Some(mut index) = self.mob_interaction_target(target) else {
             return Ok(false);
         };
@@ -7623,7 +7614,7 @@ mod knockback_tests {
                 let set = p.set_modifier(attribute, "horizon:test", resistance, "add_value", true);
                 set.unwrap();
             }
-            knockback::apply_player_knockback(
+            crate::game::shield::apply_player_knockback(
                 &mut p,
                 &mut test_level.level(),
                 0.4,
@@ -8321,24 +8312,7 @@ pub(in crate::game) fn local_difficulty_in(
     world: &horizon_client::world::World,
     at: [f64; 3],
 ) -> spawning::LocalDifficulty {
-    use horizon_world::food::Difficulty;
-    let base = match world.health_rules.difficulty {
-        Difficulty::Peaceful => 0,
-        Difficulty::Easy => 1,
-        Difficulty::Normal => 2,
-        Difficulty::Hard => 3,
-    };
-    let key = ((at[0].floor() as i32) >> 4, (at[2].floor() as i32) >> 4);
-    let (inhabited, moon) = if world.chunks.contains_key(&key) {
-        let phase = world.day_time.div_euclid(24000).rem_euclid(8) as usize;
-        (
-            world.inhabited.get(&key).copied().unwrap_or(0),
-            spawning::MOON_BRIGHTNESS[phase],
-        )
-    } else {
-        (0, 0.0)
-    };
-    spawning::LocalDifficulty::new(base, world.day_time, inhabited, moon)
+    spawning::LocalDifficulty::at(world, at)
 }
 #[cfg(test)]
 #[path = "../../entities/tests/leash_without_item_criterion_tests.rs"]

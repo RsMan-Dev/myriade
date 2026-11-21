@@ -2,7 +2,8 @@
 //! Its asks come every 2 ticks: the number of asks before the first success is drawn once and armed in the wheel.
 use super::panda_state::{self as ps, Gene, FLAG_SNEEZE};
 use super::*;
-use crate::cow::now_of;
+use crate::cow::{after, now_of, Pos};
+use crate::gift_drop::{drop_gift, GiftDrop};
 use crate::goals::{Req, Requests};
 use crate::rules::panda_sneeze::sneeze_at;
 
@@ -11,9 +12,18 @@ use crate::rules::panda_sneeze::sneeze_at;
 pub struct Params {
     pub weak_asks: i32,
     pub asks: i32,
+    /// `Panda.afterSneeze`'s gift (the slime ball, whose chance is the table's), dropped when the sneeze ends.
+    pub gift: &'static GiftDrop,
+    /// The sneeze lasts `lasts` ticks (the counter passes 20); `Panda.tick` plays `pre_sound` at its first and `sound` at its end.
+    pub lasts: i32,
+    pub pre_sound: &'static str,
+    pub sound: &'static str,
+    /// The grown ones of the same kind (`Sneeze` marks them) within `startle` blocks of a cub that sneezed jump.
+    pub startle: f64,
 }
+static GIFT: GiftDrop = GiftDrop { table: "minecraft:gameplay/panda_sneeze", sound: None, game_event: None, needs_mob_drops: true };
 impl Params {
-    pub const DEFAULT: Self = Self { weak_asks: 250, asks: 3000 };
+    pub const DEFAULT: Self = Self { weak_asks: 250, asks: 3000, gift: &GIFT, lasts: 21, pre_sound: "minecraft:entity.panda.pre_sneeze", sound: "minecraft:entity.panda.sneeze", startle: 10.0 };
 }
 
 /// `armed`: its deadline is in the wheel; `at`: the entity's time it is due at.
@@ -67,7 +77,39 @@ fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
 /// The goal does not continue: it ends at once.
 fn start(w: &mut World, e: Entity, inst: Inst) {
     ps::set_flag(w, e, FLAG_SNEEZE, true);
+    if let Some(s) = w.get::<Sneeze>(e).copied() {
+        after(w, e, 1, pre_sneeze);
+        after(w, e, s.def.lasts, end_sneeze);
+    }
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
+}
+/// `Panda.tick`, counter 1: the sound before the sneeze.
+fn pre_sneeze(w: &mut World, e: Entity) {
+    let Some(s) = w.get::<Sneeze>(e).copied() else { return };
+    if !ps::flag(w, e, FLAG_SNEEZE) {
+        return;
+    }
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    w.resource_mut::<crate::goals::Events>().host.sound(s.def.pre_sound, [p.x, p.y, p.z], 1.0, 1.0);
+}
+/// `Panda.tick` past the counter, then `afterSneeze`: the sound, the grown ones about jump (on the ground, out of the water, free to
+/// act), and the gift. The particle is the client's (`Level.addParticle` does nothing on a server).
+fn end_sneeze(w: &mut World, e: Entity) {
+    let Some(s) = w.get::<Sneeze>(e).copied() else { return };
+    if !ps::flag(w, e, FLAG_SNEEZE) {
+        return;
+    }
+    ps::set_flag(w, e, FLAG_SNEEZE, false);
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    w.resource_mut::<crate::goals::Events>().host.sound(s.def.sound, [p.x, p.y, p.z], 1.0, 1.0);
+    let area = crate::area::reach_box(w, e, s.def.startle);
+    for other in crate::area::creatures_in(w, area, e) {
+        let wet = w.get::<crate::cow::FluidState>(other).is_some_and(|f| f.in_water);
+        if w.get::<Sneeze>(other).is_some() && !ps::is_baby(w, other) && !wet && crate::level::is_on_ground(w, other) && ps::acts(w, other) {
+            crate::level::jump(w, other);
+        }
+    }
+    drop_gift(w, e, s.def.gift);
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     arm_sneeze(w, e);

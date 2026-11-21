@@ -38,6 +38,13 @@ impl Game<'_> {
     pub(super) fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
         Some(match self.native_entity_target(entity)? {
             Target::Player | Target::Guest(_) => SoundSource::Players,
+            Target::Mob(id) if self.ecs.is_active() => {
+                let species = self.ecs_mob(id)?.species?;
+                // The killer bunny is the rabbit whose coat is `Rabbit.Variant.EVIL` (the ECS rabbit has no coat component yet: 0).
+                let evil = species == Species::Rabbit
+                    && self.ecs.variant_of(id) == Some(horizon_client::mobs::rabbit::EVIL);
+                if evil || hostile_species(species) { SoundSource::Hostile } else { SoundSource::Neutral }
+            }
             Target::Mob(id) => {
                 let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 let evil = m.species() == Species::Rabbit

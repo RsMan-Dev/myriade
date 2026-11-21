@@ -1,7 +1,7 @@
 //! `IronGolem.OfferFlowerGoal`: by day (`Daylight`), one chance in 8000 per ask (every other tick, a geometric deadline of the wheel), the golem
 //! picks the nearest villager or copper golem within 6 blocks in sight (box inflated 6 / 2 / 6) and holds a poppy out to it for 400 ticks (200 asks),
-//! looking at it. Move + look flags. Not done: the entity events 11 and 34 (the arm raised: no channel to the client yet), the poppy given to a
-//! copper golem at the end (`MobEvent::Gift`); a villager is a candidate only once its species exists in the table (it is listed by name).
+//! looking at it. Move + look flags. At the end the poppy goes to a target of tag `accepts_iron_golem_gift` (the copper golem) with an empty
+//! antenna slot (`give_poppy`); not done: the entity events 11 and 34 (the arm raised: no channel to the client yet).
 use super::*;
 use crate::rules::offer_flower::{beyond_offer_height, hold_ticks, in_offer_reach, offer_wait, REACH};
 use crate::species::SpeciesSet;
@@ -83,7 +83,27 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     let n = w.get::<Offer>(e).unwrap().p.ticks;
     w.entity_mut(e).insert(Offering { left: hold_ticks(n) });
 }
+/// `OfferFlowerGoal.stop` when the hold ran out (`tick == 0`): a target that accepts the gift, with an empty antenna slot and a box meeting the
+/// golem's (inflated 6 / 2 / 6), gets the poppy there, guaranteed to drop (`setGuaranteedDrop`).
+fn give_poppy(w: &mut World, e: Entity, who: Entity) {
+    if !crate::type_tags::named(w, "accepts_iron_golem_gift", who) || equipped(w, who, Slot::Saddle) != 0 {
+        return;
+    }
+    let (Some(a), Some(b)) = (w.get::<Bounds>(e).map(|b| b.0), w.get::<Bounds>(who).map(|b| b.0)) else { return };
+    if !a.inflate(Vec3::new(6.0, 2.0, 6.0)).intersects(b) {
+        return;
+    }
+    crate::equipment::set_slot(w, who, Slot::Saddle, crate::items::item_id("minecraft:poppy"));
+    let mut chances = w.get::<crate::equipment_drop::DropChances>(who).copied().unwrap_or(crate::equipment_drop::DropChances([crate::equipment_drop::DEFAULT; 8]));
+    chances.0[crate::equipment_drop::index(Slot::Saddle)] = 2.0;
+    w.entity_mut(who).insert(chances);
+}
 fn stop(w: &mut World, e: Entity, _: Inst) {
+    if let (Some(s), Some(who)) = (w.get::<Offering>(e).copied(), w.get::<Offer>(e).and_then(|o| o.who)) {
+        if s.left <= 0 {
+            give_poppy(w, e, who);
+        }
+    }
     w.entity_mut(e).remove::<Offering>();
     if let Some(mut o) = w.get_mut::<Offer>(e) {
         o.who = None;

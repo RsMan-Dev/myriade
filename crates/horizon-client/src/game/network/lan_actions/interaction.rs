@@ -219,7 +219,7 @@ impl Game<'_> {
             return Some(g.bounds());
         }
         if self.ecs.is_active() {
-            if let Some(b) = self.ecs.bounds(id) {
+            if let Some(b) = u32::try_from(id).ok().and_then(|id| self.ecs.bounds(id)) {
                 return Some(b);
             }
         } else if let Some(m) = self.remote_entities.iter().find(|m| m.id as i32 == id) {

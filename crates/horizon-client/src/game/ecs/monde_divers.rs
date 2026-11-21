@@ -46,7 +46,7 @@ impl Game<'_> {
         self.ecs.entity_of(id).is_some_and(|e| self.ecs.world().is_some_and(|w| w.get::<Cfg>(e).is_some()))
     }
     /// The P side of a host `Who`: the local player, or the ECS entity of a mob's network id (None when it has none).
-    fn ecs_who(&self, who: Who) -> Option<targeting::Who> {
+    pub(in crate::game) fn ecs_who(&self, who: Who) -> Option<targeting::Who> {
         match who {
             Who::Player => self.player.as_ref().map(|p| targeting::Who::Player(p.entity_id as u32)),
             Who::Mob(id) => self.ecs.entity_of(id).map(targeting::Who::Entity),
@@ -73,7 +73,7 @@ impl Game<'_> {
     /// The trap horse of a bolt, spawned at `at` on the ECS level; its id, linked here.
     pub(in crate::game) fn ecs_spawn_trap_horse(&mut self, at: [f64; 3]) -> Option<u32> {
         let e = self.ecs_with(|ecs, mw| {
-            let e = ecs.spawn(mw, "minecraft:skeleton_horse", at, None)?;
+            let e = ecs.spawn_for(mw, "minecraft:skeleton_horse", at, None, horizon_ecs_proto::spawn_reason::SpawnReason::Triggered)?;
             ecs.set_trap(e, true);
             Some(e)
         })?;

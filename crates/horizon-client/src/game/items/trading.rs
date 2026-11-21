@@ -415,39 +415,39 @@ impl Game<'_> {
         self.ecs.ensure_offers(id);
     }
     /// `interact_trader` for the ECS trader `id`: the screen is P's `trade_session::open`, the session is built from the bridge's trade state.
-    pub(super) fn interact_trader_ecs(&mut self, id: u32, item: &str) -> horizon_client::Result<bool> {
+    pub(in crate::game) fn interact_trader_ecs(&mut self, id: u32, item: &str) -> horizon_client::Result<bool> {
         let Some(villager) = self.ecs.is_villager(id) else { return Ok(false) };
-        if !self.ecs.is_trader(id)
-            || !self.mob_alive(id)
+        if !self.mob_alive(id)
             || item == "minecraft:villager_spawn_egg"
             || self.station.is_some()
             || self.ecs.trade_busy(id)
-            || (villager && self.ecs.is_sleeping(id))
+            || (villager && self.ecs.flag(id, horizon_ecs_proto::bridge::host::Flag::Sleeping) == Some(true))
         {
             return Ok(false);
         }
-        if self.ecs.is_baby(id) {
+        if self.ecs_mob(id).is_some_and(|m| m.baby) {
             if !villager {
                 return Ok(false);
             }
             self.ecs.set_unhappy(id);
             return Ok(true);
         }
-        if villager && !self.ecs.profession_known(id) {
+        if villager && self.ecs.trader_opaque(id) {
             self.ecs.set_unhappy(id);
             return Ok(true);
         }
         self.award_custom_stat("talked_to_villager", 1);
         self.ensure_offers_ecs(id);
-        if self.ecs.trade_offers(id).is_none_or(|(offers, _)| offers.is_empty()) {
+        if self.ecs.trade_offers(id).is_none_or(|offers| offers.is_empty()) {
             if villager {
                 self.ecs.set_unhappy(id);
             }
             return Ok(true);
         }
-        let Some(session) = self.ecs.merchant_session(id, self.lan_acting) else { return Ok(false) };
-        let name = self.ecs.custom_name_text(id);
-        self.ecs.trade_open(id, self.lan_acting);
+        let Some(player) = self.acting_player_uuid_id() else { return Ok(false) };
+        let name = self.ecs.custom_name(id).map(|plain| Text::literal(&plain));
+        self.ecs.trade_open(id, player);
+        let Some(session) = self.ecs.merchant_session(id) else { return Ok(false) };
         self.open_merchant_state(MerchantState {
             session: Box::new(session),
             scroll: 0,
@@ -470,25 +470,28 @@ impl Game<'_> {
         }
         let Some(id) = state.mob else { return };
         self.ecs.trade_close(id);
-        if state.session.villager && self.ecs.profession_known(id) {
+        if state.session.villager && !self.ecs.trader_opaque(id) {
             self.ecs.set_trade_level(id, state.session.level.max(1));
         }
     }
     /// `merchant_sync_in` for an ECS trader: the offers, the xp, the random and the origin come from the bridge.
     pub(super) fn merchant_sync_in_ecs(&self, session: &mut merchant::Session, mob: Option<u32>) {
         let Some(id) = mob.filter(|id| self.ecs.is_active() && self.ecs.kind(*id).is_some()) else { return };
-        if let Some((offers, xp)) = self.ecs.trade_offers(id) {
+        if let Some(offers) = self.ecs.trade_offers(id) {
             session.offers = offers;
-            session.xp = xp;
         }
-        session.random = self.ecs.trade_random(id);
-        session.ambient_sound_time = self.ecs.ambient_timer(id);
+        if let Some(random) = self.ecs.trade_random(id) {
+            session.random = random;
+        }
+        if let Some(time) = self.ecs.ambient_timer(id) {
+            session.ambient_sound_time = time;
+        }
         session.origin = self.ecs.position(id).unwrap_or(session.origin);
     }
     /// `merchant_sync_out` for an ECS trader: the session goes back to the station, its random and its level to the bridge.
     pub(super) fn merchant_sync_out_ecs(&mut self, session: Box<merchant::Session>) {
         let mob = self.station.as_ref().and_then(|s| s.merchant.as_ref()).and_then(|m| m.mob);
-        let villager_unknown = mob.is_some_and(|id| self.ecs.is_villager(id) == Some(true) && !self.ecs.profession_known(id));
+        let villager_unknown = mob.is_some_and(|id| self.ecs.is_villager(id) == Some(true) && self.ecs.trader_opaque(id));
         if villager_unknown {
             if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
                 m.session = session;
@@ -519,8 +522,8 @@ impl Game<'_> {
                 merchant::Event::OffersRefreshed => {}
                 merchant::Event::Orb(v) => self.add_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32),
                 merchant::Event::LevelUp(_) => {
-                    if let Some(id) = mob {
-                        self.ecs.add_effect_regeneration(id, 200, 0);
+                    if let Some(e) = mob.and_then(|id| self.ecs.entity_of(id)) {
+                        self.ecs.add_effect_named(e, "regeneration", 200, 0);
                     }
                 }
                 merchant::Event::TradeUpdated(yes, pitch) => {
@@ -540,7 +543,7 @@ impl Game<'_> {
             }
         }
         if let Some(id) = mob {
-            self.ecs.set_trade_offers(id, &session.offers, session.xp);
+            self.ecs.trade_store(id, session.offers.clone(), session.xp);
         }
         (session, traded)
     }
@@ -556,7 +559,7 @@ impl Game<'_> {
             self.award_custom_stat("traded_with_villager", 1);
             let Some(id) = mob else { continue };
             let kind = self.ecs.kind(id).map(str::to_owned);
-            self.ecs_trigger_trade(id, &offer.result);
+            self.trigger_trade(&self.ecs_predicate_view(id), &offer.result);
             if let (Some(kind), Some(_)) = (kind, self.lan_acting) {
                 self.native_trade_with_villager(id, &kind, offer);
             }

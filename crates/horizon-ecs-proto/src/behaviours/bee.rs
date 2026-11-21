@@ -1,18 +1,17 @@
 //! The bee (`Bee`, 1534 lines of `Mob`): its state, the hive service (a bee in a hive is out of the world for its time inside), and the goals of
 //! its cycle: pollinate a flower, go home with the nectar, enter the hive, come out, locate another, grow crops, validate what it remembers.
 //! No scan and no system: the asks of the `Mob` (every other tick) are deadlines (a goal that cannot run re-arms itself at the next time its
-//! condition can change), the goals that tick are visited by their module's `tick` (`arbitrate` calls it while a bee lives) through markers, the hive is a resource whose
-//! next release time is the only thing looked at each tick.
-//! What it asks of the frame (and has here): `Hives` (the occupants of each hive: entity, tick it went in, minimum stay), `InHive` (the bee is
-//! out of every query: `zone::sleep`; the zone does not wake it), the release (position in front of the hive, nectar delivered, honey).
+//! condition can change), the goals that tick are visited by their module's `tick` (`arbitrate` calls it while a bee lives) through markers, 
+//! the hive block and its occupants are the host's (`BeehiveBlockEntity`: the saved bee goes in, the entity leaves the world, and comes
+//! back from its data at the release): here `enter_hive` asks it, `FullHives` is what the host tells back, `forget_hive` and `stay_out` its answers.
 //! The sting and the anger (`BeeAttackGoal`, `BeeBecomeAngryTargetGoal`, `BeeHurtByOtherGoal`) are the frame's melee, nearest_target, hurt_by and
-//! neutral_anger, configured in `species/bee.rs`; `sting` is the melee's `on_hit` hook. The age and the love move by the time spent in the hive (`age_in_hive`). The poison follows the difficulty (`effects::Difficulty`) and is given when the
+//! neutral_anger, configured in `species/bee.rs`; `sting` is the melee's `on_hit` hook. The poison follows the difficulty (`effects::Difficulty`) and is given when the
 //! blow lands (`StingPending`). Not ported (the frame has no block write nor sound output: the `Mob` hands them to the host): the honey level of the
 //! hive block, the crops grown, the sounds and the particles.
 use super::*;
 use crate::{cow::*, goals::*};
 use std::collections::HashMap;
-use crate::rules::bee::{close_to_hive, exit_point, front_of, hop_plan, hover_offset, manhattan_box, may_stop_hover, unit_toward_xz, within_blocks};
+use crate::rules::bee::{close_to_hive, hop_plan, hover_offset, manhattan_box, may_stop_hover, unit_toward_xz, within_blocks};
 use crate::rules::nearest_target::reduced;
 
 #[derive(Clone, Copy, Debug)]
@@ -39,23 +38,6 @@ pub struct Bee {
     pub unreachable: HashMap<[i32; 3], u64>,
     pub pollinating: bool,
 }
-/// The occupants of the hives (the block entities of the `Mob`): who went in, when (world tick), the stay at least.
-#[derive(Resource, Default)]
-pub struct Hives {
-    pub bees: HashMap<[i32; 3], Vec<Stored>>,
-    /// The earliest world tick a stay can be over (the only thing looked at each tick).
-    pub next: u64,
-}
-#[derive(Clone, Copy, Debug)]
-pub struct Stored {
-    pub e: Entity,
-    pub at: u64,
-    pub min: u64,
-}
-/// The bee is inside a hive: out of every query (`zone::sleep`), and not woken by the zone.
-#[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
-pub struct InHive(pub [i32; 3]);
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Pollinating {
@@ -93,8 +75,8 @@ fn too_far(w: &World, e: Entity, p: [i32; 3]) -> bool {
 }
 fn ensure(w: &mut World, e: Entity) {
     // The sting: a strike that lands costs the bee its life (`Bee.doHurtTarget`).
-    if w.get::<crate::hostile::Attack>(e).is_some_and(|a| a.on_hit.is_none()) {
-        w.get_mut::<crate::hostile::Attack>(e).unwrap().on_hit = Some(sting);
+    if w.get::<crate::hostile::Attack>(e).is_some_and(|a| a.on_blow.is_none()) {
+        w.get_mut::<crate::hostile::Attack>(e).unwrap().on_blow = Some(sting);
     }
     if w.get::<Bee>(e).is_none() {
         let now = now_of(w, e);
@@ -239,9 +221,6 @@ fn is_hive(w: &World, p: [i32; 3]) -> bool {
 fn hive_valid(w: &World, e: Entity) -> bool {
     bee(w, e).and_then(|b| b.hive).is_some_and(|h| !too_far(w, e, h) && is_hive(w, h))
 }
-fn full(w: &World, h: [i32; 3]) -> bool {
-    w.get_resource::<Hives>().is_some_and(|hv| hv.bees.get(&h).is_some_and(|v| v.len() >= 3))
-}
 /// The game's answer to `BEES_STAY_IN_HIVE` when it has one (the weather and the clock are the host's; the level data of the bench is static and
 /// at night): `None` reads the level.
 #[derive(Resource, Default)]
@@ -270,107 +249,26 @@ pub fn wants_to_enter_hive(w: &World, e: Entity) -> bool {
 }
 
 // ---- the hive ------------------------------------------------------------------------------------------------------
-/// The bee goes into its hive: out of every query for at least 600 ticks (2400 with nectar).
+/// The bee asks to go into its hive `hive`: the host stores its saved data in the block (`BeehiveBlockEntity.addOccupant`) and removes the
+/// entity, or, when the hive is full or gone, answers with `forget_hive`. The block's occupants are the host's; none are kept here.
 pub fn enter_hive(w: &mut World, e: Entity, hive: [i32; 3]) {
-    let now = w.resource::<Clock>().0;
-    let min = if bee(w, e).is_some_and(|b| b.nectar) { 2400 } else { 600 };
-    w.get_resource_or_insert_with(Hives::default);
-    let mut hv = w.resource_mut::<Hives>();
-    hv.bees.entry(hive).or_default().push(Stored { e, at: now, min });
-    hv.next = if hv.next == 0 { now + min } else { hv.next.min(now + min) };
-    crate::zone::sleep(w, e, now);
-    w.entity_mut(e).insert(InHive(hive));
+    w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::BeeEnterHive { bee: e, hive });
 }
-/// The release of the occupants whose stay is over (`BeehiveBlockEntity.tickOccupants`), unless it is night or raining or the front is blocked.
-pub fn release_tick(w: &mut World) {
-    // A hive block that went (`PoiRegistry.removed`, readable the tick after): everyone inside comes out at once (the emergency release).
-    if w.get_resource::<Hives>().is_some_and(|h| !h.bees.is_empty()) {
-        let gone: Vec<[i32; 3]> = w.resource::<crate::poi::PoiRegistry>().removed().to_vec();
-        for p in gone {
-            if let Some(list) = w.resource_mut::<Hives>().bees.remove(&p) {
-                for s in list {
-                    let stay = w.resource::<Clock>().0 - s.at;
-                    release(w, s.e, p, stay);
-                }
-            }
-        }
-    }
-    let Some(hv) = w.get_resource::<Hives>() else { return };
-    let now = w.resource::<Clock>().0;
-    if hv.bees.is_empty() || now < hv.next {
-        return;
-    }
-    let stay = bees_stay_in_hive(w);
-    let hives: Vec<[i32; 3]> = hv.bees.keys().copied().collect();
-    let mut next = u64::MAX;
-    for h in hives {
-        let list = w.resource::<Hives>().bees.get(&h).cloned().unwrap_or_default();
-        let mut kept = Vec::new();
-        for s in list {
-            if now > s.at + s.min && !stay {
-                release(w, s.e, h, now - s.at);
-            } else {
-                next = next.min(s.at + s.min + 1);
-                kept.push(s);
-            }
-        }
-        let mut hv = w.resource_mut::<Hives>();
-        if kept.is_empty() {
-            hv.bees.remove(&h);
-        } else {
-            hv.bees.insert(h, kept);
-        }
-    }
-    // Night or rain: asked again in a second.
-    w.resource_mut::<Hives>().next = if stay { now + 20 } else if next == u64::MAX { 0 } else { next };
+/// The hives the host holds full (three occupants), told by `EcsWorld::set_hive_full`: a bee does not look for them nor go in.
+#[derive(Resource, Default)]
+pub struct FullHives(pub std::collections::HashSet<[i32; 3]>);
+fn full(w: &World, h: [i32; 3]) -> bool {
+    w.get_resource::<FullHives>().is_some_and(|f| f.0.contains(&h))
 }
-/// `BeehiveBlockEntity.setBeeReleaseData`: the time inside counts for the age and the love (its own time stood still): a baby grows by that much,
-/// the breeding rest of an adult shortens by that much, the love too.
-fn age_in_hive(w: &mut World, e: Entity, stay: u64) {
-    let now = now_of(w, e);
-    if let Some(g) = w.get::<GrowAt>(e).map(|g| g.0).filter(|&g| g != u64::MAX) {
-        let at = g.saturating_sub(stay).max(now + 1);
-        w.entity_mut(e).insert(GrowAt(at));
-        crate::cow::arm_at(w, e, at, crate::cow::Due::Grow);
-    }
-    if let Some(r) = w.get::<crate::behaviours::breed::Resting>(e).map(|r| r.0).filter(|&r| r > now) {
-        match r.saturating_sub(stay) {
-            left if left > now => drop(w.entity_mut(e).insert(crate::behaviours::breed::Resting(left))),
-            _ => drop(w.entity_mut(e).remove::<crate::behaviours::breed::Resting>()),
-        }
-    }
-    if let Some(l) = w.get::<crate::behaviours::breed::Love>(e).map(|l| l.0).filter(|&l| l > now) {
-        match l.saturating_sub(stay) {
-            left if left > now => drop(w.entity_mut(e).insert(crate::behaviours::breed::Love(left))),
-            _ => drop(w.entity_mut(e).remove::<crate::behaviours::breed::Love>()),
-        }
-    }
-}
-fn release(w: &mut World, e: Entity, h: [i32; 3], stay: u64) {
-    let now = w.resource::<Clock>().0;
-    w.entity_mut(e).remove::<InHive>();
-    crate::zone::wake(w, e, now);
-    age_in_hive(w, e, stay);
-    let delivered = bee(w, e).is_some_and(|b| b.nectar);
+/// `hivePos = null`: the hive the bee goes to is full or no longer there (the host's answer to `enter_hive`).
+pub fn forget_hive(w: &mut World, e: Entity) {
     if let Some(mut b) = w.get_mut::<Bee>(e) {
-        b.hive = Some(h);
-        if delivered {
-            b.nectar = false;
-            b.crops = 0;
-        }
+        b.hive = None;
     }
-    let (wd, ht) = w.get::<Body>(e).map_or((0.7, 0.6), |b| (b.width, b.height));
-    let mw = w.resource::<Level>().mw.0;
-    let f = front_of(mw.prop(h[0], h[1], h[2], "facing"));
-    let blocked = mw.solid(h[0] + f[0], h[1], h[2] + f[1]);
-    let p = exit_point(h, f, blocked, wd, ht);
-    if let Some(mut pos) = w.get_mut::<Pos>(e) {
-        pos.0 = p;
-    }
-    if let Some(mut b) = w.get_mut::<Bounds>(e) {
-        b.0 = box_at(p, wd, ht);
-    }
-    // `ticksWithoutNectarSinceExitingHive` restarts.
+}
+/// A bee the host has just made from the data of a hive (`BeehiveBlockEntity.releaseOccupant`): `ticksWithoutNectarSinceExitingHive`
+/// restarts and the goals that wait on the hive, the flower or the nectar are armed again.
+pub fn exited(w: &mut World, e: Entity, delivered: bool) {
     let own = now_of(w, e);
     if let Some(mut b) = w.get_mut::<Bee>(e) {
         b.no_nectar_since = own;
@@ -380,6 +278,15 @@ fn release(w: &mut World, e: Entity, h: [i32; 3], stay: u64) {
     arm_validate_hive(w, e);
     if delivered {
         ask_pollinate(w, e);
+    }
+}
+/// The ticks a bee keeps out of a hive after a player smoked the hive it came out of (`setStayOutOfHiveCountdown(400)`).
+pub const SMOKED_STAY_OUT: u64 = 400;
+/// `Bee.setStayOutOfHiveCountdown`: it does not want to go in for `ticks` of its own time (a player smoked the hive it came out of).
+pub fn stay_out(w: &mut World, e: Entity, ticks: u64) {
+    let until = now_of(w, e) + ticks;
+    if let Some(mut b) = w.get_mut::<Bee>(e) {
+        b.stay_out_until = until;
     }
 }
 
@@ -844,7 +751,6 @@ fn schedule_flower(w: &mut World, e: Entity) {
 /// The tick of every bee that lives (the module that all carry): the hive's release, the hive that went (the event of the points of interest),
 /// the weather that changed (`StayInHive`: the host writes it when the day turns to night or the rain starts or stops), the stings.
 pub fn hive_tick(w: &mut World) {
-    release_tick(w);
     stung_tick(w);
     resolve_stings(w);
     if w.is_resource_changed::<StayInHive>() {

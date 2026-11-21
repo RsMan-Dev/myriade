@@ -7,7 +7,15 @@ use std::sync::Arc;
 /// The floor's height; entities stand at `FLOOR + 1`.
 pub(super) const FLOOR: i32 = 63;
 
+/// Metres from the origin that cover the benchmark's chunks (10 chunks of radius, corners included).
+const HOT_REACH: f64 = 400.0;
+
 impl Game<'_> {
+    /// The awake ECS entities of the benchmark's level, in the index's order.
+    pub(super) fn hot_ecs_entities(&self) -> Vec<bevy_ecs::entity::Entity> {
+        let near = Some(([0.0, f64::from(FLOOR), 0.0], HOT_REACH));
+        self.ecs.select(&horizon_ecs_proto::bridge::host::Select { near, ..Default::default() })
+    }
     /// Replace the level with a fresh one seeded `seed`: the chunks within `radius` of the
     /// origin, plains, lit by the sky, with the floor, and no entity or block entity.
     pub(super) fn hot_level(&mut self, seed: i64, radius: i32) -> Result<()> {
@@ -31,6 +39,9 @@ impl Game<'_> {
         self.tick_chunks.clear();
         self.sync_tick_chunks();
         self.remote_entities.clear();
+        for e in self.hot_ecs_entities() {
+            self.ecs.despawn(e);
+        }
         self.dropped.clear();
         self.orbs.clear();
         self.hoppers.clear();

@@ -70,15 +70,17 @@ impl Game<'_> {
             Some(Who::Mob(m)) => HurtSource::Entity(m),
             None => HurtSource::Generic,
         };
-        let mw = self.mob_world_base(&[]);
-        self.ecs.hurt(&mw, e, amount, source);
+        if let HurtSource::Player(player) = source {
+            self.ecs_note_killer(e, player);
+        }
+        self.ecs_with(|ecs, mw| ecs.hurt(mw, e, amount, source));
     }
     /// `pullEntity` on the ECS entity `id`: its velocity becomes `pull` of it; false when the id is not in the level.
     pub(in crate::game) fn ecs_pull(&mut self, id: u32, pull: impl FnOnce(Vec3) -> Vec3) -> bool {
         let Some(e) = self.ecs.entity_of(id) else {
             return false;
         };
-        let Some(v) = self.ecs.velocity(e) else {
+        let Some(v) = self.ecs.velocity(id) else {
             return false;
         };
         self.ecs.set_velocity(e, pull(v));

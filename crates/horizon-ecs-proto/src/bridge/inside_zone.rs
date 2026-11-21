@@ -27,6 +27,12 @@ impl EcsWorld {
         inside::triggers_in(self.world(), area, mobs_only).into_iter().filter_map(|e| ids::id_of(self.world(), e)).collect()
     }
 
+    /// The linked ids of the creatures whose box meets `area` (spatial index, no scan).
+    pub fn creatures_in(&self, area: Aabb) -> Vec<u32> {
+        let w = self.world();
+        crate::area::creatures_in(w, area, bevy_ecs::entity::Entity::PLACEHOLDER).into_iter().filter_map(|e| ids::id_of(w, e)).collect()
+    }
+
     /// The boxes of the minecarts meeting `area`.
     pub fn cart_bounds_in(&self, area: Aabb) -> Vec<Aabb> {
         inside::cart_boxes_in(self.world(), area)

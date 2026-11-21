@@ -36,6 +36,7 @@ pub mod calm_down;
 pub mod work_swim;
 pub mod work_breed;
 pub mod work_wake_up;
+pub mod panic_golem;
 // lot V2
 pub mod trade_follow_player;
 pub mod trade_show_offers;

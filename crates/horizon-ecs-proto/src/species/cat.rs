@@ -8,7 +8,7 @@ use crate::rules::RuleEntry;
 use crate::tame::{TameParams, TAME};
 
 /// Cod and salmon, one chance in three (the health stays what the species has).
-const TAME_CAT: TameParams = TameParams { items: &["minecraft:cod", "minecraft:salmon"], chance: 3, health: 10.0 };
+const TAME_CAT: TameParams = TameParams { items: &["minecraft:cod", "minecraft:salmon"], chance: 3, health: 10.0, sits: true, eat_sound: None };
 
 const FOOD: &[&str] = &["minecraft:cod", "minecraft:salmon"];
 static WILD: Cond = Cond::Not(&Cond::Is("horizon:is_tame"));
@@ -16,6 +16,7 @@ static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player,
 
 pub static DEF: Def = Def {
     name: "minecraft:cat",
+    variant: Some(&super::variants::CAT),
     reference: None,
     targets: &[
         Entry::new(&nearest_target::MODULE, 1, &nearest_target::Params { types: &["minecraft:rabbit"], must_see: false, ..nearest_target::Params::DEFAULT }).when(&WILD),
@@ -37,7 +38,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 12, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&avoid_entity::MODULE, 4, &AVOID).when(&WILD),
     ],
-    rules: &[RuleEntry::new(&TAME, &TAME_CAT)],
+    rules: &[RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::CAT), RuleEntry::new(&TAME, &TAME_CAT), RuleEntry::new(&crate::hiss::HISSES, &crate::hiss::CAT_HISS)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     ..Def::EMPTY
 };

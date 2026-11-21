@@ -149,6 +149,57 @@ impl Game<'_> {
         }
     }
 
+    /// `HostEvent::BecomeBlock` (`CopperGolem.turnToStatue`): the block is set where the entity stood, facing by `Direction.fromYRot`, in
+    /// the pose P drew, its custom name in the block entity's components; then the entity goes (P dropped its kept equipment).
+    pub(in crate::game) fn ecs_become_block(&mut self, e: Entity, block: &str, at: [i32; 3], pose: u8, yaw: f32, name: Option<String>, lead: Option<Option<[i32; 3]>>) {
+        use horizon_core::nbt::{Compound, Tag};
+        let facing = ["south", "west", "north", "east"][((f64::from(yaw) / 90.0 + 0.5).floor() as i32 & 3) as usize];
+        let pose = ["standing", "sitting", "running", "star"][usize::from(pose) & 3];
+        let state = horizon_world::chunk::BlockState {
+            name: block.into(),
+            properties: [
+                ("facing".to_string(), facing.to_string()),
+                ("copper_golem_pose".to_string(), pose.to_string()),
+                ("waterlogged".to_string(), "false".to_string()),
+            ]
+            .into(),
+        };
+        let Some(id) = self.pack.assets.registry.id(&state) else { return };
+        if self.level_set(at, id).is_err() {
+            return;
+        }
+        let mut components = Compound::new();
+        if let Some(n) = name {
+            components.insert("minecraft:custom_name".into(), Tag::String(n.as_str().into()));
+        }
+        self.world.block_entities.insert((at[0], at[1], at[2]), horizon_client::containers::BlockEntity::CopperGolemStatue(components));
+        let id = self.ecs_id_of(e);
+        // `Entity.discard` then `dropLeash` / `removeLeash` (under `entityDrops`): the lead falls where the entity stood.
+        if let Some(knot) = lead {
+            let at = [f64::from(at[0]) + 0.5, f64::from(at[1]), f64::from(at[2]) + 0.5];
+            self.ecs_leash_broke(id, at, false, knot);
+        }
+        self.entity_left_now(id);
+        self.ecs.despawn(e);
+    }
+
+    /// `HostEvent::Swing`:`ClientboundSwingAnimationPacket` for the players around the creature (the swinger is not a player here).
+    pub(in crate::game) fn ecs_swing_event(&mut self, e: Entity, off_hand: bool) {
+        let id = self.entity_id(e);
+        let Some(at) = self.ecs.position(id) else { return };
+        if let Some(host) = self.lan.as_ref() {
+            host.hub.swing(id as i32, i32::from(off_hand), at, None);
+        }
+    }
+
+    /// `HostEvent::Hurt`: `ServerLevel.broadcastDamageEvent` to the players around. The ids were resolved by P when the hit landed. A
+    /// projectile is the direct entity of its hit: `direct` is 0 then, as the vanilla packet's.
+    pub(in crate::game) fn ecs_hurt_event(&mut self, id: u32, damage: &str, cause: u32, direct: bool, at: [f64; 3]) {
+        let Some(host) = self.lan.as_ref() else { return };
+        let cause = (cause != 0).then_some(cause as i32);
+        host.hub.damage_event(id as i32, &format!("minecraft:{damage}"), cause, cause.filter(|_| direct), at);
+    }
+
     /// `ItemEvent`: the end of life of an item or an orb, sent only when a mod listens (`set_*_expiry_hooked`).
     pub(in crate::game) fn ecs_item_event(&mut self, ev: ItemEvent) {
         match ev {

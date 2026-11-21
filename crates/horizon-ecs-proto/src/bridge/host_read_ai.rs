@@ -16,6 +16,16 @@ impl EcsWorld {
         self.world().get::<Target>(e).map(|t| t.who)
     }
 
+    /// Whether `e` is driven by a brain rather than goals (the `is_brain` of a target-change event).
+    pub fn has_brain(&self, e: Entity) -> bool {
+        self.world().get::<crate::brain::Brain>(e).is_some()
+    }
+
+    /// `NeutralMob.isAngry`: `e` holds an anger target or its anger countdown runs.
+    pub fn is_angry(&self, e: Entity) -> bool {
+        crate::behaviours::neutral_anger::is_angry(self.world(), e)
+    }
+
     /// The last attacker of `e` (`LastHurtBy.who`).
     pub fn last_hurt_by(&self, e: Entity) -> Option<Who> {
         self.world().get::<LastHurtBy>(e).map(|l| l.who)
@@ -29,9 +39,55 @@ impl EcsWorld {
         }
     }
 
+    /// `Raider.getCurrentRaid`: None when `e` is no raider, `Some(raid)` otherwise (`raid` None while it is in none).
+    pub fn raider_raid(&self, e: Entity) -> Option<Option<i32>> {
+        self.world().get::<crate::raids::Raider>(e).map(|r| r.raid)
+    }
+
+    /// The living raiders of raid `raid`: entity, wave and health (a query of `Raider`, no scan of the world).
+    pub fn raid_members(&self, raid: i32) -> Vec<(Entity, i32, f32)> {
+        let w = self.world();
+        let Some(mut q) = w.try_query::<(Entity, &crate::raids::Raider, &crate::cow::Health)>() else { return Vec::new() };
+        q.iter_manual(w).filter(|(_, r, _)| r.raid == Some(raid)).map(|(e, r, h)| (e, r.wave, h.0)).collect()
+    }
+
+    /// The sections a village point someone holds makes (`PoiManager.isVillageCenter`); empty when there is no registry.
+    pub fn village_sections(&self) -> Vec<[i32; 3]> {
+        self.world().get_resource::<crate::poi::PoiRegistry>().map_or_else(Vec::new, |r| r.held_sections())
+    }
+    /// The village points someone holds (job sites, beds, bells); empty when there is no registry.
+    pub fn village_points(&self) -> Vec<[i32; 3]> {
+        self.world().get_resource::<crate::poi::PoiRegistry>().map_or_else(Vec::new, |r| r.held_points())
+    }
+
+    /// The coat of a creature (`Variant`: a fox's type, a rabbit's variant), 0 when it has none set.
+    pub fn variant_of(&self, e: Entity) -> u8 {
+        self.world().get::<crate::behaviours::variant::Variant>(e).map_or(0, |v| v.0)
+    }
+
     /// `Aggressive`: a raider that attacks for good.
     pub fn aggressive(&self, e: Entity) -> bool {
         self.world().get::<Aggressive>(e).is_some()
+    }
+
+    /// The tame flag and the owner's uuid words of `e`; None when it has no `Owner` (a kind that cannot be tamed). A player
+    /// owner reads through the players' uuids, an entity owner through its own uuid; None while the owner has none.
+    pub fn tamable_values(&self, e: Entity) -> Option<(bool, Option<[i32; 4]>)> {
+        let owner = self.world().get::<Owner>(e)?.0;
+        let uuid = match owner {
+            Some(Who::Player(p)) => self.player_uuid(p),
+            Some(Who::Entity(o)) => self.uuid_words(o),
+            None => None,
+        };
+        Some((owner.is_some(), uuid))
+    }
+
+    /// The player that owns `e` (`TamableAnimal.getOwner`); None when it is wild or its owner is a creature.
+    pub fn owner_player(&self, e: Entity) -> Option<u32> {
+        match self.world().get::<Owner>(e)?.0? {
+            Who::Player(p) => Some(p),
+            Who::Entity(_) => None,
+        }
     }
 
     /// `Mob.isNoAi`: the AI of `e` is paused.

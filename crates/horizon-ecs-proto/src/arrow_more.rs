@@ -219,7 +219,7 @@ pub fn deflect(w: &mut World, e: Entity, by: Option<Who>, dir: Vec3) -> bool {
 }
 
 /// `ProjectileDeflection` of the jar: `None` changes nothing, `Reverse` turns the arrow back, `AimDeflect` and `MomentumDeflect` set
-/// its velocity to `dir` when a deflector `by` exists (the host gives `dir` as the deflector's look angle, or its known speed, scaled).
+/// its velocity to `dir` (the host picks `None` when there is no deflector; it gives `dir` as the deflector's look angle, or its known speed, scaled).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Turn {
     None,
@@ -245,10 +245,10 @@ pub fn turn(w: &mut World, e: Entity, turn: Turn, by: Option<Who>, dir: Vec3, by
             let old = w.get::<YawOld>(e).map_or(yaw, |o| o.0);
             w.entity_mut(e).insert((Vel(v.scale(-0.5)), Yaw(yaw + angle), YawOld(old + angle)));
         }
-        Turn::AimDeflect | Turn::MomentumDeflect if by.is_some() => {
+        // The host picks `Turn::None` when there is no deflector; `by` is the NEW owner, not the deflector.
+        Turn::AimDeflect | Turn::MomentumDeflect => {
             w.entity_mut(e).insert(Vel(dir));
         }
-        Turn::AimDeflect | Turn::MomentumDeflect => {}
     }
     if let Some((order, accel)) = w.get::<Flight>(e).map(|f| (f.order, f.accel))
         && order == Order::Hurting

@@ -2,7 +2,7 @@
 //! (`EcsLevel::entity_nbt`, `merge_nbt`), under the keys vanilla saves. Nothing here scans the world.
 use super::super::Game;
 use horizon_client::{ecs_bridge::EcsLevel, mobs::MobWorld};
-use horizon_core::nbt::{Compound, Tag};
+use horizon_core::nbt::{Compound, JavaString, Tag};
 
 impl Game<'_> {
     /// Runs `f` on this level with the mob world lent for the call. The level is taken out of `self` meanwhile, since
@@ -20,12 +20,12 @@ impl Game<'_> {
     /// A flag of the ECS entity `id`, saved as a byte that is absent when unset (`Entity.saveWithoutId`).
     pub(in crate::game) fn ecs_flag(&self, id: u32, key: &str) -> Option<bool> {
         let nbt = self.ecs.entity_nbt(self.ecs.entity_of(id)?)?;
-        Some(matches!(nbt.get(key), Some(Tag::Byte(v)) if *v != 0))
+        Some(matches!(nbt.get(&JavaString::from(key)), Some(Tag::Byte(v)) if *v != 0))
     }
     /// A short or int number of the ECS entity `id`, 0 when unset.
     pub(in crate::game) fn ecs_number(&self, id: u32, key: &str) -> Option<i32> {
         let nbt = self.ecs.entity_nbt(self.ecs.entity_of(id)?)?;
-        Some(match nbt.get(key) {
+        Some(match nbt.get(&JavaString::from(key)) {
             Some(Tag::Short(v)) => i32::from(*v),
             Some(Tag::Int(v)) => *v,
             _ => 0,
@@ -36,7 +36,7 @@ impl Game<'_> {
         let Some(e) = self.ecs.entity_of(id) else {
             return false;
         };
-        self.ecs.merge_nbt(e, &Compound::compound([(key, value)]))
+        self.ecs.merge_nbt(e, &Compound::from([(JavaString::from(key), value)]))
     }
     /// Writes a flag as vanilla saves it: a byte 1 when set, a byte 0 when cleared (read the same as absent).
     pub(in crate::game) fn ecs_put_flag(&mut self, id: u32, key: &str, on: bool) -> bool {

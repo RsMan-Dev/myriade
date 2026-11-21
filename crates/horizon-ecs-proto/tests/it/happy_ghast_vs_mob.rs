@@ -1,7 +1,7 @@
 //! A dry happy ghast heals one health every 600 ticks (`happy_ghast.rs` `ai_step`), up to its maximum of 20, in the same scene as
 //! the rabbit test's herd (`HORIZON_SPECIES=minecraft:happy_ghast`, `HORIZON_TEST_RESOURCES` set).
 //! NON FAIT : la comparaison avec le `Mob` vanille (le soin passe par `ai_step` de la classe de test, hors de portée d'ici) ; le test
-//! de pilotage en vol (`fly_steer`, il faut construire un `Mount`) reste à écrire.
+//! de pilotage en vol (`Steer::Fly`, il faut construire un `Mount`) reste à écrire.
 //! NON FAIT : la panique (`AnimalPanic`) n'est comparée à aucun `Mob` : le Mob n'a pas ce but (écart, `suivi/ecs-ecarts.md`).
 use crate::common;
 use bevy_ecs::prelude::*;

@@ -309,8 +309,15 @@ impl Game<'_> {
             return None;
         };
         if self.ecs_has(id) {
-            // The bridge answers the vanilla query for the ECS mob (`query_invulnerable`, listed in the report).
-            return self.ecs.query_invulnerable(id, damage_type);
+            // `isInvulnerableToBase`: the permanent flag or the window refuses what is not `#bypasses_invulnerability`.
+            use horizon_client::mobs::{DamageKind as K, NamedDamage};
+            let bypass = match Self::damage_kind(&self.health_resources.damage, damage_type) {
+                K::OutOfWorld | K::GenericKill => true,
+                K::Named(n) => n.tags & NamedDamage::BYPASSES_INVULNERABILITY != 0,
+                _ => false,
+            };
+            let held = self.ecs_flag(id, "Invulnerable")? || self.ecs.invulnerable_time(id)? > 0;
+            return Some(held && !bypass);
         }
         let m = self.remote_entities.iter().find(|m| m.id == id)?;
         Some(self.mob_query_invulnerable(m, damage_type))

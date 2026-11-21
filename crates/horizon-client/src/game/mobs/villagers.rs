@@ -243,7 +243,7 @@ impl Game<'_> {
         horizon_gameplay::villagers::villager_reputation_of(self, id, uuid)
     }
     /// The Hero of the Village amplifier of the player, if any.
-    pub(super) fn hero_amplifier(&self) -> Option<i32> {
+    pub(crate) fn hero_amplifier(&self) -> Option<i32> {
         self.potions.effects.amplifier("hero_of_the_village")
     }
     /// `AbstractBedBlock.kickVillagerOutOfBed`: the first sleeping villager

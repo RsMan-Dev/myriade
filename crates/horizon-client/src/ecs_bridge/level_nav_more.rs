@@ -27,4 +27,22 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         self.ecs_mut().is_some_and(|w| w.set_nav_malus(e, kind, value))
     }
+
+    /// `Mob.getPathfindingMalus`: the creature's own override, else the default of the type.
+    pub fn malus(&self, id: u32, kind: crate::mobs::path::PathType) -> Option<f32> {
+        let o = self.ecs()?.nav_malus_override(self.entity_of(id)?, kind as u8)?;
+        Some(o.unwrap_or_else(|| kind.malus()))
+    }
+
+    /// `Mob.setPathfindingMalus` for the creature `id`; false without navigation.
+    pub fn set_malus(&mut self, id: u32, kind: crate::mobs::path::PathType, value: f32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.set_nav_malus_at(e, kind as u8, value))
+    }
+
+    /// `PathNavigation.setSpeedModifier` for the creature `id`.
+    pub fn set_nav_speed_modifier(&mut self, id: u32, speed: f64) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.set_nav_speed_modifier(e, speed))
+    }
 }

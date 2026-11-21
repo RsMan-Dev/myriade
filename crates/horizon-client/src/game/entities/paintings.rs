@@ -118,6 +118,7 @@ impl Game<'_> {
         let variant = self.painting_variants.of_stack(stack).map(|v| v.id.to_string());
         if self.hanging_place_cancelled("minecraft:painting", at) {
             return true;
+        let me = Who::Player(self.own_entity_id() as u32);
         }
         let mut next = self.next_entity;
         let hung = self.ecs_with(|ecs, mw| {
@@ -126,7 +127,7 @@ impl Game<'_> {
                 at,
                 facing,
                 variant.as_deref(),
-                Some(Who::Player),
+                Some(me),
                 &mut |n| random_source::entity().next_int_bound(n as i32).unwrap_or(0) as usize,
                 &mut || {
                     next += 1;
@@ -161,8 +162,9 @@ impl Game<'_> {
         if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
+        let me = Who::Player(self.own_entity_id() as u32);
         let creative = self.creative;
-        self.ecs_with(|ecs, mw| ecs.painting_hit(mw, id, Who::Player, creative))
+        self.ecs_with(|ecs, mw| ecs.painting_hit(mw, id, me, creative))
     }
     /// PaintingRenderer: the variant on the front, the back texture behind and
     /// on the edges.

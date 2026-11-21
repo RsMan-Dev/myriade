@@ -19,7 +19,7 @@ impl Params {
 const ONE_IN: i32 = 10;
 /// `stand_if_possible`: `counter = 20`; `AbstractHorse.tick` lowers it in the tick it is set (after the goals), so a
 /// sample taken after each tick sees 19 ticks up (measured against a `Mob` horse: `pilot_vs_mob.rs`, stand_4).
-const STAND_TICKS: u64 = 19;
+pub const STAND_TICKS: u64 = 19;
 
 /// The counter of the cycle (`next`, `-interval` between two cycles); `armed`: its deadline is in the wheel.
 #[derive(Component, Clone, Copy, Debug)]

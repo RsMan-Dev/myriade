@@ -3,12 +3,33 @@
 //! constructor's value, then 140 after a trip that finds no chest); the stroll waits for it (as the `Mob` does), so a golem walks while it lasts.
 //! Left out: the countdown of the gaze (the `Mob` never sets it).
 use super::Def;
+use crate::behaviours::shear::ShearDef;
 use crate::behaviours::Cap;
+use crate::goals::Slot;
 use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, transport_items};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
 
 const DOOR: interact_with_door::Params = interact_with_door::Params { cooldown: 0, ..interact_with_door::Params::DEFAULT };
+
+/// `CopperGolem.shear`, `readyForShearing`: the antenna holds an item of the shear tag; it leaves the slot and falls 1.5 above the feet.
+pub static SHEARING: ShearDef = ShearDef {
+    equip: |_, _| {},
+    ready: |w, e| {
+        let item = crate::goals::equipped(w, e, Slot::Saddle);
+        item != 0 && crate::items::is("#minecraft:shearable_from_copper_golem", item)
+    },
+    apply: |w, e| {
+        let item = crate::equipment::take_slot(w, e, Slot::Saddle);
+        let (Some(name), Some(at)) = (crate::items::item_name(item).filter(|_| item != 0), w.get::<crate::cow::Pos>(e).map(|p| p.0)) else { return false };
+        crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], [at.x, at.y + 1.5, at.z]);
+        true
+    },
+    table: |_, _| None,
+    sound: "minecraft:entity.copper_golem.shear",
+    height: Some(0.0),
+    puff: None,
+};
 
 pub static DEF: Def = Def {
     name: "minecraft:copper_golem",
@@ -39,5 +60,10 @@ pub static DEF: Def = Def {
             },
         ],
     },
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::coating::COAT, &crate::coating::CoatParams::COPPER),
+        crate::rules::RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING),
+        crate::rules::RuleEntry::new(&crate::hand_over::HAND_OVER, &crate::hand_over::HandOverParams::THROWS_BACK),
+    ],
     ..Def::EMPTY
 };

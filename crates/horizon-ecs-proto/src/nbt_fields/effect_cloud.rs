@@ -125,6 +125,7 @@ pub(crate) const KINDS: &[(&str, Kind)] = &[
     ("minecraft:jump_boost", Kind::JumpBoost),
     ("minecraft:glowing", Kind::Glowing),
     ("minecraft:weaving", Kind::Weaving),
+    ("minecraft:infested", Kind::Infested),
 ];
 
 /// One `custom_effects` entry: its id, amplifier and duration (an instant brew lasts 1 tick, as the jar's instant effects do).

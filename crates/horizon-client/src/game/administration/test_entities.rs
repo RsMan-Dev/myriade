@@ -38,14 +38,27 @@ impl Game<'_> {
     /// meets `bounds` is removed without dying or dropping anything.
     pub(super) fn discard_entities_in(&mut self, bounds: Aabb) {
         let at = |v: horizon_core::geometry::Vec3| [v.x, v.y, v.z];
-        for m in &mut self.remote_entities {
-            if !m.removed
-                && intersects(
-                    standing(at(m.position), f64::from(m.width()), f64::from(m.height())),
-                    bounds,
-                )
-            {
-                m.removed = true;
+        if self.ecs.is_active() {
+            // The creatures of the ECS world whose box meets `bounds` (spatial index), each one removed.
+            let area = horizon_core::geometry::Aabb::new(
+                horizon_core::geometry::Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]),
+                horizon_core::geometry::Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]),
+            );
+            for id in self.ecs.creatures_in(area) {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
+        } else {
+            for m in &mut self.remote_entities {
+                if !m.removed
+                    && intersects(
+                        standing(at(m.position), f64::from(m.width()), f64::from(m.height())),
+                        bounds,
+                    )
+                {
+                    m.removed = true;
+                }
             }
         }
         // EntityType.ITEM and EXPERIENCE_ORB.

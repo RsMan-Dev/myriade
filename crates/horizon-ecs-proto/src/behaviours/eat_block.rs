@@ -150,16 +150,34 @@ fn eat(w: &mut World, e: Entity) {
         None
     };
     if let Some(c) = change {
-        w.resource_mut::<BlockChanges>().0.push(c);
+        // `EatBlockGoal.tick`: the block changes only under `mobGriefing`; `Mob.ate` is called either way. The grass block's own
+        // break shows event 2001 with the block's default state (a short grass is `destroyBlock`: same event, with its own state).
+        if crate::goals::mob_griefing(w) {
+            let data = if c.3 == "minecraft:dirt" {
+                w.resource::<Level>().mw.0.registry.default_state("minecraft:grass_block").map_or(0, |s| s.0 as i32)
+            } else {
+                // `Level.destroyBlock`: the event carries the state that is broken.
+                let mw = w.resource::<Level>().mw.0;
+                mw.world.block(c.0, c.1, c.2).0 as i32
+            };
+            w.resource_mut::<Events>().host.level_event(2001, [c.0, c.1, c.2], data);
+            w.resource_mut::<BlockChanges>().0.push(c);
+        }
         ate(w, e);
+        // `Mob.ate`: `gameEvent(EAT)`.
+        let at = w.get::<crate::cow::Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+        w.resource_mut::<Events>().host.game_event_by(e, "minecraft:eat", at, false, false, false);
     }
 }
 /// `Sheep.ate`: the wool grows back; a baby ages up 60 seconds (`AgeableMob.ageUp(60)`).
-fn ate(w: &mut World, e: Entity) {
+pub fn ate(w: &mut World, e: Entity) {
     if let Some(mut wool) = w.get_mut::<crate::farm::Wool>(e) {
         wool.sheared = false;
     }
     let now = crate::cow::now_of(w, e);
+    if w.get::<crate::age_lock::AgeLocked>(e).is_some() {
+        return;
+    }
     if let Some(mut g) = w.get_mut::<GrowAt>(e) {
         g.0 = rule::age_up(g.0, now);
         let at = g.0;

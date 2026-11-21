@@ -1201,6 +1201,10 @@ impl Game<'_> {
             if matches!(entity, BlockEntity::Jukebox(_)) {
                 self.jukebox_removed(pos);
             }
+            // The hive is gone with its occupants (vanilla frees them only on the paths that empty it first): never read as full.
+            if matches!(entity, BlockEntity::Beehive(_)) {
+                self.ecs.set_hive_full(pos, false);
+            }
             if self.container == Some(key) {
                 self.container_opener_event(key, false);
                 self.container = None;

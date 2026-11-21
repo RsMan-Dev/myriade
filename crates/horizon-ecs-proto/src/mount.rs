@@ -46,10 +46,21 @@ pub enum Steer {
     /// the pressed jump is thrown away; the sprint adds `sprint_bonus` to the speed outside the cooldown; no input while it refuses
     /// to move (`posture`), and a forward input stands a sitting one up.
     Dash { push: f64, lift: f64, lift_scale: f64, cooldown: u64, sprint_bonus: f32 },
+    /// `AbstractNautilus.getRiddenInput` / `getRiddenSpeed`: the input follows the pitch of the look (forward `cos`, up `-sin`, a half of it
+    /// backwards), the speed is `water` or `land` times the movement speed; the jump is a dash of `dash_water` / `dash_land` along the
+    /// look, then `cooldown` ticks.
+    /// `sounds`: the dash under water, the dash on land, the "ready" under water, the "ready" on land (`isUnderWater` picks).
+    Look { water: f32, land: f32, dash_water: f64, dash_land: f64, cooldown: u64, sounds: [&'static str; 4] },
+    /// `HappyGhast.getRiddenInput` / `getRiddenSpeed`: free flight along the look of a harnessed adult, see `rules::mount::fly_input`; the
+    /// yaw follows the rider's by `turn` of the gap per tick.
+    Fly { turn: f32 },
 }
 impl Steer {
     pub const PIG: Self = Self::Stick { factor: 0.225, boost_min: 140, boost_range: 841, boost_gain: 1.15 };
     pub const STRIDER: Self = Self::Stick { factor: 0.55, boost_min: 140, boost_range: 841, boost_gain: 1.15 };
+    pub const NAUTILUS: Self = Self::Look { water: 0.0325, land: 0.02, dash_water: 1.2, dash_land: 0.5, cooldown: 40, sounds: ["entity.nautilus.dash", "entity.nautilus.dash_land", "entity.nautilus.dash_ready", "entity.nautilus.dash_ready_land"] };
+    pub const ZOMBIE_NAUTILUS: Self = Self::Look { water: 0.0325, land: 0.02, dash_water: 1.2, dash_land: 0.5, cooldown: 40, sounds: ["entity.zombie_nautilus.dash", "entity.zombie_nautilus.dash_land", "entity.zombie_nautilus.dash_ready", "entity.zombie_nautilus.dash_ready_land"] };
+    pub const GHAST: Self = Self::Fly { turn: 0.08 };
     pub const CAMEL: Self = Self::Dash { push: 22.2222, lift: 1.4285, lift_scale: 0.42, cooldown: 55, sprint_bonus: 0.1 };
 }
 #[derive(Component, Clone, Copy, Debug)]
@@ -104,15 +115,28 @@ pub struct RideParams {
     pub seats: &'static [f32],
     pub seat_height: f32,
     pub by_player: bool,
+    /// Only a tame mount is boarded by use (`AbstractNautilus.mobInteract`: `isTame`).
+    pub needs_tame: bool,
+    /// Items (names or `#tags`) whose use is never a boarding, a tame mount fed with them is not ridden (`!isFood`).
+    pub not_with: &'static [&'static str],
 }
 impl RideParams {
-    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, by_player: true };
+    pub const HORSE: Self = Self { jump_strength: 0.7, max_temper: 100, steer: Steer::Charged, seats: &[0.0], seat_height: 0.75, by_player: true, needs_tame: false, not_with: &[] };
+    /// `AbstractNautilus`: one seat, no jump bar (`Steer::Look` drives it), boarded only
+    /// when tame and not holding its food (`#nautilus_food`, a tame adult's `isFood`).
+    pub const ZOMBIE_NAUTILUS: Self = Self { steer: Steer::ZOMBIE_NAUTILUS, ..Self::NAUTILUS };
+    pub const NAUTILUS: Self = Self { steer: Steer::NAUTILUS, jump_strength: 0.0, max_temper: 0, needs_tame: true, not_with: &["#minecraft:nautilus_food"], ..Self::HORSE };
     /// A creature that only carries creatures (the spider, the chicken).
     pub const CARRIER: Self = Self { by_player: false, max_temper: 0, ..Self::HORSE };
     pub const PIG: Self = Self { steer: Steer::PIG, max_temper: 0, ..Self::HORSE };
     pub const STRIDER: Self = Self { steer: Steer::STRIDER, max_temper: 0, ..Self::HORSE };
     /// `Camel`: two seats (`camel.rs:258-281`: the first 0,5 ahead, the second 0,7 behind).
     pub const CAMEL: Self = Self { steer: Steer::CAMEL, seats: &[0.5, -0.7], ..Self::HORSE };
+    /// `HappyGhast`: one seat (the harness is the saddle), no jump bar. Its steering needs the harness (`ridden_drive`).
+    pub const GHAST: Self = Self { steer: Steer::GHAST, jump_strength: 0.0, max_temper: 0, ..Self::HORSE };
+    /// `Llama`: the player boards and sits (`AbstractChestedHorse` is steered by no one: its `getControllingPassenger` is the Mob's, and
+    /// the carpet is no saddle), so no jump and no steering; the lead or the caravan moves it.
+    pub const LLAMA: Self = Self { steer: Steer::Charged, jump_strength: 0.0, ..Self::HORSE };
 }
 pub static RIDE: Rule = Rule { name: "ride", equip, attrs: no_attrs, interact };
 
@@ -127,10 +151,14 @@ fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
 }
 /// `AbstractHorse.mobInteract` with an empty hand or an item it does not eat: the player rides an adult with a free seat (a stick
 /// mount needs its saddle: without it nobody takes the seat).
-fn interact(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
+fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     let Some(m) = w.get::<Mount>(e) else { return false };
+    let p = params::<RideParams>(p);
+    if (p.needs_tame && !w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some())) || p.not_with.iter().any(|n| crate::items::is(n, i.item)) {
+        return false;
+    }
     // A saddle or a body armor in hand is for `equipment::EQUIP`, a lead for `leash::LEASH`.
-    if matches!(crate::items::worn_in(i.item), Some(Slot::Saddle | Slot::Body)) || i.item == lead() || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) {
+    if matches!(crate::items::worn_in(i.item), Some(Slot::Saddle | Slot::Body)) || i.item == lead() || crate::leash::holder_of(w, e) == Some(crate::leash::Holder::Player(i.player)) || !m.by_player || w.get::<GrowAt>(e).is_some() || (matches!(m.steer, Steer::Stick { .. }) && !m.saddled) || (matches!(m.steer, Steer::Fly { .. }) && w.get::<crate::behaviours::harness_worn::Harness>(e).is_none()) {
         return false;
     }
     let _ = i.item;
@@ -147,6 +175,7 @@ pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
     } else {
         return false;
     }
+    crate::seat::mark_ridden(w, mount);
     if let Who::Entity(r) = who {
         let ranged = is_ranged(w, r);
         w.entity_mut(r).insert(Riding(mount));
@@ -162,6 +191,9 @@ pub fn ride(w: &mut World, mount: Entity, who: Who) -> bool {
         if matches!(who, Who::Entity(_)) {
             control_flags(w, mount, true);
         }
+    }
+    if first && matches!(who, Who::Player(_)) && w.get::<Mount>(mount).is_some_and(|m| matches!(m.steer, Steer::Look { .. })) {
+        breath_start(w, mount);
     }
     w.resource_mut::<Events>().mounted.push(mount);
     true
@@ -204,6 +236,8 @@ pub fn dismount(w: &mut World, mount: Entity) -> Option<Who> {
     if next.is_none() {
         release(w, mount, OCC_MOUNTED);
         w.entity_mut(mount).remove::<Ridden>();
+        // The jar keeps DASH until the landing (`Camel.tick` runs without a rider): `settle_dash` ends it now or on a later event.
+        settle_dash(w, mount);
     }
     control_flags(w, mount, matches!(next, Some(Who::Entity(_))));
     w.resource_mut::<Events>().dismounted.push(mount);
@@ -280,14 +314,89 @@ fn creature_steer(w: &mut World, mount: Entity) {
         go_to_at(w, mount, [info.pos.x, info.pos.y, info.pos.z], 1.0, 0);
     }
 }
+/// `Camel.isDashing` (DASH): set by the dash, cleared by `ridden_drive` once the cooldown is under 50 and the camel is on the ground,
+/// in a liquid or a passenger (`Camel.tick`); kept after its rider gets off until `settle_dash`. Only a dashing camel carries it.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Dashing;
+/// `Camel.tick` end of DASH for a camel that is not ridden: the cooldown under 50 and the camel on the ground, in a liquid or a
+/// passenger. Called at the dismount, by the landing and fluid events (`behaviours::posture`), and on a deadline when the cooldown
+/// still has more than 49 ticks to run; a ridden camel is left to `ridden_drive`.
+pub fn settle_dash(w: &mut World, e: Entity) {
+    if w.get::<Dashing>(e).is_none() || w.get::<Ridden>(e).is_some() {
+        return;
+    }
+    let left = w.get::<Mount>(e).map_or(0, |m| m.ready_at).saturating_sub(now_of(w, e));
+    if left >= 50 {
+        after(w, e, (left - 49) as i32, settle_dash);
+        return;
+    }
+    let settled = w.get::<Contact>(e).is_some_and(|c| c.on_ground)
+        || w.get::<FluidState>(e).is_some_and(|f| f.in_water || f.in_lava)
+        || w.get::<Riding>(e).is_some()
+        || w.get::<crate::seat::Seated>(e).is_some();
+    if settled {
+        w.entity_mut(e).remove::<Dashing>();
+    }
+}
+/// The rider of a `Steer::Look` mount is given its breath on a deadline (`breath_due`), not each tick; `due` is the game time of the
+/// pending deadline (a deadline of an earlier boarding that fires again is stale and does nothing).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Breathing {
+    due: i64,
+}
+fn game_now(w: &World, e: Entity) -> i64 {
+    game_time_at(w, e, now_of(w, e) as i64)
+}
+/// A player boards a `Steer::Look` mount: `AbstractNautilus.applyEffects` gives the breath at once (the player has none), then on each
+/// game time multiple of 40.
+pub(crate) fn breath_start(w: &mut World, e: Entity) {
+    let gt = game_now(w, e);
+    w.entity_mut(e).insert(Breathing { due: gt });
+    breath_due(w, e);
+}
+/// `AbstractNautilus.applyEffects`: the player rider gets the breath of the nautilus for 60 (amplifier 0, ambient) when it has none, then
+/// on each game time multiple of 40; the deadline stops with the last rider.
+fn breath_due(w: &mut World, e: Entity) {
+    let gt = game_now(w, e);
+    match w.get::<Breathing>(e) {
+        Some(b) if gt + 1 >= b.due => {}
+        _ => return,
+    }
+    let Some(Who::Player(player)) = w.get::<Mount>(e).and_then(|m| m.rider) else {
+        w.entity_mut(e).remove::<Breathing>();
+        return;
+    };
+    w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::PlayerEffect {
+        player,
+        effect: "minecraft:breath_of_the_nautilus",
+        ticks: 60,
+        amplifier: 0,
+        ambient: true,
+    });
+    let wait = 40 - gt.rem_euclid(40);
+    w.entity_mut(e).insert(Breathing { due: gt + wait });
+    after(w, e, wait as i32, breath_due);
+}
+/// The dash is ready again (`AbstractNautilus.tickRidden`: the cooldown reached 0): its sound, of the water or of the land.
+fn dash_ready_due(w: &mut World, e: Entity) {
+    let Some(Steer::Look { sounds, .. }) = w.get::<Mount>(e).map(|m| m.steer) else { return };
+    let wet = w.get::<crate::cow::FluidState>(e).is_some_and(|f| f.eye_in_water);
+    let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    w.resource_mut::<Events>().host.sound(sounds[2 + usize::from(!wet)], at, 1.0, 1.0);
+}
 /// Each tick, the ridden mounts: the rider's steering is the mount's input (`AbstractHorse.tickRidden` and `getRiddenInput`, `Pig` and
 /// `Camel`: see `Steer`), its jump, its yaw; the riders stay at their seats; a creature rider steers by the navigation.
 #[allow(clippy::type_complexity)]
 fn ridden_drive(
     clock: Res<Clock>,
-    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, Option<&crate::behaviours::posture::Posture>, Option<&crate::behaviours::fly_steer::Params>), With<Ridden>>,
+    mut q: Query<(Entity, &mut Mount, &mut Drive, &mut Yaw, &Contact, &Body, &Pos, &mut Vel, Option<&mut Boosted>, (Option<&crate::behaviours::posture::Posture>, Has<crate::behaviours::harness_worn::Harness>, Option<&crate::behaviours::still_under_riders::StillUntil>, Has<crate::behaviours::still_under_riders::Above>, Option<&crate::locomotion::fly::FlyParams>, Option<&mut Head>)), With<Ridden>>,
     targets: Query<(), With<crate::targeting::Target>>,
     mut pilots: Query<&mut PilotInput>,
+    fluids: Query<&crate::cow::FluidState>,
+    dashing: Query<(), With<Dashing>>,
+    passengers: Query<(), Or<(With<Riding>, With<crate::seat::Seated>)>>,
     level: Res<Level>,
     on: Res<Online>,
     mut held: Query<crate::leash::Held, crate::leash::HeldFilter>,
@@ -296,13 +405,8 @@ fn ridden_drive(
 ) {
     // The lead (no system of its own: this one runs every tick anyway).
     crate::leash::tick(&level, &on, &mut held, &holders, &mut commands);
-    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, posture, flier) in &mut q {
+    for (e, mut m, mut d, mut yaw, c, body, pos, mut vel, boosted, (posture, harness, still, above, flight, mut head)) in &mut q {
         let r = pilots.get(e).map(crate::pilot::as_rider_input).unwrap_or_default();
-        // A flying mount (`FlyingSteer`: its `Params` are the steer's constants) takes `fly_steer`'s drive instead of this one.
-        if let Some(p) = flier {
-            crate::behaviours::fly_steer::drive_one(&m, r, &yaw, &mut vel, p);
-            continue;
-        }
         let Some(first) = m.rider else {
             commands.entity(e).remove::<Ridden>();
             continue;
@@ -316,7 +420,7 @@ fn ridden_drive(
                     commands.queue(move |w: &mut World| creature_steer(w, e));
                 }
             }
-            Who::Player(_) if m.saddled => match m.steer {
+            Who::Player(_) if m.saddled || (harness && matches!(m.steer, Steer::Fly { .. })) => match m.steer {
                 Steer::Charged => {
                     controlled = true;
                     yaw.0 = r.yaw;
@@ -349,11 +453,17 @@ fn ridden_drive(
                 }
                 Steer::Dash { push, lift, lift_scale, cooldown, sprint_bonus } => {
                     controlled = true;
-                    let refused = posture.is_some_and(|p| p.refuses(now as i64));
+                    let refused = posture.is_some_and(|p| p.refuses(clock.game_now()));
                     if !refused {
                         yaw.0 = r.yaw;
                     }
-                    let rising = r.forward > 0.0 && posture.is_some_and(|p| p.sat(now as i64));
+                    if dashing.contains(e)
+                        && m.ready_at.saturating_sub(now) < 50
+                        && (c.on_ground || fluids.get(e).is_ok_and(|f| f.in_water || f.in_lava) || passengers.contains(e))
+                    {
+                        commands.entity(e).remove::<Dashing>();
+                    }
+                    let rising = r.forward > 0.0 && posture.is_some_and(|p| p.sat(clock.game_now()));
                     if rising {
                         commands.queue(move |w: &mut World| crate::behaviours::posture::stand_up(w, e));
                     }
@@ -373,6 +483,7 @@ fn ridden_drive(
                             } else {
                                 vel.0 = dash_push(vel.0, yaw.0, push, lift, lift_scale, body.speed, r.jump);
                                 m.ready_at = now + cooldown;
+                                commands.entity(e).insert(Dashing);
                                 true
                             };
                             if used {
@@ -383,7 +494,41 @@ fn ridden_drive(
                         }
                     }
                 }
-                Steer::Stick { .. } => {}
+                Steer::Look { water, land, dash_water, dash_land, cooldown, .. } => {
+                    controlled = true;
+                    let wet = fluids.get(e).is_ok_and(|f| f.in_water);
+                    let (xxa, yya, zza) = crate::rules::mount::look_input(r.strafe, r.forward, r.pitch);
+                    yaw.0 += crate::rules::fly::wrap_degrees(r.yaw - yaw.0) * 0.5;
+                    d.speed = body.speed as f32 * if wet { water } else { land };
+                    (d.xxa, d.yya, d.zza) = (xxa, yya, zza);
+                    if r.jump > 0.0 {
+                        if now >= m.ready_at {
+                            let block = crate::block_factor::speed(level.mw.0, [pos.0.x, pos.0.y, pos.0.z]);
+                            vel.0 = crate::rules::mount::look_dash(vel.0, r.yaw, r.pitch, if wet { dash_water } else { dash_land }, r.jump, body.speed, block);
+                            m.ready_at = now + cooldown;
+                            commands.queue(move |w: &mut World| after(w, e, cooldown as i32, dash_ready_due));
+                        }
+                        if let Ok(mut p) = pilots.get_mut(e) {
+                            p.jump = 0.0;
+                        }
+                    }
+                }
+                // `getControllingPassenger`: a harnessed adult with no still timeout; the first rider's look flies it (one pass: `fly::travel`
+                // reads the speed given below, the ghast's own flight is the same code as a free flier's).
+                // The still timeout holds while a player who does not ride stands above (`Above`, never the pilot: `scanPlayerAboveGhast`
+                // skips the players whose root vehicle is a happy ghast) and for the ticks after (`StillUntil`).
+                Steer::Fly { turn } if harness && !above && !still.is_some_and(|u| now < u.0) => {
+                    let fs = flight.map_or(0.0, |f| f.flying_speed);
+                    yaw.0 += crate::rules::fly::wrap_degrees(r.yaw - yaw.0) * turn;
+                    // `tickRidden`: the body, the head and the previous yaw take the new yaw, the pitch is half the rider's (the one the sync reads).
+                    if let Some(h) = head.as_mut() {
+                        (h.yaw, h.body, h.pitch) = (yaw.0, yaw.0, r.pitch * 0.5);
+                    }
+                    (d.xxa, d.yya, d.zza) = crate::rules::mount::fly_input(r.strafe, r.forward, r.pitch, r.jump > 0.0, fs);
+                    d.speed = crate::rules::mount::fly_speed(fs);
+                    d.air_speed = Some(d.speed);
+                }
+                Steer::Fly { .. } | Steer::Stick { .. } => {}
             },
             Who::Player(_) => {}
         }

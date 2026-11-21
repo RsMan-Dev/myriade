@@ -12,12 +12,16 @@ pub const NEVER: u64 = u64::MAX;
 /// The group a cluster of spawns shares (`AgeableMobGroupData`, `Zombie`'s group).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Group {
-    Ageable { should_baby: bool, size: u32, chance: f32 },
+    /// `variant`: the value the first member drew (`FoxGroupData`, `HorseGroupData`, `LlamaGroupData`), taken by the next ones.
+    Ageable { should_baby: bool, size: u32, chance: f32, variant: Option<u8> },
     Zombie { baby: bool, jockey: bool },
+    /// An ageable group that also carries the values its first member drew (`AxolotlGroupData`, `TropicalFishGroupData`): `n` of the
+    /// `vals` are set; `size` counts the members already made.
+    Pack { vals: [u32; 2], n: u8, size: u32, should_baby: bool, chance: f32 },
 }
 impl Group {
     /// `new AgeableMobGroupData(true)`: a fresh group, the first mob never a baby (its size is 0).
-    pub const AGEABLE: Self = Self::Ageable { should_baby: true, size: 0, chance: BABY_CHANCE };
+    pub const AGEABLE: Self = Self::Ageable { should_baby: true, size: 0, chance: BABY_CHANCE, variant: None };
 }
 
 /// The chicken draws of a baby zombie: an existing free vehicle first, else a new one.
@@ -42,9 +46,13 @@ pub fn mob_roll(r: &mut impl RandomSource) -> MobRoll {
 /// `AgeableMob.finalizeSpawn`: whether this mob is a baby, and the group after it (its size grows by one).
 pub fn ageable_roll(group: Option<Group>, r: &mut impl RandomSource) -> (bool, Group) {
     let g = group.unwrap_or(Group::AGEABLE);
-    let Group::Ageable { should_baby, size, chance } = g else { return (false, g) };
+    if let Group::Pack { vals, n, size, should_baby, chance } = g {
+        let baby = should_baby && size > 0 && r.next_float() <= chance;
+        return (baby, Group::Pack { vals, n, size: size + 1, should_baby, chance });
+    }
+    let Group::Ageable { should_baby, size, chance, variant } = g else { return (false, g) };
     let baby = should_baby && size > 0 && r.next_float() <= chance;
-    (baby, Group::Ageable { should_baby, size: size + 1, chance })
+    (baby, Group::Ageable { should_baby, size: size + 1, chance, variant })
 }
 
 /// `Zombie.finalizeSpawn`: a new group draws its baby (5 %) and takes a jockey; the chicken draws follow when it is a baby.

@@ -38,6 +38,15 @@ impl Game<'_> {
         ecs.set_hit_watched(mod_api::__private::listened(mod_api::HookId::HurtEnemy));
         // Movement game events cost a little per walking entity: only while a sculk block is loaded or a mod hears game events.
         ecs.set_move_events(self.vibration_heard());
+        // `SpecialDates.isHalloween`: P reads it at a spawn; the level is told only when the calendar date changes.
+        ecs.refresh_date(
+            || {
+                use chrono::Datelike;
+                let today = chrono::Local::now();
+                [today.month(), today.day()]
+            },
+            |[month, day]| horizon_client::mobs::finalize::halloween_date(month, day),
+        );
         let evs = ecs.step(&self.mob_world_base(&[]));
         let mut mob = Vec::new();
         let kept = match ecs.world() {
@@ -75,11 +84,21 @@ impl Game<'_> {
         // The species' rows are read once per process and referenced by every level, so the table lives as long as it.
         static TYPES: std::sync::OnceLock<horizon_client::mobs::MobTypes> = std::sync::OnceLock::new();
         let types = TYPES.get_or_init(|| horizon_client::mobs::MobTypes {
-            types: self.mob_types.iter().map(|(id, kind)| (id.clone(), (**kind).clone())).collect(),
+            types: self.res.mob_types().iter().map(|(id, kind)| (id.clone(), (**kind).clone())).collect(),
         });
         let mut ecs = EcsLevel::new(&setup, &self.mob_world_base(&[]), types, &self.options.resources);
+        // The trade registries are read by the merchants of every level; the item tables are kept for the process like `TYPES`.
+        static TRADE_TABLES: std::sync::OnceLock<(horizon_client::items::Items, horizon_items::enchant::Enchantments)> = std::sync::OnceLock::new();
+        let (items, enchantments) =
+            TRADE_TABLES.get_or_init(|| (self.items().clone(), (*self.stations().enchantments).clone()));
+        // P's profession indices are the host's (`stations().professions`, mods' professions included).
+        let mut trades = self.stations().trades.clone();
+        trades.professions = self.stations().professions.clone();
+        ecs.install_trades(trades, items, enchantments, setup.seed);
         ecs.set_trident_hit_bonus(self.trident_hit_bonus_fn());
+        ecs.set_melee_gear(self.melee_gear_fn());
         ecs.set_item_resists_table(self.item_resists_fn());
+        ecs.set_item_modifiers_table(self.item_modifiers_fn());
         ecs
     }
 }

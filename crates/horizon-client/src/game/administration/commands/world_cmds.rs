@@ -3,7 +3,7 @@
 use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
 use horizon_client::{
-    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who, finalize},
+    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who},
     text::Text,
 };
 use horizon_core::nbt::Tag;
@@ -11,6 +11,19 @@ use horizon_core::random::RandomSource;
 use horizon_protocol::packets::play::{self, Clientbound as C};
 use horizon_world::attribute_map::ValueKind;
 use horizon_world::damage_source::Catalog as DamageCatalog;
+
+/// A damage type's name kept for the process: `Hit.damage` is static, and a registry has a few dozen types.
+fn interned_damage(ty: &str) -> &'static str {
+    static NAMES: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+    let name = ty.trim_start_matches("minecraft:");
+    let mut names = NAMES.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(known) = names.iter().find(|n| **n == name) {
+        return known;
+    }
+    let leaked: &'static str = Box::leak(name.to_owned().into_boxed_str());
+    names.push(leaked);
+    leaked
+}
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
 /// and unrelated events. The existing game policy handles each extracted request.
@@ -221,19 +234,14 @@ impl Game<'_> {
                 .unwrap_or(0),
         );
         match direct {
-            Some(Target::Projectile(id)) => {
+            // A thrown trident is an ECS projectile too; its stack is its weapon.
+            Some(Target::Projectile(id) | Target::Trident(id)) => {
                 if let Some(v) = self.ecs.projectile_view(id) {
+                    let trident = self.ecs.trident_stack(id);
                     attack.projectile = Some(id as i32);
-                    attack.projectile_is_arrow = v.arrow;
-                    let weapon = self.ecs.projectile_weapon(id);
+                    attack.projectile_is_arrow = v.arrow || trident.is_some();
+                    let weapon = self.ecs.projectile_weapon(id).or(trident);
                     Self::set_projectile_weapon(&mut attack, weapon.as_ref().or(v.item.as_ref()));
-                }
-            }
-            Some(Target::Trident(id)) => {
-                if let Some(shot) = self.tridents.iter().find(|shot| shot.id == id) {
-                    attack.projectile = Some(id as i32);
-                    attack.projectile_is_arrow = true;
-                    Self::set_projectile_weapon(&mut attack, Some(&shot.stack));
                 }
             }
             _ => {}
@@ -298,10 +306,8 @@ impl Game<'_> {
                     Target::Mob(i) => Some(Who::Mob(i)),
                     _ => None,
                 });
-                let attacker_species = match attacker {
-                    Some(Who::Mob(i)) => self.remote_entities.iter().find(|m| m.id == i).map(|m| m.species()),
-                    _ => None,
-                };
+                // The ECS reads the attacker's species itself.
+                let attacker_species = None;
                 let damage = Damage {
                     kind: Self::damage_kind(&self.health_resources.damage, ty),
                     attacker,
@@ -318,7 +324,7 @@ impl Game<'_> {
                     let attack = self.current_attack();
                     let hurt = self
                         .as_guest(conn, |g| {
-                            g.with_attack(attack, |g| g.command_damage_mob(id, amount, damage))
+                            g.with_attack(attack, |g| g.command_damage_mob(id, amount, damage, ty))
                         })
                         .unwrap_or(false);
                     if hurt && let Some(host) = self.lan.as_mut() {
@@ -326,7 +332,7 @@ impl Game<'_> {
                     }
                     hurt
                 } else {
-                    self.command_damage_mob(id, amount, damage)
+                    self.command_damage_mob(id, amount, damage, ty)
                 }
             }
             Target::Item(id) => self.hurt_item_entity(id, amount, ty, by, cause.or(by), from),
@@ -409,7 +415,7 @@ impl Game<'_> {
             return false;
         }
         match target {
-            Target::Boat(_) => self.hurt_boat_result(id, amount, creative, causing).is_some(),
+            Target::Boat(_) => self.hurt_boat_result(id, amount, creative, self.bridge_who_of(causing)).is_some(),
             Target::Cart(_) => {
                 let credit = self.target_credit(causing);
                 self.hurt_cart_id(id, amount, creative, ignites, credit)
@@ -421,51 +427,36 @@ impl Game<'_> {
     /// `DamageCommand.damage`: retain the accepted hit's player context and run
     /// `Zombie.hurtServer`'s reinforcement requests before the command returns.
     /// Health-changing hits also raise their damage vibration before return.
-    fn command_damage_mob(&mut self, id: u32, amount: f32, damage: Damage) -> bool {
-        let attack = self.combat.attack();
-        let mut reinforcements = Vec::new();
-        let mut health_changed = false;
-        let hurt = self.remote_entities.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            let queued = m.outbox.len();
-            let old_health = m.health;
-            let hurt = m.damage(
-                crate::game::entity::damage_level_of!(self, attack),
-                amount,
-                damage,
-            );
-            health_changed = hurt && m.health != old_health;
-            if hurt {
-                reinforcements = take_new_reinforcements(&mut m.outbox, queued);
-            }
-            hurt
-        });
-        if hurt {
-            self.resolve_player_responsible(id, damage);
-            if damage.attacker == Some(Who::Player) {
-                self.remember_mob_player_credit(id);
-                if let Some(host) = self.lan.as_mut() {
-                    match self.lan_acting {
-                        Some(conn) => {
-                            host.mob_players.insert(id, conn);
-                        }
-                        None => {
-                            host.mob_players.remove(&id);
-                        }
+    fn command_damage_mob(&mut self, id: u32, amount: f32, damage: Damage, ty: &str) -> bool {
+        let Some(e) = self.ecs.entity_of(id) else {
+            return false;
+        };
+        let by = match damage.attacker {
+            Some(Who::Player) => Some(horizon_ecs_proto::targeting::Who::Player(self.player.as_ref().map_or(0, |p| p.entity_id as u32))),
+            Some(Who::Mob(i)) => self.ecs.entity_of(i).map(horizon_ecs_proto::targeting::Who::Entity),
+            _ => None,
+        };
+        let source = horizon_ecs_proto::bridge::host::HurtSource::Typed {
+            damage: interned_damage(ty),
+            by,
+            from: damage.from.map(|f| (f[0], f[2])),
+        };
+        self.ecs_with(|ecs, mw| ecs.hurt(mw, e, amount, source));
+        if damage.attacker == Some(Who::Player) {
+            self.remember_mob_player_credit(id);
+            if let Some(host) = self.lan.as_mut() {
+                match self.lan_acting {
+                    Some(conn) => {
+                        host.mob_players.insert(id, conn);
+                    }
+                    None => {
+                        host.mob_players.remove(&id);
                     }
                 }
             }
-            if health_changed {
-                self.mob_damage_event(id);
-            }
         }
-        for (mob, target) in reinforcements {
-            self.call_reinforcements(mob, target);
-        }
-        // Enderman.hurtServer's teleport, refused hit or not, before the command returns.
-        if let Err(e) = self.settle_hurt_teleports() {
-            log::warn!("Horizon: /damage: enderman teleport: {e}");
-        }
-        hurt
+        self.mob_damage_event(id);
+        true
     }
 
     // ---- /rotate and /swing -----------------------------------------------------------
@@ -1007,11 +998,7 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Mob(_) | Target::Stand(_)
-                if self.sulfur_archetype_attribute(target, attribute)
-                    || !(matches!(target, Target::Mob(_))
-                        && finalize::command_attr(short.as_str()).is_some()) =>
-            {
+            Target::Stand(_) => {
                 let op = ctx
                     .literals
                     .last()
@@ -1027,29 +1014,12 @@ impl Game<'_> {
                 .map(Some)
             }
             Target::Mob(mob_id) => {
-                let Some(m) = self.remote_entities.iter().find(|m| m.id == mob_id) else {
-                    return Ok(None);
-                };
-                // The attributes the mob's gameplay reads live in `finalize`;
-                // the command edits that store, never a copy of it.
-                let Some(attr) = finalize::command_attr(short.as_str())
-                    .filter(|a| finalize::default_value(m, *a).is_some())
-                else {
+                // The attributes live in the ECS entity, the gear's modifiers with them.
+                let Some(current) = self.ecs.attribute(mob_id, attribute, ValueKind::Computed) else {
                     return Err(no_attribute(&name, &description));
                 };
-                // `LivingEntity.collectEquipmentChanges` puts the gear's
-                // modifiers in the same map, so reads see them too.
-                let gear = finalize::equipment_modifiers(
-                    m,
-                    attr.id(),
-                    world_items!(self),
-                    &self.stations().enchantments,
-                );
-                let current = if id == "attribute.base.get" {
-                    finalize::base_value(m, attr)
-                } else {
-                    finalize::value_with_gear(m, attr, &gear)
-                };
+                let base = self.ecs.attribute(mob_id, attribute, ValueKind::Base).unwrap_or(current);
+                let current = if id == "attribute.base.get" { base } else { current };
                 let no_modifier = text_error(
                     "commands.attribute.failed.no_modifier",
                     &[
@@ -1084,11 +1054,7 @@ impl Game<'_> {
                     }
                     "attribute.base.reset" => {
                         self.write_attribute(target, attribute, AttributeWrite::ResetBase);
-                        let v = self
-                            .remote_entities
-                            .iter()
-                            .find(|m| m.id == mob_id)
-                            .map_or(0.0, |m| finalize::base_value(m, attr));
+                        let v = self.ecs.attribute(mob_id, attribute, ValueKind::Base).unwrap_or(0.0);
                         Ok(Some((
                             1,
                             Text::translate(
@@ -1101,7 +1067,11 @@ impl Game<'_> {
                         // AttributeInstance.hasModifier: the gear's modifiers are in the
                         // map too (collectEquipmentChanges); the write refuses the other
                         // ids taken, the modeled transient minecraft:baby included.
-                        let added = if gear.iter().any(|(id, _, _)| id == &modifier_id) {
+                        let present = self
+                            .ecs
+                            .attribute_modifiers(mob_id, attribute)
+                            .is_some_and(|ms| ms.iter().any(|m| m.id.to_string() == modifier_id));
+                        let added = if present {
                             Some(false)
                         } else {
                             AttributeWrite::add(
@@ -1145,19 +1115,10 @@ impl Game<'_> {
                         )))
                     }
                     _ => {
-                        // The gear's modifier replaced a permanent one of its id
-                        // (collectEquipmentChanges). The modeled baby modifier is
-                        // transient and absent from the saved store.
-                        let amount = gear
-                            .iter()
-                            .find(|(id, _, _)| id == &modifier_id)
-                            .map(|(_, amount, _)| *amount)
-                            .or_else(|| finalize::modifier_amount(m, attr, &modifier_id))
-                            .or_else(|| {
-                                finalize::transient(m, attr)
-                                    .filter(|_| modifier_id == "minecraft:baby")
-                                    .map(|(amount, _)| amount)
-                            });
+                        let amount = self
+                            .ecs
+                            .attribute_modifiers(mob_id, attribute)
+                            .and_then(|ms| ms.iter().find(|m| m.id.to_string() == modifier_id).map(|m| m.amount));
                         let Some(v) = amount else {
                             return Err(no_modifier);
                         };
@@ -1188,43 +1149,14 @@ impl Game<'_> {
     pub(in crate::game) fn generic_attributes(
         &mut self,
         t: Target,
-        attribute: &str,
+        _attribute: &str,
     ) -> Option<&mut horizon_world::attributes::entity::EntityAttributes> {
-        if let Target::Mob(id) = t
-            && (matches!(
-                attribute,
-                "minecraft:armor"
-                    | "minecraft:armor_toughness"
-                    | "minecraft:max_absorption"
-                    // `LivingEntity.travelInAir` reads it every tick.
-                    | "minecraft:friction_modifier"
-            ) || self.sulfur_archetype_attribute(t, attribute))
-        {
-            let mob = self.remote_entities.iter_mut().find(|m| m.id == id)?;
-            if mob.extra.armor_attributes.is_none() {
-                mob.extra.armor_attributes =
-                    self.motion.attributes.create(&mob.kind.id).map(Box::new);
-            }
-            return mob.extra.armor_attributes.as_deref_mut();
-        }
         if !self.cmds.attributes.contains_key(&t) {
             let ty = self.target_type(t);
             let map = self.motion.attributes.create(&ty)?;
             self.cmds.attributes.insert(t, map);
         }
         self.cmds.attributes.get_mut(&t)
-    }
-    /// A sulfur cube's body archetype attributes live on its own map, beside
-    /// the archetype's transient modifiers.
-    pub(in crate::game) fn sulfur_archetype_attribute(&self, t: Target, attribute: &str) -> bool {
-        let Target::Mob(id) = t else {
-            return false;
-        };
-        horizon_client::mobs::sulfur_cube::ARCHETYPE_ATTRIBUTES.contains(&attribute)
-            && self
-                .remote_entities
-                .iter()
-                .any(|m| m.id == id && m.species() == horizon_client::mobs::Species::SulfurCube)
     }
     /// AttributeCommand on a living entity through its generic attribute map.
     fn generic_attribute(
@@ -1253,22 +1185,8 @@ impl Game<'_> {
         };
         let catalog = self.motion.attributes.clone();
         let key = catalog.id(attribute).ok_or_else(no_attribute)?;
-        // A mob's max_absorption counts its Absorption effect's modifier.
-        let absorption_bonus = match target {
-            Target::Mob(mob) if attribute == "minecraft:max_absorption" => self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == mob)
-                .map(|m| horizon_client::mobs::armor::absorption_bonus(&m.extra.effects)),
-            _ => None,
-        };
-        let gear = match target {
-            Target::Mob(mob) => self.remote_entities.iter().find(|m| m.id == mob).map(|m| {
-                let enchantments = &self.stations().enchantments;
-                finalize::equipment_modifiers(m, attribute, world_items!(self), enchantments)
-            }),
-            _ => None,
-        };
+        // A stand wears no gear: the mobs' attributes are the ECS entity's (`Target::Mob` above).
+        let gear = None;
         let map = self
             .generic_attributes(target, attribute)
             .ok_or_else(no_attribute)?;
@@ -1280,12 +1198,7 @@ impl Game<'_> {
         let (message, args, result) = match id {
             "attribute.get" | "attribute.base.get" => {
                 let seen = worn.as_mut().unwrap_or(map);
-                let v = if id == "attribute.get"
-                    && let Some(bonus) = absorption_bonus
-                {
-                    horizon_client::mobs::armor::max_absorption_of(&*seen, 0.0, bonus)
-                        .ok_or_else(no_attribute)?
-                } else if id == "attribute.get" {
+                let v = if id == "attribute.get" {
                     seen.value(key).map_err(|_| no_attribute())?
                 } else {
                     map.base_value(key).map_err(|_| no_attribute())?
@@ -1562,7 +1475,7 @@ impl Game<'_> {
         let id = match t {
             Target::Player => self.riding?,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle?,
-            Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.extra.mount?,
+            Target::Mob(id) => self.ecs.vehicle_of(id)?,
             _ => return None,
         };
         Some(if self.is_boat(id) {

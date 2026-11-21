@@ -13,11 +13,23 @@ use horizon_core::random::LegacyRandom;
 pub use crate::level::{block_empty, block_is_air, block_is_moving_piston, box_free_of_blocks, box_free_of_crowd, full_face, has_block_tag, within_border};
 pub use horizon_core::random::RandomSource;
 
-/// The health the species gives (`getMaxHealth`); an entity without a species keeps its current health.
-pub fn max_health(w: &World, e: Entity) -> f32 {
-    match (w.get::<SpeciesId>(e), w.get_resource::<SpeciesTable>()) {
-        (Some(id), Some(table)) => table.0[id.0 as usize].max_health,
+/// The base of the maximum health: the base the entity's `AttrMods` write over the species', else the species' own; an entity without
+/// a species keeps its current health.
+pub fn base_max_health(w: &World, e: Entity) -> f32 {
+    let written = w.get::<crate::attr_mod::AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == "max_health")).map(|x| x.1).filter(|b| !b.is_nan());
+    match (written, w.get::<SpeciesId>(e), w.get_resource::<SpeciesTable>()) {
+        (Some(b), ..) => b as f32,
+        (None, Some(id), Some(table)) => table.0[id.0 as usize].max_health,
         _ => w.get::<Health>(e).map_or(0.0, |h| h.0),
+    }
+}
+/// `getMaxHealth`: the base with the modifiers of `AttrMods` (a zombie leader's bonus), in the attribute's range 1 to 1024. An entity
+/// without a species keeps its current health.
+pub fn max_health(w: &World, e: Entity) -> f32 {
+    let base = base_max_health(w, e);
+    match w.get::<crate::attr_mod::AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == "max_health")) {
+        Some(x) if w.get::<SpeciesId>(e).is_some() => (crate::attr_mod::value(f64::from(base), &x.2) as f32).clamp(1.0, 1024.0),
+        _ => base,
     }
 }
 

@@ -38,12 +38,7 @@ pub(super) struct Raiding {
     /// Raids read before their first raid tick, whose randoms that tick seeds
     /// (their ids and positions in the file).
     unseeded: Option<Vec<(i32, usize)>>,
-    /// The last raider hurt each raid's bar has seen (`Raider.hurtServer`).
-    bar_hurts: HashMap<i32, u64>,
     attributes: Option<std::sync::Arc<GameplayAttributes>>,
-    /// Beds near each raid's centre, rescanned now and then (`HOME` points
-    /// of interest for `RaiderMoveThroughVillageGoal`).
-    homes: HashMap<i32, (i64, std::sync::Arc<Vec<[i32; 3]>>)>,
 }
 
 /// A level's living raid members, in mob-list order.
@@ -70,8 +65,6 @@ impl Raiding {
         std::mem::swap(&mut self.raids, &mut other.raids);
         std::mem::swap(&mut self.loaded, &mut other.loaded);
         std::mem::swap(&mut self.unseeded, &mut other.unseeded);
-        std::mem::swap(&mut self.bar_hurts, &mut other.bar_hurts);
-        std::mem::swap(&mut self.homes, &mut other.homes);
     }
 }
 
@@ -243,6 +236,9 @@ impl Game<'_> {
     }
     /// Every claimed village point of interest (job sites, beds, bells).
     fn village_pois(&self) -> Vec<[i32; 3]> {
+        if self.ecs.is_active() {
+            return self.ecs.village_points();
+        }
         let mut out: Vec<[i32; 3]> = Vec::new();
         for m in &self.remote_entities {
             if m.species() != Species::Villager || !m.alive() {
@@ -298,8 +294,6 @@ impl Game<'_> {
             self.save_raids();
         }
         self.raiding.loaded = Some(self.dim);
-        self.raiding.bar_hurts.clear();
-        self.raiding.homes.clear();
         let (raids, order) = match horizon_client::save::read_dat(&self.raids_path(self.dim))
             .and_then(|tag| tag.get("data").cloned())
         {
@@ -515,20 +509,13 @@ impl Game<'_> {
     pub(super) fn raid_set_omen(&mut self, id: i32, level: i32) -> i32 {
         self.raiding.raids.set_omen_level(id, level).unwrap_or(0)
     }
-    pub(super) fn raid_glow(&mut self, id: i32) {
-        for m in &mut self.remote_entities {
-            if raider::state(m).is_some_and(|s| s.raid_id == Some(id)) {
-                m.add_effect("glowing", 1000, 1);
-            }
-        }
-    }
     /// The `/raid check` summary line.
     pub(super) fn raid_status_text(&self, id: i32) -> String {
         let Some(r) = self.raiding.raids.get(id) else {
             return String::new();
         };
-        let members: Vec<&Mob> = self.raid_members(id).collect();
-        let health: f32 = members.iter().fold(0.0, |a, m| a + m.health);
+        let members = self.ecs.raid_members(id);
+        let health: f32 = members.iter().fold(0.0, |a, m| a + m.2);
         // Java's string concatenation of the floats: `20.0`, not `20`.
         format!(
             "Num groups spawned: {} Raid omen level: {} Num mobs: {} Raid health: {} / {}",
@@ -545,32 +532,34 @@ impl Game<'_> {
     }
     /// `getHealthOfLivingRaiders`, leaving out one raider.
     fn remaining_raider_health(&self, id: i32, except: Option<u32>) -> f32 {
-        self.raid_members(id)
-            .filter(|m| Some(m.id) != except)
-            .fold(0.0, |a, m| a + m.health)
+        let ecs: f32 = self.ecs.raiders_of(id).iter().filter(|m| Some(m.id) != except).map(|m| m.health).sum();
+        ecs + self.raid_members(id).filter(|m| Some(m.id) != except).fold(0.0, |a, m| a + m.health)
     }
-    /// The bar update the last hurt raider of a raid asked for
-    /// (`Raider.hurtServer` runs `updateBossbar` before the damage).
-    fn flush_raid_bar(&mut self, id: i32) {
-        let seen = self.raiding.bar_hurts.get(&id).copied().unwrap_or(0);
-        let last = self
-            .raid_members(id)
-            .filter_map(|m| raider::state(m).map(|s| (s.hurt_seq, m.id, s.pre_hurt_health)))
-            .filter(|h| h.0 > seen)
-            .max_by_key(|h| h.0);
-        let Some((seq, mob, before)) = last else {
-            return;
-        };
-        let living = self.remaining_raider_health(id, Some(mob)) + before;
-        if let Some(r) = self.raiding.raids.get_mut(id) {
-            r.update_bossbar(living);
-        }
-        self.raiding.bar_hurts.insert(id, seq);
-    }
-
     /// The members of every raid, for `Raids.tick`.
     fn raider_infos(&self) -> HashMap<i32, Vec<RaiderInfo>> {
         let mut out: HashMap<i32, Vec<RaiderInfo>> = HashMap::new();
+        for id in self.raiding.raids.ids() {
+            let infos: Vec<RaiderInfo> = self
+                .ecs
+                .raiders_of(id)
+                .into_iter()
+                .map(|r| RaiderInfo {
+                    id: r.id,
+                    wave: r.wave,
+                    health: r.health,
+                    position: r.position,
+                    in_level: true,
+                    patrol_leader: r.leader,
+                    tick_count: r.tick_count,
+                    no_action_time: r.no_action_time,
+                    ticks_outside: r.ticks_outside,
+                    ..Default::default()
+                })
+                .collect();
+            if !infos.is_empty() {
+                out.insert(id, infos);
+            }
+        }
         for m in &self.remote_entities {
             if !m.alive() || m.removed {
                 continue;
@@ -594,52 +583,12 @@ impl Game<'_> {
         }
         out
     }
-    /// Raiders loaded with a `RaidId` join their raid
-    /// (`readAdditionalSaveData`: `addWaveMob` without counting health, and
-    /// the wave's leader).
-    fn register_loaded_raiders(&mut self) {
-        let pending: Vec<(u32, i32, i32, f32, bool)> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.alive() && !m.removed)
-            .filter_map(|m| {
-                let s = raider::state(m)?;
-                (!s.registered).then_some(())?;
-                Some((m.id, s.raid_id?, s.wave, m.health, s.patrol_leader))
-            })
-            .collect();
-        for (mob, id, wave, health, leader) in pending {
-            let living = self.remaining_raider_health(id, None);
-            let known = match self.raiding.raids.get_mut(id) {
-                Some(r) => {
-                    r.add_wave_mob(health, false, living);
-                    if leader {
-                        r.set_leader(wave, mob);
-                    }
-                    self.raiding.raids.dirty = true;
-                    true
-                }
-                None => false,
-            };
-            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                let s = raider::state_mut(m);
-                s.registered = true;
-                if !known {
-                    s.raid_id = None;
-                }
-            }
-        }
-    }
     /// `ServerLevel.tick` for the raids and their raiders.
     pub(super) fn tick_raids(&mut self) {
         if self.remote.is_some() {
             return;
         }
         self.load_raids();
-        self.register_loaded_raiders();
-        for id in self.raiding.raids.ids() {
-            self.flush_raid_bar(id);
-        }
         let centers = self.village_centers();
         let infos = self.raider_infos();
         let old_states: HashMap<_, _> = self
@@ -651,7 +600,7 @@ impl Game<'_> {
                 self.raiding
                     .raids
                     .get(id)
-                    .map(|r| (id, (r.status, r.center)))
+                    .map(|r| (id, (r.status, r.center, r.active, r.groups_spawned)))
             })
             .collect();
         let mut raids = std::mem::take(&mut self.raiding.raids);
@@ -671,7 +620,29 @@ impl Game<'_> {
             )
         };
         self.raiding.raids = raids;
-        for (id, (old, _)) in old_states {
+        // The ECS reads only a view of each raid (centre, active, over, lost), written when the raid appears, changes phase or goes.
+        let mut views: Vec<(i32, Option<horizon_ecs_proto::raids::RaidView>)> = Vec::new();
+        for id in self.raiding.raids.ids() {
+            if let Some(r) = self.raiding.raids.get(id)
+                && old_states.get(&id).is_none_or(|(s, c, a, g)| *s != r.status || *c != r.center || *a != r.active || *g != r.groups_spawned)
+            {
+                views.push((
+                    id,
+                    Some(horizon_ecs_proto::raids::RaidView {
+                        center: r.center,
+                        active: r.active,
+                        over: r.is_over(),
+                        loss: r.is_loss(),
+                        wave: r.groups_spawned,
+                    }),
+                ));
+            }
+        }
+        views.extend(old_states.keys().filter(|id| self.raiding.raids.get(**id).is_none()).map(|id| (*id, None)));
+        for (id, view) in views {
+            self.ecs.set_raid_view(id, view);
+        }
+        for (id, (old, ..)) in old_states {
             if let Some(r) = self.raiding.raids.get(id)
                 && r.status != old
                 && let Some(level) = self.level(self.dim.id())
@@ -686,7 +657,6 @@ impl Game<'_> {
         for (id, action) in actions {
             self.apply_raid_action(id, action);
         }
-        self.sync_raiders(&centers);
         let infos = self.raider_infos();
         self.sync_villager_raids(&infos);
     }
@@ -695,16 +665,10 @@ impl Game<'_> {
             Action::Spawn { pos, wave, spawns } => self.spawn_wave(id, pos, wave, &spawns),
             Action::Horn { pos, seed } => self.raid_horn(id, pos, seed),
             Action::Remove { id: mob } => {
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                    let s = raider::state_mut(m);
-                    s.raid_id = None;
-                    s.active_raid = false;
-                }
+                self.ecs.leave_raid(mob);
             }
             Action::SetOutside { id: mob, ticks } => {
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                    raider::state_mut(m).ticks_outside_raid = ticks;
-                }
+                self.ecs.set_ticks_outside_raid(mob, ticks);
             }
             // Raid.tick on a victory: each hero who is still alive.
             Action::Victory { heroes, amplifier } => self.for_each_player(|g| {
@@ -817,17 +781,22 @@ impl Game<'_> {
             f64::from(pos[1]) + 1.0,
             f64::from(pos[2]) + 0.5,
         ];
-        let id = self.spawn_event_mob(kind.entity(), at, leader, raider::Reason::Event)?;
-        let m = self.remote_entities.iter_mut().find(|m| m.id == id)?;
-        let s = raider::state_mut(m);
-        s.raid_id = Some(raid_id);
-        s.wave = wave;
-        s.can_join_raid = true;
-        s.ticks_outside_raid = 0;
-        s.active_raid = true;
-        s.registered = true;
-        m.on_ground = true;
-        self.apply_raid_buffs(id, kind, wave, odds);
+        let site = super::creatures::SpawnSite::Finalizing(horizon_client::mobs::spawn_rules::Reason::Event);
+        let id = self.ecs_spawn_mob(kind.entity(), at, leader, None, site)?;
+        self.ecs.enlist_raider(id, raid_id, wave, leader);
+        let buff = match kind {
+            RaiderType::Pillager => Some(horizon_ecs_proto::raid_buffs::RaidBuff::Crossbow),
+            RaiderType::Vindicator => Some(horizon_ecs_proto::raid_buffs::RaidBuff::Axe),
+            _ => None,
+        };
+        if let Some(buff) = buff {
+            let rules = horizon_ecs_proto::raid_buffs::RaidBuffRules {
+                odds,
+                easy_groups: raid::num_groups(1),
+                normal_groups: raid::num_groups(2),
+            };
+            self.ecs.apply_raid_buffs(id, buff, wave, rules);
+        }
         Some(id)
     }
     /// `EntityType.create` then `finalizeSpawn` for a patrol or a raid: the
@@ -840,335 +809,75 @@ impl Game<'_> {
         leader: bool,
         reason: raider::Reason,
     ) -> Option<u32> {
-        let t = self.res.mob_types().get(kind).cloned()?;
-        self.next_entity += 1;
-        let mut mob = Mob::new(self.next_entity, t, Vec3::new(at[0], at[1], at[2]), 0.0);
-        if leader {
-            raider::set_patrol_leader(&mut mob, true);
-            if reason == raider::Reason::Patrol {
-                // findPatrolTarget runs before the mob is placed: the target
-                // is around the world origin.
-                raider::find_patrol_target_from(&mut mob, [0, 0, 0]);
-            }
-        }
         let spawn_reason = if reason == raider::Reason::Patrol {
             horizon_client::mobs::spawn_rules::Reason::Patrol
         } else {
             horizon_client::mobs::spawn_rules::Reason::Event
         };
-        if self.finalize_with(&mut mob, spawn_reason, None) == Finalized::Cancelled {
-            return None;
-        }
-        let id = mob.id;
-        self.remote_entities.push(mob);
-        self.native_mobs_joined(self.remote_entities.len() - 1, false);
-        Some(id)
+        // The finalize can be cancelled by a mod (`ecs_with` refuses the kind): the ECS tells it as a missing entity.
+        self.ecs_spawn_patrol_member(kind, at, leader, spawn_reason)
     }
 
-    /// Per-tick raid bookkeeping of every raider (and the ravagers they
-    /// ride): the raid's state for the goals, joining and recruiting,
-    /// the banner of a fallen captain, idle time.
-    fn sync_raiders(&mut self, centers: &HashSet<(i32, i32, i32)>) {
-        let now = self.world.game_time;
-        let golems: HashSet<u32> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.species() == Species::IronGolem)
-            .map(|m| m.id)
-            .collect();
-        // Living leaders and carried riders.
-        let mut leaders: HashSet<(i32, i32)> = HashSet::new();
-        let mut ridden: HashSet<u32> = HashSet::new();
-        let mut positions: Vec<(u32, Vec3, bool)> = Vec::new();
-        for m in &self.remote_entities {
-            let Some(s) = raider::state(m) else { continue };
-            if !m.alive() {
-                continue;
-            }
-            if let (Some(id), true) = (s.raid_id, s.patrol_leader) {
-                leaders.insert((id, s.wave));
-            }
-            if let Some(v) = m.extra.mount {
-                ridden.insert(v);
-            }
-            positions.push((m.id, m.position, s.active_raid));
-        }
-        let banners: Vec<(usize, u32, Vec3)> = self
-            .dropped
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| {
-                &*e.stack.item == raider::BANNER
-                    && e.stack.data().is_some_and(|d| d.ominous_banner)
-                    && e.pickup_delay == 0
-            })
-            .map(|(i, e)| (i, e.id, e.position))
-            .collect();
-        let mut taken: Vec<usize> = Vec::new();
-        let mut collectors: Vec<(usize, u32)> = Vec::new();
-        let mut recruit: Vec<(i32, Vec3)> = Vec::new();
-        let mut joins: Vec<(u32, i32, f32)> = Vec::new();
-        let mut new_leaders: Vec<(i32, i32, u32)> = Vec::new();
-        let homes = self.raid_homes();
-        for m in &mut self.remote_entities {
-            let species = m.species();
-            if !raider::is_raider(species) {
-                continue;
-            }
-            let alive = m.alive();
-            let position = m.position;
-            let block = block_of(position);
-            let in_village = sections_to_village(centers, section(block)) <= 1;
-            let has_rider = ridden.contains(&m.id);
-            let target_golem = matches!(m.ai.target, Some(horizon_client::mobs::Who::Mob(t)) if golems.contains(&t));
-            let target_player = m.ai.target == Some(horizon_client::mobs::Who::Player);
-            let (health, range) = (m.health, m.attrs.follow_range);
-            let raids = &mut self.raiding.raids;
-            let wears_banner = m.extra.head_id() == Some(raider::BANNER);
-            let s = m.extra.raider.get_or_insert_with(Box::default);
-            s.rider = has_rider;
-            s.in_village = in_village;
-            // Vindicator.customServerAiStep: `ServerLevel.isRaided`.
-            s.raided = species == Species::Vindicator && raids.nearby(block).is_some();
-            if s.raid_id.is_some_and(|id| raids.get(id).is_none()) {
-                s.raid_id = None;
-                s.ticks_outside_raid = 0;
-            }
-            match s.raid_id.and_then(|id| raids.get(id)) {
-                Some(r) => {
-                    s.active_raid = r.active;
-                    s.raid_over = r.is_over();
-                    s.raid_loss = r.is_loss();
-                    s.raid_center = r.center;
-                    s.homes = s.raid_id.and_then(|id| homes.get(&id).cloned());
-                }
-                None => {
-                    s.active_raid = false;
-                    s.raid_over = false;
-                    s.raid_loss = false;
-                    s.homes = None;
-                    s.banner_at = None;
-                }
-            }
-            if !alive {
-                continue;
-            }
-            // Raider.aiStep: a raider fighting a player or golem in a raid is
-            // never idle. The per-tick growth (+1 serverAiStep, +2
-            // Raider.updateNoActionTime) is added by the mob's own step.
-            if s.raid_id.is_some() && (target_player || target_golem) {
-                m.ai.no_action_time = 0;
-            }
-            // Raider.aiStep: join the raid the raider stands in.
-            if s.raid_id.is_none()
-                && s.can_join_raid
-                && now % 20 == 0
-                && m.ai.no_action_time <= 2400
-                && let Some((id, _)) = raids.nearby(block)
-            {
-                joins.push((m.id, id, health));
-            }
-            // PathfindToRaidGoal.tick: recruitNearby, only while the goal runs.
-            if std::mem::take(&mut s.recruit_due)
-                && s.active_raid
-                && let Some(id) = s.raid_id
-            {
-                recruit.push((id, position));
-            }
-            // ObtainRaidLeaderBannerGoal.
-            s.banner_at = None;
-            if let Some(id) = s.raid_id
-                && s.active_raid
-                && !s.raid_over
-                && raider::can_be_leader(species)
-                && !wears_banner
-                && raids.get(id).is_some_and(|r| r.leader(s.wave).is_none())
-                && !leaders.contains(&(id, s.wave))
-            {
-                let in_reach = |(i, _, p): &&(usize, u32, Vec3)| {
-                    !taken.contains(i)
-                        && (p.x - position.x).abs() <= range
-                        && (p.z - position.z).abs() <= range
-                        && (p.y - position.y).abs() <= 8.0
-                };
-                let by_distance = |a: &&(usize, u32, Vec3), b: &&(usize, u32, Vec3)| {
-                    a.2.distance_squared(position)
-                        .total_cmp(&b.2.distance_squared(position))
-                };
-                // The unreachable cache only picks the navigation target;
-                // a banner next to the raider is still picked up.
-                let near = banners
-                    .iter()
-                    .filter(in_reach)
-                    .filter(|(_, item, _)| {
-                        !s.unreachable_banners
-                            .iter()
-                            .any(|&(b, until)| b == *item && now < until)
-                    })
-                    .min_by(by_distance);
-                let nearest = banners.iter().filter(in_reach).min_by(by_distance);
-                let adjacent =
-                    nearest.filter(|(_, _, p)| p.distance_squared(position) < 1.414 * 1.414);
-                if let Some((i, item, p)) = adjacent.or(near) {
-                    s.banner_at = Some([p.x, p.y, p.z]);
-                    s.banner_item = *item;
-                    if p.distance_squared(position) < 1.414 * 1.414 {
-                        // pickUpItem: the banner becomes the wave's leader.
-                        taken.push(*i);
-                        collectors.push((*i, m.id));
-                        leaders.insert((id, s.wave));
-                        new_leaders.push((id, s.wave, m.id));
-                        s.banner_at = None;
-                        s.patrol_leader = true;
-                        s.patrolling = true;
-                        // wear_banner: head id + ominous stack for SetEquipment (arismoko/horizon#4567).
-                        raider::wear_banner(m);
-                    }
-                }
-            }
-        }
-        for (i, mob) in collectors {
-            let item = self.dropped[i].clone();
-            self.add_pickup(
-                super::pickups::Taken::Item(Box::new(item)),
-                super::pickups::Collector::Mob(mob),
-            );
-        }
-        taken.sort_unstable();
-        for i in taken.into_iter().rev() {
-            self.remove_dropped(i);
-        }
-        for (id, wave, mob) in new_leaders {
-            if let Some(r) = self.raiding.raids.get_mut(id) {
-                r.set_leader(wave, mob);
-            }
-        }
-        // PathfindToRaidGoal.recruitNearby: raiders nearby in no active raid
-        // join this one at its current wave.
-        for (id, at) in recruit {
-            for (mid, p, active) in &positions {
-                if !active
-                    && (p.x - at.x).abs() <= 16.0
-                    && (p.y - at.y).abs() <= 16.0
-                    && (p.z - at.z).abs() <= 16.0
-                    && let Some(m) = self.remote_entities.iter().find(|m| m.id == *mid)
-                    && raider::state(m).is_some_and(|s| s.can_join_raid && s.raid_id != Some(id))
-                    && m.alive()
-                    && m.ai.no_action_time <= 2400
-                {
-                    joins.push((*mid, id, m.health));
-                }
-            }
-        }
-        for (mob, id, health) in joins {
-            self.join_raid(mob, id, health);
-        }
-    }
-    /// `Raid.joinRaid` for a raider already in the world: it counts toward
-    /// the bar and takes the raid's current wave.
-    fn join_raid(&mut self, mob: u32, id: i32, health: f32) {
-        let Some(wave) = self.raiding.raids.get(id).map(|r| r.groups_spawned) else {
-            return;
-        };
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
-            return;
-        };
-        let s = raider::state_mut(m);
-        if s.raid_id == Some(id) {
-            return;
-        }
-        s.raid_id = Some(id);
-        s.wave = wave;
-        s.can_join_raid = true;
-        s.ticks_outside_raid = 0;
-        s.registered = true;
-        let living = self.remaining_raider_health(id, None);
-        if let Some(r) = self.raiding.raids.get_mut(id) {
-            r.add_wave_mob(health, true, living);
-        }
-        self.raiding.raids.dirty = true;
-    }
-    /// Beds within 64 blocks of each raid's centre (the `HOME` points of
-    /// interest), rescanned every five seconds.
-    fn raid_homes(&mut self) -> HashMap<i32, std::sync::Arc<Vec<[i32; 3]>>> {
-        let now = self.world.game_time;
-        let ids: Vec<(i32, [i32; 3])> = self
-            .raiding
-            .raids
-            .map
-            .iter()
-            .filter(|(_, r)| r.active && !r.is_over() && r.started)
-            .map(|(id, r)| (*id, r.center))
-            .collect();
-        self.raiding
-            .homes
-            .retain(|id, _| ids.iter().any(|(i, _)| i == id));
-        for (id, c) in ids {
-            if self
-                .raiding
-                .homes
-                .get(&id)
-                .is_some_and(|(at, _)| now - at < 100)
-            {
-                continue;
-            }
-            let mut beds = Vec::new();
-            let mut known: HashMap<u32, bool> = HashMap::new();
-            for y in c[1] - 32..=c[1] + 32 {
-                for z in c[2] - 64..=c[2] + 64 {
-                    for x in c[0] - 64..=c[0] + 64 {
-                        let state = self.world.block(x, y, z);
-                        if self.res.facts().is_air(state) {
-                            continue;
-                        }
-                        let bed = *known.entry(state.0).or_insert_with(|| {
-                            self.res.facts().get(state).name.ends_with("_bed")
-                                && self.pack.assets.registry.state(state).is_some_and(|s| {
-                                    s.properties.get("part").map(String::as_str) == Some("head")
-                                })
-                        });
-                        if bed {
-                            beds.push([x, y, z]);
-                        }
-                    }
-                }
-            }
-            self.raiding
-                .homes
-                .insert(id, (now, std::sync::Arc::new(beds)));
-        }
-        self.raiding
-            .homes
-            .iter()
-            .map(|(id, (_, v))| (*id, v.clone()))
-            .collect()
-    }
     /// `Raider.die`: the wave loses its leader, the killing player becomes
     /// a hero of the village, and the raider leaves the raid (its health
     /// stays in the bar's total).
-    pub(super) fn raider_died(&mut self, m: &Mob, by_player: bool, killer: Option<u32>) {
-        let Some(s) = raider::state(m) else {
-            return;
+    pub(in crate::game) fn raider_died(
+        &mut self,
+        raid: i32,
+        id: u32,
+        by: Option<horizon_ecs_proto::targeting::Who>,
+        wave: i32,
+        leader: bool,
+        health: f32,
+    ) {
+        let living = self.remaining_raider_health(raid, Some(id));
+        let hero = match by {
+            Some(horizon_ecs_proto::targeting::Who::Player(p)) => {
+                self.with_player(p, |g| horizon_client::lan::playerdata::ints_uuid(g.acting_player_uuid()))
+            }
+            _ => None,
         };
-        let Some(id) = s.raid_id else {
-            return;
-        };
-        let (leader, wave) = (s.patrol_leader, s.wave);
-        self.flush_raid_bar(id);
-        let living = self.remaining_raider_health(id, Some(m.id));
-        let uuid = self.player_uuid_of(killer);
-        if let Some(r) = self.raiding.raids.get_mut(id) {
+        if let Some(r) = self.raiding.raids.get_mut(raid) {
             if leader {
                 r.remove_leader(wave);
             }
-            if by_player && let Some(uuid) = uuid {
+            if let Some(uuid) = hero {
                 r.add_hero(uuid);
             }
-            r.remove_from_raid(m.health, false, living);
+            r.remove_from_raid(health, false, living);
             self.raiding.raids.dirty = true;
         }
-        if let Some(dead) = self.remote_entities.iter_mut().find(|x| x.id == m.id) {
-            raider::state_mut(dead).raid_id = None;
+    }
+    /// `HostEvent::RaiderJoined`: a creature the ECS already holds joins raid `raid` (`Raid.joinRaid`): it counts toward the bar.
+    /// `loaded`: it came back from a save (`readAdditionalSaveData`: no health recount, the wave's leader kept); a raid the host no longer
+    /// holds drops it. A leader is set on its wave; the raid's `groups_spawned` was the wave it took.
+    pub(in crate::game) fn ecs_raider_joined(&mut self, raid: i32, id: u32, wave: i32, leader: bool, loaded: bool) {
+        let Some(health) = self.ecs.raiders_of(raid).iter().find(|r| r.id == id).map(|r| r.health) else {
+            return;
+        };
+        let living = self.remaining_raider_health(raid, None);
+        let Some(r) = self.raiding.raids.get_mut(raid) else {
+            self.ecs.leave_raid(id);
+            return;
+        };
+        r.add_wave_mob(health, !loaded, living);
+        if leader {
+            r.set_leader(wave, id);
+        }
+        self.raiding.raids.dirty = true;
+    }
+    /// `HostEvent::RaiderLeads`: a raider picked up the ominous banner (`Raider.pickUpItem`): `Raid.setLeader(wave, raider)`.
+    pub(in crate::game) fn ecs_raider_leads(&mut self, raid: i32, id: u32, wave: i32) {
+        if let Some(r) = self.raiding.raids.get_mut(raid) {
+            r.set_leader(wave, id);
+            self.raiding.raids.dirty = true;
+        }
+    }
+    /// `HostEvent::RaiderHurt`: `Raider.hurtServer` recomputes the raid's bar before the damage, with the raider's health `before`.
+    pub(in crate::game) fn ecs_raider_hurt(&mut self, raid: i32, id: u32, before: f32) {
+        let living = self.remaining_raider_health(raid, Some(id)) + before;
+        if let Some(r) = self.raiding.raids.get_mut(raid) {
+            r.update_bossbar(living);
         }
     }
 
@@ -1280,6 +989,10 @@ impl Game<'_> {
     /// bed or bell a villager has taken): `PoiManager.isVillageCenter`.
     pub(super) fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
         let mut out = HashSet::new();
+        if self.ecs.is_active() {
+            out.extend(self.ecs.village_sections().into_iter().map(|[x, y, z]| (x, y, z)));
+            return out;
+        }
         let world = self.mob_world_base(&[]);
         for m in &self.remote_entities {
             if m.species() != Species::Villager || !m.alive() {

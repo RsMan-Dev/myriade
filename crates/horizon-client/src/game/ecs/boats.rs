@@ -36,8 +36,6 @@ impl Game<'_> {
             }
             BoatEffectEvent::LavaHurt { at } => self.lava_hurt_sound(at),
             BoatEffectEvent::Snowflakes { at, velocity } => self.boat_snowflakes(at, velocity),
-            BoatEffectEvent::Discard { entity } => self.ecs.despawn(entity),
-            BoatEffectEvent::Burn { .. } => {}
         }
     }
     /// A hit on a boat shows its damage message; a break shows the removal (the ECS removed the boat already).

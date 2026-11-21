@@ -17,6 +17,21 @@ pub fn fill(v: &EntityView, id: i32, world: &World, out: &mut EntityState) {
         out.head_yaw = head_yaw;
         out.pitch = pitch;
     }
+    if let Some(h) = v.hook {
+        use horizon_protocol::entity_data::{serializer, Value};
+        out.data = h.owner as i32;
+        let hooked = match h.hooked {
+            Some(horizon_ecs_proto::fishing_hook::Target::Entity(e)) => id_of(world, e),
+            Some(horizon_ecs_proto::fishing_hook::Target::Player(p)) => Some(p),
+            None => None,
+        };
+        if let Some(t) = hooked {
+            out.meta.push((8, serializer::INT, Value::Int(t as i32 + 1)));
+        }
+        if h.biting {
+            out.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
+        }
+    }
     out.leash = match v.leash {
         Some(Holder::Player(p)) => Some(p as i32),
         Some(Holder::Entity(e)) => id_of(world, e).map(|i| i as i32),

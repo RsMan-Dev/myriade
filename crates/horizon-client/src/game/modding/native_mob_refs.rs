@@ -742,7 +742,7 @@ impl Game<'_> {
             return None;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).and(self.ecs.is_within_restriction(id, at));
+            return self.ecs_mod_live(id).and(self.ecs.is_within_restriction(id, at.map(|c| f64::from(c) + 0.5)));
         }
         Some(
             self.remote_entities

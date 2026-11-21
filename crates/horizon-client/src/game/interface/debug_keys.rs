@@ -1184,7 +1184,7 @@ impl Game<'_> {
             };
             let p = Vec3::new(m.position[0], m.position[1], m.position[2]);
             let eye = self.ecs.eye_offset(id).unwrap_or(0.0);
-            g.hitbox(at(p, p), (hi[0] - lo[0], hi[0] - lo[0]), eye, false, (0.0, m.yaw));
+            g.hitbox(at(p, p), ((hi[0] - lo[0]) as f32, (hi[1] - lo[1]) as f32), eye as f32, false, (0.0, m.yaw));
         }
         for t in &self.tridents {
             g.hitbox(

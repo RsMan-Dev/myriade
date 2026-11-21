@@ -47,6 +47,15 @@ impl EcsWorld {
         view::mark(w, e);
     }
 
+    /// `Entity.setYHeadRot`: the head's yaw, the body and pitch untouched. False for an entity without a head.
+    pub fn set_head_yaw(&mut self, e: Entity, yaw: f32) -> bool {
+        let w = self.world_mut();
+        let Some(mut h) = w.get_mut::<Head>(e) else { return false };
+        h.yaw = yaw;
+        view::mark(w, e);
+        true
+    }
+
     /// `Entity.teleportTo` motion: the axes of `Vel` that `keep` does not name are set to zero.
     pub fn teleport_motion(&mut self, e: Entity, keep: [bool; 3]) {
         let w = self.world_mut();
@@ -110,6 +119,35 @@ impl EcsWorld {
             view::mark(w, e);
         }
         changed
+    }
+
+    /// Ends every warden's minute of calm (`dig_cooldown_until` back to 0): the entities that carry an `ActPhase`. How many were reached.
+    pub fn expire_dig_cooldowns(&mut self) -> usize {
+        let w = self.world_mut();
+        let mut n = 0;
+        let mut q = w.query::<&mut crate::behaviours::act_phase::ActPhase>();
+        for mut a in q.iter_mut(w) {
+            a.dig_cooldown_until = 0;
+            n += 1;
+        }
+        n
+    }
+
+    /// `/raid glow`: every raider of raid `raid` gets Glowing for `ticks` at amplifier `amp`; how many were reached.
+    pub fn glow_raiders(&mut self, raid: i32, ticks: i32, amp: i32) -> usize {
+        let w = self.world_mut();
+        let raiders: Vec<Entity> = w
+            .query::<(Entity, &crate::raids::Raider)>()
+            .iter(w)
+            .filter(|(_, r)| r.raid == Some(raid))
+            .map(|(e, _)| e)
+            .collect();
+        for &e in &raiders {
+            if effects::add_flagged(w, e, Kind::Glowing, amp, ticks, 0) {
+                view::mark(w, e);
+            }
+        }
+        raiders.len()
     }
 
     /// `LivingEntity.removeEffect`: true when the effect was there.

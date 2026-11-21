@@ -1,9 +1,6 @@
 //! `RaidCommand`: `/raid start|stop|check|spawnleader|setomen|glow|sound`.
 use super::{Game, R, Text, err};
-use horizon_client::{
-    command::{Arg, Context},
-    mobs::raider,
-};
+use horizon_client::command::{Arg, Context};
 use horizon_core::random::RandomSource;
 
 impl Game<'_> {
@@ -68,10 +65,8 @@ impl Game<'_> {
                     ),
                 ) {
                     Some(id) => {
-                        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                            raider::set_patrol_leader(m, true);
-                            raider::finalize(m, raider::Reason::Other);
-                        }
+                        // The leader flag lives in the ECS `Raider` (set by the spawn); the entity is the ECS's.
+                        self.ecs.set_patrol_leader(id, true);
                         self.feedback(Text::literal("Spawned a raid captain"));
                         Ok(1)
                     }
@@ -105,7 +100,7 @@ impl Game<'_> {
             }
             "raid.glow" => {
                 if let Some(raid) = self.raiding_nearby(at) {
-                    self.raid_glow(raid);
+                    self.ecs.glow_raiders(raid, 1000, 1);
                 }
                 Ok(1)
             }

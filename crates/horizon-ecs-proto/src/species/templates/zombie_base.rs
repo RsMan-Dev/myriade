@@ -25,5 +25,10 @@ pub static DEF: Def = Def {
         Entry::new(&pick_up_gear::MODULE, 255, &pick_up_gear::Params { refuses: &["minecraft:glow_ink_sac"], ..pick_up_gear::Params::DEFAULT }),
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
+    // `Zombie.doHurtTarget`: a burning zombie with an empty hand sets what it hits on fire.
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::hostile::IGNITE_ON_HIT, &crate::hostile::ZOMBIE_FIRE),
+        crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::ZOMBIE),
+    ],
     ..Def::EMPTY
 };

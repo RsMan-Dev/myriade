@@ -14,7 +14,7 @@ pub static DEF: Def = Def {
         Entry::new(&nearest_target::MODULE, 3, &nearest_target::Params::WITCH_PLAYER),
     ],
     goals: &[
-        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::DEFAULT),
+        Entry::new(&crate::behaviours::obtain_banner::MODULE, 1, &crate::behaviours::obtain_banner::Params::CANNOT_LEAD),
         Entry::new(&crate::behaviours::pathfind_to_raid::MODULE, 3, &crate::behaviours::pathfind_to_raid::Params::DEFAULT),
         Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
         Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
@@ -27,5 +27,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 3, &random_look::Params::DEFAULT),
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
+    rules: &[crate::rules::RuleEntry::new(&crate::raids::NO_RAID_WHEN_NATURAL, &())],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

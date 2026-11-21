@@ -85,7 +85,7 @@ pub fn hurt_below(w: &mut World, e: Entity) {
     // The blow goes through the damage queue as a projectile's does, under the jar's damage type; the players are not in the ECS, so
     // no `FallingEvent::Hurt` is needed for them here.
     for victim in victims {
-        w.resource_mut::<DamageQueue>().0.push(Hit { target: victim, amount, cause: Cause::Entity, damage: kind, from: Some((at[0], at[2])), by: None, direct: false, power: None });
+        w.resource_mut::<DamageQueue>().0.push(Hit { target: victim, amount, cause: Cause::Entity, damage: kind, from: Some((at[0], at[2])), by: None, direct: false, power: None, projectile: None });
     }
 }
 

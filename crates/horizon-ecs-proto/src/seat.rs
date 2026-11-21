@@ -39,6 +39,15 @@ pub struct Seated {
 /// The vehicle of each seated player: read by its id only.
 #[derive(Resource, Default)]
 pub struct PlayerSeats(pub HashMap<u32, Entity>);
+/// The vehicles that took a rider (a seat or a mount), marked at the boarding and pruned when read (`ridden_vehicles`): no walk of the
+/// mounts. A vehicle stays in it until a read finds it empty.
+#[derive(Resource, Default)]
+pub struct RiddenVehicles(pub std::collections::HashSet<Entity>);
+/// Marks `vehicle` as carrying a rider.
+pub fn mark_ridden(w: &mut World, vehicle: Entity) {
+    w.init_resource::<RiddenVehicles>();
+    w.resource_mut::<RiddenVehicles>().0.insert(vehicle);
+}
 /// The seat events of the step, drained by the bridge.
 #[derive(Resource, Default)]
 pub struct SeatEvents(pub Vec<SeatEvent>);
@@ -67,6 +76,7 @@ fn take(w: &mut World, vehicle: Entity, who: Rider, slot: Option<u8>) -> Option<
     match s.riders.get_mut(i) {
         Some(seat) if seat.is_none() => {
             *seat = Some(who);
+            mark_ridden(w, vehicle);
             Some(i as u8)
         }
         _ => None,

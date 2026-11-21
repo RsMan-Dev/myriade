@@ -13,38 +13,120 @@ use bevy_ecs::prelude::*;
 use horizon_core::random::RandomSource;
 
 /// How a species is finalized at its spawn (its configuration in `species/<name>.rs`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Finalize {
     /// `Mob.finalizeSpawn` alone.
     Mob,
     /// `AgeableMob.finalizeSpawn`: the babies of the group.
     Ageable,
-    /// `Zombie.finalizeSpawn`: a baby that stays one, and a chicken jockey (the name of the vehicle's species).
+    /// `Zombie.finalizeSpawn`: a baby that stays one, a chicken jockey (the name of the vehicle's species), and the class's default gear.
     Zombie { jockey: &'static str },
+    /// A class with its own gear (`spawn_gear::Gear`): `Mob`'s draws and the class's gear, in the class's order.
+    Geared(&'static crate::spawn_gear::Kit),
 }
 
-/// What finalizing a mob decided, for the caller to keep: the group, and the `Mob` draws.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// The difficulty's special multiplier (`DifficultyInstance.getSpecialMultiplier`) the host last set; the draws that scale with it read it
+/// where the spawn has no place of its own (a reinforcement). Absent: 0 (no pick-up, no door draw).
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct Special(pub f32);
+
+/// What finalizing a mob decided, for the caller to keep: the group (`SpawnGroupData` for the next mob of the pack), and the draws.
+#[derive(Clone, Debug, PartialEq)]
 pub struct Outcome {
     pub group: Option<Group>,
     pub mob: MobRoll,
+    /// `Zombie.setCanBreakDoors`'s draw (no component holds the flag yet); false for a class that does not draw it.
+    pub break_doors: bool,
+    /// The pieces put in the slots (armour into empty slots only), already applied.
+    pub gear: Vec<(crate::goals::Slot, String)>,
+}
+
+/// The kind of a species from its class bits (`cow::species::tag`): the zombie's class, the ageing one, else `Mob`'s alone. The default
+/// gear is the species' own configuration, so it is `None` here.
+pub fn kind_of(w: &World, e: Entity) -> Finalize {
+    use crate::cow::species::tag;
+    let bits = w.get::<SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
+    if bits & tag::ZOMBIE != 0 {
+        Finalize::Zombie { jockey: "minecraft:chicken" }
+    } else if let Some(kit) = crate::spawn_gear::kit_of(w, e) {
+        Finalize::Geared(kit)
+    } else if bits & tag::AGEING != 0 && bits & tag::TADPOLE == 0 {
+        Finalize::Ageable
+    } else {
+        Finalize::Mob
+    }
 }
 
 /// `finalizeSpawn` of `kind` on the mob `e` (already in the world). The class's draws come in the order of the source: the zombie
-/// takes `Mob`'s first, the ageable one its babies then `Mob`'s. The follow bonus and the left hand are returned for the attribute
-/// and the flag of the caller (no component of the prototype holds them yet).
-pub fn finalize(w: &mut World, e: Entity, kind: Finalize, group: Option<Group>, r: &mut impl RandomSource) -> Outcome {
+/// takes `Mob`'s first, then its pick-up roll (none for a `Conversion`), the group, the door draw, and the default gear (none for a
+/// `Conversion`); the ageable one its babies then `Mob`'s. The follow bonus and the left hand are returned for the attribute and the
+/// flag of the caller (no component of the prototype holds them yet). `reason` is the spawn's (`EntitySpawnReason`), `special` the
+/// difficulty's special multiplier at the spawn. In the jar only the trial spawner keeps its mob (`setPersistenceRequired`).
+pub fn finalize(
+    w: &mut World,
+    e: Entity,
+    kind: Finalize,
+    group: Option<Group>,
+    reason: crate::spawn_reason::SpawnReason,
+    special: f32,
+    r: &mut impl RandomSource,
+) -> Outcome {
+    use crate::spawn_reason::SpawnReason as Why;
+    let out = finalize_class(w, e, kind, group, reason, special, r);
+    // `Mob.finalizeSpawn`: the hand drawn (5% left-handed), synced in the mob flags.
+    crate::left_handed::set(w, e, out.mob.left_handed);
+    if reason == Why::TrialSpawner {
+        crate::despawn::keep(w, e);
+    }
+    out
+}
+
+fn finalize_class(
+    w: &mut World,
+    e: Entity,
+    kind: Finalize,
+    group: Option<Group>,
+    reason: crate::spawn_reason::SpawnReason,
+    special: f32,
+    r: &mut impl RandomSource,
+) -> Outcome {
+    use crate::spawn_reason::SpawnReason as Why;
+    let plain = |group, mob| Outcome { group, mob, break_doors: false, gear: Vec::new() };
     match kind {
-        Finalize::Mob => Outcome { group, mob: mob_roll(r) },
+        Finalize::Mob => {
+            crate::raids::finalize_raider(w, e, reason, r);
+            plain(group, mob_roll(r))
+        }
         Finalize::Ageable => {
-            let (baby, g) = ageable_roll(group, r);
-            if baby {
+            let table = crate::behaviours::variant::table_of(w, e);
+            // A species whose group makes later members babies for certain (`FoxGroupData`) has no 5 % roll of its own.
+            let group = match (group, table.and_then(|t| t.group_baby)) {
+                (None, Some(_)) => Some(Group::Ageable { should_baby: false, size: 0, chance: BABY_CHANCE, variant: None }),
+                (g, _) => g,
+            };
+            let certain = match (group, table.and_then(|t| t.group_baby)) {
+                (Some(Group::Ageable { size, .. }), Some(n)) => size >= n,
+                _ => false,
+            };
+            let (rolled, mut g) = ageable_roll(group, r);
+            if rolled || certain {
                 set_baby(w, e, BABY_TICKS);
             }
-            Outcome { group: Some(g), mob: mob_roll(r) }
+            // A registry variant is drawn per mob (`selectVariantToSpawn`); the others are the group's (`Fox`, `Horse`, `Llama`, `Rabbit`).
+            let shared = table.is_some_and(|t| !matches!(t.pick, crate::rules::variant::Pick::Registry(_)));
+            if let (true, Group::Ageable { variant, .. }, Some(v)) = (shared, &mut g, w.get::<crate::behaviours::variant::Variant>(e)) {
+                *variant = Some(v.0);
+            }
+            plain(Some(g), mob_roll(r))
         }
         Finalize::Zombie { jockey } => {
             let mob = mob_roll(r);
+            if reason != Why::Conversion {
+                let picks = r.next_float() < 0.55 * special;
+                if let Some(mut p) = w.get_mut::<crate::behaviours::item_pickup::Pickup>(e) {
+                    p.picks_up = picks;
+                }
+            }
             let (g, j) = zombie_roll(group, r);
             if let Group::Zombie { baby: true, .. } = g {
                 set_baby(w, e, NEVER);
@@ -52,17 +134,55 @@ pub fn finalize(w: &mut World, e: Entity, kind: Finalize, group: Option<Group>, 
                     Jockey::None => {}
                     Jockey::Free => {
                         if let Some(c) = free_vehicle(w, e, jockey) {
+                            w.entity_mut(c).insert(crate::loot::RewardOverride(crate::loot::JOCKEY_XP));
                             ride(w, c, Who::Entity(e));
                         }
                     }
                     Jockey::Create => {
                         if let Some(c) = create_vehicle(w, e, jockey) {
+                            w.entity_mut(c).insert(crate::loot::RewardOverride(crate::loot::JOCKEY_XP));
                             ride(w, c, Who::Entity(e));
                         }
                     }
                 }
             }
-            Outcome { group: Some(g), mob }
+            let break_doors = r.next_float() < 0.1 * special;
+            let mut put = Vec::new();
+            let baby = matches!(g, Group::Zombie { baby: true, .. });
+            let kit = crate::spawn_gear::kit_of(w, e);
+            if reason != Why::Conversion
+                && let Some(kit) = kit
+            {
+                crate::spawn_gear::populate(w, e, kit, special, baby, r, &mut put);
+                crate::spawn_gear::after(w, e, kit, special, r, &mut put);
+            }
+            // `Zombie.handleAttributes`: the reinforcement base and the leader's bonuses (a leader breaks doors).
+            let leader = crate::reinforcements::handle_attributes(w, e, special, reason, r);
+            if let Some(kit) = kit {
+                crate::spawn_gear::late(w, e, kit, baby, r, &mut put);
+            }
+            Outcome { group: Some(g), mob, break_doors: break_doors || leader, gear: put }
+        }
+        Finalize::Geared(kit) => {
+            let mut put = Vec::new();
+            let ageing = kit.baby.is_none() && w.get::<SpeciesId>(e).is_some_and(|id| crate::cow::tags_of_id(*id) & crate::cow::species::tag::AGEING != 0);
+            let group = if ageing {
+                let (baby, g) = ageable_roll(group, r);
+                if baby {
+                    set_baby(w, e, BABY_TICKS);
+                }
+                Some(g)
+            } else {
+                group
+            };
+            let first = kit.mob_first.then(|| mob_roll(r));
+            let baby = crate::spawn_gear::baby_branch(w, e, kit, reason, r, &mut put);
+            crate::spawn_gear::populate(w, e, kit, special, baby, r, &mut put);
+            crate::spawn_gear::after(w, e, kit, special, r, &mut put);
+            // `PatrollingMonster.finalizeSpawn` comes after the species' gear and before `Mob`'s draws.
+            crate::raids::finalize_raider(w, e, reason, r);
+            let mob = first.unwrap_or_else(|| mob_roll(r));
+            Outcome { group, mob, break_doors: false, gear: put }
         }
     }
 }

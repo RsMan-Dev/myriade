@@ -36,7 +36,7 @@ fn alive_ends_with_a_lethal_hit() {
     let tags = cow_world_tags();
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
     let mut h = EcsWorld::new(&setup(), mw, types, &tags);
-    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true });
+    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() });
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.alive(e), "a fresh cow is alive");
     h.hurt(mw, e, 1e6, HurtSource::Generic);

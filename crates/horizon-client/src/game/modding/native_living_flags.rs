@@ -59,7 +59,7 @@ impl Game<'_> {
                     .as_ref()
                     .map_or(0, |m| m.fall_fly_ticks),
             ),
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.fall_fly_ticks(id),
+            Target::Mob(id) if self.ecs.is_active() => Some(self.ecs.fall_fly_ticks(id)),
             Target::Mob(id) => Some(
                 self.remote_mob(id)?
                     .extra
@@ -104,7 +104,7 @@ impl Game<'_> {
                 .as_mut()
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = false))
                 .is_some(),
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_flag(id, Flag::Gliding, false),
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_gliding(id, false),
             Some(Target::Mob(id)) => {
                 let Some(m) = self.remote_mob_mut(id) else {
                     return false;

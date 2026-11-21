@@ -753,9 +753,8 @@ pub(super) fn ecs_cat_sitting_above(ecs: &crate::ecs_bridge::level::EcsLevel, ke
     let (x, y, z) = (f64::from(key.0), f64::from(key.1 + 1), f64::from(key.2));
     let area = Aabb::new(Vec3::new(x, y, z), Vec3::new(x + 1.0, y + 1.0, z + 1.0));
     ecs.ids_near([x + 0.5, y + 0.5, z + 0.5], 2.0).into_iter().any(|id| {
-        ecs.kind(id) == Some("minecraft:cat")
-            && ecs.alive(id)
-            && ecs.cat_sitting(id)
+        ecs.alive(id)
+            && ecs.sits_on_chest(id)
             && ecs.bounds(id).is_some_and(|b| b.intersects(area))
     })
 }

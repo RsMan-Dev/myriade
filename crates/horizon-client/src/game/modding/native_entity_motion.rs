@@ -88,6 +88,9 @@ impl Game<'_> {
                 g.position[i] - g.previous_position[i]
             }));
         }
+        if let Some(m) = self.ecs.motion(entity.id()) {
+            return Some(m.velocity);
+        }
         let v = match self.native_walk_entity(entity.id()) {
             Some(h) => with_entity!(self, h, e => e.velocity()),
             None => Vec3::ZERO,
@@ -116,6 +119,10 @@ impl Game<'_> {
             let d = self.dragon.as_ref()?;
             return Some(d.position.subtract(d.previous));
         }
+        // P keeps no previous position (a write per entity per tick): the move of the last tick is its velocity.
+        if let Some(m) = self.ecs.motion(entity.id()) {
+            return Some(Vec3::new(m.velocity[0], m.velocity[1], m.velocity[2]));
+        }
         Some(match self.native_walk_entity(entity.id()) {
             Some(h) => with_entity!(self, h, e => e.position().subtract(e.previous_position())),
             None => Vec3::ZERO,
@@ -128,10 +135,7 @@ impl Game<'_> {
     fn native_steered(&self, t: Target) -> bool {
         match t {
             Target::Boat(_) => true,
-            Target::Mob(id) => self
-                .remote_entities
-                .iter()
-                .any(|m| m.id == id && horizon_client::mobs::equine::controlled(m)),
+            Target::Mob(id) => self.ecs.player_steers(id),
             _ => false,
         }
     }
@@ -155,6 +159,13 @@ impl Game<'_> {
             || self.native_entity_target(entity).is_none()
         {
             return false;
+        }
+        if let Some(super::commands::Target::Mob(id)) = self.native_entity_target(entity)
+            && self.ecs.is_active()
+        {
+            let Some(e) = self.ecs.entity_of(id) else { return false };
+            self.ecs.set_velocity(e, Vec3::new(velocity[0], velocity[1], velocity[2]));
+            return true;
         }
         let Some(h) = self.native_walk_entity(entity.id()) else {
             return false;
@@ -189,6 +200,10 @@ impl Game<'_> {
             motion.fall_distance = 0.0;
             return true;
         }
+        if let Some(e) = self.ecs.entity_of(entity.id()) {
+            self.ecs.set_fall_distance(e, 0.0);
+            return true;
+        }
         let Some(h) = self.native_walk_entity(entity.id()) else {
             return false;
         };
@@ -206,6 +221,9 @@ impl Game<'_> {
         if let Some(g) = self.native_target_guest(t) {
             return Some(g.on_ground);
         }
+        if let Some(m) = self.ecs.motion(entity.id()) {
+            return Some(m.on_ground);
+        }
         Some(
             self.native_walk_entity(entity.id())
                 .is_some_and(|h| with_entity!(self, h, e => e.on_ground())),
@@ -221,6 +239,9 @@ impl Game<'_> {
         }
         if let Some(g) = self.native_target_guest(t) {
             return Some(corners(g.bounds()));
+        }
+        if let Some(b) = self.ecs.bounds(entity.id()) {
+            return Some(corners(b));
         }
         if let Some(h) = self.native_walk_entity(entity.id()) {
             return Some(corners(with_entity!(self, h, e => e.bounds())));
@@ -277,9 +298,12 @@ impl Game<'_> {
                 Vec3::new(g.position[0], g.position[1], g.position[2]),
                 g.bounds(),
             ),
-            None => {
-                with_entity!(self, self.native_walk_entity(entity.id())?, e => (e.position(), e.bounds()))
-            }
+            None => match (self.ecs.motion(entity.id()), self.ecs.bounds(entity.id())) {
+                (Some(m), Some(b)) => (Vec3::new(m.position[0], m.position[1], m.position[2]), b),
+                _ => {
+                    with_entity!(self, self.native_walk_entity(entity.id())?, e => (e.position(), e.bounds()))
+                }
+            },
         };
         self.supporting_block(position, bounds)
     }

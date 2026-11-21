@@ -173,7 +173,7 @@ fn wake(w: &mut World) {
 
 /// `ArmorStand.hurtServer` for the fire (`ignites`, `burns`): a fire cell lights a stand that is not burning for 100 ticks, and hurts a
 /// burning one 0.15; the burn takes 4 above half a heart. An invisible or a marker stand takes none of it.
-fn fire_intake(w: &mut World, e: Entity, cause: Cause) {
+pub fn fire_intake(w: &mut World, e: Entity, cause: Cause) {
     let Some(flags) = w.get::<Stand>(e).map(|s| s.flags) else { return };
     if flags & (INVISIBLE | MARKER) != 0 {
         return;

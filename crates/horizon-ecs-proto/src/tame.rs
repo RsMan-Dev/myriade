@@ -28,9 +28,16 @@ pub struct TameParams {
     pub chance: i32,
     /// `TamableAnimal.applyTamingSideEffects`: the health it has once tame.
     pub health: f32,
+    /// A wolf or a cat sits when tamed and its owner's use toggles the sitting; a mount (the nautilus) neither sits nor takes the
+    /// owner's use (the riding rule does), and keeps its health.
+    pub sits: bool,
+    /// The eating sound played after the item is used (`playEatingSound`).
+    pub eat_sound: Option<&'static str>,
 }
 impl TameParams {
-    pub const WOLF: Self = Self { items: &["minecraft:bone"], chance: 3, health: 40.0 };
+    /// `AbstractNautilus.mobInteract` / `tryToTame`: a wild adult takes an item of `#nautilus_taming_items`, one chance in three; no sitting.
+    pub const NAUTILUS: Self = Self { items: &["#minecraft:nautilus_taming_items"], chance: 3, health: 0.0, sits: false, eat_sound: Some("minecraft:entity.nautilus.eat") };
+    pub const WOLF: Self = Self { items: &["minecraft:bone"], chance: 3, health: 40.0, sits: true, eat_sound: None };
 }
 #[derive(Component, Clone, Copy, Debug)]
 pub struct TameRule(pub TameParams);
@@ -55,7 +62,7 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     let p = *params::<TameParams>(p);
     let Some(owner) = w.get::<Owner>(e).map(|o| o.0) else { return false };
     match owner {
-        Some(Who::Player(o)) if o == i.player => {
+        Some(Who::Player(o)) if o == i.player && p.sits => {
             let sitting = is_occupied(w, e, OCC_SITTING);
             order_sit(w, e, !sitting);
             true
@@ -65,12 +72,31 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
             if !p.items.iter().any(|n| crate::items::is(n, i.item)) {
                 return false;
             }
-            if with_rng(w, e, |r| r.next_int(p.chance)) == 0 {
-                tame(w, e, Who::Player(i.player), p.health);
+            crate::give_item::take_from_hand(w, i);
+            let ok = with_rng(w, e, |r| r.next_int(p.chance)) == 0;
+            if ok {
+                tame_by(w, e, Who::Player(i.player), &p);
             }
+            if let Some(s) = p.eat_sound {
+                let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
+                w.resource_mut::<Events>().host.sound(s, at, 1.0, 1.0);
+            }
+            w.resource_mut::<Events>().host.entity_event(e, if ok { 7 } else { 6 });
             true
         }
     }
+}
+/// `tame` with the rule's parameters: a creature that does not sit keeps its health and its posture.
+fn tame_by(w: &mut World, e: Entity, owner: Who, p: &TameParams) {
+    if p.sits {
+        tame(w, e, owner, p.health);
+        return;
+    }
+    set_owner(w, e, owner);
+    w.resource_mut::<Events>().host.tamed(e, owner);
+    stop_nav(w, e);
+    crate::targeting::clear_target(w, e);
+    crate::goals::end(w, e, &crate::behaviours::avoid_entity::MODULE);
 }
 /// `AbstractHorse.tameWithName`: the owner, nothing else (no sitting, the health stays).
 pub fn set_owner(w: &mut World, e: Entity, owner: Who) {

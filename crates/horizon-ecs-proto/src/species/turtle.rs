@@ -4,11 +4,16 @@
 //! is not a parameter of `panic`). `breed` (with `carries`), `lay_egg` and `turtle_go_home` are in.
 //! The water malus, the door maluses and the amphibious navigation have no field in `Def`: not in this file.
 use super::Def;
+use crate::gift_drop::{GiftDrop, GROW_GIFT};
+use crate::rules::RuleEntry;
 use crate::locomotion::{swim, Medium};
 use crate::behaviours::{Cap, Cond, panic, look_at_player, tempt, turtle_go_home, turtle_go_to_water, breed, lay_egg, turtle_stroll, turtle_travel, Entry};
 
 /// `TurtleBreedGoal.canUse`: no mating while the turtle carries its egg.
 static NOT_CARRYING: Cond = Cond::Not(&Cond::Is("turtle:has_egg"));
+
+/// `Turtle.ageBoundaryReached`: a grown turtle drops its scute (with the `mob_drops` rule on).
+static GROWN: GiftDrop = GiftDrop { table: "minecraft:gameplay/turtle_grow", sound: None, game_event: None, needs_mob_drops: true };
 
 pub static DEF: Def = Def {
     name: "minecraft:turtle",
@@ -25,6 +30,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&turtle_stroll::MODULE, 9, &turtle_stroll::Params::DEFAULT),
     ],
+    rules: &[RuleEntry::new(&GROW_GIFT, &GROWN)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion]),
     locomotion: &[(Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), breach: false, control: swim::Control::Turtle, push: swim::Push::Fixed(0.1), sinks: true, squid: false, reset_pitch: false }))],
     ..Def::EMPTY

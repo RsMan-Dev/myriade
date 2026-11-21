@@ -473,12 +473,51 @@ impl Game<'_> {
             log::warn!("{e}");
         }
     }
+    /// The predicate view of the ECS entity `id`, from its components (the ECS twin of `mob_entity`): kind, place, motion, fire,
+    /// age, gear, effects, name and passengers. Its NBT, team and variant component are not projected.
+    pub(in crate::game) fn ecs_predicate_view(&self, id: u32) -> EntityView {
+        let Some(v) = self.ecs_view(id) else { return EntityView::default() };
+        let mut equipment: [Option<ItemView>; 7] = Default::default();
+        for (slot, out) in equipment.iter_mut().enumerate() {
+            let Some(stack) = self.ecs.equipment_stack(id, slot) else { continue };
+            let mut view = item_view(&stack);
+            if slot < 6 {
+                view.custom_data = Some(horizon_core::nbt::Tag::Compound(stack.custom_data().cloned().unwrap_or_default()));
+            }
+            *out = Some(view);
+        }
+        let passengers = self.ecs_rider_of(id).map(|r| self.ecs_predicate_view(r)).into_iter().collect();
+        let free = self.ecs_vehicle_of(id).is_none() && v.rider.is_none() && self.riding != Some(id);
+        let movement = free.then(|| {
+            let per_tick = self.ecs.velocity(id).map_or([0.0; 3], |m| [m.x, m.y, m.z]);
+            adv::MovementView { per_tick, fall_distance: self.ecs.fall_distance(id) }
+        });
+        EntityView {
+            movement,
+            kind: v.kind.to_owned(),
+            position: v.position,
+            on_fire: self.ecs.flag(id, horizon_ecs_proto::bridge::host::Flag::OnFire).unwrap_or(false),
+            baby: self.ecs_mob(id).is_some_and(|m| m.baby),
+            on_ground: v.on_ground,
+            equipment,
+            effects: self
+                .ecs
+                .effects(id)
+                .into_iter()
+                .map(|e| (horizon_client::brewing::namespaced(e.id).to_owned(), e.amplifier, e.duration))
+                .collect(),
+            custom_name: self.ecs.custom_name(id).map(Value::String),
+            passengers,
+            ..Default::default()
+        }
+    }
     /// The player as predicates see it.
     /// The predicate view of a command target.
     pub(super) fn entity_view_of(&self, t: super::commands::Target) -> EntityView {
         use super::commands::Target;
         match t {
             Target::Player => self.player_entity(),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs_predicate_view(id),
             Target::Mob(id) => self
                 .remote_entities
                 .iter()
@@ -2113,7 +2152,7 @@ impl Game<'_> {
     }
     /// `ChanneledLightningTrigger`: each victim condition matched by some
     /// mob the bolt hit, from the player who channelled it.
-    pub(super) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
+    pub(in crate::game) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
         let me = self.player_entity_for("minecraft:channeled_lightning");
         let victims = victims.to_vec();
         self.trigger("minecraft:channeled_lightning", move |c, w| {

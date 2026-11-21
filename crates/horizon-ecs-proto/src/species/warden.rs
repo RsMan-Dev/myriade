@@ -63,5 +63,6 @@ pub static DEF: Def = Def {
     // The Mob's warden has no idle look (its brain looks only at its look target): the monster base's two look goals left, they cut the pause.
     changes: &[Change::Remove { module: &look_at_player::MODULE, nth: 0 }, Change::Remove { module: &random_look::MODULE, nth: 0 }, Change::Remove { module: &nearest_target::MODULE, nth: 0 }],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::FireImmune]),
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

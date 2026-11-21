@@ -223,7 +223,7 @@ impl Game<'_> {
             }
         }
     }
-    pub(super) fn damage_held(&mut self, amount: u32) {
+    pub(in crate::game) fn damage_held(&mut self, amount: u32) {
         self.damage_held_in_slot(
             amount,
             horizon_core::equipment_slot::EquipmentSlot::MainHand,
@@ -231,7 +231,7 @@ impl Game<'_> {
     }
     /// `InteractionHand.asEquipmentSlot`: the slot of the hand that acts, whose
     /// break (`LivingEntity.onEquippedItemBroken`) the caller reports.
-    pub(super) fn acting_hand_slot(&self) -> horizon_core::equipment_slot::EquipmentSlot {
+    pub(in crate::game) fn acting_hand_slot(&self) -> horizon_core::equipment_slot::EquipmentSlot {
         match self.hand {
             Hand::Main => horizon_core::equipment_slot::EquipmentSlot::MainHand,
             Hand::Off => horizon_core::equipment_slot::EquipmentSlot::OffHand,
@@ -239,7 +239,7 @@ impl Game<'_> {
     }
     /// Hurt the acting hand's stack through ordinary wear/criterion/break handling,
     /// reporting its break in the caller's explicit equipment slot.
-    pub(super) fn damage_held_in_slot(
+    pub(in crate::game) fn damage_held_in_slot(
         &mut self,
         amount: u32,
         break_slot: horizon_core::equipment_slot::EquipmentSlot,

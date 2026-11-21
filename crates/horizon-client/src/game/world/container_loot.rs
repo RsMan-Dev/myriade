@@ -319,7 +319,12 @@ impl super::GameLevel<'_> {
     pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
         debug_assert!(player.is_none());
         if let LootTarget::Cart(id) = target {
-            let Some(view) = self.ecs_view(id) else {
+            let Some(view) = self
+                .ecs
+                .entity_of(id)
+                .zip(self.ecs.world())
+                .and_then(|(e, w)| horizon_ecs_proto::bridge::view::view(w, e))
+            else {
                 return;
             };
             let Some((table, seed)) = self.ecs.cart_take_loot(id) else {

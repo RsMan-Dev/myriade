@@ -142,7 +142,7 @@ impl Game<'_> {
         let reach = (min, max, REACH.hitbox_margin);
         let clip = |from, to| self.clip_collider(from, to);
         let mobs = self.remote_entities.len();
-        let ids = self.ecs_stab_ids(eye, reach.1);
+        let ids = self.ecs_stab_ids(eye, f64::from(reach.1));
         let players = mobs + ids.len();
         let mut boxes = self.hittable_mob_boxes();
         boxes.extend(ids.iter().enumerate().filter_map(|(k, &id)| Some((mobs + k, self.mob_box(id)?))));
@@ -372,7 +372,6 @@ impl Game<'_> {
         let Some((attacker, from)) = self.player.as_ref().map(|p| (p.entity_id, [p.position.x, p.position.y, p.position.z])) else {
             return false;
         };
-        let attack = self.attack_of(attacker);
         let magic_boost = self.enchant_damage_bonus(&kind, Some(id));
         let (base_damage, magic_boost) = if self.using.is_none() {
             let scale = self.attack_strength_scale();
@@ -386,12 +385,10 @@ impl Game<'_> {
         }
         if deals_knockback {
             let (xd, zd) = self.extra_knockback_direction();
-            let level = crate::game::entity::damage_level_of!(self, &attack);
-            self.ecs_knock_back(id, level, 0.4, xd, zd, total);
+            self.ecs.knockback(id, 0.4, xd, zd);
             let (strength, _) = self.extra_knockback(&kind, 0.0);
             if strength > 0.0 {
-                let level = crate::game::entity::damage_level_of!(self, &attack);
-                self.ecs_knock_back(id, level, f64::from(strength), xd, zd, total);
+                self.ecs.knockback(id, f64::from(strength), xd, zd);
             }
             self.stop_sprint_after_extra_knockback();
         }

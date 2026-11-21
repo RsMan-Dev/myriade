@@ -207,7 +207,9 @@ impl Game<'_> {
         };
         let g = &host.hub.guests[gi];
         let (conn, id, at, player, name) = (g.conn, g.entity_id, g.position, g.uuid, g.name.clone());
-        let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, at, 1.0));
+        let mut next = self.next_entity;
+        let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, at, 1.0, &mut || { next += 1; next }));
+        self.next_entity = next;
         if touching.is_empty() {
             return;
         }

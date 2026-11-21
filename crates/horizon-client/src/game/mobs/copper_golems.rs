@@ -18,9 +18,6 @@ use mod_api::SoundSource;
 
 use horizon_core::nbt::{Compound, Tag};
 
-/// `ContainerOpenersCounter.CHECK_TICK_DELAY`.
-const RECHECK_TICKS: i64 = 5;
-
 impl Game<'_> {
     /// `OfferFlowerGoal.stop` (`MobEvent::Gift`): the item on the target's
     /// empty antenna, as a guaranteed drop.
@@ -41,7 +38,7 @@ impl Game<'_> {
     /// first opener posts CONTAINER_OPEN and the last closer CONTAINER_CLOSE
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`), and
     /// the clients see the block event (`openerCountChanged`).
-    pub(super) fn golem_chest_open(&mut self, chest: [i32; 3], open: bool, mob: u32) {
+    pub(in crate::game) fn golem_chest_open(&mut self, chest: [i32; 3], open: bool, mob: u32) {
         let key = (chest[0], chest[1], chest[2]);
         let entry = self.world.chest_openers.entry(key).or_insert((0, 0.0));
         let before = entry.0;
@@ -69,7 +66,7 @@ impl Game<'_> {
         self.lan_block_event(chest, 1, count.max(0));
     }
     /// A copper golem took from or filled a chest slot.
-    pub(super) fn golem_chest_slot(
+    pub(in crate::game) fn golem_chest_slot(
         &mut self,
         chest: [i32; 3],
         slot: usize,
@@ -83,92 +80,6 @@ impl Game<'_> {
             // TransportItemsBetweenContainers calls Container.setChanged.
             self.container_changed(key);
         }
-    }
-    /// `ContainerOpenersCounter.recheckOpeners` every five ticks: the golems
-    /// whose opened chest is this one, within its range plus 4; when none
-    /// is left the chest closes (a double chest the golem left open).
-    pub(super) fn recheck_golem_openers(&mut self) {
-        if self.world.game_time % RECHECK_TICKS != 0 {
-            return;
-        }
-        let open: Vec<(i32, i32, i32)> = self.world.chest_openers.keys().copied().collect();
-        for key in open {
-            let p = [key.0, key.1, key.2];
-            let other = self.chest_other_half(key).map(|o| [o.0, o.1, o.2]);
-            let range = self.world.chest_openers.get(&key).map_or(0.0, |o| o.1) + 4.0;
-            let area = horizon_core::geometry::Aabb::new(
-                horizon_core::geometry::Vec3::new(
-                    f64::from(p[0]) - range,
-                    f64::from(p[1]) - range,
-                    f64::from(p[2]) - range,
-                ),
-                horizon_core::geometry::Vec3::new(
-                    f64::from(p[0]) + 1.0 + range,
-                    f64::from(p[1]) + 1.0 + range,
-                    f64::from(p[2]) + 1.0 + range,
-                ),
-            );
-            let count = self
-                .remote_entities
-                .iter()
-                .filter(|m| {
-                    m.species() == Species::CopperGolem
-                        && !m.removed
-                        && m.extra
-                            .opened_chest
-                            .is_some_and(|o| o == p || Some(o) == other)
-                        && m.bounds().intersects(area)
-                })
-                .count() as i32;
-            let before = self.world.chest_openers.get(&key).map_or(0, |o| o.0);
-            if count == before {
-                continue;
-            }
-            // `recheckOpeners`: the game event has no source.
-            if count == 0 {
-                self.world.chest_openers.remove(&key);
-                self.golem_chest_sound(p, false);
-                self.post_block_game_event("minecraft:container_close", p, None, None);
-            } else if let Some(o) = self.world.chest_openers.get_mut(&key) {
-                o.0 = count;
-            }
-            self.block_entity_event(p, 1, count);
-            self.lan_block_event(p, 1, count);
-        }
-    }
-    /// `ChestBlockEntity.playSound` for a chest the recheck closed.
-    fn golem_chest_sound(&mut self, p: [i32; 3], open: bool) {
-        let name = self
-            .res
-            .facts()
-            .get(self.world.block(p[0], p[1], p[2]))
-            .name
-            .clone();
-        let base = name
-            .trim_start_matches("minecraft:")
-            .trim_start_matches("waxed_");
-        let kind = if !base.ends_with("copper_chest") {
-            "chest"
-        } else if base.starts_with("weathered") {
-            "copper_chest_weathered"
-        } else if base.starts_with("oxidized") {
-            "copper_chest_oxidized"
-        } else {
-            "copper_chest"
-        };
-        let side = if open { "open" } else { "close" };
-        let at = [
-            f64::from(p[0]) + 0.5,
-            f64::from(p[1]) + 0.5,
-            f64::from(p[2]) + 0.5,
-        ];
-        let pitch = self.world.random.next_float() * 0.1 + 0.9;
-        self.audio.play(
-            &format!("minecraft:block.{kind}.{side}"),
-            Some(at),
-            0.5,
-            pitch,
-        );
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
     pub(super) fn golem_become_statue(&mut self, id: u32) {

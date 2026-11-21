@@ -25,10 +25,7 @@ pub(super) fn take_passengers(tag: &mut Tag) -> Option<Tag> {
 impl Game<'_> {
     pub(in crate::game) fn passenger_present(&self, id: u32) -> bool {
         self.level_entity(id as i32).is_some_and(|t| match t {
-            Target::Mob(id) => self
-                .remote_entities
-                .iter()
-                .any(|m| m.id == id && m.alive() && !m.removed),
+            Target::Mob(id) => self.mob_alive(id),
             _ => true,
         })
     }

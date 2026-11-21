@@ -248,6 +248,10 @@ impl PoiRegistry {
     pub fn village_sections(&self) -> impl Iterator<Item = [i32; 3]> + '_ {
         self.sections.keys().copied()
     }
+    /// The village points someone holds a ticket of (job sites, beds, bells), in no set order.
+    pub fn held_points(&self) -> Vec<[i32; 3]> {
+        self.points.iter().filter(|(_, poi)| poi.taken > 0 && is_village(poi.kind)).map(|(p, _)| *p).collect()
+    }
     /// The sections of the village only the points with a ticket taken make (what the `Mob` reads from the villagers' memories).
     pub fn held_sections(&self) -> Vec<[i32; 3]> {
         let mut v: Vec<[i32; 3]> = Vec::new();

@@ -409,10 +409,6 @@ pub fn sleep(world: &mut World, e: Entity, now: u64) {
 /// where they were in its own time.
 pub fn wake(world: &mut World, e: Entity, now: u64) {
     let mut em = world.entity_mut(e);
-    // A bee in a hive sleeps by the hive's rule, not the zone's.
-    if em.contains::<crate::behaviours::bee::InHive>() {
-        return;
-    }
     let Some(mut dormant) = em.get_mut::<Dormant>() else { return };
     let (since, wheel, stash) = (dormant.since, std::mem::take(&mut dormant.wheel), std::mem::take(&mut dormant.stash));
     em.remove::<(Disabled, Dormant)>();
@@ -441,6 +437,9 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
         wh.push(if stale { now + 1 } else { now + rem }, e, due);
     }
     crate::despawn::on_wake(world, e);
+    crate::spring_trap::on_wake(world, e);
+    // A creaking back in the ticking zone asks its heart again (`Creaking.tick`).
+    crate::bridge::host_creaking::ask_heart(world, e);
     // A brain that was due a step when it fell asleep (or that never sleeps) was left out of the list: it is queued again.
     crate::brain::requeue(world, e);
 }

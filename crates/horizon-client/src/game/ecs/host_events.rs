@@ -44,6 +44,10 @@ impl Game<'_> {
                         self.lan_entity_event(id as i32, code as i8, at);
                     }
                 }
+                HostEvent::ComposterWork { entity, pos } => {
+                    let id = self.entity_id(entity);
+                    self.villager_compost_items_ecs(id, pos);
+                }
                 HostEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
                 // Boss bars of the mobs: `add_bar`/`remove_bar` take a text name and the bar's value: not wired yet (gap).
                 HostEvent::BossBar { .. } => log::warn!("ecs: boss bar event not wired yet"),
@@ -81,12 +85,6 @@ impl Game<'_> {
                     self.golem_chest_open(chest, open, id)
                 }
                 HostEvent::ChestSlot { chest, slot, stack } => self.golem_chest_slot(chest, slot, stack),
-                HostEvent::GolemState { entity, state } => {
-                    let id = self.entity_id(entity);
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                        m.extra.variant3 = state;
-                    }
-                }
                 HostEvent::Arrow(ev) => self.ecs_arrow_event(ev),
                 HostEvent::Inside(ev) => self.ecs_inside_event(ev),
                 HostEvent::BoatEffect(ev) => self.ecs_boat_effect_event(ev),
@@ -112,16 +110,39 @@ impl Game<'_> {
                 HostEvent::Item(ev) => self.ecs_item_event(ev),
                 HostEvent::Using(ev) => self.ecs_using_event(ev),
                 HostEvent::Death { entity, cause, attacker, at } => self.ecs_death_event(entity, cause, attacker, at),
+                HostEvent::RaiderDied { raid, id, by, wave, leader, health } => self.raider_died(raid, id, by, wave, leader, health),
+                HostEvent::RaiderJoined { raid, id, wave, leader, loaded } => self.ecs_raider_joined(raid, id, wave, leader, loaded),
+                HostEvent::RaiderLeads { raid, id, wave } => self.ecs_raider_leads(raid, id, wave),
+                HostEvent::RaiderHurt { raid, id, before } => self.ecs_raider_hurt(raid, id, before),
+                HostEvent::Hurt { id, damage, cause, direct, at } => self.ecs_hurt_event(id, damage, cause, direct, at),
+                HostEvent::DeathAnimation { id, at } => self.lan_entity_event(id as i32, 3, at),
+                HostEvent::DeathSmoke { id, at, width, height } => {
+                    self.lan_entity_event(id as i32, 60, at);
+                    self.death_poof(at, width, height);
+                }
                 HostEvent::ConversionAsk { entity, into } => self.ecs_conversion_asked(entity, into),
                 // The `Some` case reached the mob handler through `apply`; a cleared target is told to `living_change_target`.
                 HostEvent::TargetChanged { entity, target: None, previous } => self.ecs_target_cleared(entity, previous),
                 HostEvent::TargetChanged { target: Some(_), .. } => {}
                 HostEvent::TotemAsk { entity, off_hand, cause, attacker } => self.ecs_totem_asked(entity, off_hand, cause, attacker),
-                HostEvent::Spawned { entity, natural } => self.ecs_spawned_event(entity, natural),
+                HostEvent::Spawned { entity, natural, .. } => self.ecs_spawned_event(entity, natural),
                 HostEvent::Tamed { entity, owner } => self.ecs_tamed_event(entity, owner),
                 // P applied the damage; the mods' `hurt_enemy` hears the stack the attacker holds (only emitted while one listens).
                 HostEvent::HitDealt { attacker, victim, .. } => self.ecs_hit_dealt(attacker, victim),
                 HostEvent::Unleashed { entity } => self.ecs_unleashed_event(entity),
+                HostEvent::Swing { entity, off_hand } => self.ecs_swing_event(entity, off_hand),
+                HostEvent::HeldConsume { entity, stack, seed, silent } => self.ecs_held_consume_event(entity, stack, seed, silent),
+                HostEvent::HeldUsed { player, item } => self.ecs_held_used(player, item),
+                HostEvent::HeldWorn { player, item, amount } => self.ecs_held_worn(player, item, amount),
+                HostEvent::HeldGiven { player, stack } => self.ecs_held_given(player, stack),
+                HostEvent::BecomeBlock { entity, block, at, pose, yaw, name, lead } => self.ecs_become_block(entity, block, at, pose, yaw, name, lead),
+                HostEvent::HeldSwap { player, from, to } => self.ecs_held_swap(player, from, to),
+                HostEvent::PlayerGameEvent { player, name, at } => {
+                    self.with_player(player, |g| {
+                        let ctx = g.who_context(Some(Who::Player), None);
+                        g.post_game_event(name, at, ctx)
+                    });
+                }
             }
         }
         Ok(())
@@ -141,6 +162,70 @@ impl Game<'_> {
         None
     }
 
+    /// `HostEvent::HeldWorn`: the tool `item` of the player's hand (main first) takes `amount` uses of wear.
+    fn ecs_held_worn(&mut self, player: u32, item: u32, amount: u32) {
+        let Some(name) = horizon_ecs_proto::items::item_name(item) else { return };
+        self.with_player(player, |g| {
+            // `ItemStack.hurtAndBreak`: a creative player's tool takes no wear; the hand that holds it is the one that breaks.
+            if g.creative {
+                return;
+            }
+            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+                if g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name)) {
+                    g.with_hand(hand, |g| {
+                        let slot = g.acting_hand_slot();
+                        g.damage_held_in_slot(amount, slot);
+                    });
+                    return;
+                }
+            }
+        });
+    }
+
+    /// `HostEvent::HeldGiven`: `Player.addItem` (what does not fit is lost, the result is ignored as in vanilla's callers).
+    fn ecs_held_given(&mut self, player: u32, stack: horizon_client::items::ItemStack) {
+        self.with_player(player, |g| {
+            g.add_stack_to_inventory(stack);
+        });
+    }
+
+    /// `HostEvent::HeldSwap` (`ItemUtils.createFilledResult`): one `from` leaves the hand that holds it and `to` takes its place, else
+    /// goes to the inventory; creative keeps `from` and `to` is added only when no slot holds the same item and components
+    /// (`createFilledResult`). What does not fit is lost (as `ecs_held_given`).
+    fn ecs_held_swap(&mut self, player: u32, from: u32, to: horizon_client::items::ItemStack) {
+        let Some(name) = horizon_ecs_proto::items::item_name(from) else { return };
+        self.with_player(player, |g| {
+            if g.creative {
+                let held = g.inventory.iter().chain(g.armor.iter()).chain(std::iter::once(&g.offhand)).flatten().any(|s| s.same_item_same_components(&to));
+                if !held {
+                    g.add_stack_to_inventory(to);
+                }
+                return;
+            }
+            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+                if g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name)) {
+                    g.with_hand(hand, Game::consume_held);
+                    g.with_hand(hand, |g| g.add_stack_to_inventory(to));
+                    return;
+                }
+            }
+        });
+    }
+
+    /// `HostEvent::HeldUsed`: one `item` leaves the hand of the player that holds it, the main hand first (nothing in creative).
+    fn ecs_held_used(&mut self, player: u32, item: u32) {
+        let Some(name) = horizon_ecs_proto::items::item_name(item) else { return };
+        self.with_player(player, |g| {
+            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+                let held = g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name));
+                if held {
+                    g.with_hand(hand, Game::consume_held);
+                    return;
+                }
+            }
+        });
+    }
+
     fn push_own_player(&mut self, v: Vec3) {
         if let Some(p) = self.player.as_mut() {
             p.velocity = p.velocity.add_vector(v);
@@ -149,7 +234,9 @@ impl Game<'_> {
 
     /// A velocity added to a creature (the `MobEvent::Push` arm, as `Game.mobs` still holds it).
     fn add_mob_velocity(&mut self, id: u32, v: Vec3) {
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
+        if self.ecs.is_active() {
+            self.ecs.push(id, [v.x, v.y, v.z]);
+        } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.velocity = m.velocity.add_vector(v);
         }
     }

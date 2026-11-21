@@ -780,7 +780,8 @@ impl ServerEntity {
             }
             self.meta.clone_from(&e.meta);
         }
-        if e.attributes != self.attributes {
+        // A state that carries none leaves what was sent (an instance is never removed).
+        if !e.attributes.is_empty() && e.attributes != self.attributes {
             let changed = changed_attributes(&e.attributes, &self.attributes);
             if !changed.is_empty() {
                 out.push(play::Clientbound::UpdateAttributes(UpdateAttributes {

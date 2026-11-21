@@ -1,13 +1,13 @@
 //! The bee (`HORIZON_SPECIES=minecraft:bee`) against a real `Mob` bee: a poppy near it (one bee, one flower, one level: the bees would
 //! meet): it flies to the flower, hovers over it for 400 ticks or more and takes the nectar. The tick of the nectar and the place the bee hovers
-//! at, 16 draws on each side (the laws: the draws differ); then, with a hive, the bee with nectar goes home and the ecs bee is out of the world
-//! while it is inside (the `Mob` side has no hive block entity in the harness: only the ecs side is checked there).
+//! at, 16 draws on each side (the laws: the draws differ); then, with a hive, the bee with nectar goes home and asks the host to put it in
+//! (the hive block and its occupants are the host's: only the ask is checked there).
 use crate::common;
 use bevy_ecs::prelude::Entity;
 use common::*;
 use horizon_client_lib::mobs::bee as mbee;
 use horizon_core::geometry::Vec3;
-use horizon_ecs_proto::behaviours::bee::{Bee, Hives, InHive};
+use horizon_ecs_proto::behaviours::bee::Bee;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::goals::arm_all;
 
@@ -85,7 +85,7 @@ fn a_bee_pollinates_a_flower_as_a_mob_does() {
 }
 
 #[test]
-fn a_bee_with_nectar_goes_into_its_hive_and_comes_out() {
+fn a_bee_with_nectar_asks_to_go_into_its_hive() {
     if !have_data() {
         return;
     }
@@ -108,19 +108,18 @@ fn a_bee_with_nectar_goes_into_its_hive_and_comes_out() {
     }
     // The nectar is the event that wakes the hive goals (a bee that takes it by pollinating asks them itself).
     horizon_ecs_proto::behaviours::bee::ask_hive(&mut h.world, e);
-    let (mut inside, mut out_again) = (None, None);
+    let mut asked = None;
     for t in 1..=3500_i64 {
         h.tick();
-        if inside.is_none() && h.world.get::<InHive>(e).is_some() {
-            inside = Some(t);
-        }
-        if inside.is_some() && out_again.is_none() && h.world.get::<InHive>(e).is_none() {
-            out_again = Some(t);
+        let sent = h.world.get_resource::<horizon_ecs_proto::colony_register::MiscOut>().is_some_and(|o| {
+            o.0.iter().any(|ev| matches!(ev, horizon_ecs_proto::host_out_misc::MiscEvent::BeeEnterHive { bee, hive } if *bee == e && *hive == [4, 1, 0]))
+        });
+        if sent {
+            asked = Some(t);
+            break;
         }
     }
-    eprintln!("bee hive: in at {inside:?}, out at {out_again:?}; hives {}", h.world.resource::<Hives>().bees.len());
-    assert!(inside.is_some(), "the bee went in");
-    assert!(out_again.is_some_and(|o| o - inside.unwrap() >= 2400), "it stays 2400 ticks with nectar");
+    assert!(asked.is_some(), "the bee asked the host to put it in its hive");
 }
 
 /// What the `Mob` answers when asked for the path to a flower (the first search of the pollination), for flowers at z -2 .. 1.
@@ -149,33 +148,6 @@ fn the_mobs_first_search_of_a_flower() {
         let ecs = horizon_ecs_proto::locomotion::fly::reaches(&h.world, e, [3, 1, z], 1);
         eprintln!("flower z={z}: mob path {:?} reached {:?} nodes {:?} | ecs reaches {ecs} | mob pos {:?} on_ground {}", path.is_some(), path.as_ref().map(|p| p.reached), path.as_ref().map(|p| p.nodes.len()), r.mobs[i].position, r.mobs[i].on_ground);
     }
-}
-
-/// A hive that is removed lets everyone inside out at once (`BeehiveBlockEntity`'s emergency release), by the event of the point of interest.
-#[test]
-fn a_removed_hive_lets_its_bees_out() {
-    if !have_data() {
-        return;
-    }
-    let _ = flat_pair();
-    if process_species_name() != "minecraft:bee" {
-        return;
-    }
-    let (_r, mut h) = flat_pair();
-    h.world.insert_resource(horizon_ecs_proto::behaviours::bee::StayInHive(Some(true)));
-    h.set_block(4, 1, 0, "minecraft:bee_nest");
-    h.tick();
-    let e = ecs_cow(&mut h, 4.5, 1.5, 0.5, 3400);
-    horizon_ecs_proto::behaviours::bee::enter_hive(&mut h.world, e, [4, 1, 0]);
-    for _ in 0..10 {
-        h.tick();
-    }
-    assert!(h.world.get::<InHive>(e).is_some(), "it stays in at night");
-    h.set_block(4, 1, 0, "minecraft:air");
-    for _ in 0..5 {
-        h.tick();
-    }
-    assert!(h.world.get::<InHive>(e).is_none(), "the hive is gone: it is out");
 }
 
 /// `Bee.doHurtTarget`: an angry bee that reaches its target stings it (poison), has stung, forgets its anger and drops its target; then it
@@ -310,43 +282,4 @@ fn a_refused_sting_is_given_back() {
         h.tick();
     }
     assert!(h.world.get::<Bee>(e).unwrap().stung && has(&h.world, foe, Kind::Poison), "witness: without the cooldown the sting lands");
-}
-/// The time a baby bee spends in the hive counts for its growth, and the love of an adult for its length (`setBeeReleaseData`).
-#[test]
-fn the_time_in_a_hive_ages_and_calms_a_bee() {
-    use horizon_ecs_proto::behaviours::{breed::Love, follow_parent::make_baby};
-    if !have_data() {
-        return;
-    }
-    let _ = flat_pair();
-    if process_species_name() != "minecraft:bee" {
-        return;
-    }
-    let (_r, mut h) = flat_pair();
-    h.world.insert_resource(horizon_ecs_proto::behaviours::bee::StayInHive(Some(false)));
-    h.set_block(4, 1, 0, "minecraft:bee_nest");
-    h.tick();
-    let (baby, adult) = (ecs_cow(&mut h, 4.5, 1.5, 0.5, 3800), ecs_cow(&mut h, 4.5, 1.5, 1.5, 3801));
-    arm_all(&mut h.world);
-    make_baby(&mut h.world, baby, 3000);
-    let now = now_of(&h.world, adult);
-    h.world.entity_mut(adult).insert(Love(now + 2000));
-    let left = |h: &Herd, e: Entity| h.world.get::<GrowAt>(e).map(|g| g.0.saturating_sub(now_of(&h.world, e)));
-    let love_left = |h: &Herd, e: Entity| h.world.get::<Love>(e).map(|l| l.0.saturating_sub(now_of(&h.world, e)));
-    let (g0, l0) = (left(&h, baby).unwrap(), love_left(&h, adult).unwrap());
-    let t0 = h.world.resource::<Clock>().0;
-    for e in [baby, adult] {
-        horizon_ecs_proto::behaviours::bee::enter_hive(&mut h.world, e, [4, 1, 0]);
-    }
-    for _ in 0..800 {
-        h.tick();
-        if h.world.get::<InHive>(baby).is_none() && h.world.get::<InHive>(adult).is_none() {
-            break;
-        }
-    }
-    let stay = h.world.resource::<Clock>().0 - t0;
-    assert!(h.world.get::<InHive>(baby).is_none() && stay >= 600, "witness: both came out after the stay ({stay} ticks)");
-    let (g1, l1) = (left(&h, baby).unwrap(), love_left(&h, adult).unwrap());
-    assert!((g0 - g1).abs_diff(stay) <= 3, "the baby grew by {} ticks in {stay}", g0 - g1);
-    assert!((l0 - l1).abs_diff(stay) <= 3, "the love shortened by {} ticks in {stay}", l0 - l1);
 }

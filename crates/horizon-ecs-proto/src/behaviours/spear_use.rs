@@ -1,7 +1,7 @@
 //! L'usage de la lance par un mob (`SpearUseGoal` des zombies, `PiglinSpear` des piglins : un seul module, des paramètres).
 //! Avec une arme cinétique en main et une cible : marcher jusqu'à la distance d'approche, lever la lance pendant le délai,
 //! charger, frapper ce qui est à portée, puis reculer vers un point à 9-11 blocs et finir (`restart: false`) ou recommencer
-//! (`restart: true`). Non portés ici, à déclarer : le recul et la monture de la frappe (`dismount`) ; la direction de visée est
+//! (`restart: true`). La monture (`dismount`) et le recul (`knockback`) de la frappe sont portés ; la direction de visée est
 //! celle de la cible et la vitesse de la cible est nulle (voir les notes, section 5).
 use super::*;
 use crate::{brain, cow::*, goals::*, hostile::strike, mount::Riding, spots::{self, Pick}, targeting::{info, Target, Who}};
@@ -216,7 +216,7 @@ fn spot(w: &mut World, e: Entity, at: [f64; 3], min: f64, max: f64, floor: f64, 
     spots::pick_for(w, e, Pick::LandAway { min_h: h_min, max_h: h_max, v: 7, from: at })
 }
 /// The stab of the window: the targets the reach allows, once in their contact cooldown; each one gets its damage.
-/// The knockback and the dismount of the vanilla stab are not ported (see the notes).
+/// A target that passes the `dismount` condition gets off its mount (`stab_dismount`).
 fn stab(w: &mut World, e: Entity, s: &mut Spear, k: &Kinetic, who: Who, ticks_used: i32) {
     let Some(t) = info(w, who) else { return };
     let Some(me) = info(w, Who::Entity(e)) else { return };
@@ -244,5 +244,13 @@ fn stab(w: &mut World, e: Entity, s: &mut Spear, k: &Kinetic, who: Who, ticks_us
         let base = w.get::<AttackDamage>(e).map_or(0.0, |a| a.0);
         let amount = base + (relative * f64::from(k.damage_multiplier)).floor() as f32;
         strike(w, e, who, amount);
+    }
+    if k.knockback.test(ticks_used, attacker_speed, relative, 0.2) {
+        // `stabAttack`: a push of 0.4, then the attacker's own `attack_knockback` push.
+        crate::hostile::push_along_facing(w, e, who, 0.4);
+        crate::hostile::extra_knockback(w, e, who);
+    }
+    if k.dismount.test(ticks_used, attacker_speed, relative, 0.2) {
+        crate::stab_dismount::stop_riding(w, who);
     }
 }

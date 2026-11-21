@@ -758,6 +758,10 @@ pub fn brain_step(world: &mut World) {
         if world.get::<crate::zone::Dormant>(e).is_some() {
             continue;
         }
+        // A dead creature (lingering or held): its brain no longer runs.
+        if crate::tear_down::is_dead(world, e) {
+            continue;
+        }
         step(world, e);
     }
 }

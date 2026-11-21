@@ -47,7 +47,9 @@ fn tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     gaze(w, e);
     let (Some(me), Some(at)) = (w.get::<Pos>(e).map(|p| p.0), info(w, Who::Entity(other)).map(|i| i.pos)) else { return false };
     if d2(me, at) <= 5.0 {
-        gossip::meet(w, e, other);
+        if gossip::meet(w, e, other) {
+            crate::behaviours::summon_defender::check(w, e, &crate::behaviours::summon_defender::MEETING);
+        }
         share(w, e, other, me, at);
     }
     true

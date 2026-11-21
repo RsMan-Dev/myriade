@@ -61,7 +61,12 @@ impl Game<'_> {
         creative: bool,
         by: Option<Target>,
     ) -> bool {
-        self.hurt_boat_result(id, damage, creative, by)
+        let who = by.and_then(|t| match t {
+            Target::Player => u32::try_from(self.own_entity_id()).ok().map(horizon_ecs_proto::targeting::Who::Player),
+            Target::Mob(mob) => self.ecs.entity_of(mob).map(horizon_ecs_proto::targeting::Who::Entity),
+            _ => None,
+        });
+        self.hurt_boat_result(id, damage, creative, who)
             .unwrap_or(false)
     }
     /// The cactus hits of one of `AbstractBoat.tick`'s `applyEffectsFromBlocks`:

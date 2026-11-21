@@ -231,6 +231,10 @@ impl Game<'_> {
                 let p = guest.motion.as_ref()?;
                 (true, guest.creative(), p.fall_distance, p.fall_flying)
             }
+            Target::Mob(id) if self.ecs.is_active() => {
+                self.ecs.alive(id).then_some(())?;
+                (false, false, self.ecs.fall_distance(id), self.ecs.flag(id, horizon_ecs_proto::bridge::host::Flag::Gliding) == Some(true))
+            }
             Target::Mob(id) => {
                 let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
                 (false, false, mob.fall_distance, mob.extra.fall_flying)

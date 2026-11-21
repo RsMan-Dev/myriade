@@ -1522,6 +1522,29 @@ impl Game<'_> {
     /// `saved` as a file not yet ridden again), the vehicle tree leaves the
     /// world, and the guest stops riding (`unRide`).
     pub(super) fn take_parent_vehicle(&mut self, guest: &mut horizon_client::lan::guest::Guest) {
+        let (vehicle, player) = (guest.vehicle, guest.entity_id as u32);
+        self.take_parent_vehicle_saved(guest);
+        // `ServerPlayer.stopRiding` of a departing player (`PlayerList.remove`): when the vehicle stays (others ride it, or the level it
+        // is in is not the open one), the ECS frees the seat and drops the pilot's input.
+        // The vehicle lives in the guest's level, which may be a parked one (as `parent_vehicle_in` and `levels.rs` reach it).
+        let Some(vehicle) = vehicle else { return };
+        let theirs = super::Dim::from_id(&guest.dimension);
+        let ecs = if theirs == self.dim {
+            Some(&mut self.ecs)
+        } else {
+            self.levels.parked.get_mut(&theirs).map(|p| &mut p.ecs)
+        };
+        if let Some(ecs) = ecs
+            && ecs.is_active()
+        {
+            ecs.dismount_player(vehicle, player);
+            ecs.unseat_player(player);
+            if ecs.players_of(vehicle).is_empty() {
+                ecs.pilot_clear(vehicle);
+            }
+        }
+    }
+    fn take_parent_vehicle_saved(&mut self, guest: &mut horizon_client::lan::guest::Guest) {
         let Some(vehicle) = guest.vehicle.take() else {
             return;
         };
@@ -1974,21 +1997,6 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        for i in 0..self.remote_entities.len() {
-            let m = &self.remote_entities[i];
-            if m.removed {
-                continue;
-            }
-            if let Some(update) = self.modified_effect_particles(
-                &host.hub,
-                m.id,
-                m.extra.modified_effect_particles.as_ref(),
-                || mob_effects(m),
-                |i| mob_effect(m, &m.extra.effects[i]),
-            ) {
-                self.remote_entities[i].extra.modified_effect_particles = update;
-            }
-        }
         for i in 0..host.hub.guests.len() {
             let Some(host) = self.lan.as_ref() else {
                 return;
@@ -2012,12 +2020,41 @@ impl Game<'_> {
         }
     }
 
+    /// The mods' answer for the swirls of the ECS entity `id`, asked when its state is built (it changed): kept in
+    /// `ecs_effect_particles` and put over the vanilla DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID of `meta`.
+    pub(in crate::game) fn ecs_effect_mods(&mut self, id: u32, meta: &mut Vec<(u8, i32, Value)>) {
+        let Some(host) = self.lan.as_ref() else {
+            return;
+        };
+        let effects = self.ecs.effects(id);
+        let update = self.modified_effect_particles(
+            &host.hub,
+            id,
+            self.ecs_effect_particles.get(&id),
+            || effects.iter().map(EffectInstance::shown),
+            |i| active_effect(&effects[i]),
+        );
+        match update {
+            Some(Some(kept)) => {
+                self.ecs_effect_particles.insert(id, kept);
+            }
+            Some(None) => {
+                self.ecs_effect_particles.remove(&id);
+            }
+            None => {}
+        }
+        if let Some(kept) = self.ecs_effect_particles.get(&id) {
+            meta.retain(|e| e.0 != 10 && e.0 != 11);
+            meta.extend_from_slice(&kept.meta);
+        }
+    }
+
     /// What the living entity `entity`, with `effects` (`active` names the
     /// nth for the mods) and `kept` from the last time, keeps now: None while
     /// its effects are unchanged, else the mods' answers for them
     /// (`effect_particle_modification`, once per effect), or none when it has
     /// no effects.
-    fn modified_effect_particles<I: Iterator<Item = ShownEffect>>(
+    pub(in crate::game) fn modified_effect_particles<I: Iterator<Item = ShownEffect>>(
         &self,
         hub: &Hub,
         entity: u32,
@@ -2651,7 +2688,6 @@ impl Game<'_> {
             if self.next_entity != next {
                 let mut states = States::default();
                 self.lan_entities(&mut states, false, next, None);
-                self.lan_hook_states(&mut states);
                 self.lan_entity_uuids(&mut states);
                 host.hub.note_joined(states.as_slice());
             }
@@ -2684,19 +2720,7 @@ impl Game<'_> {
         if !self.admin_feedback.is_empty() {
             self.send_admin_feedback(None);
         }
-        // An animal whose rider left the game (or the level) stops taking
-        // its input.
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        for m in &mut self.remote_entities {
-            if m.rider.is_some()
-                && self.riding != Some(m.id)
-                && !host.hub.guests.iter().any(|g| g.vehicle == Some(m.id))
-            {
-                m.rider = None;
-            }
-        }
+        // An animal whose rider left the game stops taking its input: `take_parent_vehicle` clears the pilot at the departure.
         // A guest whose file names the vehicle it rode rides it again.
         self.restore_guest_vehicles();
         // Finish the players' mining, item use and pickups before describing
@@ -2766,7 +2790,6 @@ impl Game<'_> {
                     if let Some(kept) = kept {
                         kept.finish();
                     }
-                    self.lan_hook_states(&mut states);
                     self.lan_entity_uuids(&mut states);
                 });
                 let Some(host) = self.lan.as_mut() else {
@@ -3086,7 +3109,6 @@ impl Game<'_> {
         let entities = if elsewhere {
             // A dedicated server has no host player.
             self.lan_entities(&mut theirs, false, 0, None);
-            self.lan_hook_states(&mut theirs);
             self.lan_entity_uuids(&mut theirs);
             theirs.as_slice()
         } else {
@@ -3164,7 +3186,8 @@ impl Game<'_> {
     }
     /// `Level.broadcastEntityEvent` for the guests.
     pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
-        if self.audio.capture.is_some() {
+        // The guests' hurt and death animations do not depend on the audio capture: a hosted world queues them whenever it is open.
+        if self.audio.capture.is_some() || self.lan.is_some() {
             self.lan_entity_events.push((id, event));
         }
         // Event 16: zombie villagers play their cure sound on each client.
@@ -3411,22 +3434,6 @@ impl Game<'_> {
                     .swing(m.id as i32, i32::from(m.swing_is_off_hand()), at, None);
             }
             seen.insert(m.id, (m.hurt_time, dead, swing));
-        }
-        if let Some(d) = self.dragon.as_ref().filter(|d| d.id != 0) {
-            let id = d.id;
-            let dead = !d.alive();
-            let old = host
-                .mob_state
-                .get(&self.dim)
-                .and_then(|s| s.get(&id))
-                .copied();
-            let at = [d.position.x, d.position.y, d.position.z];
-            if d.hurt_time > old.map_or(0, |o| o.0) && !dead {
-                let (kind, cause, direct) =
-                    d.last_source.unwrap_or(("minecraft:generic", None, None));
-                host.hub.damage_event(id as i32, kind, cause, direct, at);
-            }
-            seen.insert(id, (d.hurt_time, dead, None));
         }
         host.mob_state.insert(self.dim, seen);
         // Level.broadcastEntityEvent(player, 2) of a spear's stab.

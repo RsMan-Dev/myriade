@@ -25,16 +25,14 @@ fn entering_hive_posts_block_change_from_bee() {
         game.world
             .block_entities
             .insert((2, 4, 3), BlockEntity::Beehive(Box::default()));
-        let kind = game.res.mob_types().get("minecraft:bee").unwrap().clone();
-        game.mobs
-            .push(Mob::new(42, kind, Vec3::new(2.0, 4.0, 3.0), 0.0));
+        let bee = game.ecs_spawn("minecraft:bee", [2.0, 4.0, 3.0], None).unwrap();
         super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
-        game.bee_enter_hive(42, [2, 4, 3]);
+        game.bee_enter_hive(bee, [2, 4, 3]);
         super::sculk::TEST_POSTED_EVENTS.with(|events| {
             assert!(events.borrow().as_ref().unwrap().contains(&(
                 "minecraft:block_change",
                 [2.5, 4.5, 3.5],
-                Some(Who::Mob(42))
+                Some(Who::Mob(bee))
             )));
         });
     });

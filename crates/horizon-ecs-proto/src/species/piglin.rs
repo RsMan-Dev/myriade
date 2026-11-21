@@ -47,5 +47,13 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
         Entry::new(&ambient_sound::MODULE, 8, &ambient_sound::Params { sounds: &["minecraft:entity.piglin.ambient"], min: 80, max: 160 }),
     ],
+    rules: &[
+        // `Piglin.getBaseExperienceReward`: `xpReward` (5) as is; a baby keeps its loot and its experience (`Monster`).
+        crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
+        crate::rules::RuleEntry::new(&crate::loot::FLAT_XP, &()),
+        crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::MONSTER),
+        crate::rules::RuleEntry::new(&crate::guard_alert::RULE, &crate::guard_alert::Params::PIGLIN),
+        crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::PIGLIN),
+    ],
     ..Def::EMPTY
 };

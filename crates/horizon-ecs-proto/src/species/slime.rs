@@ -17,6 +17,7 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&float::MODULE, 1, &float::Params::DEFAULT),
         Entry::new(&cube_attack::MODULE, 2, &cube_attack::Params { bites_tiny: false, ..cube_attack::Params::DEFAULT }),
+        Entry::new(&crate::behaviours::contact_damage::MODULE, 2, &crate::behaviours::contact_damage::Params::DEFAULT),
     ],
     changes: &[],
     rules: &[crate::rules::RuleEntry::new(&crate::size::SIZE, &crate::size::SizeParams::SLIME)],
@@ -24,5 +25,7 @@ pub static DEF: Def = Def {
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::SLIME))],
     spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Slime, ..crate::spawning::SpawnDef::MONSTER }), despawn: Some(crate::despawn::DespawnDef::MOB),
+    not_in_peaceful: true,
+    draws: Some(&crate::behaviours::spawn_draw::SPAWN_SIZE),
     ..Def::EMPTY
 };

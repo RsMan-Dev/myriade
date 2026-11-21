@@ -2,7 +2,7 @@
 //! `None`: no `MobEvent` of the same meaning, or an entity without a network id or a position; the caller keeps the event.
 //! Variant to action: SetBlock, Sound, Particles, EntityEvent, Darkness, Xp, LevelEvent, ChestOpen, ChestSlot, ParrotToShoulder
 //! and PullEntity (a `Push` of the creature) map to their `MobEvent`, and TargetChanged with a target to `SetTarget`; BossBar, PushPlayer,
-//! Cloud, DisplayUpdate, GameEvent, Pearl, GolemState and the lot-46 outputs (Death, ConversionAsk, Spawned,
+//! Cloud, DisplayUpdate, GameEvent, Pearl and the lot-46 outputs (Death, ConversionAsk, Spawned,
 //! Tamed, HitDealt, Unleashed, TotemAsk) and the lot variants (one per lot, routed by `game/ecs/host_events.rs`) have none and stay with the host (`None`).
 use super::level::EcsLevel;
 use crate::mobs::{MobEvent, Who};
@@ -29,6 +29,14 @@ impl EcsLevel {
     pub fn set_item_resists_table(&mut self, f: horizon_ecs_proto::item::ItemResistsFn) {
         if let Some(w) = self.ecs_mut() {
             w.set_item_resists_table(f);
+        }
+    }
+
+    /// The host's table of the attribute modifiers an item grants in a slot, set at the level's creation and again when the world's tables
+    /// are staged (no-op when inert).
+    pub fn set_item_modifiers_table(&mut self, f: horizon_ecs_proto::equip_attrs::ItemModifiersFn) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_item_modifiers_table(f);
         }
     }
 
@@ -62,6 +70,27 @@ impl EcsLevel {
     pub fn set_hit_watched(&mut self, on: bool) {
         if let Some(w) = self.ecs_mut() {
             w.set_hit_watched(on);
+        }
+    }
+
+    /// `SpecialDates.isHalloween` of the host's day, for the carved pumpkin of finalized undead; nothing when inert.
+    pub fn set_halloween(&mut self, on: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_halloween(on);
+        }
+    }
+
+    /// Rereads the calendar at most once a minute (`today` is (month, day)) and tells P `is_halloween` only when the date has changed
+    /// since (the first read included); nothing when inert.
+    pub fn refresh_date(&mut self, today: impl FnOnce() -> [u32; 2], is_halloween: impl FnOnce([u32; 2]) -> bool) {
+        if !self.is_active() || self.date.is_some_and(|(at, _)| at.elapsed() < std::time::Duration::from_secs(60)) {
+            return;
+        }
+        let now = today();
+        let changed = self.date.is_none_or(|(_, last)| last != now);
+        self.date = Some((std::time::Instant::now(), now));
+        if changed {
+            self.set_halloween(is_halloween(now));
         }
     }
 
@@ -114,7 +143,6 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         | HostEvent::GameEvent { .. }
         | HostEvent::GameEventBy { .. }
         | HostEvent::Pearl { .. }
-        | HostEvent::GolemState { .. }
         | HostEvent::Death { .. }
         | HostEvent::ConversionAsk { .. }
         | HostEvent::TargetChanged { target: None, .. }
@@ -123,6 +151,11 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         | HostEvent::HitDealt { .. }
         | HostEvent::Unleashed { .. }
         | HostEvent::TotemAsk { .. }
+        | HostEvent::Swing { .. }
+        | HostEvent::Hurt { .. }
+        | HostEvent::DeathAnimation { .. }
+        | HostEvent::DeathSmoke { .. }
+        | HostEvent::HeldConsume { .. }
         | HostEvent::Arrow(_)
         | HostEvent::BoatEffect(_)
         | HostEvent::BoatHurt(_)

@@ -51,7 +51,7 @@ fn mounted_events(ev: Res<Events>, q: Query<&RunAround>, mut reqs: ResMut<Reques
     }
 }
 fn tame(w: &World, e: Entity) -> bool {
-    w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some())
+    w.get::<crate::tame::Owner>(e).is_some_and(|o| o.0.is_some()) || w.get::<crate::spring_trap::Tamed>(e).is_some()
 }
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(g) = w.get::<RunAround>(e).copied() else { return false };
@@ -94,13 +94,16 @@ fn crazy_step(w: &mut World, e: Entity) {
         return;
     }
     let Some(m) = w.get::<Mount>(e).copied() else { return };
-    if with_rng(w, e, |r| r.next_int(m.max_temper)) < m.temper {
-        if let Some(who) = m.rider {
+    // Only a player rider is tamed or adds temper (`instanceof Player`); any other first passenger is just thrown off.
+    if let Some(who @ crate::targeting::Who::Player(_)) = m.rider {
+        if m.max_temper > 0 && with_rng(w, e, |r| r.next_int(m.max_temper)) < m.temper {
             crate::tame::set_owner(w, e, who);
+            return;
         }
-        return;
+        modify_temper(w, e, 5);
     }
-    // `refuseRider`: +5 temper, the rider thrown off, the mount rears (`makeMad`).
-    modify_temper(w, e, 5);
-    dismount(w, e);
+    eject_passengers(w, e);
+    crate::make_mad::make_mad(w, e);
+    // `broadcastEntityEvent(horse, 6)`: the smoke of a failed taming.
+    w.resource_mut::<Events>().host.entity_event(e, 6);
 }

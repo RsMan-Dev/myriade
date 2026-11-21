@@ -54,6 +54,11 @@ pub fn yaw(w: &World, e: Entity) -> Option<f32> {
     awake(w, e)?.get::<Yaw>().map(|y| y.0)
 }
 
+/// `getYHeadRot` and `yBodyRot` of a creature with a head; the head yaw is NaN until it first moves (`Head.yaw`).
+pub fn head_body_yaw(w: &World, e: Entity) -> Option<(f32, f32)> {
+    awake(w, e)?.get::<crate::goals::Head>().map(|h| (h.yaw, h.body))
+}
+
 pub fn eye_offset(w: &World, e: Entity) -> Option<f64> {
     awake(w, e)?.get::<Eye>().map(|h| h.0)
 }
@@ -67,7 +72,8 @@ pub fn health(w: &World, e: Entity) -> Option<f32> {
 }
 
 pub fn max_health(w: &World, e: Entity) -> Option<f32> {
-    awake(w, e)?.get::<MaxHealth>().map(|h| h.0)
+    let r = awake(w, e)?;
+    r.get::<MaxHealth>().map(|h| h.0).or_else(|| r.contains::<crate::cow::SpeciesId>().then(|| crate::cow::max_health(w, e)))
 }
 
 pub fn fall_distance(w: &World, e: Entity) -> f64 {
@@ -76,6 +82,12 @@ pub fn fall_distance(w: &World, e: Entity) -> f64 {
 
 pub fn has_tag(w: &World, e: Entity, tag: &str) -> bool {
     awake(w, e).is_some() && type_tags::named(w, tag, e)
+}
+
+/// The entity sits in the pose that blocks the chest below it (`ChestBlock.isCatSittingOnChest`): it carries the sitting-on-blocks
+/// state of the cat goals and is in the pose. No species name is read.
+pub fn sits_on_chest(w: &World, e: Entity) -> bool {
+    awake(w, e).is_some_and(|r| r.get::<crate::behaviours::cat_state::CatPose>().is_some_and(|p| p.sitting_pose))
 }
 
 pub fn species(w: &World, e: Entity) -> Option<&'static str> {

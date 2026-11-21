@@ -20,5 +20,6 @@ pub static DEF: Def = Def {
     ],
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { climber: true, ..walk::Params::DEFAULT }))],
         rules: &[crate::rules::RuleEntry::new(&crate::effects::ON_HIT, &crate::effects::CAVE_SPIDER)],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

@@ -40,6 +40,12 @@ pub struct State {
     pub explored: Vec<[i32; 3]>,
     /// The seed of the dig in progress is not yet dropped.
     seed_due: bool,
+    /// `DATA_DROP_SEED_AT_TICK`: the own time (`tickCount`) of the last dig's start plus the seed delay, kept after the drop; 0 before any dig.
+    pub seed_at: i32,
+}
+/// `Sniffer.DATA_DROP_SEED_AT_TICK` for the synchronisation (0 is the default).
+pub fn seed_at(w: &World, e: Entity) -> i32 {
+    w.get::<State>(e).map_or(0, |s| s.seed_at)
 }
 /// `Sniffer.canMate`'s use of the state, as `make_love`'s `ready` reads it.
 pub fn calm(w: &World, e: Entity) -> bool {
@@ -65,7 +71,7 @@ impl Params {
 
 fn equip(w: &mut World, e: Entity, _: &Ctx) {
     if w.get::<State>(e).is_none() {
-        w.entity_mut(e).insert(State { state: IDLING, explored: Vec::new(), seed_due: false });
+        w.entity_mut(e).insert(State { state: IDLING, explored: Vec::new(), seed_due: false, seed_at: 0 });
     }
 }
 fn transition(w: &mut World, e: Entity, to: u8) {
@@ -214,8 +220,10 @@ fn can_start_dig(w: &mut World, e: Entity, c: &Ctx) -> bool {
 fn start_dig(w: &mut World, e: Entity, c: &Ctx) {
     transition(w, e, DIGGING);
     let p = c.get::<Params>();
+    let at = (now_of(w, e) as i64 + i64::from(p.seed_delay)) as i32;
     if let Some(mut s) = w.get_mut::<State>(e) {
         s.seed_due = true;
+        s.seed_at = at;
     }
     set(w, e, &SEED_PENDING, MemValue::Bool(true), Some(p.seed_delay));
 }

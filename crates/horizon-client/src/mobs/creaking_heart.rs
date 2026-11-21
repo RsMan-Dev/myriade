@@ -5,7 +5,7 @@
 //! trails and spreads resin over the logs. The game and the mob AI probe
 //! both tick hearts through this module; the host applies the block changes
 //! and plays what it reports.
-use super::{Mob, MobEvent, MobType, MobWorld, creaking};
+use super::{MobEvent, MobType, MobWorld};
 use crate::{collisions::SceneCollisions, containers::CreakingHeart};
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -54,21 +54,40 @@ pub enum HeartEvent {
     Mob(MobEvent),
 }
 
-/// The mobs a heart sees and the creakings it spawns.
+/// The creakings a heart sees and spawns, by network id (a creaking is an ECS entity; no `Mob` is exposed).
 pub trait HeartHost {
-    fn mob(&self, id: u32) -> Option<&Mob>;
-    fn mob_mut(&mut self, id: u32) -> Option<&mut Mob>;
-    /// The loaded mob with this UUID.
-    fn mob_for_uuid(&self, uuid: [i32; 4]) -> Option<u32>;
+    /// A creaking that is alive and linked to a heart.
+    fn present(&self, id: u32) -> bool;
+    /// The loaded creaking with this UUID (its id is linked when it has none).
+    fn for_uuid(&mut self, uuid: [i32; 4]) -> Option<u32>;
     fn uuid_for(&mut self, id: u32) -> [i32; 4];
-    /// The creaking's entity type.
+    fn persistent(&self, id: u32) -> bool;
+    fn feet(&self, id: u32) -> Option<Vec3>;
+    fn bounds(&self, id: u32) -> Option<Aabb>;
+    /// `Creaking.setTearingDown`.
+    fn set_tearing_down(&mut self, id: u32);
+    /// `LivingEntity.setHealth(0)`.
+    fn kill(&mut self, id: u32);
+    /// The creaking's own voice (`Mob.voice`).
+    fn voice(&mut self, id: u32, name: &'static str);
+    /// `Creaking.tearDown`: centre and spread of the crumbling box; the creaking is gone.
+    fn tear_down(&mut self, id: u32) -> Option<([f64; 3], [f64; 3])>;
+    /// `Creaking.playerIsStuckInYou`.
+    fn player_is_stuck(&mut self, id: u32) -> bool;
+    /// `Level.getNearestPlayer(at, range, false)`: a non-spectator player within `range`.
+    fn player_near(&self, at: [f64; 3], range: f64) -> bool;
+    /// The creaking's entity type (its size).
     fn creaking_type(&self) -> Option<Arc<MobType>>;
-    /// A new mob of the type (the next entity id, its random seeded).
-    fn create_mob(&mut self, kind: Arc<MobType>, at: Vec3) -> Mob;
-    /// `Level.addFreshEntity`.
-    fn add_mob(&mut self, m: Mob);
+    /// `Level.addFreshEntity` of a creaking linked to the heart at `heart`; its id.
+    fn spawn(&mut self, at: Vec3, yaw: f32, follow_bonus: f64, heart: [i32; 3]) -> Option<u32>;
     /// `ServerLevel.isSpawningMonsters` (rules and difficulty).
     fn spawning_monsters(&self) -> bool;
+}
+
+/// `Mob.center`: the middle of the box.
+fn center_of(b: Aabb) -> [f64; 3] {
+    let (lo, hi) = (b.min_position(), b.max_position());
+    [(lo.x + hi.x) / 2.0, (lo.y + hi.y) / 2.0, (lo.z + hi.z) / 2.0]
 }
 
 /// Block reads during a tick see the tick's own changes.
@@ -137,17 +156,17 @@ fn has_required_logs(b: &Blocks, state: BlockStateId, pos: [i32; 3]) -> bool {
 
 /// `getCreakingProtector`: the protector's entity, resolving a UUID read
 /// from a save (forgotten 30 ticks after the heart came back unresolved).
-pub fn protector(heart: &mut CreakingHeart, host: &impl HeartHost) -> Option<u32> {
+pub fn protector(heart: &mut CreakingHeart, host: &mut impl HeartHost) -> Option<u32> {
     let (id, uuid) = heart.creaking?;
     if let Some(id) = id {
-        if host.mob(id).is_some_and(|m| !m.removed) {
+        if host.present(id) {
             return Some(id);
         }
         // setCreakingInfo(uuid)
         heart.creaking = Some((None, uuid));
         heart.ticks_existed = 0;
     }
-    if let Some(id) = host.mob_for_uuid(uuid) {
+    if let Some(id) = host.for_uuid(uuid) {
         heart.creaking = Some((Some(id), uuid));
         return Some(id);
     }
@@ -156,20 +175,20 @@ pub fn protector(heart: &mut CreakingHeart, host: &impl HeartHost) -> Option<u32
     }
     None
 }
-fn distance_to_creaking(heart: &mut CreakingHeart, pos: [i32; 3], host: &impl HeartHost) -> f64 {
+fn distance_to_creaking(heart: &mut CreakingHeart, pos: [i32; 3], host: &mut impl HeartHost) -> f64 {
     protector(heart, host)
-        .and_then(|id| host.mob(id))
-        .map_or(0.0, |m| {
+        .and_then(|id| host.feet(id))
+        .map_or(0.0, |p| {
             let at = Vec3::new(
                 f64::from(pos[0]) + 0.5,
                 f64::from(pos[1]),
                 f64::from(pos[2]) + 0.5,
             );
-            m.distance_sqr(at).sqrt()
+            ((at.x - p.x).powi(2) + (at.y - p.y).powi(2) + (at.z - p.z).powi(2)).sqrt()
         })
 }
 /// `computeAnalogOutputSignal`.
-fn output_signal(heart: &mut CreakingHeart, pos: [i32; 3], host: &impl HeartHost) -> i32 {
+fn output_signal(heart: &mut CreakingHeart, pos: [i32; 3], host: &mut impl HeartHost) -> i32 {
     if heart.creaking.is_none() || protector(heart, host).is_none() {
         return 0;
     }
@@ -187,17 +206,13 @@ pub fn remove_protector(
     let Some(id) = protector(heart, host) else {
         return;
     };
-    if let Some(m) = host.mob_mut(id) {
-        let mut events = Vec::new();
-        if by_player {
-            // creakingDeathEffects, setTearingDown, setHealth(0).
-            creaking::set_tearing_down(m);
-            m.health = 0.0;
-            m.voice("entity.creaking.twitch", &mut events);
-        } else {
-            creaking::tear_down(m, &mut events);
-        }
-        out.extend(events.into_iter().map(HeartEvent::Mob));
+    if by_player {
+        // creakingDeathEffects, setTearingDown, setHealth(0).
+        host.set_tearing_down(id);
+        host.kill(id);
+        host.voice(id, "entity.creaking.twitch");
+    } else if let Some((center, spread)) = host.tear_down(id) {
+        out.push(HeartEvent::Mob(MobEvent::CreakingTearDown { center, spread }));
     }
     heart.creaking = None;
 }
@@ -208,13 +223,10 @@ fn emit_particles(
     count: i32,
     towards: bool,
     lr: &mut LevelRandom,
-    host: &impl HeartHost,
+    host: &mut impl HeartHost,
     out: &mut Vec<HeartEvent>,
 ) {
-    let Some(b) = protector(heart, host)
-        .and_then(|id| host.mob(id))
-        .map(Mob::bounds)
-    else {
+    let Some(b) = protector(heart, host).and_then(|id| host.bounds(id)) else {
         return;
     };
     let (lo, hi) = (b.min_position(), b.max_position());
@@ -350,7 +362,7 @@ pub fn creaking_hurt(
         }
     }
     heart.emitter = 100;
-    heart.emitter_target = host.mob(id).map(Mob::center);
+    heart.emitter_target = host.bounds(id).map(center_of);
 }
 fn centre(p: [i32; 3]) -> [f64; 3] {
     [
@@ -434,27 +446,20 @@ fn spawn_protector(
             continue;
         }
         // EntityType.create: a random yaw, then Mob.finalizeSpawn.
-        let mut m = host.create_mob(kind.clone(), Vec3::new(x, y, z));
         let yaw = wrap_degrees(lr.next_float() * 360.0);
-        m.yaw = yaw;
-        m.previous_yaw = yaw;
-        m.head_yaw = yaw;
-        m.body_yaw = yaw;
-        finalize_spawn(&mut m, lr);
+        let bonus = finalize_spawn(lr);
         // Mob.checkSpawnRules (always true for a creaking) and
         // checkSpawnObstruction (no liquid in the box).
-        if liquid_in(w, m.bounds()) {
+        if liquid_in(w, bounds) {
             continue;
         }
-        let id = m.id;
-        // SpawnUtil: addFreshEntityWithPassengers, then playAmbientSound.
-        let mut events = Vec::new();
-        if !creaking::is_active(&m) {
-            m.voice("entity.creaking.ambient", &mut events);
-        }
+        let id = host.spawn(Vec3::new(x, y, z), yaw, bonus, pos)?;
+        // SpawnUtil: addFreshEntityWithPassengers, then playAmbientSound (a fresh creaking is not yet roused).
+        host.voice(id, "entity.creaking.ambient");
         // spawnProtector: ENTITY_PLACE at the creaking and entity event 60
-        // (the poof cloud), then setTransient.
-        let spawned_at = [m.position.x, m.position.y, m.position.z];
+        // (the poof cloud), then setTransient (done by the spawn).
+        let spawned_at = [x, y, z];
+        let mut events = Vec::new();
         events.push(MobEvent::GameEvent {
             event: "minecraft:entity_place",
             at: spawned_at,
@@ -466,10 +471,8 @@ fn spawn_protector(
             event: 60,
             at: spawned_at,
         });
-        creaking::set_transient(&mut m, pos);
         // spawnProtector's caller: the creaking's spawn sound.
-        m.voice("entity.creaking.spawn", &mut events);
-        host.add_mob(m);
+        host.voice(id, "entity.creaking.spawn");
         out.extend(events.into_iter().map(HeartEvent::Mob));
         out.push(HeartEvent::Sound(
             "block.creaking_heart.spawn",
@@ -482,13 +485,13 @@ fn spawn_protector(
     None
 }
 /// `Mob.finalizeSpawn`: the follow range's random spawn bonus and the
-/// handedness, from the level random.
-pub fn finalize_spawn(m: &mut Mob, lr: &mut LevelRandom) {
+/// handedness, from the level random. Gives the follow range's bonus
+/// (ADD_MULTIPLIED_BASE on the base value); the handedness draw only keeps
+/// the stream in step.
+pub fn finalize_spawn(lr: &mut LevelRandom) -> f64 {
     let bonus = lr.triangle(0.0, 0.114_850_000_000_000_01);
-    // ADD_MULTIPLIED_BASE on the base value.
-    m.attrs.follow_range += m.kind.follow_range * bonus;
-    m.update_max_visited_nodes();
     let _left_handed = lr.next_float() < 0.05;
+    bonus
 }
 fn wrap_degrees(angle: f32) -> f32 {
     let mut w = angle % 360.0;
@@ -556,8 +559,8 @@ pub fn server_tick_start(
             emit_particles(heart, pos, 1, false, lr, host, out);
         }
         if heart.emitter % 10 == 0 && heart.emitter_target.is_some() {
-            if let Some(m) = protector(heart, host).and_then(|id| host.mob(id)) {
-                heart.emitter_target = Some(m.center());
+            if let Some(b) = protector(heart, host).and_then(|id| host.bounds(id)) {
+                heart.emitter_target = Some(center_of(b));
             }
             if let Some(target) = heart.emitter_target {
                 let c = centre(pos);
@@ -629,26 +632,16 @@ pub fn server_tick_update(
         if awake && host.spawning_monsters() {
             // getNearestPlayer(pos, 32, false): no spectators.
             let (x, y, z) = (f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
-            let near = w.selected_player().is_some_and(|p| {
-                !p.spectator
-                    && (p.position.x - x).powi(2)
-                        + (p.position.y - y).powi(2)
-                        + (p.position.z - z).powi(2)
-                        < 32.0 * 32.0
-            });
+            let near = host.player_near([x, y, z], 32.0);
             if near && let Some(id) = spawn_protector(pos, w, lr, host, out) {
                 let uuid = host.uuid_for(id);
                 heart.creaking = Some((Some(id), uuid));
             }
         }
     } else if let Some(id) = protector(heart, host) {
-        let persistent = host.mob(id).is_some_and(|m| m.persistent);
+        let persistent = host.persistent(id);
         // playerIsStuckInYou reads the creaking's NEAREST_PLAYERS.
-        let stuck = host.mob_mut(id).is_some_and(|m| {
-            let listed = super::monster_brain::nearest_players(m).contains(&super::Who::Player);
-            let eye = w.selected_player().filter(|_| listed).map(|p| p.eye);
-            creaking::player_is_stuck(m, eye)
-        });
+        let stuck = host.player_is_stuck(id);
         if !active && !persistent || distance_to_creaking(heart, pos, host) > TOO_FAR || stuck {
             remove_protector(heart, host, false, out);
         }

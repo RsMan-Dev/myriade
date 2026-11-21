@@ -128,6 +128,9 @@ pub(super) struct Portals {
     /// (`vehicle_plan`), as vanilla's is, not from where its rider's own tick
     /// has moved it on to since.
     pub(super) carried_at: HashMap<u32, Vec3>,
+    /// The ids an ECS vehicle tree took in the level of arrival, by the ids it had when it left (`arrive_vehicle`): a later rider of
+    /// the same tree finds it moved, whenever its trip is born. An entry goes when its new entity is gone.
+    pub(super) carried_ids: HashMap<u32, u32>,
     loaded: bool,
     dirty: bool,
     /// Per-chunk portal palette masks, kept across ticks (portal_sections).
@@ -674,11 +677,12 @@ impl Game<'_> {
         // states while their entities are outside the simulation distance.
         let entity_ticking = self.entity_ticking_area();
         let frozen = self.mobs_below_off_level();
+        let ecs_entries = if self.ecs.is_active() && !vehicles { self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) } else { Vec::new() };
         let tracked = &self.portals.entities;
         let mut present = std::collections::HashSet::new();
         if self.ecs.is_active() && !vehicles {
             // The followed entities come from the bridge by id: (id, sweeps, position).
-            for (id, can_sweep, at) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+            for (id, can_sweep, at) in ecs_entries {
                 let has_portal_state = tracked.contains_key(&id);
                 if has_portal_state {
                     present.insert(id);
@@ -760,15 +764,11 @@ impl Game<'_> {
             }) {
                 let cooldown = self.portals.entities.get(&id).map_or(0, |s| s.cooldown);
                 self.portals.carried_cooldown.insert(id, cooldown);
-                if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-                    self.portals.carried_motion.insert(id, c.velocity);
-                    self.portals.carried_at.insert(id, c.position);
-                } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-                    self.portals.carried_at.insert(id, b.position);
-                } else if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
-                    self.portals.carried_at.insert(id, m.position);
-                } else if let Some((at, _, _)) = self.ecs_body(id) {
+                if let Some((at, _, _)) = self.ecs_body(id) {
                     self.portals.carried_at.insert(id, at);
+                }
+                if let Some(velocity) = self.ecs.velocity(id) {
+                    self.portals.carried_motion.insert(id, velocity);
                 }
                 self.portals.carrying.push((self.dim, id, entry));
             } else {
@@ -779,9 +779,11 @@ impl Game<'_> {
     /// `Entity.load`: the saved `PortalCooldown` (an entity that just came
     /// through stands in its exit portal for 300 ticks without going back).
     pub(super) fn restore_portal_cooldown(&mut self, id: u32, tag: &Tag) {
-        if let Some(cooldown) = tag
-            .get("PortalCooldown")
-            .and_then(horizon_client::nbt_path::int_value)
+        self.restore_portal_cooldown_of(id, tag.get("PortalCooldown"));
+    }
+    /// `restore_portal_cooldown` from the saved `PortalCooldown` tag itself.
+    pub(in crate::game) fn restore_portal_cooldown_of(&mut self, id: u32, saved: Option<&Tag>) {
+        if let Some(cooldown) = saved.and_then(horizon_client::nbt_path::int_value)
             && cooldown != 0
         {
             self.portals.entities.insert(
@@ -995,19 +997,7 @@ impl Game<'_> {
         if let Some((own, width, height)) = self.ecs_body(id) {
             return Some(self.entity_plan(entry, at(own), width, height, true));
         }
-        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
-            return Some(self.entity_plan(entry, at(m.position), m.width(), m.height(), true));
-        }
-        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            let (width, height) = (super::boats::WIDTH as f32, super::boats::HEIGHT as f32);
-            return Some(self.entity_plan(entry, at(b.position), width, height, true));
-        }
-        let c = self.carts.iter().find(|c| c.id == id)?;
-        let (width, height) = (
-            super::minecarts::WIDTH as f32,
-            super::minecarts::HEIGHT as f32,
-        );
-        Some(self.entity_plan(entry, at(c.position), width, height, true))
+        None
     }
     /// `NetherPortalBlock.entityInside` and `EndPortalBlock.entityInside`
     /// for the items, mobs, empty boats and minecarts, and arrows that moved
@@ -1080,7 +1070,7 @@ impl Game<'_> {
         // The first portal block each entity's box swept through since the
         // start of its tick (a stuck arrow that did not move enters none).
         if self.ecs.is_active() {
-            for (id, can_sweep, to) in self.ecs.portal_entries(&self.mob_world_base(&[])) {
+            for (id, can_sweep, to) in self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) {
                 let to = Vec3::new(to[0], to[1], to[2]);
                 if frozen.contains(&id) || !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
                     continue;

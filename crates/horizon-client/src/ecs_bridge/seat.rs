@@ -23,6 +23,26 @@ impl EcsLevel {
         let (Some(v), Some(w)) = (self.entity_of(vehicle), self.ecs()) else { return Vec::new() };
         w.players_of(v)
     }
+    /// The ids of the vehicles that carry a creature (a seat or a mount).
+    pub fn ridden_vehicles(&mut self) -> Vec<u32> {
+        let Some(w) = self.ecs_mut() else { return Vec::new() };
+        let vehicles = w.ridden_vehicles();
+        vehicles.into_iter().filter_map(|e| w.id_of(e)).collect()
+    }
+    /// The creatures riding `vehicle` (seats, then mount), the mount's driver first: the order `Entity.getPassengers` gives.
+    pub fn passengers_of(&self, vehicle: u32) -> Vec<u32> {
+        let (Some(v), Some(w)) = (self.entity_of(vehicle), self.ecs()) else { return Vec::new() };
+        let driver = match horizon_ecs_proto::mount::rider_of(w.world(), v) {
+            Some(horizon_ecs_proto::targeting::Who::Entity(d)) => Some(d),
+            _ => None,
+        };
+        let mut riders = w.passengers_of(v);
+        if let Some(i) = driver.and_then(|d| riders.iter().position(|&r| r == d)) {
+            let d = riders.remove(i);
+            riders.insert(0, d);
+        }
+        riders.into_iter().filter_map(|e| w.id_of(e)).collect()
+    }
     pub fn vehicle_of(&self, rider: u32) -> Option<u32> {
         let w = self.ecs()?;
         let v = w.vehicle_of(self.entity_of(rider)?)?;

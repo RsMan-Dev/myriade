@@ -509,6 +509,9 @@ impl Game<'_> {
                 level(mobs, loose);
             }
         }
+        for (id, n) in self.levels.parked_ecs_kinds() {
+            by_type.entry(id.to_owned()).or_default().0 += n;
+        }
         // The level's ECS entities, projectiles included, by kind: their records are not measured here, the ECS world holds them.
         for (id, n) in self.ecs.count_by_kind() {
             by_type.entry(id.to_owned()).or_default().0 += n;

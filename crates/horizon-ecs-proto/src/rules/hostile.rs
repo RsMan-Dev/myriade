@@ -7,6 +7,12 @@ pub fn attack_damage(damage: f32) -> f32 {
     if damage <= 0.0 { 1.0 } else { damage }
 }
 
+/// `IronGolem.doHurtTarget`: half the attack damage plus a draw below its integer part (`draw(bound)`), or the damage itself below 1.
+pub fn spread_damage(damage: f32, draw: impl FnOnce(i32) -> i32) -> f32 {
+    let whole = damage as i32;
+    if whole > 0 { damage / 2.0 + draw(whole) as f32 } else { damage }
+}
+
 /// The reach of a melee monster: `sqrt(2.04) - 0.6` blocks, the box widened on x and z.
 pub fn melee_reach() -> f64 {
     2.04_f32.sqrt() as f64 - 0.6

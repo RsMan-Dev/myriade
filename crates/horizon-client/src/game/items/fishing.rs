@@ -2,7 +2,6 @@
 //! bobbing, lure and bite timers, open water, hooking mobs, retrieving the
 //! `gameplay/fishing` loot) and `FishingHookRenderer` (bobber and line).
 use super::{Game, view_vector};
-use horizon_client::lan::entity::States;
 use horizon_client::{
     blocks::Fluid,
     collisions::SceneCollisions,
@@ -18,7 +17,7 @@ use horizon_core::{
     position::BlockPos,
     random::{EntityRandom, LegacyRandom, RandomSource},
 };
-use horizon_protocol::entity_data::{Value, serializer};
+use horizon_protocol::entity_data::Value;
 
 #[path = "fishing/impact.rs"]
 mod impact;
@@ -470,7 +469,7 @@ impl Game<'_> {
                         && self.lan_acting != Some(g.conn)
                         && !self.lan_guest_swaps.contains(&g.conn)
                 })
-                .filter_map(|g| Some((host.play.get(&g.conn)?.hook?, g.conn)))
+                .filter_map(|g| Some((self.ecs.hook_of(horizon_ecs_proto::targeting::Who::Player(g.entity_id as u32))?, g.conn)))
                 .map(|(id, conn)| (id, Target::Guest(conn)))
         });
         own.into_iter().chain(guests)
@@ -679,43 +678,9 @@ impl Hook {
             random: EntityRandom::own(random),
         }
     }
-    /// `FishingHook`'s entity for the players tracking it: the owner's id in
-    /// its add packet, DATA_HOOKED_ENTITY (the hooked id plus one) and
-    /// DATA_BITING when they differ from their defaults.
-    fn track(&self, owner: i32, out: &mut States) {
-        let p = self.position;
-        let e = out.add(
-            self.id as i32,
-            horizon_client::lan::playerdata::ints_uuid(self.uuid),
-            "minecraft:fishing_bobber",
-        );
-        e.position = [p.x, p.y, p.z];
-        e.velocity = [self.velocity.x, self.velocity.y, self.velocity.z];
-        e.on_ground = self.on_ground;
-        e.needs_sync = self.needs_sync;
-        e.data = owner;
-        if let State::Hooked(id) = self.state {
-            e.meta.push((8, serializer::INT, Value::Int(id as i32 + 1)));
-        }
-        if self.nibble > 0 {
-            e.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
-        }
-    }
 }
 
 impl Game<'_> {
-    /// The hooks guests track: each player's in the level.
-    pub(super) fn lan_hook_states(&self, out: &mut States) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
-            if let Some(h) = host.play.get(&g.conn).and_then(|p| p.hook.as_ref()) {
-                h.track(g.entity_id, out);
-            }
-        }
-    }
-
     /// `handleAddEntity` for a fishing bobber: this player's own becomes its
     /// hook (`Player.fishing`), another player's is drawn on its line to them.
     pub(super) fn spawn_remote_hook(

@@ -4,7 +4,6 @@
 //! emergency), honey for every bee coming home with nectar. The host (the game
 //! or the mob AI probe) loads and adds the bees through [`HiveHost`].
 pub use crate::chunk::block_entity::{Beehive, Occupant};
-use crate::mobs::{Mob, Species, bee};
 use horizon_core::nbt::{Compound, Tag};
 use horizon_core::random::{LegacyRandom, RandomSource};
 
@@ -57,11 +56,9 @@ pub trait HiveHost {
     fn blocked(&self, at: [i32; 3]) -> bool;
     /// `BlockState.setValue(HONEY_LEVEL, level)` on the hive.
     fn set_honey_level(&mut self, at: [i32; 3], level: i32);
-    /// `EntityType.loadEntityRecursive` (the tag has its `id` and a `Pos`):
-    /// a new entity, or `None` for anything but a `#beehive_inhabitors`.
-    fn load(&mut self, tag: &Tag) -> Option<Mob>;
-    /// `LevelWriter.addFreshEntity`.
-    fn add(&mut self, m: Mob) -> bool;
+    /// `Occupant.createEntity` + `LevelWriter.addFreshEntity`: makes the entity from the saved tag (it has its `id`, `Pos`, and the
+    /// release data), at the hive's exit; `blocked` is the front's collision. The network id, or `None` when the level refuses it.
+    fn spawn(&mut self, tag: Tag, at: [i32; 3], facing: [i32; 2], blocked: bool, delivered: bool) -> Option<u32>;
     fn sound(&mut self, name: &'static str, at: [f64; 3]);
     /// `BlockEntity.setChanged`: the hive's saved bees changed.
     fn set_changed(&mut self, at: [i32; 3]);
@@ -297,7 +294,7 @@ impl BeehiveExt for Beehive {
 }
 
 /// `releaseOccupant`: `None` while the bee stays in, else the id of the bee
-/// let out (`Some(None)` when the level refused it).
+/// let out (`Some(None)` when the level refused it). The bee is made again from its saved tag.
 fn release(
     host: &mut impl HiveHost,
     at: [i32; 3],
@@ -315,74 +312,59 @@ fn release(
     if blocked && !emergency {
         return None;
     }
-    // Occupant.createEntity: the tag without the ignored tags.
     let mut tag = occupant.entity_data.clone();
     if let Tag::Compound(c) = &mut tag {
         strip_ignored(c);
         let center = [at[0], at[1], at[2]].map(|v| Tag::Double((f64::from(v) + 0.5).to_bits()));
         c.insert("Pos".into(), Tag::List(center.to_vec()));
+        release_data(c, at, occupant.ticks_in_hive, flower, status == Release::HoneyDelivered, host);
     }
-    let mut m = host.load(&tag)?;
-    m.no_gravity = true;
-    if m.species() == Species::Bee {
-        bee::set_hive(&mut m, Some(at));
-        // setBeeReleaseData: the time inside counts towards growing up and
-        // away from love.
-        let ticks = occupant.ticks_in_hive;
-        if !m.extra.age_locked {
-            let age = m.extra.age;
-            m.extra.age = if age < 0 {
-                (age + ticks).min(0)
-            } else if age > 0 {
-                (age - ticks).max(0)
-            } else {
-                age
-            };
-        }
-        m.extra.in_love = (m.extra.in_love - ticks).max(0);
-        if let Some(f) = flower
-            && bee::get(&m).is_none_or(|b| b.flower.is_none())
-            && host.random().next_float() < 0.9
-        {
-            bee::set_flower(&mut m, Some(f));
-        }
-        if status == Release::HoneyDelivered {
-            bee::drop_off_nectar(&mut m);
-            if let Some(level) = honey.filter(|&l| l < 5) {
-                let mut increase = if host.random().next_int_bound(100).unwrap_or(1) == 0 {
-                    2
-                } else {
-                    1
-                };
-                if level + increase > 5 {
-                    increase -= 1;
-                }
-                host.set_honey_level(at, level + increase);
-            }
-        }
-        let delta = if blocked {
-            0.0
-        } else {
-            0.55 + f64::from(m.width() / 2.0)
-        };
-        let p = horizon_core::geometry::Vec3::new(
-            f64::from(at[0]) + 0.5 + delta * f64::from(facing[0]),
-            f64::from(at[1]) + 0.5 - f64::from(m.height() / 2.0),
-            f64::from(at[2]) + 0.5 + delta * f64::from(facing[1]),
-        );
-        m.position = p;
-        m.previous = p;
-    }
+    let id = host.spawn(tag, at, facing, blocked, status == Release::HoneyDelivered)?;
     host.sound(
         "block.beehive.exit",
-        [
-            f64::from(at[0]) + 0.5,
-            f64::from(at[1]) + 0.5,
-            f64::from(at[2]) + 0.5,
-        ],
+        [f64::from(at[0]) + 0.5, f64::from(at[1]) + 0.5, f64::from(at[2]) + 0.5],
     );
-    let id = m.id;
-    Some(host.add(m).then_some(id))
+    if status == Release::HoneyDelivered
+        && let Some(level) = honey.filter(|&l| l < 5)
+    {
+        let mut increase = if host.random().next_int_bound(100).unwrap_or(1) == 0 { 2 } else { 1 };
+        if level + increase > 5 {
+            increase -= 1;
+        }
+        host.set_honey_level(at, level + increase);
+    }
+    Some(Some(id))
+}
+
+/// `Bee.setBeeReleaseData` and the exit's marks, on the saved tag: no gravity, the hive, the time inside counted towards growing up and
+/// away from love, the hive's flower when the bee has none (nine times in ten), the nectar given.
+fn release_data(
+    c: &mut Compound,
+    at: [i32; 3],
+    ticks: i32,
+    flower: Option<[i32; 3]>,
+    delivered: bool,
+    host: &mut impl HiveHost,
+) {
+    c.insert("NoGravity".into(), Tag::Byte(1));
+    c.insert("hive_pos".into(), Tag::IntArray(at.to_vec()));
+    let locked = c.get(&"AgeLocked".into()).is_some_and(|t| matches!(t, Tag::Byte(v) if *v != 0));
+    if !locked {
+        let age = int(c.get(&"Age".into())).unwrap_or(0);
+        let aged = if age < 0 { (age + ticks).min(0) } else if age > 0 { (age - ticks).max(0) } else { age };
+        c.insert("Age".into(), Tag::Int(aged));
+    }
+    let love = int(c.get(&"InLove".into())).unwrap_or(0);
+    c.insert("InLove".into(), Tag::Int((love - ticks).max(0)));
+    if let Some(f) = flower
+        && pos(c.get(&"flower_pos".into())).is_none()
+        && host.random().next_float() < 0.9
+    {
+        c.insert("flower_pos".into(), Tag::IntArray(f.to_vec()));
+    }
+    if delivered {
+        c.insert("HasNectar".into(), Tag::Byte(0));
+    }
 }
 
 /// `CampfireBlock.isSmokeyPos`: a lit campfire up to five blocks below,
@@ -461,6 +443,60 @@ mod tests {
             ]),
         )]);
         assert!(Beehive::from_nbt(&tag).bees.is_empty());
+    }
+
+    /// Records the tag a release hands to the level.
+    struct Rec {
+        random: LegacyRandom,
+        spawned: Vec<(Tag, bool)>,
+        honey: Vec<i32>,
+    }
+    impl HiveHost for Rec {
+        fn random(&mut self) -> &mut LegacyRandom {
+            &mut self.random
+        }
+        fn bees_stay_in_hive(&self, _: [i32; 3]) -> bool {
+            false
+        }
+        fn blocked(&self, _: [i32; 3]) -> bool {
+            false
+        }
+        fn set_honey_level(&mut self, _: [i32; 3], level: i32) {
+            self.honey.push(level);
+        }
+        fn spawn(&mut self, tag: Tag, _: [i32; 3], _: [i32; 2], _: bool, delivered: bool) -> Option<u32> {
+            self.spawned.push((tag, delivered));
+            Some(1)
+        }
+        fn sound(&mut self, _: &'static str, _: [f64; 3]) {}
+        fn set_changed(&mut self, _: [i32; 3]) {}
+    }
+
+    /// `Bee.setBeeReleaseData` on the saved tag: the 700 ticks inside age a baby and shorten love, the hive and its flower are written,
+    /// the nectar is given and the honey level rises.
+    #[test]
+    fn a_released_bee_comes_back_from_its_saved_tag_aged_and_unladen() {
+        let mut hive = Beehive::default();
+        let tag = Tag::compound([
+            ("id", Tag::String("minecraft:bee".into())),
+            ("Age", Tag::Int(-3000)),
+            ("InLove", Tag::Int(1000)),
+            ("HasNectar", Tag::Byte(1)),
+        ]);
+        let mut o = Occupant::of(tag);
+        o.ticks_in_hive = 2401;
+        hive.bees.push(o);
+        hive.flower = Some([1, 2, 3]);
+        let mut host = Rec { random: LegacyRandom::new(5), spawned: Vec::new(), honey: Vec::new() };
+        hive.server_tick([8, 64, 8], [0, -1], Some(1), &mut host);
+        assert!(hive.bees.is_empty());
+        let (tag, delivered) = &host.spawned[0];
+        assert!(delivered);
+        assert_eq!(tag.get("Age"), Some(&Tag::Int(-599)));
+        assert_eq!(tag.get("InLove"), Some(&Tag::Int(0)));
+        assert_eq!(tag.get("HasNectar"), Some(&Tag::Byte(0)));
+        assert_eq!(tag.get("hive_pos"), Some(&Tag::IntArray(vec![8, 64, 8])));
+        assert!(host.honey[0] > 1, "the honey level rose");
     }
 
     #[test]

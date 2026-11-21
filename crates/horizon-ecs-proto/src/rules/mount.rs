@@ -48,3 +48,36 @@ pub fn dist_sq(a: Vec3, b: Vec3) -> f64 {
 pub fn repath_due(idle: bool, beat: u64) -> bool {
     idle || beat.is_multiple_of(10)
 }
+/// `AbstractNautilus.getRiddenInput`: strafe, up and forward of the look's pitch, halved when going backwards.
+pub fn look_input(strafe: f32, forward: f32, pitch: f32) -> (f32, f32, f32) {
+    let a = pitch.to_radians();
+    let k = if forward < 0.0 { -0.5 } else { 1.0 };
+    let live = if forward != 0.0 { 1.0 } else { 0.0 };
+    (strafe, -a.msin() * live * k, a.mcos() * live * k)
+}
+/// The dash of a nautilus: `push` times the jump's `power`, the movement speed and the block's speed factor, along the look (yaw and
+/// pitch of the rider), added to the velocity (`AbstractNautilus.executeRidersJump`).
+pub fn look_dash(vel: Vec3, yaw: f32, pitch: f32, push: f64, power: f32, speed: f64, block: f32) -> Vec3 {
+    let push = push * f64::from(power) * speed * f64::from(block);
+    let (y, p) = (yaw.to_radians(), pitch.to_radians());
+    let c = f64::from(p.mcos());
+    Vec3::new(vel.x - f64::from(y.msin()) * c * push, vel.y - f64::from(p.msin()) * push, vel.z + f64::from(y.mcos()) * c * push)
+}
+/// `HappyGhast.getRiddenInput`: the look's pitch gives forward and up (a half of it backwards), a held jump adds 0,5 up, all scaled by
+/// 3,9 times the flying speed.
+pub fn fly_input(strafe: f32, forward: f32, pitch: f32, jumping: bool, flying_speed: f64) -> (f32, f32, f32) {
+    let (xxa, mut yya, zza) = look_input(strafe, forward, pitch);
+    if jumping {
+        yya += 0.5;
+    }
+    let k = (3.9_f64 * flying_speed) as f32;
+    (xxa * k, yya * k, zza * k)
+}
+/// `HappyGhast.getRiddenSpeed`: five thirds of the flying speed.
+pub fn fly_speed(flying_speed: f64) -> f32 {
+    (flying_speed * 5.0 / 3.0) as f32
+}
+/// `getPlayerJumpPendingScale`: 0,4 to 0,8 with the charge, 1 from 90.
+pub fn pending_scale(data: i32) -> f32 {
+    if data >= 90 { 1.0 } else { 0.4 + 0.4 * data as f32 / 90.0 }
+}

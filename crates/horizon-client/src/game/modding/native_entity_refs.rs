@@ -2373,7 +2373,6 @@ pub(super) mod tests {
                 (12, "minecraft:horse", "minecraft:iron_horse_armor"),
                 (13, "minecraft:llama", "minecraft:red_carpet"),
                 (14, "minecraft:happy_ghast", "minecraft:red_harness"),
-                (15, "minecraft:nautilus", "minecraft:iron_nautilus_armor"),
             ] {
                 let kind = game.res.mob_types().get(kind).unwrap().clone();
                 let mut mob = Mob::new(id, kind, Vec3::ZERO, 0.0);
@@ -2387,8 +2386,7 @@ pub(super) mod tests {
                 let used = match id {
                     12 => game.interact_mount(index, item),
                     13 => game.interact_llama(index, item),
-                    14 => game.interact_happy_ghast(index, item),
-                    _ => game.interact_nautilus(index, item),
+                    _ => game.interact_happy_ghast(index, item),
                 };
                 assert!(used, "{item}");
                 assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);

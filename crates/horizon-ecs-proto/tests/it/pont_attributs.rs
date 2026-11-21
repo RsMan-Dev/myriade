@@ -20,7 +20,7 @@ fn world_and_cow() -> (EcsWorld, Entity) {
 }
 
 fn modifier(id: &str, amount: f64, operation: Operation) -> Modifier {
-    Modifier { id: id.to_owned(), amount, operation }
+    Modifier { id: id.to_owned(), amount, operation, permanent: false }
 }
 
 #[test]

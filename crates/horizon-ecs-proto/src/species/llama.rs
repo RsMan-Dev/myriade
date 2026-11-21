@@ -18,6 +18,7 @@ fn untamed(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
 
 pub static DEF: Def = Def {
     name: "minecraft:llama",
+    variant: Some(&super::variants::LLAMA),
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { ends_on_shot: true, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { types: &["minecraft:wolf"], candidate_when: Some(untamed), must_see: false, interval: 16, follow_scale: 0.25, ..nearest_target::Params::DEFAULT }),
@@ -36,7 +37,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 9, &random_look::Params::DEFAULT),
     ],
     // A llama is a tamable, rideable horse (`AbstractChestedHorse`): the caps of the horse, for the wild run around like crazy.
-    rules: &[RuleEntry::new(&RIDE, &RideParams::HORSE), RuleEntry::new(&LEASH, &LeashParams::LLAMA)],
+    rules: &[RuleEntry::new(&RIDE, &RideParams::LLAMA), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::LLAMA), RuleEntry::new(&LEASH, &LeashParams::LLAMA), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::BODY), RuleEntry::new(&crate::fit_chest::FIT_CHEST, &crate::fit_chest::ChestParams::LLAMA)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     llama_strength: true,
     ..Def::EMPTY

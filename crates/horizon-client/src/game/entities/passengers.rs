@@ -6,25 +6,11 @@ use super::Game;
 #[path = "passengers/mob_seating.rs"]
 mod mob_seating;
 use horizon_client::mobs::{Species, riders};
-use horizon_core::{
-    geometry::{Aabb, Vec3},
-    random::{LegacyRandom, RandomSource},
-};
+use horizon_core::geometry::{Aabb, Vec3};
 use std::collections::HashMap;
 
 /// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
 pub(super) type Riders = HashMap<u32, Vec<usize>>;
-
-/// The seconds a skeleton horse trap waits for a player: 15 minutes.
-const TRAP_LIFETIME: i32 = 18000;
-/// `SkeletonTrapGoal`: a player this close springs the trap.
-const TRAP_RANGE: f64 = 10.0;
-/// Ticks of invulnerability the trap's riders and horses start with.
-const TRAP_INVULNERABLE: i32 = 60;
-
-fn trap_horse_scatter(random: &mut LegacyRandom) -> (f64, f64) {
-    (random.triangle(0.0, 1.1485), random.triangle(0.0, 1.1485))
-}
 
 impl Game<'_> {
     /// Keep the actual removed object only while a passenger still refers to it.
@@ -548,123 +534,6 @@ impl Game<'_> {
             position[1] + lift,
             position[2],
         ))
-    }
-
-    /// `SkeletonHorse.customServerAiStep` and `SkeletonTrapGoal`: a trap
-    /// horse is a trap for fifteen minutes; a player within ten blocks springs
-    /// it.
-    pub(super) fn tick_skeleton_traps(&mut self) {
-        if self.ecs.is_active() {
-            // Gap: a trap's state (trap, trap_time, tame, age) has no P component; the ECS level runs no trap here (report).
-            return;
-        }
-        // `Level.hasNearbyAlivePlayer`: alive, not a spectator, in the level.
-        let players: Vec<_> = self
-            .level_players()
-            .into_iter()
-            .filter(|p| p.alive && !p.spectator)
-            .map(|p| p.position)
-            .collect();
-        let mut sprung = Vec::new();
-        let blocked = self.mobs_below_off_level();
-        for m in &mut self.remote_entities {
-            if blocked.contains(&m.id) {
-                continue;
-            }
-            if m.species() != Species::SkeletonHorse || !m.extra.trap || !m.alive() {
-                continue;
-            }
-            if !m.persistent {
-                m.extra.trap_time += 1;
-                if m.extra.trap_time > TRAP_LIFETIME {
-                    m.removed = true;
-                    continue;
-                }
-            }
-            if players
-                .iter()
-                .any(|&p| m.distance_sqr(p) < TRAP_RANGE * TRAP_RANGE)
-            {
-                sprung.push(m.id);
-            }
-        }
-        for id in sprung {
-            self.spring_skeleton_trap(id);
-        }
-    }
-    fn spring_skeleton_trap(&mut self, id: u32) {
-        let Some(horse) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return;
-        };
-        horse.extra.trap = false;
-        horse.extra.tame = true;
-        horse.extra.age = 0;
-        let at = [horse.position.x, horse.position.y, horse.position.z];
-        self.spawn_bolt(at, true);
-        let Some(skeleton) = self.trap_skeleton(at) else {
-            return;
-        };
-        self.mount_mob(skeleton, id);
-        for _ in 0..3 {
-            let Some(other) = self.spawn_mob(
-                "minecraft:skeleton_horse",
-                at,
-                true,
-                super::creatures::SpawnSite::Finalizing(
-                    horizon_client::mobs::spawn_rules::Reason::Triggered,
-                ),
-            ) else {
-                continue;
-            };
-            if let Some(h) = self.remote_entities.iter_mut().find(|m| m.id == other) {
-                h.invulnerable_time = TRAP_INVULNERABLE;
-                h.extra.tame = true;
-                h.extra.age = 0;
-            }
-            if let Some(rider) = self.trap_skeleton(at) {
-                self.mount_mob(rider, other);
-                let Some(horse) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-                    continue;
-                };
-                let (dx, dz) = trap_horse_scatter(&mut horse.random);
-                if let Some(h) = self.remote_entities.iter_mut().find(|m| m.id == other) {
-                    h.velocity = Vec3::new(h.velocity.x + dx, h.velocity.y, h.velocity.z + dz);
-                }
-            }
-        }
-    }
-    /// `SkeletonTrapGoal.createSkeleton`: an iron helmet unless it already
-    /// has a helm.
-    fn trap_skeleton(&mut self, at: [f64; 3]) -> Option<u32> {
-        if self.ecs.is_active() {
-            // Gap: the helmet, the enchantments and the invulnerability are not branched yet (report).
-            return self.ecs_spawn("minecraft:skeleton", at, None);
-        }
-        let id = self.spawn_mob(
-            "minecraft:skeleton",
-            at,
-            true,
-            super::creatures::SpawnSite::Finalizing(
-                horizon_client::mobs::spawn_rules::Reason::Triggered,
-            ),
-        )?;
-        let m = self.remote_entities.iter_mut().find(|m| m.id == id)?;
-        m.invulnerable = TRAP_INVULNERABLE;
-        if m.extra.head_id().is_none() {
-            m.extra.set_slot_id(
-                horizon_items::equipment::HEAD,
-                Some("minecraft:iron_helmet".into()),
-            );
-        }
-        let special = self.local_difficulty(at).special();
-        // `SkeletonTrapGoal.enchant`: the weapon and the helmet, always.
-        for slot in [
-            horizon_client::mobs::finalize::MAINHAND,
-            horizon_client::mobs::finalize::HEAD,
-        ] {
-            self.enchant_item(id, slot, special);
-        }
-        Some(id)
     }
 }
 
@@ -2468,65 +2337,7 @@ mod content_seat_tests {
 #[cfg(test)]
 mod trap_scatter_tests {
     use super::*;
-    #[test]
-    fn trap_horse_scatter_draws_two_triangles_from_original_horse_random() {
-        let mut horse_random = LegacyRandom::new(0x5DEECE66D);
-        let mut expected = horse_random.clone();
-        for _ in 0..3 {
-            let (dx, dz) = trap_horse_scatter(&mut horse_random);
-            assert_eq!(dx, expected.triangle(0.0, 1.1485));
-            assert_eq!(dz, expected.triangle(0.0, 1.1485));
-        }
-        assert_eq!(horse_random.next_long(), expected.next_long());
-    }
-
-    /// `SkeletonTrapGoal.tick`: springing a skeleton trap draws the three
-    /// additional horses' horizontal velocity scatter from the original trap
-    /// horse's own `random` after each rider is created.
-    #[test]
-    #[ignore = "daily"]
-    fn spring_skeleton_trap_draws_scatter_from_trap_horse_after_each_rider() {
-        use horizon_client::chunk::Chunk;
-        use std::sync::Arc;
-
-        let mut resources = None;
-        let mut game = super::super::game_tests::tests::server_game(&mut resources);
-        // Mounting resolves epoch-scoped resident handles, just as in an open world.
-        game.native_lifecycle
-            .begin_open(super::super::native_lifecycle::Authority::IntegratedServer);
-        game.world
-            .chunks
-            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        let at = [8.5, 64.0, 8.5];
-        let trap_id = game
-            .spawn_mob_raw("minecraft:skeleton_horse", at, false)
-            .unwrap();
-        let mut expected_horse_rng = LegacyRandom::new(777);
-        if let Some(horse) = game.remote_entities.iter_mut().find(|m| m.id == trap_id) {
-            horse.extra.trap = true;
-            horse.random = horizon_core::random::EntityRandom::own(expected_horse_rng.clone());
-        }
-        game.spring_skeleton_trap(trap_id);
-
-        let expected_pushes: Vec<(f64, f64)> = (0..3)
-            .map(|_| trap_horse_scatter(&mut expected_horse_rng))
-            .collect();
-        let horse = game.remote_entities.iter_mut().find(|m| m.id == trap_id).unwrap();
-        assert!(!horse.extra.trap);
-        assert_eq!(horse.random.next_long(), expected_horse_rng.next_long());
-
-        let extra_horses: Vec<&horizon_client::mobs::Mob> = game
-            .remote_entities
-            .iter()
-            .filter(|m| m.species() == Species::SkeletonHorse && m.id != trap_id)
-            .collect();
-        assert_eq!(extra_horses.len(), 3);
-        for (h, (dx, dz)) in extra_horses.iter().zip(expected_pushes) {
-            assert_eq!((h.velocity.x, h.velocity.z), (dx, dz));
-            assert!(h.extra.rider.is_some());
-        }
-    }
-
+    use horizon_core::random::RandomSource;
     /// `EnchantmentsByCostWithDifficulty.enchant` reads the stack the mob
     /// holds: an empty slot draws nothing from the world's random.
     #[test]

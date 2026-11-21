@@ -27,7 +27,7 @@ fn advance(h: &mut EcsWorld, mw: &MobWorld<'_>, n: u64) {
 }
 
 fn online(h: &mut EcsWorld) {
-    h.set_player(Player { id: 1, x: FEET[0], y: FEET[1], z: FEET[2], ..Default::default() }, PlayerFact { alive: true, targetable: true });
+    h.set_player(Player { id: 1, x: FEET[0], y: FEET[1], z: FEET[2], ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() });
 }
 
 fn all_of(_: &ItemStack) -> u32 {

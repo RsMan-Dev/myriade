@@ -339,8 +339,8 @@ impl Game<'_> {
         let Some(id) = self.riding else {
             return;
         };
-        if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-            self.dismount(i);
+        if self.ecs.boat_status(id).is_some() {
+            self.dismount_boat(id);
         } else if self.ecs.cart_kind(id).is_some() {
             self.dismount_cart(id);
         } else {

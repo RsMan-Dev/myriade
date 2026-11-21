@@ -40,6 +40,10 @@ impl EcsLevel {
         self.write_id(id, |w, e| w.look_at(e, at))
     }
 
+    pub fn set_patrol_leader(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| w.set_patrol_leader(e, on))
+    }
+
     pub fn set_aggressive(&mut self, id: u32, on: bool) -> bool {
         self.write_id(id, |w, e| w.set_aggressive(e, on))
     }
@@ -78,5 +82,48 @@ impl EcsLevel {
     /// `EcsWorld::set_target` for the creature `id`; `None` takes its target away.
     pub fn set_target(&mut self, id: u32, who: Option<Who>) -> bool {
         self.write_id(id, |w, e| w.set_target(e, who))
+    }
+
+    /// `EcsWorld::bee_forget_hive` for the bee `e` (the hive it went to is full or gone).
+    pub fn bee_forget_hive(&mut self, e: Entity) {
+        if let Some(w) = self.ecs_mut() {
+            w.bee_forget_hive(e);
+        }
+    }
+
+    /// `EcsWorld::dolphin_treasure` for the dolphin `e`: the structure the host located for it, or none.
+    pub fn dolphin_treasure(&mut self, e: Entity, at: Option<[i32; 3]>) {
+        if let Some(w) = self.ecs_mut() {
+            w.dolphin_treasure(e, at);
+        }
+    }
+
+    /// `EcsWorld::bee_stay_out` for the creature `id`: it keeps out of a hive for `ticks`.
+    pub fn bee_stay_out(&mut self, id: u32, ticks: u64) -> bool {
+        self.write_id(id, |w, e| w.bee_stay_out(e, ticks))
+    }
+
+    /// `EcsWorld::bee_exited` for the bee `e` made from the data of a hive.
+    pub fn bee_exited(&mut self, mw: &MobWorld<'_>, e: Entity, hive: [i32; 3], facing: [i32; 2], blocked: bool, delivered: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.bee_exited(mw, e, hive, facing, blocked, delivered);
+        }
+    }
+
+    /// `EcsWorld::hive_is_full`: whether the bees know the hive at `hive` as full.
+    pub fn hive_is_full(&self, hive: [i32; 3]) -> bool {
+        self.ecs().is_some_and(|w| w.hive_is_full(hive))
+    }
+
+    /// `EcsWorld::set_hive_full`: the hive at `hive` holds three occupants or has room.
+    pub fn set_hive_full(&mut self, hive: [i32; 3], full: bool) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_hive_full(hive, full);
+        }
+    }
+
+    /// `EcsWorld::untargeted_bees_in`: the bees in `area` with no target.
+    pub fn untargeted_bees_in(&self, area: horizon_core::geometry::Aabb) -> Vec<Entity> {
+        self.ecs().map_or_else(Vec::new, |w| w.untargeted_bees_in(area))
     }
 }

@@ -19,7 +19,7 @@ fn a_player_in_the_team_is_allied_until_the_team_is_cleared() {
     let mut h = EcsWorld::new(&setup(), mw, types, &tags);
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let player = Who::Player(3);
-    h.set_player(Player { id: 3, x: 2.0, y: 1.0, z: 2.0, ..Default::default() }, PlayerFact { alive: true, targetable: true });
+    h.set_player(Player { id: 3, x: 2.0, y: 1.0, z: 2.0, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() });
     assert!(!allied(h.world(), Who::Entity(cow), player), "no team yet: no alliance");
     set_team(h.world_mut(), "red", &[player, Who::Entity(cow)]);
     assert!(allied(h.world(), Who::Entity(cow), player), "two members of one team are allied");

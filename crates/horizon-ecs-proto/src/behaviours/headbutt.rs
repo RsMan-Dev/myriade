@@ -1,7 +1,7 @@
 //! The hoglin's headbutt (`HoglinBase.throwTarget`, `mobs/piglin.rs:2061-2090`, and `hoglin_hurt_target` `:2112`): a strike that
 //! lands on a creature throws it away from the attacker and up, by the attacker's knockback. The attack sound plays. It is
-//! the melee's `on_hit` (as the bee's sting), set by `equip`: the melee goal must be equipped before this one.
-//! Not ported: the target's knockback resistance (not read here) and a player target (no ECS velocity hook for players).
+//! the melee's `on_blow` (the sound, the retreat) and `on_hit` (the throw, only when the blow landed), set by `equip`: the melee goal must
+//! be equipped before this one. The throw subtracts the target's knockback resistance and adds to its velocity; a player is pushed by the host.
 use super::*;
 use crate::hostile::Attack;
 use crate::rules::headbutt::throw_velocity;
@@ -30,6 +30,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     let knockback = params::<Params>(p).knockback;
     w.entity_mut(e).insert(Headbutt(knockback));
     if let Some(mut attack) = w.get_mut::<Attack>(e) {
+        attack.on_blow = Some(blow);
         attack.on_hit = Some(hit);
     }
 }
@@ -60,30 +61,46 @@ fn on_hit_target(w: &mut World, e: Entity, target: Entity) {
     }
 }
 
-fn hit(w: &mut World, e: Entity) {
-    let struck = w.get::<Target>(e).map(|t| t.who);
-    throw(w, e);
-    // After the throw, which reads the target that the retreat forgets.
-    if let Some(Who::Entity(t)) = struck {
+/// Every strike (`Hoglin.doHurtTarget` before the blow): the attack sound, and the retreat of `HoglinAi.onHitTarget`.
+fn blow(w: &mut World, e: Entity) {
+    if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
+        w.resource_mut::<crate::goals::Events>().host.sound("entity.hoglin.attack", [p.x, p.y, p.z], 1.0, 1.0);
+    }
+    if let Some(Who::Entity(t)) = w.get::<Target>(e).map(|t| t.who) {
         on_hit_target(w, e, t);
     }
 }
 
-fn throw(w: &mut World, e: Entity) {
-    if let Some(p) = w.get::<Pos>(e).map(|p| p.0) {
-        w.resource_mut::<crate::goals::Events>().host.sound("entity.hoglin.attack", [p.x, p.y, p.z], 1.0, 1.0);
+/// A blow that landed (`HoglinBase.hurtAndThrowTarget`): an adult throws its target.
+fn hit(w: &mut World, e: Entity, who: Who, _dealt: f32) {
+    if w.get::<GrowAt>(e).is_none() {
+        throw(w, e, who);
     }
+}
+
+/// `HoglinBase.throwTarget`: the attacker's knockback less the target's resistance (nothing when it is not positive), the target pushed
+/// away and up; a player is pushed by the host.
+fn throw(w: &mut World, e: Entity, who: Who) {
     let Some(Headbutt(knockback)) = w.get::<Headbutt>(e).copied() else { return };
-    let Some(Who::Entity(t)) = w.get::<Target>(e).map(|t| t.who) else { return };
-    let (Some(from), Some(to)) = (w.get::<Pos>(e).map(|p| p.0), w.get::<Pos>(t).map(|p| p.0)) else { return };
-    if knockback <= 0.0 || w.get::<Vel>(t).is_none() {
+    let resist = match who {
+        Who::Entity(t) => w.get::<Resist>(t).map_or(0.0, |r| r.0),
+        Who::Player(_) => 0.0,
+    };
+    let strength = knockback - resist;
+    let (Some(from), Some(to)) = (w.get::<Pos>(e).map(|p| p.0), crate::targeting::info(w, who).map(|i| i.pos)) else { return };
+    if strength <= 0.0 {
         return;
     }
     let away = Vec3::new(to.x - from.x, 0.0, to.z - from.z);
     let u = [unit(w, e), unit(w, e), unit(w, e)];
-    let velocity = throw_velocity(away, knockback, u);
-    if let Some(mut v) = w.get_mut::<Vel>(t) {
-        v.0 = velocity;
+    let velocity = throw_velocity(away, strength, u);
+    match who {
+        Who::Entity(t) => {
+            if let Some(mut v) = w.get_mut::<Vel>(t) {
+                v.0 = v.0.add_vector(velocity);
+                w.entity_mut(t).insert(Moving);
+            }
+        }
+        Who::Player(id) => w.resource_mut::<crate::goals::Events>().host.push_player(id, [velocity.x, velocity.y, velocity.z]),
     }
-    w.entity_mut(t).insert(Moving);
 }

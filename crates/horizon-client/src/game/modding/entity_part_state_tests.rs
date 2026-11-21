@@ -437,8 +437,8 @@ fn a_spawn_or_removal_inside_an_aborted_action_keeps_the_bindings() {
 
 #[test]
 #[ignore = "daily"]
-fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_handle() {
-    const NAME: &str = "game::entity_part_state_tests::a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_handle";
+fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_state_follows_it() {
+    const NAME: &str = "game::entity_part_state_tests::a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_state_follows_it";
     with_state_mod(NAME, |game| {
         // A lone mob: rebuilt under a new id in the other level, its state with it.
         let cow = mob(game, "minecraft:cow", 41);
@@ -502,10 +502,10 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
         game.enter_level(Dim::Overworld).unwrap();
         assert_eq!(Charge::state(game, robot), Err(PartStateError::Stale));
 
-        // A saddled pig a player rides keeps its id across: a guest on it steps into a portal
-        // with it, the carrier path starts the guest's trip and parks the pig, and the arrival
-        // (`arrive_vehicle`, what the trip's arrival runs once the exit is found) brings it to
-        // the other level under the same handle.
+        // A saddled pig a player rides: a guest on it steps into a portal with it, the carrier path
+        // starts the guest's trip and parks the pig, and the arrival (`arrive_vehicle`, what the trip's
+        // arrival runs once the exit is found) recreates it in the other level under a new id, its
+        // state moved with it.
         let rider = super::native_player_death::tests::add_guest(game);
         let mut tag = mob_tag("minecraft:pig", 43);
         if let Tag::Compound(map) = &mut tag {
@@ -556,18 +556,17 @@ fn a_lone_mob_or_general_row_moves_under_a_new_id_and_a_ridden_pig_keeps_its_han
             "still in its level while it waits"
         );
         game.enter_level(Dim::Nether).unwrap();
-        game.arrive_vehicle(Dim::Overworld, pig.id(), Vec3::new(1.0, 70.0, 3.0), 0.0);
-        assert_eq!(
-            game.lan.as_ref().unwrap().hub.guests[0].vehicle,
-            Some(pig.id())
-        );
-        assert_eq!(game.entity(pig.id()), Some(pig));
-        assert_eq!(stored(game, pig), Some(5));
-        assert_eq!(Charge::edit_state(game, pig, |_, n| *n += 1), Ok(()));
-        assert_eq!(stored(game, pig), Some(6));
-        assert!(indexed(game, Dim::Nether).contains(&(pig.id(), 6)));
+        // The ECS entity is recreated from its NBT under a new id; its state goes with it.
+        let moved = game
+            .arrive_vehicle(Dim::Overworld, pig.id(), Vec3::new(1.0, 70.0, 3.0), 0.0)
+            .expect("the pig travels");
+        assert_ne!(moved, pig.id());
+        let moved = game.entity(moved).expect("the pig is in the level of arrival");
+        assert_eq!(stored(game, moved), Some(5));
+        assert_eq!(Charge::edit_state(game, moved, |_, n| *n += 1), Ok(()));
+        assert_eq!(stored(game, moved), Some(6));
         game.enter_level(Dim::Overworld).unwrap();
-        assert_eq!(Charge::state(game, pig), Err(PartStateError::OtherLevel));
+        assert_eq!(Charge::state(game, moved), Err(PartStateError::OtherLevel));
         assert!(indexed(game, Dim::Overworld).is_empty());
     });
 }

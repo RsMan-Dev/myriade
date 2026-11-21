@@ -1,19 +1,20 @@
 //! The creaking heart block entity in the game: `mobs::creaking_heart`
 //! ticks each heart (spawning, letting go of and bleeding for its creaking)
 //! and this applies what it reports to the world, the mobs and the speakers.
-use super::{Game, creatures::seen, persist::EntityUuids};
+use super::Game;
 use horizon_client::{
     Result,
     chunk_map::{ChunkMap, ChunkMembershipDelta},
     containers::{BlockEntity, CreakingHeart},
+    ecs_bridge::EcsLevel,
     mobs::{
-        Mob, MobType,
+        MobType, MobWorld,
         creaking_heart::{self, HeartEvent, HeartHost},
     },
     particles::{ParticleOptions, ParticleType},
 };
 use horizon_core::{
-    geometry::Vec3,
+    geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LevelRandom, RandomSource},
 };
@@ -30,64 +31,79 @@ pub(super) fn heart_signal(world: &horizon_client::world::World, pos: BlockPos) 
     }
 }
 
-/// The game's mobs as a heart sees them, taken out of the game for the tick.
-struct Host<'a> {
-    mobs: &'a mut horizon_client::join_seq::JoinList<Mob>,
-    added: Vec<Mob>,
-    uuids: &'a mut EntityUuids,
+/// The creakings of the ECS as a heart sees them: by network id, through the level's bridge, taken out of the game for the tick.
+struct Host<'a, 'w> {
+    ecs: &'a mut EcsLevel,
+    /// The mob world, present when the tick reaches its update (a spawn needs it).
+    mw: Option<&'a MobWorld<'w>>,
     creaking: Option<Arc<MobType>>,
     next_entity: &'a mut u32,
     spawning: bool,
-    /// The game's index of `mobs` by id: a heart asks for its creaking a
-    /// few times a tick.
-    index: std::cell::RefCell<super::mob_index::MobIndex>,
 }
-impl Host<'_> {
-    /// The slot of the live mob `id` in `mobs`, as a scan for the first
-    /// one with that id that is not removed (ids are unique in the list).
-    fn slot(&self, id: u32) -> Option<usize> {
-        self.index
-            .borrow_mut()
-            .find(self.mobs, id)
-            .filter(|&i| !self.mobs[i].removed)
+impl HeartHost for Host<'_, '_> {
+    fn present(&self, id: u32) -> bool {
+        self.ecs.creaking_present(id)
     }
-}
-impl HeartHost for Host<'_> {
-    fn mob(&self, id: u32) -> Option<&Mob> {
-        match self.slot(id) {
-            Some(slot) => Some(&self.mobs[slot]),
-            None => self.added.iter().find(|m| m.id == id && !m.removed),
-        }
-    }
-    fn mob_mut(&mut self, id: u32) -> Option<&mut Mob> {
-        match self.slot(id) {
-            Some(slot) => Some(&mut self.mobs[slot]),
-            None => self.added.iter_mut().find(|m| m.id == id && !m.removed),
-        }
-    }
-    fn mob_for_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
-        self.uuids
-            .iter()
-            .find(|(id, u)| **u == uuid && self.mob(**id).is_some())
-            .map(|(id, _)| *id)
+    fn for_uuid(&mut self, uuid: [i32; 4]) -> Option<u32> {
+        let next = &mut *self.next_entity;
+        self.ecs.creaking_for_uuid(uuid, &mut || {
+            *next += 1;
+            *next
+        })
     }
     fn uuid_for(&mut self, id: u32) -> [i32; 4] {
-        self.uuids
-            .get_or_insert_with(id, horizon_client::save::random_uuid)
+        if let Some(u) = self.ecs.uuid_words(id) {
+            return u;
+        }
+        let u = horizon_client::save::random_uuid();
+        self.ecs.give_uuid(id, u);
+        u
+    }
+    fn persistent(&self, id: u32) -> bool {
+        self.ecs.creaking_persistent(id)
+    }
+    fn feet(&self, id: u32) -> Option<Vec3> {
+        self.ecs.creaking_feet(id)
+    }
+    fn bounds(&self, id: u32) -> Option<Aabb> {
+        self.ecs.creaking_box(id)
+    }
+    fn set_tearing_down(&mut self, id: u32) {
+        self.ecs.set_tearing_down(id);
+    }
+    fn kill(&mut self, id: u32) {
+        self.ecs.zero_health(id);
+    }
+    fn voice(&mut self, id: u32, name: &'static str) {
+        self.ecs.creaking_voice(id, name);
+    }
+    fn tear_down(&mut self, id: u32) -> Option<([f64; 3], [f64; 3])> {
+        self.ecs.tear_down_creaking(id)
+    }
+    fn player_is_stuck(&mut self, id: u32) -> bool {
+        self.ecs.creaking_player_stuck(id)
+    }
+    fn player_near(&self, at: [f64; 3], range: f64) -> bool {
+        self.ecs.nearest_player_within(at, range).is_some()
     }
     fn creaking_type(&self) -> Option<Arc<MobType>> {
         self.creaking.clone()
     }
-    fn create_mob(&mut self, kind: Arc<MobType>, at: Vec3) -> Mob {
-        *self.next_entity += 1;
-        // A new entity's random is its own (Mob::new seeds it).
-        let mut m = Mob::new(*self.next_entity, kind, at, 0.0);
-        let seed = i64::from(m.id);
-        horizon_client::mobs::monster_brain::init(&mut m, seed);
-        m
-    }
-    fn add_mob(&mut self, m: Mob) {
-        self.added.push(m);
+    fn spawn(&mut self, at: Vec3, yaw: f32, follow_bonus: f64, heart: [i32; 3]) -> Option<u32> {
+        let mw = self.mw?;
+        let next = &mut *self.next_entity;
+        self.ecs.spawn_creaking(
+            mw,
+            [at.x, at.y, at.z],
+            yaw,
+            follow_bonus,
+            heart,
+            horizon_client::save::random_uuid(),
+            &mut || {
+                *next += 1;
+                *next
+            },
+        )
     }
     fn spawning_monsters(&self) -> bool {
         self.spawning
@@ -121,44 +137,24 @@ impl Game<'_> {
             &mut Vec<HeartEvent>,
         ),
     ) -> Result<()> {
-        let mut mobs = self.remote_entities.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut uuids = std::mem::take(&mut self.persist.uuids);
+        let mut ecs = std::mem::replace(&mut self.ecs, EcsLevel::inert());
         let mut next_entity = self.next_entity;
         let mut random = self.world.random.clone();
         let spawning = self.spawning_monsters();
         let creaking = self.res.mob_types().get("minecraft:creaking").cloned();
-        let player_uuid = self.level.player_uuid;
-        let snapshot: Vec<_> = if others {
-            mobs.iter()
-                .map(|m| seen(m, player_uuid, world_items!(self)))
-                .collect()
-        } else {
-            Vec::new()
-        };
         let mut events = Vec::new();
-        let index = std::cell::RefCell::new(std::mem::take(&mut self.remote_index));
-        let (added, index) = {
-            let w = others.then(|| self.mob_world_base(&snapshot));
+        {
+            let w = others.then(|| self.mob_world_base(&[]));
             let mut host = Host {
-                mobs: &mut mobs,
-                added: Vec::new(),
-                uuids: &mut uuids,
+                ecs: &mut ecs,
+                mw: w.as_ref(),
                 creaking,
                 next_entity: &mut next_entity,
                 spawning,
-                index,
             };
             f(heart, w.as_ref(), &mut random, &mut host, &mut events);
-            (host.added, host.index.into_inner())
-        };
-        // The heart's additions go after every slot the index holds.
-        self.remote_index = index;
-        mobs.extend(added);
-        self.remote_entities
-            .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-        self.persist.uuids = uuids;
+        }
+        self.ecs = ecs;
         self.next_entity = next_entity;
         self.world.random = random;
         let mut mob_events = Vec::new();
@@ -191,7 +187,7 @@ impl Game<'_> {
         Ok(())
     }
     /// A creaking bound to the heart at `home` was hurt (`creakingHurt`).
-    pub(super) fn creaking_hurt(&mut self, home: [i32; 3], _id: u32, by_player: bool) {
+    pub(in crate::game) fn creaking_hurt(&mut self, home: [i32; 3], _id: u32, by_player: bool) {
         if !by_player {
             return;
         }
@@ -210,8 +206,34 @@ impl Game<'_> {
             .block_entities
             .put(lease, BlockEntity::CreakingHeart(heart));
     }
+    /// `Creaking.tick`: the creaking `id` linked to the heart at `home` lives only while that heart is a creaking heart that claims it
+    /// (resolving its uuid as the heart does); else `setHealth(0)`. Asked by P at the load, the wake and a change of the heart's block.
+    pub(in crate::game) fn creaking_check_heart(&mut self, home: [i32; 3], id: u32) {
+        let key = (home[0], home[1], home[2]);
+        let mut claimed = false;
+        match self.world.block_entities.take(&key) {
+            Some((lease, BlockEntity::CreakingHeart(mut heart))) => {
+                let _ = self.with_heart(key, &mut heart, false, |h, _, _, host, _| {
+                    claimed = creaking_heart::protector(h, host) == Some(id);
+                });
+                self.world.block_entities.put(lease, BlockEntity::CreakingHeart(heart));
+            }
+            Some((lease, other)) => self.world.block_entities.put(lease, other),
+            None => {}
+        }
+        if claimed {
+            return;
+        }
+        let mut ecs = std::mem::replace(&mut self.ecs, EcsLevel::inert());
+        {
+            let mw = self.mob_world_base(&[]);
+            ecs.kill_orphan(&mw, id);
+        }
+        self.ecs = ecs;
+    }
+
     /// `Creaking.tearDown`: the crumble particles.
-    pub(super) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
+    pub(in crate::game) fn creaking_tear_down(&mut self, center: [f64; 3], spread: [f64; 3]) {
         let registry = self.pack.assets.registry;
         let crumble = |this: &mut Self, name: &str, props: &[(&str, &str)], count: i32| {
             let Some(mut state) = registry

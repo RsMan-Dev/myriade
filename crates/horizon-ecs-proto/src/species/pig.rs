@@ -7,6 +7,7 @@ use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:pig",
+    variant: Some(&super::variants::FARM_ANIMAL),
     reference: Some(&farm_animal::DEF),
     changes: &[
         Change::Set { module: &panic::MODULE, nth: 0, params: &panic::Params { speed: 1.25, ..panic::Params::DEFAULT } },

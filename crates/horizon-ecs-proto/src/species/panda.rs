@@ -35,5 +35,19 @@ pub static DEF: Def = Def {
         Entry::new(&follow_parent::MODULE, 13, &follow_parent::Params { speed: 1.25 }),
         Entry::new(&stroll::MODULE, 14, &stroll::Params::DEFAULT),
     ],
+    // `Panda.mobInteract`: the food held up to a baby or to an adult the breed refused (hand_feed.rs).
+    rules: &[crate::rules::RuleEntry::new(&crate::hand_feed::HAND_FEED, &crate::hand_feed::FeedParams::PANDA)],
+    draws: Some(&DRAWS),
     ..Def::EMPTY
+};
+
+/// `Panda.getRandom`: one `nextInt(16)`: 0 lazy, 1 worried, 2 playful, 3 weak, 4 aggressive, 5-8 weak, 9-10 brown, else normal (gene ids of
+/// `spawn_draw::gene_of`). Main then hidden, then `setAttributes`; a fresh group has a 20 % baby chance.
+const GENE: crate::rules::spawn_draw::Roll = crate::rules::spawn_draw::Roll::Cuts { bound: 16, cuts: &[(1, 1), (2, 2), (3, 3), (4, 5), (5, 6), (9, 5), (11, 4)], last: 0 };
+static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_draw::Draws {
+    group: Some(crate::spawn_finalize::Group::Ageable { should_baby: true, size: 0, chance: 0.2 }),
+    list: &[
+        crate::behaviours::spawn_draw::Draw { when: crate::behaviours::spawn_draw::When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(GENE), store: crate::behaviours::spawn_draw::Store::GeneMain },
+        crate::behaviours::spawn_draw::Draw { when: crate::behaviours::spawn_draw::When::Before, kind: crate::behaviours::spawn_draw::Kind::Plain(GENE), store: crate::behaviours::spawn_draw::Store::GeneHidden },
+    ],
 };

@@ -14,7 +14,7 @@ pub use crate::rules::equipment_drop::{roll_piece, DEFAULT};
 #[derive(Component, Clone, Copy, Debug)]
 pub struct DropChances(pub [f32; 8]);
 
-fn index(slot: Slot) -> usize {
+pub fn index(slot: Slot) -> usize {
     match slot {
         Slot::Main => 0,
         Slot::Off => 1,

@@ -56,17 +56,56 @@ fn tick(w: &mut World) {
     crate::goals::tick_state(w, watched);
 }
 /// A player enters the watch: the goal starts; a player leaves: the goal ends (its stop starts the countdown).
-fn watched(ev: Res<Events>, mut reqs: ResMut<Requests>, mut commands: Commands, q: Query<&Slot, With<PlayerWatch>>) {
-    for (e, _) in ev.player_entered.iter() {
-        if let Ok(s) = q.get(e) {
+/// A player who rides the ghast does not count (`scanPlayerAboveGhast` skips the players whose root vehicle is a happy ghast): one who
+/// takes a seat ends the stillness, one who gets off while still in reach starts it again.
+fn watched(
+    ev: Res<Events>,
+    mut reqs: ResMut<Requests>,
+    mut commands: Commands,
+    q: Query<(&Slot, &PlayerWatch, Option<&crate::mount::Mount>, Has<Above>)>,
+    ridden: Option<Res<crate::seat::RiddenVehicles>>,
+    mounts: Query<&crate::mount::Mount>,
+) {
+    // The player rides ANOTHER flying harnessed mount (`scanPlayerAboveGhast`: its root vehicle is a happy ghast): not above this one.
+    let on_other_ghast = |id: u32| {
+        ridden.as_ref().is_some_and(|r| {
+            r.0.iter().any(|v| {
+                mounts.get(*v).is_ok_and(|m| matches!(m.steer, crate::mount::Steer::Fly { .. }) && [m.rider, m.passenger].contains(&Some(crate::targeting::Who::Player(id))))
+            })
+        })
+    };
+    let seats =|m: Option<&crate::mount::Mount>, id: u32| m.is_some_and(|m| [m.rider, m.passenger].contains(&Some(crate::targeting::Who::Player(id))));
+    let rider = |m: Option<&crate::mount::Mount>| m.is_some_and(|m| [m.rider, m.passenger].iter().any(|r| matches!(r, Some(crate::targeting::Who::Player(_)))));
+    for (e, id) in ev.player_entered.iter() {
+        if let Ok((s, _, m, _)) = q.get(e)
+            && !seats(m, id)
+            && !on_other_ghast(id)
+        {
             commands.entity(e).insert(Above);
             reqs.0.push(Req::Start(e, s.0));
         }
     }
     for (e, _) in ev.player_left.iter() {
-        if let Ok(s) = q.get(e) {
+        if let Ok((s, _, _, true)) = q.get(e) {
             commands.entity(e).remove::<Above>().insert(Leaving);
             reqs.0.push(Req::End(e, s.0));
+        }
+    }
+    for e in ev.mounted.iter() {
+        if let Ok((s, _, m, true)) = q.get(e)
+            && rider(m)
+        {
+            commands.entity(e).remove::<Above>().insert(Leaving);
+            reqs.0.push(Req::End(e, s.0));
+        }
+    }
+    for e in ev.dismounted.iter() {
+        if let Ok((s, w, m, false)) = q.get(e)
+            && !rider(m)
+            && w.any_inside()
+        {
+            commands.entity(e).insert(Above);
+            reqs.0.push(Req::Start(e, s.0));
         }
     }
 }

@@ -4,20 +4,10 @@
 use super::Game;
 use super::level_sounds::LevelSound;
 use horizon_client::actions::Action;
-use horizon_client::mobs::{Mob, MobEvent, Species, happy_ghast};
+use horizon_client::mobs::{MobEvent, happy_ghast};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::registry::BlockStateId;
 use mod_api::SoundSource;
-
-/// `canBeCollidedWith` toward a mover that is neither a player nor a happy ghast:
-/// a living shulker, or an adult happy ghast held still.
-fn stops_movers(m: &Mob) -> bool {
-    match m.species() {
-        Species::HappyGhast => m.alive() && !m.is_baby() && happy_ghast::on_still_timeout(m),
-        Species::Shulker => m.alive(),
-        _ => false,
-    }
-}
 
 impl Game<'_> {
     /// Client `EntityGetter.getEntityCollisions` for the player: the
@@ -28,6 +18,8 @@ impl Game<'_> {
         let Some(p) = &self.player else {
             return Vec::new();
         };
+        let sweep = Aabb::new(p.position - Vec3::new(3.0, 1.0, 3.0), p.position + Vec3::new(3.0, 4.0, 3.0));
+        let solid = self.ecs.solid_boxes(sweep, Some(p.position.y), self.riding);
         self.remote_entities
             .iter()
             .filter(|m| {
@@ -43,6 +35,7 @@ impl Game<'_> {
                     .filter(|b| Some(b.id) != self.riding)
                     .map(super::boats::Boat::bounds),
             )
+            .chain(solid)
             .collect()
     }
     /// `EntityGetter.getEntityCollisions` for a mover that is neither a player nor a
@@ -52,32 +45,17 @@ impl Game<'_> {
     /// (`isOnStillTimeout`): a player on its back keeps it still, so an item dropped there
     /// stays on top. A minecart keeps `Entity`'s false (`AbstractMinecart` overrides only
     /// `canCollideWith`), so an item falls through it.
-    pub(super) fn item_entity_collisions(&self) -> Vec<Aabb> {
-        self.remote_entities
-            .iter()
-            .filter(|m| stops_movers(m))
-            .map(|m| m.bounds())
-            .chain(self.boats.iter().map(super::boats::Boat::bounds))
-            .collect()
-    }
-    /// [`Self::item_entity_collisions`] for an armor stand, which mobs can ride
-    /// (`/ride`): each mob's box comes with the vehicle at the bottom of what it rides,
-    /// so the stand leaves its own riders out (`isPassengerOfSameVehicle`, through the
-    /// grid's `near_except`).
-    pub(super) fn stand_entity_collisions(&self) -> horizon_client::entities::ObstacleGrid {
-        let mut boxes = Vec::new();
-        let mut roots = Vec::new();
-        for (j, m) in self.remote_entities.iter().enumerate() {
-            if stops_movers(m) {
-                boxes.push(m.bounds());
-                roots.push(m.extra.mount.and_then(|_| self.mob_root_vehicle(j)));
+    /// Read from the ECS index cells over each of the `sweeps` (P `solid_boxes`), without repeats.
+    pub(super) fn item_entity_collisions(&self, sweeps: impl IntoIterator<Item = Aabb>) -> Vec<Aabb> {
+        let mut out: Vec<Aabb> = Vec::new();
+        for sweep in sweeps {
+            for b in self.ecs.solid_boxes(sweep, None, None) {
+                if !out.contains(&b) {
+                    out.push(b);
+                }
             }
         }
-        for b in &self.boats {
-            boxes.push(b.bounds());
-            roots.push(None);
-        }
-        horizon_client::entities::ObstacleGrid::with_roots(boxes, roots)
+        out
     }
     /// `HappyGhast.mobInteract`. Returns whether the click was used.
     pub(super) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {

@@ -121,7 +121,9 @@ impl Game<'_> {
     /// One orb of `feet`'s reach every 2 ticks (`ExperienceOrb.playerTouch`): P gives its value (`collect_orb`), the host the points.
     pub(in crate::game) fn ecs_player_orbs(&mut self, feet: Option<[f64; 3]>) {
         let Some(feet) = feet.filter(|_| self.xp_delay == 0) else { return };
-        let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, feet, REACH));
+        let mut next = self.next_entity;
+        let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, feet, REACH, &mut || { next += 1; next }));
+        self.next_entity = next;
         let Some(&orb) = touching.first() else { return };
         let at = self.ecs.position(orb).unwrap_or(feet);
         let Some(points) = self.ecs_with(|ecs, mw| ecs.collect_orb(mw, orb)) else { return };
@@ -144,7 +146,7 @@ impl Game<'_> {
         let mut extra = 0;
         self.native_item_expire(id, stack, &mut extra);
         if extra > 0 {
-            self.ecs.extend_item_life(e, extra.min(32766));
+            self.ecs.extend_item_life(e, extra.min(32766) as u32);
             return;
         }
         if self.serving.is_some() || self.options.dedicated.is_some() {

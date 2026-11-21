@@ -60,6 +60,20 @@ fn bed_for_child(w: &mut World, parent: Entity, baby: Entity) {
     }
 }
 
+/// `Villager.getBreedOffspring`: one draw, below 0.5 the type of the biome (not read here: P has no biome facts, the child keeps the
+/// type its spawn gave it), below 0.75 the first parent's type, else the partner's.
+fn inherit_type(w: &mut World, baby: Entity, a: Entity, b: Entity) {
+    let d = goals::with_rng(w, a, |r| r.next_f64());
+    if d < 0.5 {
+        return;
+    }
+    let from = if d < 0.75 { a } else { b };
+    let Some(v) = w.get::<crate::behaviours::trade_offers::Merchant>(from).map(|m| m.variant) else { return };
+    if let Some(mut m) = w.get_mut::<crate::behaviours::trade_offers::Merchant>(baby) {
+        m.variant = v;
+    }
+}
+
 /// `villagers.villager_birth` : l'enfant apparaît près du partenaire, grandit dans 24000 ticks, les parents se reposent.
 /// Rend l'enfant si la naissance est due et que les deux peuvent se reproduire (sinon `None`, et l'union prend fin).
 pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
@@ -73,7 +87,8 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
         return None;
     }
     let seed = goals::with_rng(w, e, |r| r.next_u32() as u64);
-    let at = w.get::<Pos>(m.partner).unwrap().0;
+    // `VillagerMakeLove.breed`: the child is snapped to the first parent (the one whose brain ticks).
+    let at = w.get::<Pos>(e).unwrap().0;
     let baby = spawn_like(w, e, at.x, at.z, seed);
     crate::species::goat::inherit_screaming(w, baby, e, m.partner);
     w.entity_mut(baby).insert(GrowAt(now + GROWN));
@@ -82,8 +97,9 @@ pub fn birth(w: &mut World, e: Entity, items: &Items) -> Option<Entity> {
         food_stock::digest(w, p);
         w.entity_mut(p).insert(Resting(now + REST));
     }
-    let heart = [at.x, at.y + 1.0, at.z];
-    w.resource_mut::<Events>().host.particles("minecraft:heart", heart, [0.5, 0.5, 0.5], 0.02, 7);
+    inherit_type(w, baby, e, m.partner);
+    // Entity event 12 on the child (hearts).
+    w.resource_mut::<Events>().host.entity_event(baby, 12);
     Some(baby)
 }
 
@@ -142,6 +158,10 @@ fn make_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {
     if now >= m.birth {
         // `takeVacantBed` found none: the birth carries no child (`VillagerBirth { child: None }`).
         if child_bed(w, e, e).is_none() {
+            // `tryToGiveBirth`: entity event 13 (angry villager) for both, no child.
+            let ev = &mut w.resource_mut::<Events>().host;
+            ev.entity_event(p, 13);
+            ev.entity_event(e, 13);
             return false;
         }
         let items = food_stock::items(w);

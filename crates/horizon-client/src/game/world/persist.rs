@@ -1410,11 +1410,9 @@ impl Game<'_> {
             {
                 return None;
             }
-            let mut tag = match self.boat_object(root) {
-                Some(b) => {
-                    let uuid = self.uuid_for(root);
-                    b.to_nbt(uuid, self.persist.raw.get(&root))
-                }
+            let uuid = self.boat_object(root).is_some().then(|| self.uuid_for(root));
+            let mut tag = match uuid.zip(self.boat_object(root)) {
+                Some((uuid, b)) => b.to_nbt(uuid, self.persist.raw.get(&root)),
                 None => Tag::Compound(self.ecs_mob_tree(root)?),
             };
             self.put_mob_passengers(&mut tag, root);
@@ -1453,6 +1451,14 @@ impl Game<'_> {
             .map(|m| (m.id, m.extra.mount))
             .collect();
         let mut gone = vehicle_tree(root, &mounts);
+        // The ECS's creatures riding the root, all the way down (the host's lists are empty on a server).
+        if self.ecs.is_active() {
+            for id in self.ecs_tree(root) {
+                if !gone.contains(&id) {
+                    gone.push(id);
+                }
+            }
+        }
         // And the riders of other kinds that the slots name.
         for id in self.passenger_tree(root) {
             if !gone.contains(&id) {

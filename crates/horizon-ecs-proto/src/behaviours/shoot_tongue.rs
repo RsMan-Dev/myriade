@@ -1,7 +1,7 @@
 //! `ShootTongue` (`mobs/frog.rs:503-700`) with `FrogAttackablesSensor`: a frog walks up to a slime or magma cube of size 1 within 10
 //! blocks and in sight, shoots its tongue at 1.75 blocks, draws the prey in (velocity 0.75 toward the frog), and eats it 7 ticks later.
 //! The scan is one deadline per 20 own ticks while the goal is not running (the sensor's period), not a system. Deviations (`suivi/ecs-ecarts.md`):
-//! the prey goes by `despawn::remove` without damage or drop; the path check of `can_use` is replaced by the timeout (100 ticks): a prey
+//! the prey takes the frog's blow and goes without animation when it dies (`remove_killed`); the path check of `can_use` is replaced by the timeout (100 ticks): a prey
 //! that was not reached is left alone for 100 ticks.
 use super::croak::Croaking;
 use super::animal_panic::AnimalPanicking;
@@ -198,6 +198,14 @@ fn tongue_run(q: Query<(Entity, &Tongue), With<Shooting>>, mut reqs: ResMut<Requ
         reqs.0.push(Req::Call(e, step));
     }
 }
+/// `ShootTongue.eatEntity`: the eat sound, then the frog's blow on the prey while it lives; a prey that dies of it goes without a death
+/// animation (`remove(KILLED)`, see `remove_killed`), one that survives stays.
+fn eat(w: &mut World, frog: Entity, prey: Entity, at: Vec3) {
+    w.resource_mut::<Events>().host.sound("minecraft:entity.frog.eat", [at.x, at.y, at.z], 2.0, 1.0);
+    let amount = w.get::<AttackDamage>(frog).map_or(0.0, |a| a.0);
+    crate::remove_killed::mark(w, prey);
+    crate::hostile::strike(w, frog, crate::targeting::Who::Entity(prey), amount);
+}
 /// `can_continue` then `tick` of the Mob, every tick of the goal.
 fn step(w: &mut World, e: Entity) {
     let Some(mut t) = w.get::<Tongue>(e).copied() else { return };
@@ -231,7 +239,7 @@ fn step(w: &mut World, e: Entity) {
             t.eat_timer += 1;
             if catch_done(t.eat_timer) {
                 t.phase = Phase::Eat;
-                crate::despawn::remove(w, id);
+                eat(w, e, id, me);
             }
         }
         Phase::Eat => {

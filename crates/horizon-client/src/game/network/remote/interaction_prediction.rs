@@ -35,14 +35,13 @@ impl Game<'_> {
             let boat_passes = self
                 .boats
                 .iter()
-                .enumerate()
-                .find(|(_, b)| b.id as i32 == hit.id)
-                .is_some_and(|(i, b)| {
+                .find(|b| b.id as i32 == hit.id)
+                .is_some_and(|b| {
                     boat_interact_passes(
                         b.chest,
                         sneaking,
                         b.out_of_control >= 60.0,
-                        self.boat_has_room(i),
+                        self.boat_has_room(b.id),
                     )
                 });
             let (cart_passes, is_rideable_cart) = self

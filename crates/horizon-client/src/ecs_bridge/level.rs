@@ -25,15 +25,17 @@ use horizon_protocol::entity_data::Value;
 
 pub struct EcsLevel {
     inner: Option<Box<EcsWorld>>,
+    /// The calendar date (month, day) last read for `SpecialDates`, and when it was read; `refresh_date` rereads it once a minute.
+    pub(super) date: Option<(std::time::Instant, [u32; 2])>,
 }
 
 impl EcsLevel {
     /// The level of a client, which runs no world.
     pub fn inert() -> Self {
-        Self { inner: None }
+        Self { inner: None, date: None }
     }
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &Path) -> Self {
-        Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))) }
+        Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None }
     }
     pub fn is_active(&self) -> bool {
         self.inner.is_some()
@@ -54,6 +56,22 @@ impl EcsLevel {
     pub fn spawn(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>) -> Option<Entity> {
         self.inner.as_mut()?.spawn(mw, kind, at, nbt)
     }
+    /// `EcsWorld::spawn_for`: a creature spawned for `reason` (`EntitySpawnReason`).
+    pub fn spawn_for(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: horizon_ecs_proto::spawn_reason::SpawnReason) -> Option<Entity> {
+        self.inner.as_mut()?.spawn_for(mw, kind, at, nbt, reason)
+    }
+    /// `EcsWorld::spawn_finalized`: `spawn_for`, then the species' `finalizeSpawn` for the same reason.
+    pub fn spawn_finalized(
+        &mut self,
+        mw: &MobWorld<'_>,
+        kind: &str,
+        at: [f64; 3],
+        reason: horizon_ecs_proto::spawn_reason::SpawnReason,
+        special: f32,
+        group: Option<horizon_ecs_proto::spawn_finalize::Group>,
+    ) -> Option<(Entity, horizon_ecs_proto::spawn_finalize::Outcome)> {
+        self.inner.as_mut()?.spawn_finalized(mw, kind, at, reason, special, group)
+    }
     /// `EcsWorld::spawn_natural`: a creature of the natural spawning pass.
     pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
         self.inner.as_mut()?.spawn_natural(mw, kind, at)
@@ -62,6 +80,26 @@ impl EcsLevel {
         if let Some(w) = self.inner.as_mut() {
             w.despawn(e);
         }
+    }
+    /// `EcsWorld::set_difficulty`: the level's difficulty; peaceful removes the creatures not allowed there. Nothing when inert.
+    pub fn set_difficulty(&mut self, id: u8) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_difficulty(id);
+        }
+    }
+    /// `EcsWorld::set_monster_spawning`: whether monsters may spawn (the `spawn_mobs` and `spawn_monsters` rules). Nothing when inert.
+    pub fn set_monster_spawning(&mut self, on: bool) {
+        if let Some(w) = self.inner.as_mut() {
+            w.set_monster_spawning(on);
+        }
+    }
+    /// `EcsWorld::alert_guards`: the guards within reach of `player` that are at rest turn on it (`PiglinAi.angerNearbyPiglins`). 0 when inert.
+    pub fn alert_guards(&mut self, player: u32, only_if_seen: bool) -> usize {
+        self.inner.as_mut().map_or(0, |w| w.alert_guards(player, only_if_seen))
+    }
+    /// `EcsWorld::set_trap`: arms or disarms the trap of a mount (`SkeletonHorse.setTrap`). False when inert or when it springs none.
+    pub fn set_trap(&mut self, e: Entity, on: bool) -> bool {
+        self.inner.as_mut().is_some_and(|w| w.set_trap(e, on))
     }
     pub fn entity_of(&self, id: u32) -> Option<Entity> {
         self.inner.as_ref()?.entity_of(id)
@@ -95,6 +133,10 @@ impl EcsLevel {
     pub fn interact(&mut self, mw: &MobWorld<'_>, e: Entity, player: u32, hand: u8) -> bool {
         self.inner.as_mut().is_some_and(|w| w.interact(mw, e, player, hand))
     }
+    /// `interact` with the whole stack used (its components and wear) in the rules' reach.
+    pub fn interact_with(&mut self, mw: &MobWorld<'_>, e: Entity, player: u32, hand: u8, stack: horizon_client::items::ItemStack, creative: bool) -> bool {
+        self.inner.as_mut().is_some_and(|w| w.interact_with(mw, e, player, hand, stack, creative))
+    }
     pub fn teleport(&mut self, mw: &MobWorld<'_>, e: Entity, at: [f64; 3]) {
         if let Some(w) = self.inner.as_mut() {
             w.teleport(mw, e, at);
@@ -120,6 +162,15 @@ impl EcsLevel {
     }
     pub fn load_entity(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Option<Entity> {
         self.inner.as_mut()?.load_entity(mw, c)
+    }
+    /// `load_entity` for a mount and its riders: the entity of each compound of the NBT, in its order (None: not made).
+    pub fn load_entity_tree(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Vec<Option<Entity>> {
+        self.inner.as_mut().map_or_else(Vec::new, |w| w.load_entity_tree(mw, c))
+    }
+    /// The ids of `root` and its riders all the way down, in the order `Passengers` is written (root first, depth first).
+    pub fn ride_tree(&self, root: u32) -> Vec<u32> {
+        let (Some(e), Some(w)) = (self.entity_of(root), self.ecs()) else { return Vec::new() };
+        w.ride_tree(e).into_iter().filter_map(|r| w.id_of(r)).collect()
     }
     pub fn entity_nbt(&self, e: Entity) -> Option<Compound> {
         self.inner.as_ref()?.entity_nbt(e)

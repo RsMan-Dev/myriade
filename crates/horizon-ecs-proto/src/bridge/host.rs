@@ -38,9 +38,11 @@ pub struct HostSetup {
 }
 
 /// Who or what hurt an entity, as the host names it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum HurtSource {
     Generic,
+    /// A hurt of a named damage type (`/damage`): the direct entity (`by`, a hit by an entity when set) and where it came from.
+    Typed { damage: &'static str, by: Option<Who>, from: Option<(f64, f64)> },
     Player(u32),
     /// A network id of an entity (a creature, a projectile's owner).
     Entity(u32),
@@ -85,10 +87,24 @@ impl EcsWorld {
         EcsWorld { world, schedule: crate::cow::schedule(), occ, half: HALF, spawned: setup.seed as u64, chunks: HashMap::new() }
     }
 
+    /// The game time of the world's tick 0 (`Clock::set_game_base`), from the host's game time and the ECS clock.
+    /// A step that runs the schedule advances the clock first and vanilla's entities see the new game time (`ServerLevel.tick`:
+    /// `tickTime` before the entities), so the clock of that tick is one more. Redone at every step, so a pause (clock still, game
+    /// time moving) is absorbed at the next one; a lent call between steps keeps the base, bar the first.
+    fn note_game_time(&mut self, mw: &MobWorld<'_>, step: Option<bool>) {
+        let mut clock = self.world.resource_mut::<Clock>();
+        if step.is_none() && clock.has_game_base() {
+            return;
+        }
+        let tick = clock.0 as i64 + i64::from(step == Some(true));
+        clock.set_game_base(mw.game_time - tick);
+    }
+
     /// Runs `f` over the world with the level lent for the call, and takes the level out again (panics included).
     pub(super) fn lent<R>(&mut self, mw: &MobWorld<'_>, f: impl FnOnce(&mut World) -> R) -> R {
         let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: self.half };
         self.world.insert_resource(level);
+        self.note_game_time(mw, None);
         let ran = catch_unwind(AssertUnwindSafe(|| f(&mut self.world)));
         self.world.remove_resource::<Level>();
         match ran {
@@ -99,7 +115,9 @@ impl EcsWorld {
 
     /// Runs the schedule when a player is online (none: nothing is awake), and returns the host's outputs since the last call, in order.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
-        if self.world.resource::<Online>().players().next().is_some() {
+        let ticking = self.world.resource::<Online>().players().next().is_some();
+        self.note_game_time(mw, Some(ticking));
+        if ticking {
             let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: self.half };
             self.world.insert_resource(level);
             let ran = catch_unwind(AssertUnwindSafe(|| self.schedule.run(&mut self.world)));
@@ -123,30 +141,121 @@ impl EcsWorld {
         &mut self.world
     }
 
+    /// `SpecialDates.isHalloween` for the host's day (read by the carved pumpkin of `spawn_gear`); the host sets it when the date changes.
+    pub fn set_halloween(&mut self, on: bool) {
+        self.world.insert_resource(crate::spawn_gear::Halloween(on));
+    }
+
     /// A creature of species `kind` at `at`, armed and indexed; `nbt` (if any) is loaded onto it. None when the species is unknown.
     pub fn spawn(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, nbt, false)
+        self.spawn_for(mw, kind, at, nbt, crate::spawn_reason::SpawnReason::Command)
+    }
+
+    /// `spawn` for the reason the host names (`EntitySpawnReason`): kept on the entity (`Spawn`) and told in `Spawned`.
+    pub fn spawn_for(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason) -> Option<Entity> {
+        self.spawn_as(mw, kind, at, nbt, reason, None)
+    }
+
+    /// `spawn_for`, then the species' `finalizeSpawn` for the same reason (`spawn_finalize::finalize`, its class from the species' bits):
+    /// the group of the pack goes in and the next one comes back, with the draws the host keeps (follow bonus, left hand, door flag).
+    /// `special` is the difficulty's special multiplier at `at`.
+    pub fn spawn_finalized(
+        &mut self,
+        mw: &MobWorld<'_>,
+        kind: &str,
+        at: [f64; 3],
+        reason: crate::spawn_reason::SpawnReason,
+        special: f32,
+        group: Option<crate::spawn_finalize::Group>,
+    ) -> Option<(Entity, crate::spawn_finalize::Outcome)> {
+        let shared = match group {
+            Some(crate::spawn_finalize::Group::Ageable { variant, .. }) => variant,
+            _ => None,
+        };
+        let e = self.spawn_as(mw, kind, at, None, reason, shared)?;
+        Some((e, self.finalize_spawned(mw, e, reason, special, group)))
+    }
+
+    /// `PatrolSpawner.spawnPatrolMember`: a patrol raider is created (`spawn_for`, `Patrol`), a leader is named and takes its patrol target
+    /// from the world's origin (`findPatrolTarget` runs before the mob is placed), then it is finalized for the patrol (the leader wears the banner).
+    pub fn spawn_patrol_member(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], leader: bool, reason: crate::spawn_reason::SpawnReason, special: f32) -> Option<Entity> {
+        let e = self.spawn_for(mw, kind, at, None, reason)?;
+        if leader {
+            crate::raids::set_patrol_leader(&mut self.world, e, true);
+            if reason == crate::spawn_reason::SpawnReason::Patrol {
+                crate::behaviours::long_distance_patrol::find_target(&mut self.world, e, [0, 0, 0]);
+            }
+        }
+        self.finalize_spawned(mw, e, reason, special, None);
+        if leader && reason == crate::spawn_reason::SpawnReason::Patrol {
+            crate::behaviours::long_distance_patrol::wake(&mut self.world, e);
+        }
+        Some(e)
+    }
+
+    fn finalize_spawned(
+        &mut self,
+        mw: &MobWorld<'_>,
+        e: Entity,
+        reason: crate::spawn_reason::SpawnReason,
+        special: f32,
+        group: Option<crate::spawn_finalize::Group>,
+    ) -> crate::spawn_finalize::Outcome {
+        self.spawned += 1;
+        let mut random = horizon_core::random::LegacyRandom::new(self.spawned as i64);
+        let w = &mut self.world;
+        w.insert_resource(crate::spawn_finalize::Special(special));
+        let class = crate::spawn_finalize::kind_of(w, e);
+        // The species' extra draws (`Def::draws`) come before or after the class's own, as the jar's `finalizeSpawn` does.
+        let draws = crate::behaviours::spawn_draw::draws_of(w, e);
+        let biome = w.get_resource::<crate::spawning::Spawner>().map_or_else(String::new, |s| s.biome.clone());
+        let has = |tag: &str| mw.data.biome_has(tag, &biome);
+        let ctx = |w: &World| crate::rules::spawn_draw::Ctx { biome: &biome, biome_has: &has, special, baby: w.get::<crate::cow::GrowAt>(e).is_some() };
+        let mut group = group.or(draws.and_then(|d| d.group));
+        if let Some(d) = draws {
+            let c = ctx(w);
+            crate::behaviours::spawn_draw::run(w, e, d, crate::behaviours::spawn_draw::When::Before, &mut group, &c, &mut random);
+        }
+        let mut out = crate::spawn_finalize::finalize(w, e, class, group, reason, special, &mut random);
+        if let Some(d) = draws {
+            let c = ctx(w);
+            crate::behaviours::spawn_draw::run(w, e, d, crate::behaviours::spawn_draw::When::After, &mut out.group, &c, &mut random);
+        }
+        out
     }
 
     /// `spawn` for a creature of the host's natural spawning pass: its `Spawned` event says so (`natural`).
     pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, None, true)
+        self.spawn_as(mw, kind, at, None, crate::spawn_reason::SpawnReason::Natural, None)
     }
 
-    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, natural: bool) -> Option<Entity> {
+    /// `group`: the variant the pack's group gives (`Group::Ageable::variant`), taken instead of a draw by a species that shares it.
+    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>) -> Option<Entity> {
+        let natural = reason == crate::spawn_reason::SpawnReason::Natural;
         let table = species_table();
         let sp = table.0.iter().find(|s| s.name == kind)?;
+        // `Mob.checkDespawn`: a creature of a `notInPeaceful` type is discarded at once in peaceful, so it is not made.
+        if sp.not_in_peaceful && crate::effects::difficulty(&self.world) == 0 {
+            return None;
+        }
         self.spawned += 1;
         let seed = self.spawned;
         self.lent(mw, |w| {
             let e = spawn_armed(w, sp, at[0], at[2], seed);
             w.get_mut::<Pos>(e)?.0.y = at[1];
-            if let Some(c) = nbt {
-                nbt::load(w, e, c);
+            match nbt {
+                Some(c) => {
+                    nbt::load(w, e, c);
+                }
+                // `finalizeSpawn`: the variant of a species that draws one, by the biome of the place (one biome here, as `Spawner` has).
+                None => {
+                    let mut r = horizon_core::random::LegacyRandom::new(seed as i64);
+                    crate::behaviours::variant::with_place(w, mw, at, |w, place| crate::behaviours::variant::draw_at_spawn(w, e, group, place, &mut r));
+                }
             }
             zone::admit(w, &[e]);
             view::mark(w, e);
-            crate::bridge::host_events_more::said_spawned(w, e, natural);
+            crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
             Some(e)
         })
     }
@@ -183,7 +292,10 @@ impl EcsWorld {
     /// The pieces `e` keeps (preserved ones, `death_drops` without a player's kill) leave their slots and are returned with their
     /// damage, for the host to drop them; `seed` rolls the chances.
     pub fn drop_equipment(&mut self, mw: &MobWorld<'_>, e: Entity, seed: i64) -> Vec<(Slot, u32, i32)> {
-        self.lent(mw, |w| death_drops(w, e, true, false, |c: f32| c, |_: u32| false, &mut LegacyRandom::new(seed)))
+        self.lent(mw, |w| {
+            let killed = crate::credit::killed_by_player(w, e);
+            death_drops(w, e, true, killed, |c: f32| c, |_: u32| false, &mut LegacyRandom::new(seed))
+        })
     }
 
     pub fn despawn(&mut self, e: Entity) {
@@ -223,8 +335,13 @@ impl EcsWorld {
     /// Queues a hit on `e`; the next step applies it.
     pub fn hurt(&mut self, mw: &MobWorld<'_>, e: Entity, amount: f32, source: HurtSource) {
         let damage = source.damage_type();
+        let mut from = None;
         let (cause, by, direct) = match source {
             HurtSource::Generic => (Cause::Magic, None, false),
+            HurtSource::Typed { by, from: at, .. } => {
+                from = at;
+                (if by.is_some() { Cause::Entity } else { Cause::Magic }, by, by.is_some())
+            }
             HurtSource::Player(id) => (Cause::Entity, Some(Who::Player(id)), true),
             HurtSource::Entity(id) => (Cause::Entity, self.entity_of(id).map(Who::Entity), true),
             HurtSource::Fall => (Cause::Fall, None, false),
@@ -233,7 +350,7 @@ impl EcsWorld {
             HurtSource::IndirectMagic { owner } => (Cause::Magic, owner, false),
             HurtSource::Void => (Cause::OutOfWorld, None, false),
         };
-        self.lent(mw, |w| w.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount, cause, damage, from: None, by, direct, power: None }));
+        self.lent(mw, |w| w.resource_mut::<DamageQueue>().0.push(Hit { target: e, amount, cause, damage, from, by, direct, power: None, projectile: None }));
     }
 
     /// The player uses its item (`hand` 0: main, else off hand) on `e`; true when a goal answered.
@@ -241,6 +358,14 @@ impl EcsWorld {
         let Some(p) = self.world.resource::<Online>().get(player) else { return false };
         let item = if hand == 0 { p.main } else { p.off };
         self.lent(mw, |w| goals::interact(w, e, &Interaction { player, item }))
+    }
+
+    /// `interact`, the rules being given the whole stack used (`used_stack::UsedStack`) for the length of the call.
+    pub fn interact_with(&mut self, mw: &MobWorld<'_>, e: Entity, player: u32, hand: u8, stack: horizon_client_lib::items::ItemStack, creative: bool) -> bool {
+        self.world.insert_resource(crate::used_stack::UsedStack { stack, creative });
+        let used = self.interact(mw, e, player, hand);
+        self.world.remove_resource::<crate::used_stack::UsedStack>();
+        used
     }
 
     /// Moves `e` to `at`, and its box with it: its index cell is read again.
@@ -263,6 +388,11 @@ impl EcsWorld {
     /// A block changed on the host: the cows near it look again at it at the next step.
     pub fn set_block_event(&mut self, pos: [i32; 3]) {
         self.world.resource_mut::<crate::hostile::ChangedBlocks>().0.push((pos[0], pos[1], pos[2]));
+        // The creakings linked to a heart at `pos` ask it again (`host_creaking::ask_heart`); a lookup, nothing scanned.
+        let linked = self.world.get_resource::<super::host_creaking::HeartWatch>().and_then(|m| m.0.get(&pos)).cloned();
+        for e in linked.into_iter().flatten() {
+            super::host_creaking::ask_heart(&mut self.world, e);
+        }
     }
 
     /// Restores the NBT the chunk was saved with (its entities come back; none when it was never unloaded).
@@ -303,6 +433,24 @@ impl EcsWorld {
     /// The entity made from `c` (its `id` and `Pos`), None when no recipe makes it.
     pub fn load_entity(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Option<Entity> {
         self.lent(mw, |w| nbt::restore(w, c))
+    }
+
+    /// `load_entity` for a mount with its riders: the entity of each compound of the NBT in its order (the root, then each rider
+    /// depth first), None for one that was not made.
+    pub fn load_entity_tree(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Vec<Option<Entity>> {
+        self.lent(mw, |w| nbt::restore_tree(w, c))
+    }
+
+    /// `root` and its creature riders all the way down, in the order `Passengers` is written (depth first, root first).
+    pub fn ride_tree(&self, root: Entity) -> Vec<Entity> {
+        let w = self.world();
+        let mut tree = Vec::new();
+        let mut todo = vec![root];
+        while let Some(e) = todo.pop() {
+            tree.push(e);
+            todo.extend(crate::nbt_fields::rides::passengers_of(w, e).into_iter().rev());
+        }
+        tree
     }
 
     pub fn entity_nbt(&self, e: Entity) -> Option<Compound> {

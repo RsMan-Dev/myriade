@@ -87,7 +87,9 @@ impl Game<'_> {
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
         let void = f64::from(self.level_min_y() - 64);
         let mut obstacles =
-            horizon_client::entities::ObstacleGrid::new(self.item_entity_collisions());
+            horizon_client::entities::ObstacleGrid::new(
+                self.item_entity_collisions(items.iter().map(ahead::reach)),
+            );
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
@@ -546,7 +548,7 @@ impl Game<'_> {
     }
     /// `new ExperienceOrb(level, pos, Vec3.ZERO, value)`: yaw and motion from
     /// the orb's own random.
-    pub(super) fn add_orb(&mut self, at: [f64; 3], value: u32) {
+    pub(in crate::game) fn add_orb(&mut self, at: [f64; 3], value: u32) {
         self.add_orb_toward(at, [0.0; 3], value);
     }
     /// `new ExperienceOrb(level, pos, roughly, value)`: a random motion that
@@ -922,6 +924,7 @@ impl Game<'_> {
             ),
         };
         let at = [eye[0], eye[1] - f64::from(0.3f32), eye[2]];
+        let uuid = thrown_from_hand.then(|| self.acting_player_uuid());
         if self.ecs.is_active() {
             return self.ecs_toss(thrown, at, v, uuid, !randomly);
         }

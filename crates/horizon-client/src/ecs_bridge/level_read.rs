@@ -18,6 +18,10 @@ impl EcsLevel {
         let (w, e) = self.at(id)?;
         host_read::bounds(w, e)
     }
+    /// The bounds of the entity `e` itself (a result of `select`, not yet linked to a network id).
+    pub fn bounds_of(&self, e: Entity) -> Option<Aabb> {
+        host_read::bounds(self.world()?, e)
+    }
     pub fn alive(&self, id: u32) -> bool {
         self.at(id).is_some_and(|(w, e)| host_read::alive(w, e))
     }
@@ -32,6 +36,11 @@ impl EcsLevel {
     pub fn yaw(&self, id: u32) -> Option<f32> {
         let (w, e) = self.at(id)?;
         host_read::yaw(w, e)
+    }
+    /// The head yaw and the body yaw of the creature `id` (`Head`); None without a head.
+    pub fn head_body_yaw(&self, id: u32) -> Option<(f32, f32)> {
+        let (w, e) = self.at(id)?;
+        host_read::head_body_yaw(w, e)
     }
     pub fn eye_offset(&self, id: u32) -> Option<f64> {
         let (w, e) = self.at(id)?;
@@ -57,6 +66,10 @@ impl EcsLevel {
     }
     pub fn has_tag(&self, id: u32, tag: &str) -> bool {
         self.at(id).is_some_and(|(w, e)| host_read::has_tag(w, e, tag))
+    }
+    /// `host_read::sits_on_chest`.
+    pub fn sits_on_chest(&self, id: u32) -> bool {
+        self.at(id).is_some_and(|(w, e)| host_read::sits_on_chest(w, e))
     }
     pub fn species(&self, id: u32) -> Option<&'static str> {
         let (w, e) = self.at(id)?;

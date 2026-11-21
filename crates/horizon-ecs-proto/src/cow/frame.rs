@@ -236,6 +236,14 @@ pub struct Players {
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct PushFree;
 
+/// The factor a bounce off a block keeps for this kind of entity (`Entity.restituteMovementAfterCollisions`): declared by the kind at
+/// creation (a living entity `LIVING_RESTITUTION`). An entity without it has the base `Entity` one (`OBJECT_RESTITUTION`).
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Restitution(pub f64);
+pub const LIVING_RESTITUTION: f64 = 1.0;
+/// The block's restitution (1.0) times 0.8 that a non-living entity gets.
+pub const OBJECT_RESTITUTION: f64 = 1.0_f32 as f64 * 0.8_f32 as f64;
+
 /// A baby grows up at this tick (it is in the timer wheel then; nothing counts its age every tick).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(on_insert = watch_in::<WATCH_FOLLOW_PARENT>, on_discard = watch_out::<WATCH_FOLLOW_PARENT>)]

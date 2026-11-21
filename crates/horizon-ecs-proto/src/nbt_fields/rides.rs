@@ -294,9 +294,8 @@ fn read_fuse(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// The creature riders of a vehicle (its seats, or its mount's riders), each as its own compound (`save`: their keys and theirs,
-/// recursively). A player is not written: it is saved with its player data.
-fn write_passengers(w: &World, e: Entity, c: &mut Compound) {
+/// The creature riders of `e` in save order: its seats' riders, then those of its `Mount`.
+pub fn passengers_of(w: &World, e: Entity) -> Vec<Entity> {
     let mut riders = seat::riders_of(w, e);
     if let Some(m) = w.get::<Mount>(e) {
         for who in [m.rider, m.passenger].into_iter().flatten() {
@@ -305,7 +304,13 @@ fn write_passengers(w: &World, e: Entity, c: &mut Compound) {
             }
         }
     }
-    let list: Vec<Tag> = riders.into_iter().filter_map(|r| crate::nbt::save(w, r).map(Tag::Compound)).collect();
+    riders
+}
+
+/// The creature riders of a vehicle (its seats, or its mount's riders), each as its own compound (`save`: their keys and theirs,
+/// recursively). A player is not written: it is saved with its player data.
+fn write_passengers(w: &World, e: Entity, c: &mut Compound) {
+    let list: Vec<Tag> = passengers_of(w, e).into_iter().filter_map(|r| crate::nbt::save(w, r).map(Tag::Compound)).collect();
     if !list.is_empty() {
         c.insert("Passengers".into(), Tag::List(list));
     }

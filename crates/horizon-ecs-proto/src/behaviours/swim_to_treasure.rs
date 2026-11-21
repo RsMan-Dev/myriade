@@ -2,7 +2,8 @@
 //! 100 air swims toward its treasure: each step is a spot drawn toward the treasure (16 x 1 then 8 x 4 then, when the spot is
 //! not water, 8 x 5, all at max angle pi/2 or pi/8), walked at speed 1,3 to reach 1. It ends when it is within 4 blocks of the
 //! treasure, when no step is found (stuck), or when its air falls under 100 (then the fish is KEPT; otherwise it is consumed).
-//! The treasure is a component (`Treasure`) that the test imposes: the structure locator (`locate(tag, case, 50)`) is absent.
+//! The treasure is a component (`Treasure`) given by the host: `start` asks once (`MiscEvent::TreasureAsk`; the structure locator
+//! `findNearestMapStructure(#dolphin_located, 50)` is the host's) and the host answers with `treasure_found` (`None`: the goal ends).
 //! DOUTE: the close test uses the path's target block (`Path.target`) and the stop test uses the block row `floor(y) + 0,5`.
 //! REPLIS: the particles are not played; the dolphin does not turn its head (`look_at_speed` not called).
 use super::*;
@@ -71,12 +72,27 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
 /// `canUse`: the fish eaten, a treasure, and the air.
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let Some(min_air) = w.get::<Trip>(e).map(|t| t.p.min_air) else { return false };
-    w.get::<GotFish>(e).is_some() && w.get::<Treasure>(e).is_some() && w.get::<Air>(e).is_some_and(|a| a.0 >= min_air)
+    w.get::<GotFish>(e).is_some() && w.get::<Air>(e).is_some_and(|a| a.0 >= min_air)
 }
 /// `start`: the path is stopped and the first step is drawn by the tick of this same tick.
 fn start(w: &mut World, e: Entity, _: Inst) {
     crate::goals::stop_nav(w, e);
-    w.entity_mut(e).insert(Swimming { stuck: false, low_air: false });
+    w.entity_mut(e).remove::<Treasure>().insert(Swimming { stuck: false, low_air: false });
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
+    w.get_resource_or_insert_with(crate::colony_register::MiscOut::default).0.push(crate::host_out_misc::MiscEvent::TreasureAsk { dolphin: e, at });
+}
+/// The host's answer to `MiscEvent::TreasureAsk`: the structure found (the steps start) or none (`finished = true`: the goal ends, the fish is eaten).
+pub fn treasure_found(w: &mut World, e: Entity, at: Option<[i32; 3]>) {
+    if w.get::<Swimming>(e).is_none() {
+        return;
+    }
+    match at {
+        Some(t) => {
+            w.entity_mut(e).insert(Treasure(t));
+        }
+        None => crate::goals::end(w, e, &MODULE),
+    }
 }
 /// `stop`: the fish is consumed, unless the air ended the trip.
 fn stop(w: &mut World, e: Entity, _: Inst) {
@@ -211,6 +227,9 @@ mod tests {
         for _ in 0..40 {
             h.tick();
             started |= running(&h, d);
+            if running(&h, d) && h.world.get::<Treasure>(d).is_none() {
+                treasure_found(&mut h.world, d, Some([30, 4, 0]));
+            }
         }
         assert!(started, "témoin : le dauphin part vers le trésor");
         let mut ended = false;

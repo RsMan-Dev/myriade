@@ -31,7 +31,6 @@ const BREEZE_RADIUS: f32 = 3.0;
 /// as they were before it: one whose vehicle an earlier charge of the tick
 /// breaks ticks again without it (`Game::broken_vehicle_retick`).
 pub(super) struct VehicleWinds {
-    vehicles: Vec<u32>,
     before: Vec<Projectile>,
 }
 impl VehicleWinds {
@@ -41,14 +40,14 @@ impl VehicleWinds {
             p.kind,
             ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
         );
-        (wind && p.guest.is_none() && !self.vehicles.is_empty()).then(|| p.clone())
+        (wind && p.guest.is_none()).then(|| p.clone())
     }
     /// Keeps `before` when the tick's `hit` is a boat or a minecart.
-    pub(super) fn met(&mut self, before: Option<Projectile>, hit: Hit) {
+    pub(super) fn met(&mut self, game: &Game<'_>, before: Option<Projectile>, hit: Hit) {
         if let Hit::Entity {
             who: Who::Mob(id), ..
         } = hit
-            && self.vehicles.contains(&id)
+            && game.ecs.is_vehicle(id)
             && let Some(before) = before
         {
             self.before.push(before);
@@ -301,12 +300,7 @@ impl Game<'_> {
     }
     /// The boats and minecarts of this tick's projectile pass.
     pub(super) fn vehicle_winds(&self) -> VehicleWinds {
-        VehicleWinds {
-            vehicles: (self.boats.iter().map(|b| b.id))
-                .chain(self.carts.iter().map(|c| c.id))
-                .collect(),
-            before: Vec::new(),
-        }
+        VehicleWinds { before: Vec::new() }
     }
     /// The hit to resolve for `p`. Vanilla ticks its entities one after the
     /// other, so a wind charge never meets a boat or a minecart that an earlier
@@ -331,7 +325,7 @@ impl Game<'_> {
             return Some((p, hit));
         };
         let mut again = winds.before.swap_remove(k);
-        if self.boats.iter().any(|b| b.id == id) || self.carts.iter().any(|c| c.id == id) {
+        if self.ecs.is_vehicle(id) {
             return Some((p, hit));
         }
         let (a, b) = (again.previous, again.position.add_vector(again.velocity));

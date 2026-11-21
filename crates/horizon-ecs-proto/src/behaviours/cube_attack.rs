@@ -2,7 +2,7 @@
 //! et fixe la direction de son prochain bond, pendant `reduced(300)` ticks (150) ; le but est redemandé aussitôt après sa fin tant
 //! que la cible tient (`retry_on_end`). Pas de tirage. Le but tourne à chaque tick : ses ticks sont appelés depuis `arbitrate`
 //! (`tick_all`, modèle `flier_goals`), sur les entités qui portent `Aiming` ; sans porteur, rien ne coûte.
-//! NON PORTÉ : l'attaque par contact (`playerTouch`, dégâts du bond) : absente du cadre. La tête (tangage de `turn_to`) n'est
+//! L'attaque par contact (`playerTouch`, `push` du golem) est dans `behaviours/contact_damage.rs`. La tête (tangage de `turn_to`) n'est
 //! pas tournée. DOUTE : la redraw de direction de `hop::due` n'est pas suspendue pendant la chasse (le `Mob` ne tire la
 //! direction aléatoire que sans cible : `CubeRandomDirection.can_use`).
 use super::*;

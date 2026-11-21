@@ -416,7 +416,7 @@ pub fn fly(
             match (who, p.owner) {
                 _ if unowned_spit => {}
                 (Who::Entity(t), None) if f.wither => dq.add(t, amount, Cause::Magic),
-                (Who::Entity(t), Some(o)) => dq.add_via(t, amount, from, o),
+                (Who::Entity(t), Some(o)) => dq.add_via(t, amount, from, o, f.id),
                 (Who::Entity(t), None) => dq.add_from(t, amount, Cause::Entity, from),
                 (Who::Player(id), owner) => ps.hurt(clock.0, id, amount, from, owner),
             }

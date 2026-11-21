@@ -72,7 +72,7 @@ impl Game<'_> {
         }
         self.award_stat("used", &stack.item, 1);
     }
-    pub(super) fn consume_held(&mut self) {
+    pub(in crate::game) fn consume_held(&mut self) {
         if self.creative {
             return;
         }

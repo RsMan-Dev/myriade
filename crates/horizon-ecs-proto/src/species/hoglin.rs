@@ -60,7 +60,12 @@ pub static DEF: Def = Def {
         Entry::new(&ambient_sound::MODULE, 7, &ambient_sound::Params { sounds: &["entity.hoglin.ambient"], min: 80, max: 400 }),
     ],
     changes: &[],
-    rules: &[],
+    // `Hoglin`: `shouldDropExperience` true and `xpReward` 5 as is, also for a baby (which leaves no loot: `LivingEntity.shouldDropLoot`).
+    rules: &[
+        crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
+        crate::rules::RuleEntry::new(&crate::loot::FLAT_XP, &()),
+        crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::HOGLIN),
+    ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         sensors: &[
@@ -141,4 +146,5 @@ pub static DEF: Def = Def {
     screaming: None,
     lost_horn: None,
     llama_strength: false,
+    not_in_peaceful: true,
 };

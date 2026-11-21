@@ -46,6 +46,12 @@ impl EcsWorld {
         pickup(self.world_mut(), e, player)
     }
 
+    /// The stack the thrown trident `id` gives back (its weapon); None when `id` is no trident.
+    pub fn trident_stack(&self, id: u32) -> Option<ItemStack> {
+        let e = self.entity_of(id)?;
+        self.world().get::<Trident>(e).map(|t| t.stack.clone())
+    }
+
     /// Sets the enchantment bonus of a blow (see `set_hit_bonus`).
     pub fn set_trident_hit_bonus(&mut self, f: BlowBonus) {
         set_hit_bonus(self.world_mut(), f);

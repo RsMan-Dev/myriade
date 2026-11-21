@@ -344,6 +344,19 @@ impl Game<'_> {
     }
     /// `Entity.spawnAtLocation(level, Items.LEAD)`: the item entity draws its
     /// motion from its own random, not the level's.
+    /// `MiscEvent::LeashBroke`: the ECS took the lead off by itself (snap or holder gone); the knot's last lead, the snap and the lead item are
+    /// the host's (`Leashable.dropLeash`).
+    pub(in crate::game) fn ecs_leash_broke(&mut self, id: u32, at: [f64; 3], sound: bool, knot: Option<[i32; 3]>) {
+        self.notify_knot_leashee_removed(knot.map(Holder::Knot), id);
+        if sound {
+            self.lead_sound("break", at);
+        }
+        // `Leashable.tickLeash`: a lead that snapped (`sound`) always drops (`leashTooFarBehaviour` -> `dropLeash`); one whose holder or creature
+        // is gone drops under `entityDrops`, else it is `removeLeash`.
+        if sound || self.ui.rules.bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS) {
+            self.drop_lead_item(at);
+        }
+    }
     pub(super) fn drop_lead_item(&mut self, at: [f64; 3]) {
         self.spawn_item_own(ItemStack::new("minecraft:lead", 1), at, 10);
     }
@@ -642,7 +655,8 @@ impl Game<'_> {
     }
     /// `Entity.interact`'s sneak branch in the ECS: the acting player's leads within reach re-tie to `to`; `skip` is the entity itself.
     pub(super) fn tie_player_leads_ecs(&mut self, center: glam::DVec3, to: Holder, skip: Option<u32>) -> bool {
-        let Some(h) = self.ecs_holder(to, Some(self.acting_player_uuid())) else {
+        let acting = self.acting_player_uuid();
+        let Some(h) = self.ecs_holder(to, Some(acting)) else {
             return false;
         };
         let mut any = false;

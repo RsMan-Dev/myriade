@@ -251,7 +251,11 @@ impl Game<'_> {
                     obstacles
                         .get_or_insert_with(|| {
                             horizon_client::entities::ObstacleGrid::new(
-                                self.item_entity_collisions(),
+                                self.item_entity_collisions(
+                                    self.orbs
+                                        .iter()
+                                        .map(|o| o.bounds().expand_towards(o.velocity).inflate(Vec3::new(1.0, 1.0, 1.0))),
+                                ),
                             )
                         })
                         .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);

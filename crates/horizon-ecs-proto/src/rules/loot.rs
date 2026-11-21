@@ -12,5 +12,9 @@ pub fn death_seed(seed: i64, uid: i32) -> i64 {
 }
 /// The experience a death leaves: `min` plus a draw of `max - min + 1` values, never negative.
 pub fn xp_amount(min: i32, max: i32, rng: &mut LegacyRandom) -> u32 {
+    // A fixed reward (a monster's 5) draws nothing.
+    if max <= min {
+        return min.max(0) as u32;
+    }
     (min + rng.next_int_bound(max - min + 1).unwrap_or(0)).max(0) as u32
 }

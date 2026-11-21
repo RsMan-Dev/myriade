@@ -29,6 +29,14 @@ impl EcsWorld {
         true
     }
 
+    /// `handlePaddleBoat`: the paddle strokes a client reports for the boat `vehicle`; false when it is not a boat.
+    pub fn boat_paddle(&mut self, vehicle: u32, paddles: [bool; 2]) -> bool {
+        let Some(e) = self.entity_of(vehicle) else { return false };
+        let Some(mut boat) = self.world_mut().get_mut::<Boat>(e) else { return false };
+        boat.paddling = paddles;
+        true
+    }
+
     /// The rider left: the boat stops taking keys and may sleep once it lies still.
     pub fn boat_release(&mut self, e: Entity) {
         self.world_mut().entity_mut(e).remove::<(PilotInput, Steered)>();

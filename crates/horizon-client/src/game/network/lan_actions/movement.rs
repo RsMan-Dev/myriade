@@ -24,30 +24,10 @@ impl Game<'_> {
                 LevelSound::new(&name, at, volume, 1.0).in_source(SoundSource::Neutral),
                 None,
             );
-            return;
-        }
-        let index = self.as_guest(conn, |g| g.mount_index());
-        let Some(Some(index)) = index else {
-            return;
-        };
-        let m = &mut self.remote_entities[index];
-        let camel = crate::mobs::camel::is_camel(m.species()).then_some(m.id);
-        let Some((sound, volume)) = crate::game::mounts::start_riding_jump(m, data) else {
-            return;
-        };
-        let at = m.center();
-        // LivingEntity.getSoundSource: a mob's sounds are in the neutral source.
-        // `Entity.playSound`: at the mount's position, not bound to it.
-        let name = format!("minecraft:{sound}");
-        self.send_level_sound(
-            LevelSound::new(&name, at, volume, 1.0).in_source(SoundSource::Neutral),
-            None,
-        );
-        if let Some(id) = camel {
-            self.post_entity_event(
-                "minecraft:entity_action",
-                horizon_client::mobs::Who::Mob(id),
-            );
+            // Camel.handleStartJump: the dash also raises ENTITY_ACTION.
+            if self.ecs.entity_of(vehicle).is_some_and(|e| self.ecs.dashes(e)) {
+                self.post_entity_event("minecraft:entity_action", horizon_client::mobs::Who::Mob(vehicle));
+            }
         }
     }
 

@@ -50,19 +50,23 @@ impl Game<'_> {
                 FLOOR + 1
             ))?;
         }
-        let mut seed = 0;
-        self.remote_entities.for_each_mut(|mob| {
-            seed += 1;
-            mob.random = horizon_core::random::EntityRandom::own(LegacyRandom::new(seed));
-        });
-        if self.remote_entities.len() as u64 != count {
-            return Err(format!("{} of {count} mobs were summoned", self.remote_entities.len()).into());
+        let summoned = self.hot_mob_ids();
+        for (seed, id) in (1u64..).zip(&summoned) {
+            self.ecs.set_random_seed(*id, seed);
+        }
+        if summoned.len() as u64 != count {
+            return Err(format!("{} of {count} mobs were summoned", summoned.len()).into());
         }
         // The summoned mobs join the level as its next tick opens. A level that opened has
         // bound its entities to their holders; this one does it here.
         self.hot_tick()?;
         self.reset_entity_residency();
         Ok(())
+    }
+
+    /// The network ids of the level's ECS entities, each linked when it has none (`ecs_id_of`).
+    pub(super) fn hot_mob_ids(&mut self) -> Vec<u32> {
+        self.hot_ecs_entities().into_iter().map(|e| self.ecs_id_of(e)).collect()
     }
 
     /// `count` hoppers in rows of 16, each holding 32 cobblestone and facing the next; a row's
@@ -127,17 +131,14 @@ impl Game<'_> {
 
     /// What the ticks left: where every mob stands and what every container holds.
     fn hot_level_state(&self) -> (Vec<[u64; 3]>, Vec<((i32, i32, i32), u32)>) {
-        let mobs = self
-            .remote_entities
-            .iter()
-            .map(|mob| {
-                [
-                    mob.position.x.to_bits(),
-                    mob.position.y.to_bits(),
-                    mob.position.z.to_bits(),
-                ]
-            })
+        let world = self.ecs.world();
+        let mut mobs: Vec<[u64; 3]> = self
+            .hot_ecs_entities()
+            .into_iter()
+            .filter_map(|e| horizon_ecs_proto::bridge::view::position(world?, e))
+            .map(|p| p.map(f64::to_bits))
             .collect();
+        mobs.sort_unstable();
         let mut held: Vec<_> = self
             .world
             .block_entities

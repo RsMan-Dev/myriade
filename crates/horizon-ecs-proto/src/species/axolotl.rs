@@ -34,9 +34,43 @@ const STAY_GROUND: stay_in_fluid::Params = stay_in_fluid::Params { what: stay_in
 /// The axolotl's walk speed in water is 0.5 (stroll, tempting) or 0.6 (chase, follow); `FollowTemptation` is 0.5 there (`axolotl_speed(m, false)`).
 const TEMPT_WET: follow_temptation::Params = follow_temptation::Params { speed: 0.5, ..TEMPT };
 
+/// `Axolotl.Variant` ids (lucy 0, wild 1, gold 2, cyan 3, blue 4), saved as the int `Variant`; the draw is in `DRAWS`.
+static VARIANT: crate::rules::variant::Table = crate::rules::variant::Table {
+    bound: 0,
+    rows: &[],
+    otherwise: crate::rules::variant::Row { tag: None, cuts: &[], last: 0 },
+    key: "Variant",
+    pick: crate::rules::variant::Pick::Rows,
+    redraw: false,
+    ids: &[0, 1, 2, 3, 4],
+    names: &[],
+    traits: &[],
+};
+
+/// `Axolotl.finalizeSpawn` (not a bucket): a new group draws two common variants (`Util.getRandom` over the four common ones, blue is the
+/// rare one), each member takes one of the two (`nextInt(2)`), a member after two others is a baby; the group makes no baby of its own.
+/// (`useRareVariant`, 1 in 1200, is the breeding's draw, not the spawn's.)
+static DRAWS: crate::behaviours::spawn_draw::Draws = crate::behaviours::spawn_draw::Draws {
+    group: None,
+    list: &[crate::behaviours::spawn_draw::Draw {
+        when: crate::behaviours::spawn_draw::When::Before,
+        kind: crate::behaviours::spawn_draw::Kind::Shared {
+            start: &[crate::rules::spawn_draw::Roll::Pick(&[0, 1, 2, 3]), crate::rules::spawn_draw::Roll::Pick(&[0, 1, 2, 3])],
+            odds: None,
+            member: crate::behaviours::spawn_draw::Member::OneOf,
+            free: &crate::rules::spawn_draw::Roll::Const(0),
+            baby_from: Some(2),
+            should_baby: false,
+        },
+        store: crate::behaviours::spawn_draw::Store::Variant,
+    }],
+};
+
 pub static DEF: Def = Def {
     name: "minecraft:axolotl",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
+    variant: Some(&VARIANT),
+    draws: Some(&DRAWS),
     locomotion: &[(Medium::Ground, Entry::new(&walk::MODULE, 0, &walk::Params { smooth_land: Some((10.0, 0.5)), ..walk::Params::DEFAULT })), (Medium::Water, Entry::new(&swim::MODULE, 0, &swim::Params { needs_water: false, amphibious: Some(false), control: swim::Control::Smooth { max_turn_x: 85.0, max_turn_y: 10.0, in_water: 0.1, outside: 0.5, gravity: false }, push: swim::Push::Speed, sinks: false, ..swim::Params::DEFAULT }))],
     rules: &[RuleEntry::new(&breed::LOVE, &breed::Params { foods: FOOD, ..breed::Params::DEFAULT })],
     brain: BrainDef {

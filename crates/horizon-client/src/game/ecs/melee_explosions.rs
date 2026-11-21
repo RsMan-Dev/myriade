@@ -41,15 +41,17 @@ impl Game<'_> {
         self.combat.last_hurt_mob = Some((id, self.world.game_time));
         // Player.attack: the sweep is decided before the hit, on the host's rule (`sweep_attack_position`).
         let sweep = self.sweep_attack_position(scale, crit, kind);
+        let area = self.mob_box(id);
         let old_health = self.ecs.health(id).unwrap_or(0.0);
+        self.ecs_note_killer(e, attacker);
         self.ecs_lend_world(|l, mw| l.hurt(mw, e, amount, HurtSource::Player(attacker)));
         // `damage_dealt` counts what the hit took off the creature's health.
         self.mace_hurt_enemy_ecs(id);
         let dealt = old_health - self.ecs.health(id).unwrap_or(0.0);
         self.award_custom_stat("damage_dealt", (dealt * 10.0).round() as i32);
         if let Some(at) = sweep {
-            // The sweep's damage on the creatures around the target: the bridge's `sweep` (missing, listed).
-            self.ecs_lend_world(|l, mw| l.sweep(mw, e, at, amount));
+            // Player.doSweepAttack: the sound, the victims around the target (ECS ones included, `sweep_damage`) and the arc.
+            self.sweep_attack(at, from, area.map(|a| (a, crate::game::mace::Spared::Mob(id))), scale);
         }
         // The crit and magic emitters around the creature's box.
         if let Some(area) = self.mob_box(id).filter(|_| crit || magic) {
@@ -143,8 +145,7 @@ impl Game<'_> {
         if !self.ecs.is_active() {
             return self.remote_entities.iter().any(|m| m.id == id && (!live || m.alive()));
         }
-        // No health accessor on the bridge yet: `live` only checks presence (gap listed in the report).
-        self.ecs.exists(id) && self.ecs.kind(id).is_some()
+        self.ecs.exists(id) && self.ecs.kind(id).is_some() && (!live || self.ecs.alive(id))
     }
 
     /// The species of the creature `id`: from its mob type on the ECS (kinds are already namespaced), else the host mob's.

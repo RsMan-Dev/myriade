@@ -1267,6 +1267,8 @@ struct Game<'a> {
     guardian_look_scratch: Vec<(usize, [f64; 3])>,
     dropped: horizon_client::join_seq::JoinList<ItemEntity>,
     next_entity: u32,
+    /// What the native mods made of the effect swirls of the ECS entities, by network id, kept while one listens (`ecs_state`).
+    ecs_effect_particles: HashMap<u32, horizon_client::effects::ModifiedEffectParticles>,
     /// The last entity id when this level's entity pass began: an item with a
     /// later one was added during that pass and first ticks on the next
     /// (`EntityTickList`). `u32::MAX` until a tick has run.
@@ -4052,17 +4054,24 @@ impl Game<'_> {
         {
             return false;
         }
-        let Some(index) = self.mob_interaction_target(target) else {
-            return false;
+        let (entity, kind) = if self.ecs.is_active() {
+            let Some(id) = target.map(|t| t.id).or_else(|| self.ecs_mob_hit().map(|h| h.0)) else {
+                return false;
+            };
+            let Some(k) = self.ecs.kind(id).filter(|_| self.mob_alive(id)) else {
+                return false;
+            };
+            (id as i32, horizon_client::command::args::normalize(k))
+        } else {
+            let Some(index) = self.mob_interaction_target(target) else {
+                return false;
+            };
+            let mob = &self.remote_entities[index];
+            if mob.removed || !mob.alive() {
+                return false;
+            }
+            (mob.id as i32, horizon_client::command::args::normalize(&mob.kind.id))
         };
-        let mob = &self.remote_entities[index];
-        if mob.removed || !mob.alive() {
-            return false;
-        }
-        let (entity, kind) = (
-            mob.id as i32,
-            horizon_client::command::args::normalize(&mob.kind.id),
-        );
         let Some(stack) = self.held().filter(|stack| stack.count > 0).cloned() else {
             return false;
         };
@@ -4441,7 +4450,6 @@ impl Game<'_> {
             span("portal_arrivals", || self.land_portal_arrivals());
             span("vehicle_portals", || self.handle_vehicle_portals());
             self.ordered_before(ordered_tick::Batch::Boats)?;
-            self.ordered_before(ordered_tick::Batch::Carts)?;
             self.tick_vehicle_watch();
             let from = self.lan_synced_from();
             horizon_client::spans::time("tick_thunder", || self.tick_thunder());
@@ -4478,13 +4486,7 @@ impl Game<'_> {
             horizon_client::spans::time("tick_mobs", || self.tick_mobs())?;
             // Dead, despawned or gone into a hive.
             span("mods_leaves_flush", || self.native_leaves_flush());
-            horizon_client::spans::time("recheck_golem_openers", || self.recheck_golem_openers());
             span("mod_viewers", || self.tick_mod_container_viewers());
-            // The mobile kinds' entities that joined before the earliest
-            // general row still to tick go first, in join order; then the
-            // general rows (arismoko/horizon#792), then the mobile kinds' remainder.
-            self.ordered_before(ordered_tick::Batch::General)?;
-            horizon_client::spans::time("tick_general", || self.tick_general())?;
             // Orbs, primed TNT and falling blocks still to tick, in join order.
             self.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)?;
             horizon_client::spans::time("tick_experience", || self.tick_experience());
@@ -4555,8 +4557,6 @@ impl Game<'_> {
                     self.tick_block_entity_servers()
                 });
             }
-            // A conduit's hurt teleports an enderman now (`Enderman.hurtServer`).
-            span("settle_hurt_teleports", || self.settle_hurt_teleports())?;
             horizon_client::spans::time("tick_particles", || self.tick_particles());
             if window {
                 span("tick_client_ambient", || self.tick_client_ambient());
@@ -7128,8 +7128,8 @@ impl Game<'_> {
     /// `guest_target_box` resolves a guest's vehicle through.
     fn riding_box(&self) -> Option<Aabb> {
         let id = self.riding?;
-        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
-            return Some(m.bounds());
+        if let Some(b) = self.mob_box(id) {
+            return Some(b);
         }
         if let Some((lo, hi, _)) = self.object_target(id as i32) {
             return Some(Aabb::new(
@@ -7366,7 +7366,21 @@ impl Game<'_> {
         // Creative players skip the monster check (`!this.isCreative()`).
         if problem.is_none()
             && !self.creative
-            && self.remote_entities.iter().any(|m| {
+            && if self.ecs.is_active() {
+                self.ecs.ids_near([position.x, position.y, position.z], 13.0).into_iter().any(|id| {
+                    self.creature_species(id).is_some_and(|s| {
+                        horizon_client::mobs::ai::is_monster(s)
+                            && (s != horizon_client::mobs::Species::ZombifiedPiglin
+                                || (self.ecs.is_angry(id) && self.ecs.ai_target(id).is_some()))
+                    }) && self.ecs.alive(id)
+                        && self.ecs.position(id).is_some_and(|p| {
+                            (p[0] - position.x).abs() < 8.0
+                                && (p[1] - position.y).abs() < 5.0
+                                && (p[2] - position.z).abs() < 8.0
+                        })
+                })
+            } else {
+                self.remote_entities.iter().any(|m| {
                 // `Monster.class` entities that `isPreventingPlayerRest`: a
                 // zombified piglin only while it is angry.
                 horizon_client::mobs::ai::is_monster(m.species())
@@ -7376,7 +7390,8 @@ impl Game<'_> {
                     && (m.position.x - position.x).abs() < 8.0
                     && (m.position.y - position.y).abs() < 5.0
                     && (m.position.z - position.z).abs() < 8.0
-            })
+                })
+            }
         {
             problem = Some("not_safe");
         }
@@ -10635,6 +10650,7 @@ impl<'a> Game<'a> {
             guardian_look_scratch: Vec::new(),
             dropped: Default::default(),
             next_entity: 0,
+            ecs_effect_particles: HashMap::new(),
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             particles,

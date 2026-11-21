@@ -255,7 +255,7 @@ impl Game<'_> {
             horizon_client::mobs::Who::Mob(id) if self.ecs_has(id) => {
                 let m = self.ecs_mob(id)?;
                 Some(horizon_client::mobs::Aim {
-                    eye: [m.at.x, m.at.y + self.ecs.eye_height(id), m.at.z],
+                    eye: [m.at.x, m.at.y + self.ecs.eye_offset(id)?, m.at.z],
                     look: self.ecs.look_angle(id)?,
                     feet: [m.at.x, m.at.y, m.at.z],
                 })
@@ -609,7 +609,7 @@ impl Game<'_> {
                 continue;
             }
             let mut dv = Vec3::ZERO;
-            let resistance = self.ecs.knockback_resistance(id);
+            let resistance = self.ecs.attribute(id, "knockback_resistance", horizon_world::attribute_map::ValueKind::Computed).unwrap_or(0.0);
             smash_push(center, heavy, m.at, &mut dv, resistance);
             if let (Some(e), Some(w)) = (self.ecs.entity_of(id), self.ecs.world_mut()) {
                 horizon_ecs_proto::goals::impulse(w, e, dv);

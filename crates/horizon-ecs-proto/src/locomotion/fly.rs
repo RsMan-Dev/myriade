@@ -430,7 +430,7 @@ pub(crate) fn travel(
         if fp.free {
             // `LivingEntity.travelFlying`: no gravity, the drag of the medium (0.91 in the air, 0.8 in water, 0.5 in lava).
             drop_tiny(&mut v, fp);
-            let (speed, drag) = free_speed_drag(fs.in_water, fs.in_lava, fp.drive_air, d.speed, fp.air_speed);
+            let (speed, drag) = free_speed_drag(fs.in_water, fs.in_lava, fp.drive_air, d.speed, d.air_speed.unwrap_or(fp.air_speed));
             move_relative_3d(&mut v, y.0, speed, d.xxa, d.yya, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;

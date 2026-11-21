@@ -4,11 +4,12 @@
 //! every 20 wet); `float` (3, waits for the still timeout); `animal_panic` (1, the adult, speed 2.0); `tempt` (4, drifts to the player with
 //! the food and the harness items); `float_around` (5).
 //! The jar's `HappyGhastAi` gives the priorities of `float`, `animal_panic` and `tempt`; the others are NOT verified against vanilla.
-//! The rule `harness_worn` takes a harness item. Riding: `fly_steer::drive` steers the first rider (socle: skip `ridden_drive` there).
+//! The rule `harness_worn` takes a harness item. Riding: `RIDE` with `RideParams::GHAST`; `mount::ridden_drive` steers the first rider (`Steer::Fly`, harness, no still timeout).
 //! The baby is `BABY` below (hovers, no goals).
 use super::Def;
-use crate::behaviours::{animal_panic, float, float_around, fly_steer, harness_worn, heal_weather, square_or_face, still_under_riders, tempt, Cap, Entry};
+use crate::behaviours::{animal_panic, float, float_around, harness_worn, heal_weather, square_or_face, still_under_riders, tempt, Cap, Entry};
 use crate::locomotion::{fly, Medium};
+use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
 
 /// The items that tempt: the food (the Mob's snowball) and the sixteen harnesses, by vanilla colour.
@@ -43,8 +44,8 @@ pub static DEF: Def = Def {
         Entry::new(&tempt::MODULE, 4, &tempt::Params { speed: 1.25, items: HARNESS_TEMPT, stop: 7.0, range: 16.0, look_y: 95.0, calm: 100, drift: true }),
         Entry::new(&float_around::MODULE, 5, &float_around::Params { blocks: 16 }),
     ],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),
-    rules: &[RuleEntry::new(&harness_worn::RULE, &()), RuleEntry::new(&fly_steer::RULE, &fly_steer::Params::DEFAULT)],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable, Cap::CollidableWhenStill]),
+    rules: &[RuleEntry::new(&harness_worn::RULE, &()), RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST),RuleEntry::new(&RIDE, &RideParams::GHAST)],
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };
@@ -53,7 +54,9 @@ pub static DEF: Def = Def {
 pub static BABY: Def = Def {
     name: "minecraft:happy_ghast",
     goals: &[],
-    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion]),
+    // `Animal.mobInteract`: the food ages the baby up (the adult cannot fall in love).
+    rules: &[RuleEntry::new(&crate::hand_feed::FEED_BABY, &crate::hand_feed::FeedParams::HAPPY_GHAST)],
+    caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::CollidableWhenStill]),
     locomotion: &[(Medium::Air, Entry::new(&fly::MODULE, 0, &fly::Params { control: fly::Control::Float, free: true, hovers: true, ..fly::Params::DEFAULT }))],
     ..Def::EMPTY
 };

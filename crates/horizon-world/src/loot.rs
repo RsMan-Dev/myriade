@@ -1043,6 +1043,32 @@ impl LootData {
         }
         chance
     }
+    /// `EnchantmentHelper.processMobExperience`: the killer's `mob_experience` effects applied to `amount` (`mob` is the effects' entity).
+    pub fn mob_experience(&self, killer: &LootEntity, mob: LootEntity, amount: i32) -> i32 {
+        if !killer.living {
+            return amount;
+        }
+        let params = EntityLootParams {
+            this: mob,
+            damage: None,
+            player: None,
+            luck: 0.0,
+        };
+        let mut c = Context {
+            query: query::current_query(),
+            data: self,
+            random: LegacyRandom::new(0),
+            biome: None,
+            visited: Vec::new(),
+            luck: 0.0,
+            open_water: None,
+            entity: Some(&params),
+            enchanted_level: None,
+        };
+        let mut value = amount as f32;
+        c.mob_experience(killer, &mut value);
+        value as i32
+    }
     /// Tag members in tag order (nested tags expanded in place, duplicates
     /// dropped).
     fn tag(&self, registry: &str, name: &str) -> Vec<String> {
@@ -1333,6 +1359,40 @@ impl<R: RandomSource> Context<'_, R> {
                         "minecraft:multiply" => *chance * value,
                         "minecraft:set" => value,
                         _ => *chance,
+                    };
+                }
+            }
+        }
+    }
+    /// The `mob_experience` effects on the killer's equipment (`runIterationOnEquipment`), applied to `value`.
+    fn mob_experience(&mut self, holder: &LootEntity, value: &mut f32) {
+        let data = self.data;
+        for slot in EQUIPMENT_SLOTS {
+            let Some(stack) = holder.item(slot) else {
+                continue;
+            };
+            for (name, level) in &stack.enchantments {
+                let Some(e) = data.enchantments.iter().find(|e| &e.name == name) else {
+                    continue;
+                };
+                if !e.slots.iter().any(|g| slot_in_group(slot, g)) {
+                    continue;
+                }
+                for effect in e.effects["minecraft:mob_experience"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                {
+                    if !effect["requirements"].is_null() && !self.condition(&effect["requirements"])
+                    {
+                        continue;
+                    }
+                    let v = level_value(&effect["effect"]["value"], *level);
+                    *value = match effect["effect"]["type"].as_str().unwrap_or("") {
+                        "minecraft:add" => *value + v,
+                        "minecraft:multiply" => *value * v,
+                        "minecraft:set" => v,
+                        _ => *value,
                     };
                 }
             }

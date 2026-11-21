@@ -62,7 +62,8 @@ fn opens(id: u32, seed: u64) -> (Option<usize>, Option<usize>) {
     }
     h.world.resource_mut::<horizon_ecs_proto::goals::Entered>().0.push(e);
     h.world.insert_resource(horizon_ecs_proto::behaviours::turtle_go_home::ImposedSpots::default());
-    let rid = raids::start(&mut h.world, [0, 2, 0], 5);
+    let rid = 1;
+    raids::set_view(&mut h.world, rid, Some(raids::RaidView { center: [0, 2, 0], active: true, over: false, loss: false, wave: 0 }));
     raids::enlist(&mut h.world, e, raids::Raider { raid: Some(rid), wave: 1, leader: false }, true);
 
     let (mut m_open, mut e_open, mut last_target) = (None, None, None);

@@ -1,5 +1,5 @@
 //! What a dispenser does to a creature, as P keeps it: shearing (`Sheared`, a sparse marker present once the creature is shorn, saved as
-//! the byte `sheared`), the markers the species' configuration sets (`Shearable`, `Brushable`), and the loot of a brush stroke
+//! the byte `sheared`), the marker the species' configuration sets (`Brushable`), and the loot of a brush stroke
 //! (`BRUSH_TABLE`, the table `Armadillo.brushOffScute` rolls). Nothing here names a species.
 use crate::cow::with_level_random;
 use crate::loot::roll_table;
@@ -13,37 +13,15 @@ use std::borrow::Cow;
 /// `BuiltInLootTables.ARMADILLO_BRUSH` (`brush/armadillo`), rolled by each brush stroke on a creature that can be brushed.
 pub const BRUSH_TABLE: &str = "minecraft:brush/armadillo";
 
-/// Present once the creature's wool or shell is off; only a `Shearable` creature takes it.
+/// Present once the creature's wool or shell is off; posed by `behaviours::shear`'s species changes.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Sheared;
-
-/// Set by the species' configuration: the creature can be sheared.
-#[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
-pub struct Shearable;
 
 /// Set by the species' configuration: the creature can be brushed.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Brushable;
-
-/// Sets `Sheared` on `e` when `e` is `Shearable` and the state changes. False otherwise, nothing written.
-pub fn set_sheared(w: &mut World, e: Entity, on: bool) -> bool {
-    if w.get::<Shearable>(e).is_none() || w.get::<Sheared>(e).is_some() == on {
-        return false;
-    }
-    if on {
-        w.entity_mut(e).insert(Sheared);
-    } else {
-        w.entity_mut(e).remove::<Sheared>();
-    }
-    true
-}
-
-pub fn is_sheared(w: &World, e: Entity) -> bool {
-    w.get::<Sheared>(e).is_some()
-}
 
 /// The stacks of `BRUSH_TABLE` a brush stroke on `e` rolls; none when `e` is not `Brushable`.
 pub fn brush_drop(w: &mut World, e: Entity) -> Vec<ItemStack> {

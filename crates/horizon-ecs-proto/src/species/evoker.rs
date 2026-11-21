@@ -36,5 +36,6 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: &["*"], ..look_at_player::Params::DEFAULT }),
     ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

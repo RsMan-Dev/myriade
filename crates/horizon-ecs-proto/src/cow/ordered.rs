@@ -73,7 +73,8 @@ pub(crate) enum Effect {
     Unmark(Entity),
     Moving(Entity),
     Crowded(Entity),
-    Fall(Entity, f32),
+    /// A landing: the fall damage (0 when none or immune) and the distance fallen.
+    Fall(Entity, f32, f64),
 }
 
 pub(crate) type OrderedItems = (
@@ -116,9 +117,11 @@ pub(crate) fn run_island(
             let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sp, _, imm)) = (unsafe { q.get_unchecked(e) }) else { continue };
             let mut fall = 0.0_f32;
             let jumping = jump.is_some_and(|j| j.0);
+            let (was_in_air, fell) = (!c.on_ground, c.fall_distance);
             travel_one(level, sp, &mut p, &mut v, y, &mut c, &mut d, body, &mut b, fs, jumping, &mut fall);
-            if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) {
-                out.push(Effect::Fall(e, fall));
+            let dmg = if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) { fall } else { 0.0 };
+            if dmg > 0.0 || (was_in_air && c.on_ground && fell > 1.0) {
+                out.push(Effect::Fall(e, dmg, fell));
             }
         }
         let Ok(me) = ro.get(e) else { continue };
@@ -327,7 +330,17 @@ pub(crate) fn ordered_pass(
                 Effect::Crowded(e) => {
                     commands.entity(e).insert(Crowded);
                 }
-                Effect::Fall(e, f) => queue.add(e, f, Cause::Fall),
+                Effect::Fall(e, f, dist) => {
+                    if f > 0.0 {
+                        queue.add(e, f, Cause::Fall);
+                    }
+                    commands.queue(move |w: &mut World| {
+                        crate::fall_passengers::land_sound(w, e, dist);
+                        if f > 0.0 {
+                            crate::fall_passengers::propagate(w, e, dist, 1.0);
+                        }
+                    });
+                }
             }
         }
     }

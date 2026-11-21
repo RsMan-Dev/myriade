@@ -66,23 +66,17 @@ pub(in crate::game) fn write_unspawned_attribute(
 }
 
 impl Game<'_> {
-    /// `LivingEntity.tick`'s `collectEquipmentChanges` for what the server
-    /// simulates besides players: each slot whose item is not the one the map
-    /// holds swaps the old item's attribute modifiers for the new one's. An
-    /// entity that changed nothing costs a compare of its eight slots, and
-    /// one that wears nothing and never wore anything is skipped outright.
+    /// `LivingEntity.tick`'s `collectEquipmentChanges` for the armor stands and
+    /// the dragon, which the ECS does not hold: each slot whose item is not the
+    /// one the map holds swaps the old item's attribute modifiers for the new
+    /// one's. The mobs take theirs at the event of a slot change, in P
+    /// (`equip_attrs`), never by tick.
     pub(super) fn tick_equipment_attributes(&mut self) {
         if self.remote.is_some() || self.options.execution_role.is_client() {
             return;
         }
         let catalog = self.motion.attributes.clone();
         let items = world_items!(self);
-        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
-            if m.extra.equipment.is_empty() && !m.extra.live.has_worn() {
-                continue;
-            }
-            collect_equipment(&catalog, items, m);
-        }
         for a in self.armor_stands.iter_mut() {
             if a.equipment.is_empty() && !a.live.has_worn() {
                 continue;
@@ -108,22 +102,6 @@ impl Game<'_> {
             );
             warn_failed(d.id, "minecraft:ender_dragon", changed);
         }
-    }
-
-    /// `collectEquipmentChanges` of the mob `id` right away: equipment a mod
-    /// wrote through a handle takes its attribute modifiers on the live map
-    /// at once — its armor and the reads of arismoko/horizon#940 — not at the tick's pass.
-    /// The tick's own pass remains the safety net for the other writers.
-    pub(super) fn collect_mob_equipment_attributes(&mut self, id: u32) {
-        if self.remote.is_some() || self.options.execution_role.is_client() {
-            return;
-        }
-        let catalog = self.motion.attributes.clone();
-        let items = world_items!(self);
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
-            return;
-        };
-        collect_equipment(&catalog, items, m);
     }
 }
 
@@ -311,13 +289,6 @@ impl Game<'_> {
         write: AttributeWrite,
     ) -> Option<bool> {
         let done = self.apply_attribute_write(t, name, write)?;
-        // A finalize write drops the mob's live map (its seed changed), which
-        // takes the equipment's modifiers with it: collect them again at
-        // once, so the next read — a hit's armor, the attribute sync — sees
-        // them (arismoko/horizon#941).
-        if let Target::Mob(id) = t {
-            self.collect_mob_equipment_attributes(id);
-        }
         Some(done)
     }
 
@@ -345,30 +316,26 @@ impl Game<'_> {
                 })
                 .flatten(),
             Target::Mob(mob) => {
-                if self.sulfur_archetype_attribute(t, name) {
-                    let done = self.write_generic_attribute(t, name, id, write.clone(), default)?;
-                    // The body's map owns the command value, while bodiless physics
-                    // reads the base and permanent modifiers from finalize's cache.
-                    if done && name == "minecraft:knockback_resistance" {
-                        let m = self.remote_entities.iter_mut().find(|m| m.id == mob && !m.removed)?;
-                        // Admission belongs to the body's map. Its archetype changes can
-                        // remove an ID without touching finalize's mirror, so an accepted
-                        // add replaces any stale copy there rather than being refused twice.
-                        let mirror = match write {
-                            AttributeWrite::Add {
-                                modifier,
-                                permanent,
-                                ..
-                            } => AttributeWrite::Add {
-                                modifier,
-                                permanent,
-                                replace: true,
-                            },
-                            other => other,
-                        };
-                        write_own_attribute(m, Attr::KnockbackResistance, mirror);
-                    }
-                    return Some(done);
+                // The attributes live in the ECS entity: the writes go through its bridge.
+                if self.ecs.is_active() && self.ecs.attribute(mob, name, horizon_world::attribute_map::ValueKind::Base).is_some() {
+                    return Some(match write {
+                        AttributeWrite::Add { modifier, permanent, replace } => {
+                            use horizon_ecs_proto::attr_mod::{Modifier as EcsModifier, Operation as EcsOp};
+                            if replace {
+                                self.ecs.remove_attribute_modifier(mob, name, modifier.id());
+                            }
+                            let operation = match modifier.operation() {
+                                Operation::AddValue => EcsOp::AddValue,
+                                Operation::AddMultipliedBase => EcsOp::AddMultipliedBase,
+                                Operation::AddMultipliedTotal => EcsOp::AddMultipliedTotal,
+                            };
+                            let m = EcsModifier { id: modifier.id().to_owned(), amount: modifier.amount(), operation, permanent };
+                            self.ecs.add_attribute_modifier(mob, name, m)
+                        }
+                        AttributeWrite::Remove(modifier) => self.ecs.remove_attribute_modifier(mob, name, &modifier),
+                        AttributeWrite::Base(v) => self.ecs.set_attribute_base(mob, name, v),
+                        AttributeWrite::ResetBase => self.ecs.reset_attribute_base(mob, name),
+                    });
                 }
                 let m = self.remote_entities.iter_mut().find(|m| m.id == mob && !m.removed)?;
                 if let Some(a) = own_attribute(m, name) {
@@ -460,23 +427,47 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::{entities::ArmorStand, items::ItemStack, mobs::Mob};
+    use crate::game::native_merchant_refs::tests::spawn_id;
+    use horizon_client::{entities::ArmorStand, items::ItemStack};
     use horizon_core::geometry::Vec3;
-    use horizon_items::equipment::{CHEST, HEAD, MAINHAND};
+    use horizon_items::equipment::{CHEST, HEAD};
+    use mod_api::EquipmentSlot;
 
     fn stack(item: &str) -> Option<ItemStack> {
         Some(ItemStack::new(item, 1))
     }
 
-    /// A zombie, an armor stand and the dragon, ids 12, 13 and 14.
+    /// A stack of `item` whose own `attribute_modifiers` hold one row.
+    fn with_row(item: &str, attribute: &str, id: &str, amount: f64, slot: &str) -> ItemStack {
+        use horizon_core::nbt::Tag;
+        let mut own = ItemStack::new(item, 1);
+        own.data_mut().set_other(
+            "minecraft:attribute_modifiers",
+            Some(Tag::List(vec![Tag::compound([
+                ("type", Tag::String(attribute.into())),
+                ("id", Tag::String(id.into())),
+                ("amount", Tag::Double(amount.to_bits())),
+                ("operation", Tag::String("add_value".into())),
+                ("slot", Tag::String(slot.into())),
+            ])])),
+        );
+        own
+    }
+
+    /// The ids of the permanent modifiers the ECS saves for `id`.
+    fn saved_modifier_ids(game: &Game<'_>, id: u32) -> Vec<String> {
+        use horizon_core::nbt::{JavaString, Tag};
+        let saved = game.ecs.entity_nbt(game.ecs.entity_of(id).unwrap()).unwrap();
+        match saved.get(&JavaString::from("attributes")) {
+            Some(Tag::List(list)) => saved_ids(list),
+            _ => Vec::new(),
+        }
+    }
+
+    /// A zombie on the ECS, an armor stand and the dragon (which the ECS does
+    /// not hold yet), ids 12, 13 and 14.
     fn spawn(game: &mut Game<'_>) {
-        let zombie = game
-            .res
-            .mob_types()
-            .get("minecraft:zombie")
-            .unwrap()
-            .clone();
-        game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+        spawn_id(game, 12, "minecraft:zombie");
         game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
         let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 14;
@@ -496,30 +487,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_changed_held_stack_hits_by_its_own_modifiers() {
-        use horizon_client::mobs::gear;
-        use horizon_core::nbt::Tag;
-        use mod_api::EquipmentSlot;
         with_game(|game| {
             spawn(game);
             let zombie = living(game, 12);
-            let attack = |game: &Game<'_>| {
-                gear::attack_damage(
-                    game.mobs.iter().find(|m| m.id == 12).unwrap(),
-                    Some(game.res.items()),
-                )
-            };
+            let attack = |game: &Game<'_>| read(game, 12, "minecraft:attack_damage").0.unwrap();
             assert_eq!(attack(game), 3.0, "a zombie's own attack damage");
-            let mut own = ItemStack::new("minecraft:diamond_sword", 1);
-            own.data_mut().set_other(
-                "minecraft:attribute_modifiers",
-                Some(Tag::List(vec![Tag::compound([
-                    ("type", Tag::String("minecraft:attack_damage".into())),
-                    ("id", Tag::String("test:dull".into())),
-                    ("amount", Tag::Double(1.0f64.to_bits())),
-                    ("operation", Tag::String("add_value".into())),
-                    ("slot", Tag::String("mainhand".into())),
-                ])])),
-            );
+            let own = with_row("minecraft:diamond_sword", "minecraft:attack_damage", "test:dull", 1.0, "mainhand");
             assert!(
                 game.living_set_equipment(zombie, EquipmentSlot::MainHand, Some(own)),
                 "the write takes"
@@ -536,136 +509,102 @@ mod tests {
         });
     }
 
-    /// The mob's attribute packet is its live map's instances (arismoko/horizon#941): base
+    /// The mob's attributes are its live map's instances (arismoko/horizon#941): base
     /// and each modifier once — the equipment's own rows and `/attribute`'s
-    /// writes among them — with no modifier applied twice, and no instance
-    /// for an attribute nothing created.
+    /// writes among them. The server's sync of them (`mob_attributes`) reads a
+    /// client's `Mob` and has no ECS counterpart, so the instances are read
+    /// through the bridge, which is what a sync would send.
     #[test]
     #[ignore = "daily"]
     fn the_mob_attribute_packet_is_the_live_maps_instances() {
-        use horizon_core::nbt::Tag;
-        use mod_api::EquipmentSlot;
+        use AttributeOperation::AddValue;
         with_game(|game| {
             spawn(game);
             let zombie = living(game, 12);
-            let mut own = ItemStack::new("minecraft:diamond_chestplate", 1);
-            own.data_mut().set_other(
-                "minecraft:attribute_modifiers",
-                Some(Tag::List(vec![Tag::compound([
-                    ("type", Tag::String("minecraft:armor".into())),
-                    ("id", Tag::String("test:thin".into())),
-                    ("amount", Tag::Double(4.0f64.to_bits())),
-                    ("operation", Tag::String("add_value".into())),
-                    ("slot", Tag::String("chest".into())),
-                ])])),
-            );
+            let own = with_row("minecraft:diamond_chestplate", "minecraft:armor", "test:thin", 4.0, "chest");
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, Some(own)));
             // A finalize write, whose rebuild keeps the equipment's rows.
             assert!(zombie.set_attribute_base(game, "minecraft:max_health", 25.0));
-            let mut synced = Vec::new();
-            let mob = game.mobs[0].clone();
-            game.mob_attributes(
-                &mob,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
-                &mut synced,
-            );
-            // Each attribute once.
-            let mut ids: Vec<_> = synced.iter().map(|s| s.attribute).collect();
-            ids.sort_unstable();
-            ids.dedup();
-            assert_eq!(ids.len(), synced.len(), "{synced:?}");
-            let of = |name: &str| {
-                let id = game.motion.attributes.id(name).unwrap().registry_id();
-                synced.iter().find(move |s| s.attribute == id)
-            };
             // Armor: the zombie's base and only the stack's own row.
-            let armor = of("minecraft:armor").unwrap();
-            assert_eq!(armor.base, 2.0);
+            assert_eq!(read(game, 12, "minecraft:armor").1, Some(2.0));
             assert_eq!(
-                armor.modifiers,
-                [horizon_protocol::packets::play::AttributeModifier {
-                    id: "test:thin".into(),
-                    amount: 4.0,
-                    operation: 0,
-                }]
+                game.ecs.attribute_modifiers(12, "minecraft:armor").unwrap(),
+                [modifier("test:thin", 4.0, AddValue)]
             );
             // The written max health base, as the map holds it.
-            let health = of("minecraft:max_health").unwrap();
-            assert_eq!(health.base, 25.0);
-            assert!(health.modifiers.is_empty());
-            // Movement speed: the instance every mob's first step creates.
-            let speed = of("minecraft:movement_speed").unwrap();
-            assert!(speed.base > 0.0, "{speed:?}");
-            assert!(speed.modifiers.is_empty());
-            // Nothing else: an attribute nothing created sends no instance.
-            assert_eq!(synced.len(), 3, "{synced:?}");
+            assert_eq!(read(game, 12, "minecraft:max_health").1, Some(25.0));
+            assert!(game.ecs.attribute_modifiers(12, "minecraft:max_health").unwrap().is_empty());
+            // Movement speed: the instance every mob has.
+            let (_, base) = read(game, 12, "minecraft:movement_speed");
+            assert!(base.unwrap() > 0.0, "{base:?}");
+            assert!(game.ecs.attribute_modifiers(12, "minecraft:movement_speed").unwrap().is_empty());
+            // The packet the trackers send (`ecs_attributes`): every syncable instance once, with its base and its modifiers.
+            let e = game.ecs.entity_of(12).unwrap();
+            let packet = game.ecs_attributes(e, "minecraft:zombie");
+            let mut ids: Vec<i32> = packet.iter().map(|a| a.attribute).collect();
+            let sent = ids.len();
+            ids.sort_unstable();
+            ids.dedup();
+            assert_eq!(sent, ids.len(), "each attribute once: {packet:?}");
+            let of = |name: &str| {
+                let id = game.synced_attribute("minecraft:zombie", name).unwrap();
+                packet.iter().find(|a| a.attribute == id)
+            };
+            let armor = of("minecraft:armor").expect("armor is synced");
+            assert_eq!((armor.base, armor.modifiers.len()), (2.0, 1), "the base and the stack's row once");
+            assert_eq!((armor.modifiers[0].id.as_str(), armor.modifiers[0].amount, armor.modifiers[0].operation), ("test:thin", 4.0, 0));
+            assert_eq!(of("minecraft:max_health").expect("max health is synced").base, 25.0);
+            assert!(of("minecraft:movement_speed").is_some());
+            // A change is told once: the entity is in the changed set, then not.
+            let changed = game.ecs.drain_attribute_changes();
+            assert!(changed.contains(&e), "the writes raised the entity");
+            assert!(game.ecs.drain_attribute_changes().is_empty(), "read once, nothing at rest");
+            assert!(zombie.set_attribute_base(game, "minecraft:armor", 7.0));
+            assert_eq!(game.ecs.drain_attribute_changes(), [e]);
+            let armor = game.ecs_attributes(e, "minecraft:zombie").into_iter().find(|a| a.base == 7.0);
+            assert!(armor.is_some(), "the new base is what is sent");
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn a_base_write_preserves_covered_for_damage_and_attribute_sync() {
+        use AttributeOperation::AddValue;
+        use ModifierLifetime::Permanent;
         with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:shulker")
-                .unwrap()
-                .clone();
-            game.mobs.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
-            let catalog = game.motion.attributes.clone();
-            let m = &mut game.mobs[0];
-            // The permanent row installed by Shulker.setRawPeekAmount(0).
-            m.extra
-                .live
-                .edit(
-                    &catalog,
-                    &m.kind.id,
-                    "minecraft:armor",
-                    true,
-                    Vec::new,
-                    |value, observer| {
-                        value.add_permanent(
-                            Modifier::new("minecraft:covered", 20.0, Operation::AddValue).unwrap(),
-                            observer,
-                        )
-                    },
-                )
-                .unwrap();
-            let saved =
-                horizon_client::entity_nbt::mob_to_nbt(&game.mobs[0], [0; 4], None, None, |_| None);
-            let loaded_id = game.load_mob(saved.clone(), None).unwrap();
-            let loaded = game.mobs.iter().find(|m| m.id == loaded_id).unwrap();
-            assert_eq!(horizon_client::mobs::armor::values(loaded), (20.0, 0.0));
-            game.apply_entity_nbt(Target::Mob(12), saved).unwrap();
-            assert_eq!(
-                horizon_client::mobs::armor::values(&game.mobs[0]),
-                (20.0, 0.0)
-            );
+            spawn_id(game, 12, "minecraft:shulker");
             let shulker = living(game, 12);
+            let armor = |game: &Game<'_>| {
+                (
+                    read(game, 12, "minecraft:armor").0.unwrap(),
+                    read(game, 12, "minecraft:armor_toughness").0.unwrap(),
+                )
+            };
+            // The permanent row installed by Shulker.setRawPeekAmount(0).
+            assert!(shulker.add_attribute_modifier(
+                game,
+                "minecraft:armor",
+                modifier("minecraft:covered", 20.0, AddValue),
+                Permanent
+            ));
+            let e = game.ecs.entity_of(12).unwrap();
+            let saved = game.ecs.entity_nbt(e).unwrap();
+            game.next_entity = 49;
+            assert_eq!(game.ecs_load(&saved), Some(50));
+            assert_eq!(
+                (read(game, 50, "minecraft:armor").0, read(game, 50, "minecraft:armor_toughness").0),
+                (Some(20.0), Some(0.0))
+            );
+            game.apply_entity_nbt(Target::Mob(12), horizon_core::nbt::Tag::Compound(saved)).unwrap();
+            assert_eq!(armor(game), (20.0, 0.0));
             assert!(shulker.set_attribute_base(game, "minecraft:max_health", 40.0));
             // No handle read in between: damage must not need a read to restore the map.
+            assert_eq!(armor(game), (20.0, 0.0));
+            // What the attribute sync sends: the armor's base and its covered row.
+            assert_eq!(read(game, 12, "minecraft:armor").1, Some(0.0));
             assert_eq!(
-                horizon_client::mobs::armor::values(&game.mobs[0]),
-                (20.0, 0.0)
-            );
-            let mut synced = Vec::new();
-            let m = game.mobs[0].clone();
-            game.mob_attributes(
-                &m,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
-                &mut synced,
-            );
-            let armor_id = catalog.id("minecraft:armor").unwrap().registry_id();
-            let armor = synced.iter().find(|row| row.attribute == armor_id).unwrap();
-            assert_eq!(armor.base, 0.0);
-            assert_eq!(
-                armor.modifiers,
-                [horizon_protocol::packets::play::AttributeModifier {
-                    id: "minecraft:covered".into(),
-                    amount: 20.0,
-                    operation: 0,
-                }]
+                game.ecs.attribute_modifiers(12, "minecraft:armor").unwrap(),
+                [modifier("minecraft:covered", 20.0, AddValue)]
             );
         });
     }
@@ -675,18 +614,40 @@ mod tests {
     /// `/attribute` write takes effect without a tick, a horse's body piece
     /// armors it by its stack's rows, and the save keeps a written base and
     /// modifier.
+    /// `/attribute` writes on knockback resistance, max health and armor toughness reach what a hit reads, at the write.
+    #[test]
+    #[ignore = "daily"]
+    fn knockback_resistance_and_max_health_writes_reach_the_next_hit() {
+        use AttributeOperation::AddValue;
+        use ModifierLifetime::Permanent;
+        use horizon_world::attribute_map::ValueKind;
+        with_game(|game| {
+            spawn(game);
+            let zombie = living(game, 12);
+            assert!(zombie.set_attribute_base(game, "minecraft:knockback_resistance", 0.5));
+            assert!(zombie.add_attribute_modifier(game, "minecraft:knockback_resistance", modifier("test:kb", 0.25, AddValue), Permanent));
+            assert_eq!(game.ecs.attribute(12, "minecraft:knockback_resistance", ValueKind::Computed), Some(0.75));
+            assert!(zombie.set_attribute_base(game, "minecraft:max_health", 30.0));
+            assert_eq!(game.ecs.attribute(12, "minecraft:max_health", ValueKind::Computed), Some(30.0));
+            assert!(zombie.set_attribute_base(game, "minecraft:armor_toughness", 4.0));
+            assert_eq!(read(game, 12, "minecraft:armor_toughness").0, Some(4.0));
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn a_hits_armor_follows_the_live_map_at_once() {
         use AttributeOperation::*;
         use ModifierLifetime::*;
-        use horizon_client::mobs::{Damage, DamageKind, armor};
-        use horizon_core::nbt::Tag;
-        use mod_api::EquipmentSlot;
+        use horizon_ecs_proto::bridge::host::HurtSource;
         with_game(|game| {
             spawn(game);
-            let values =
-                |game: &Game<'_>| armor::values(game.mobs.iter().find(|m| m.id == 12).unwrap());
+            let values = |game: &Game<'_>, id: u32| {
+                (
+                    read(game, id, "minecraft:armor").0.unwrap(),
+                    read(game, id, "minecraft:armor_toughness").0.unwrap(),
+                )
+            };
             let zombie = living(game, 12);
             // The zombie's own armor is 2, the diamond chestplate's 8 and 2
             // toughness: the write through the handle collects at once.
@@ -695,25 +656,15 @@ mod tests {
                 EquipmentSlot::Chest,
                 stack("minecraft:diamond_chestplate")
             ));
-            assert_eq!(values(game), (10.0, 2.0));
+            assert_eq!(values(game, 12), (10.0, 2.0));
             // A chestplate with its own `attribute_modifiers` protects by
             // them, not by the diamond one's.
-            let mut own = ItemStack::new("minecraft:diamond_chestplate", 1);
-            own.data_mut().set_other(
-                "minecraft:attribute_modifiers",
-                Some(Tag::List(vec![Tag::compound([
-                    ("type", Tag::String("minecraft:armor".into())),
-                    ("id", Tag::String("test:thin".into())),
-                    ("amount", Tag::Double(4.0f64.to_bits())),
-                    ("operation", Tag::String("add_value".into())),
-                    ("slot", Tag::String("chest".into())),
-                ])])),
-            );
+            let own = with_row("minecraft:diamond_chestplate", "minecraft:armor", "test:thin", 4.0, "chest");
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, Some(own)));
-            assert_eq!(values(game), (6.0, 0.0));
+            assert_eq!(values(game, 12), (6.0, 0.0));
             // A `/attribute` base write lands at once, on top of the stack's.
             assert!(zombie.set_attribute_base(game, "minecraft:armor", 5.0));
-            assert_eq!(values(game), (9.0, 0.0));
+            assert_eq!(values(game, 12), (9.0, 0.0));
             // Unequipped, the base and a permanent modifier are all that is
             // left, and the damage boundary reads the same value.
             assert!(zombie.add_attribute_modifier(
@@ -723,35 +674,31 @@ mod tests {
                 Permanent
             ));
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, None));
-            assert_eq!(values(game), (8.0, 0.0));
-            let level = crate::game::entity::damage_level_of!(game);
-            let m = game.mobs.iter_mut().find(|m| m.id == 12).unwrap();
-            m.health = 20.0;
-            assert!(m.damage(level, 4.0, Damage::of(DamageKind::Cactus)));
+            assert_eq!(values(game, 12), (8.0, 0.0));
+            let e = game.ecs.entity_of(12).unwrap();
+            assert!(game.ecs.set_health(12, 20.0));
+            // A blow of an entity: armor stops it as it stops a cactus's.
+            game.ecs_with(|ecs, mw| ecs.hurt(mw, e, 4.0, HurtSource::Entity(0)));
+            game.tick_ecs().unwrap();
             // CombatRules.getDamageAfterAbsorb: (8 - 4/2) of 25 absorbs.
             let expected = 4.0 * (1.0 - 6.0 / 25.0);
-            assert!((f64::from(m.health) - (20.0 - expected)).abs() < 1e-3);
-            // The written base and modifier survive the map's own save and
-            // load; the first read builds the loaded map again, as a world
-            // load's first tick or read does.
-            let mut list = Vec::new();
-            game.mobs[0].extra.live.save_into(&mut list);
-            let mut fresh = horizon_client::living_attributes::LivingAttributes::default();
-            fresh.load(Some(&Tag::List(list)), |_| true);
-            game.mobs[0].extra.live = fresh;
-            read(game, 12, "minecraft:armor");
-            assert_eq!(values(game), (8.0, 0.0));
+            let health = game.ecs.health(12).unwrap();
+            assert!((f64::from(health) - (20.0 - expected)).abs() < 1e-3, "{health}");
+            // The written base and modifier survive the save and the load.
+            let saved = game.ecs.entity_nbt(e).unwrap();
+            game.next_entity = 49;
+            assert_eq!(game.ecs_load(&saved), Some(50));
+            assert_eq!(values(game, 50), (8.0, 0.0));
             // A horse's body piece armors it by its stack's rows.
-            let horse_kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();
             // The fixture dragon owns IDs 14 through 22, including its parts.
-            game.mobs.push(Mob::new(40, horse_kind, Vec3::ZERO, 0.0));
+            spawn_id(game, 40, "minecraft:horse");
             let horse = living(game, 40);
             assert!(game.living_set_equipment(
                 horse,
                 EquipmentSlot::Body,
                 stack("minecraft:diamond_horse_armor")
             ));
-            let armored = armor::values(game.mobs.iter().find(|m| m.id == 40).unwrap());
+            let armored = values(game, 40);
             assert!(
                 armored.0 >= 1.0,
                 "the body piece armors the horse: {armored:?}"
@@ -777,23 +724,28 @@ mod tests {
         });
     }
 
-    /// A read of a mob that wears nothing builds its map once and keeps it,
-    /// so the next reads allocate nothing.
+    /// A read of a mob that wears nothing builds nothing and keeps nothing: the
+    /// ECS holds no map to build, only the writes (`AttrMods`), and a read adds
+    /// none. A written base is read at once, and a reset gives the species' back.
     #[test]
     #[ignore = "daily"]
     fn a_read_builds_the_map_once() {
+        use horizon_ecs_proto::attr_mod::AttrMods;
         with_game(|game| {
             spawn(game);
-            assert!(game.mobs[0].extra.live.built().is_none());
+            let e = game.ecs.entity_of(12).unwrap();
+            let written = |game: &Game<'_>| game.ecs.world().unwrap().get::<AttrMods>(e).is_some();
+            assert!(!written(game));
             read(game, 12, "minecraft:max_health");
-            let first: *const _ = game.mobs[0].extra.live.built().unwrap();
             read(game, 12, "minecraft:attack_damage");
             read(game, 12, "minecraft:max_health");
-            let again: *const _ = game.mobs[0].extra.live.built().unwrap();
-            assert!(std::ptr::eq(first, again));
-            // A changed base drops it; the next read builds it from the new base.
-            game.mobs[0].extra.live.invalidate();
-            assert!(game.mobs[0].extra.live.built().is_none());
+            assert!(!written(game), "a read writes nothing");
+            assert!(living(game, 12).set_attribute_base(game, "minecraft:max_health", 25.0));
+            assert_eq!(
+                read(game, 12, "minecraft:max_health"),
+                (Some(25.0), Some(25.0))
+            );
+            assert!(game.ecs.reset_attribute_base(12, "minecraft:max_health"));
             assert_eq!(
                 read(game, 12, "minecraft:max_health"),
                 (Some(20.0), Some(20.0))
@@ -806,24 +758,21 @@ mod tests {
     fn a_held_sword_raises_the_attack_damage_until_it_is_put_away() {
         with_game(|game| {
             spawn(game);
+            let zombie = living(game, 12);
             let damage = "minecraft:attack_damage";
-            game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, stack("minecraft:diamond_sword")));
             // +6 from the sword's `base_attack_damage` modifier; the base stays.
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
             // The same item again changes nothing (no duplicate modifier).
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, stack("minecraft:diamond_sword")));
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
             // Another sword takes the first one's modifier off before its own.
-            game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:netherite_sword"));
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, stack("minecraft:netherite_sword")));
             assert_eq!(read(game, 12, damage), (Some(10.0), Some(3.0)));
-            game.mobs[0].set_equipment_stack(MAINHAND, None);
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, None));
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
             // A sword on the head is in no slot its modifiers name.
-            game.mobs[0].set_equipment_stack(HEAD, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::Head, stack("minecraft:diamond_sword")));
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
         });
     }
@@ -862,7 +811,8 @@ mod tests {
                 living.attribute_value(game, "minecraft:max_health"),
                 Some(20.0)
             );
-            game.mobs.clear();
+            let e = game.ecs.entity_of(12).unwrap();
+            game.ecs.despawn(e);
             assert_eq!(living.attribute_value(game, "minecraft:max_health"), None);
             assert_eq!(living.attribute_base(game, "minecraft:max_health"), None);
         });
@@ -902,70 +852,48 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_stacks_own_modifiers_replace_its_items() {
-        use horizon_core::nbt::Tag;
         with_game(|game| {
             spawn(game);
+            let zombie = living(game, 12);
             let damage = "minecraft:attack_damage";
-            let mut own = ItemStack::new("minecraft:diamond_sword", 1);
-            own.data_mut().set_other(
-                "minecraft:attribute_modifiers",
-                Some(Tag::List(vec![Tag::compound([
-                    ("type", Tag::String(damage.into())),
-                    ("id", Tag::String("test:dull".into())),
-                    ("amount", Tag::Double(1.0f64.to_bits())),
-                    ("operation", Tag::String("add_value".into())),
-                    ("slot", Tag::String("mainhand".into())),
-                ])])),
-            );
-            game.mobs[0].set_equipment_stack(MAINHAND, Some(own));
-            game.tick_equipment_attributes();
+            let own = with_row("minecraft:diamond_sword", damage, "test:dull", 1.0, "mainhand");
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, Some(own)));
             // +1 from its own list, not the sword's +6.
             assert_eq!(read(game, 12, damage), (Some(4.0), Some(3.0)));
-            game.mobs[0].set_equipment_stack(MAINHAND, stack("minecraft:diamond_sword"));
-            game.tick_equipment_attributes();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, stack("minecraft:diamond_sword")));
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
         });
     }
 
-    /// A mob's gear knockback resistance reads its stacks once, keeps what it
-    /// read while the same stacks are worn, and reads them again when one
-    /// changes: here a chestplate with its own list.
+    /// A mob's gear knockback resistance is what its map reads from the worn
+    /// stacks, and follows them when one changes: here a chestplate with its
+    /// own list. (The old per-mob cache of the gear read has no ECS
+    /// counterpart: the map is the only state.)
     #[test]
     #[ignore = "daily"]
-    fn gear_knockback_is_read_again_only_when_the_gear_changes() {
-        use horizon_core::nbt::Tag;
+    fn gear_knockback_follows_the_gear() {
         with_game(|game| {
             spawn(game);
-            let read_at = |game: &Game<'_>| {
-                let m = &game.mobs[0];
-                let gear = m.extra.gear_knockback.as_deref();
-                (gear.map(std::ptr::from_ref), m.gear_knockback_resistance)
-            };
-            let close = |value: Option<f64>, to: f64| value.is_some_and(|v| (v - to).abs() < 1e-6);
-            game.mobs[0].set_equipment_stack(CHEST, stack("minecraft:netherite_chestplate"));
-            game.refresh_gear_knockback_resistance();
-            let (first, value) = read_at(game);
-            assert!(first.is_some() && close(value, 0.1), "{value:?}");
-            game.refresh_gear_knockback_resistance();
-            assert_eq!(read_at(game).0, first, "the same gear is not read again");
-            let mut own = ItemStack::new("minecraft:netherite_chestplate", 1);
-            own.data_mut().set_other(
-                "minecraft:attribute_modifiers",
-                Some(Tag::List(vec![Tag::compound([
-                    ("type", Tag::String("minecraft:knockback_resistance".into())),
-                    ("id", Tag::String("test:anchor".into())),
-                    ("amount", Tag::Double(0.5f64.to_bits())),
-                    ("operation", Tag::String("add_value".into())),
-                    ("slot", Tag::String("chest".into())),
-                ])])),
+            let zombie = living(game, 12);
+            let resistance = |game: &Game<'_>| read(game, 12, "minecraft:knockback_resistance").0.unwrap();
+            let close = |value: f64, to: f64| (value - to).abs() < 1e-6;
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, stack("minecraft:netherite_chestplate")));
+            let value = resistance(game);
+            assert!(close(value, 0.1), "{value:?}");
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, stack("minecraft:netherite_chestplate")));
+            assert!(close(resistance(game), 0.1), "the same gear counts once");
+            let own = with_row(
+                "minecraft:netherite_chestplate",
+                "minecraft:knockback_resistance",
+                "test:anchor",
+                0.5,
+                "chest",
             );
-            game.mobs[0].set_equipment_stack(CHEST, Some(own));
-            game.refresh_gear_knockback_resistance();
-            let (second, value) = read_at(game);
-            assert!(second != first && close(value, 0.5), "{value:?}");
-            game.mobs[0].set_equipment_stack(CHEST, None);
-            game.refresh_gear_knockback_resistance();
-            assert_eq!(read_at(game), (None, None));
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, Some(own)));
+            let value = resistance(game);
+            assert!(close(value, 0.5), "{value:?}");
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, None));
+            assert!(close(resistance(game), 0.0));
         });
     }
 
@@ -1026,9 +954,11 @@ mod tests {
             ));
             let value = base * 2.0 * 1.5;
             assert_eq!(read(game, 12, speed), (Some(value), Some(base)));
-            assert_eq!(game.mobs[0].attrs.speed, value);
-            let saved = horizon_client::entity_nbt::attribute_entries(&game.mobs[0]);
-            assert_eq!(saved_ids(saved.iter().map(|(_, e)| e)), ["test:fast"]);
+            let direct = |game: &Game<'_>| {
+                game.ecs.attribute(12, speed, horizon_world::attribute_map::ValueKind::Computed)
+            };
+            assert_eq!(direct(game), Some(value));
+            assert_eq!(saved_modifier_ids(game, 12), ["test:fast"]);
             // Replacing takes the new lifetime: no longer saved.
             assert!(zombie.replace_attribute_modifier(
                 game,
@@ -1036,8 +966,7 @@ mod tests {
                 modifier("test:fast", 1.0, AddMultipliedBase),
                 Transient
             ));
-            let saved = horizon_client::entity_nbt::attribute_entries(&game.mobs[0]);
-            assert!(saved_ids(saved.iter().map(|(_, e)| e)).is_empty());
+            assert!(saved_modifier_ids(game, 12).is_empty());
             assert_eq!(read(game, 12, speed), (Some(value), Some(base)));
             let boost = Identifier::parse("test:boost").unwrap();
             assert!(zombie.remove_attribute_modifier(game, speed, &boost));
@@ -1045,19 +974,20 @@ mod tests {
             assert_eq!(read(game, 12, speed), (Some(base * 2.0), Some(base)));
             assert!(zombie.set_attribute_base(game, speed, 0.5));
             assert_eq!(read(game, 12, speed), (Some(1.0), Some(0.5)));
-            assert_eq!(game.mobs[0].attrs.speed, 1.0);
+            assert_eq!(direct(game), Some(1.0));
         });
     }
 
-    /// An attribute only the live map keeps keeps a mod's writes when the map
-    /// is built again, and saves the permanent ones.
+    /// An attribute only the overlay keeps keeps a mod's writes and saves the permanent ones: a save read back
+    /// into a new entity brings the base and the permanent modifier, not the transient one.
     #[test]
     #[ignore = "daily"]
     fn a_mods_writes_outlive_a_rebuilt_map() {
         use AttributeOperation::*;
         use ModifierLifetime::*;
+        use horizon_core::nbt::{JavaString, Tag};
         with_game(|game| {
-            spawn(game);
+            crate::game::native_merchant_refs::tests::spawn_id(game, 12, "minecraft:zombie");
             let gravity = "minecraft:gravity";
             let zombie = living(game, 12);
             assert!(zombie.set_attribute_base(game, gravity, 0.1));
@@ -1075,46 +1005,24 @@ mod tests {
             ));
             let both = Some((0.1 - 0.05) * 2.0);
             assert_eq!(read(game, 12, gravity), (both, Some(0.1)));
-            game.mobs[0].extra.live.invalidate();
-            assert_eq!(read(game, 12, gravity), (both, Some(0.1)));
-            let mut list = Vec::new();
-            game.mobs[0].extra.live.save_into(&mut list);
-            assert_eq!(saved_ids(&list), ["test:heavy"]);
+            let e = game.ecs.entity_of(12).unwrap();
+            let saved = game.ecs.entity_nbt(e).unwrap();
+            let Some(Tag::List(list)) = saved.get(&JavaString::from("attributes")) else {
+                panic!("the permanent modifier is saved");
+            };
+            assert_eq!(saved_ids(list), ["test:heavy"]);
             let float = Identifier::parse("test:float").unwrap();
             assert!(zombie.remove_attribute_modifier(game, gravity, &float));
-            game.mobs[0].extra.live.invalidate();
             assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
-            // A change to `finalize`'s store rebuilds the map without losing them.
-            horizon_client::mobs::finalize::set_base(
-                &mut game.mobs[0],
-                horizon_client::mobs::finalize::Attr::MaxHealth,
-                30.0,
-            );
-            assert_eq!(read(game, 12, gravity), (Some(0.2), Some(0.1)));
-            // The write is where `/attribute` reads it and the sync sends it.
-            let key = game.motion.attributes.id(gravity).unwrap();
-            let map = game.generic_attributes(Target::Mob(12), gravity).unwrap();
-            assert_eq!(map.value(key).unwrap(), 0.2);
-            let mut synced = Vec::new();
-            let zombie_mob = game.mobs[0].clone();
-            game.mob_attributes(
-                &zombie_mob,
-                &mut crate::game::lan_attributes::SpeedByType::default(),
-                &mut synced,
-            );
-            let registry = key.registry_id();
-            let sent = synced.iter().find(|s| s.attribute == registry).unwrap();
-            assert_eq!(sent.base, 0.1);
-            assert_eq!(
-                sent.modifiers
-                    .iter()
-                    .map(|m| m.id.as_str())
-                    .collect::<Vec<_>>(),
-                ["test:heavy"]
-            );
-            // A mob's armor goes to its armor map, which its damage reads.
+            // The save read into a new entity keeps the permanent write.
+            game.next_entity = 49;
+            assert_eq!(game.ecs_load(&saved), Some(50));
+            assert_eq!(read(game, 50, gravity), (Some(0.2), Some(0.1)));
+            // A base written as NaN is a reset to the species' own.
+            assert!(zombie.set_attribute_base(game, gravity, f64::NAN));
+            assert_ne!(read(game, 12, gravity).1, Some(0.1));
+            // A mob's armor goes where its damage reads it.
             assert!(zombie.set_attribute_base(game, "minecraft:armor", 10.0));
-            assert_eq!(horizon_client::mobs::armor::values(&game.mobs[0]).0, 10.0);
             assert_eq!(read(game, 12, "minecraft:armor").1, Some(10.0));
         });
     }
@@ -1173,7 +1081,8 @@ mod tests {
             assert_eq!(read(game, 100, health), (Some(20.0), Some(20.0)));
             // A stale handle writes nothing.
             let zombie = living(game, 12);
-            game.mobs.clear();
+            let e = game.ecs.entity_of(12).unwrap();
+            game.ecs.despawn(e);
             assert!(!zombie.set_attribute_base(game, "minecraft:gravity", 1.0));
         });
     }
@@ -1214,12 +1123,11 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 spawn(game);
+                let zombie = living(game, 12);
                 let chestplate = stack("minecraft:netherite_chestplate");
-                game.mobs[0].set_equipment_stack(CHEST, chestplate);
-                game.refresh_gear_knockback_resistance();
-                game.tick_equipment_attributes();
+                assert!(game.living_set_equipment(zombie, EquipmentSlot::Chest, chestplate));
                 // Netherite's own 0.1, and the mod's 0.4.
-                let resistance = game.mobs[0].gear_knockback_resistance.unwrap();
+                let resistance = read(game, 12, "minecraft:knockback_resistance").0.unwrap();
                 assert!((resistance - 0.5).abs() < 1e-6, "{resistance}");
                 let toughness = read(game, 12, "minecraft:armor_toughness");
                 assert_eq!(toughness, (Some(0.0), Some(0.0)));

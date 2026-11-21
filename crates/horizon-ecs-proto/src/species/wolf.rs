@@ -21,6 +21,7 @@ static WILD: Cond = Cond::Not(&Cond::Is("horizon:is_tame"));
 
 pub static DEF: Def = Def {
     name: "minecraft:wolf",
+    variant: Some(&super::variants::WOLF),
     reference: None,
     targets: &[
         Entry::new(&neutral_anger::MODULE, 255, &neutral_anger::Params::DEFAULT),
@@ -48,7 +49,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 10, &random_look::Params::DEFAULT),
     ],
     changes: &[],
-    rules: &[RuleEntry::new(&TAME, &TameParams::WOLF)],
+    rules: &[RuleEntry::new(&crate::dye::DYE,&crate::dye::DyeParams::WOLF), RuleEntry::new(&crate::body_armor::WEAR, &crate::body_armor::WearParams::WOLF), RuleEntry::new(&TAME, &TameParams::WOLF),RuleEntry::new(&crate::credit::CREDITS_OWNER, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],

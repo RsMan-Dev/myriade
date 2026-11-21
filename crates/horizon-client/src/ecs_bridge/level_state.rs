@@ -18,6 +18,10 @@ impl EcsLevel {
             true
         })
     }
+    /// `EntityType.canSerialize` (a name tag names nothing else).
+    pub fn can_serialize(&self, id: u32) -> bool {
+        self.read_state(id, false, |w, e| w.can_serialize(e))
+    }
     pub fn custom_name(&self, id: u32) -> Option<String> {
         self.read_state(id, None, |w, e| w.custom_name(e))
     }

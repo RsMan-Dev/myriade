@@ -11,6 +11,11 @@ use crate::stuck::{self, Stuck};
 use bevy_ecs::entity::Entity;
 
 impl EcsWorld {
+    /// `EntityType.canSerialize` of the entity's type (`NameTagItem` names no other: the leash knot, the lightning bolt, the bobber).
+    pub fn can_serialize(&self, e: Entity) -> bool {
+        let w = self.world();
+        w.get::<crate::cow::SpeciesId>(e).is_some_and(|s| w.resource::<crate::cow::SpeciesTable>().0[s.0 as usize].saved)
+    }
     pub fn custom_name(&self, e: Entity) -> Option<String> {
         custom_name::get(self.world(), e)
     }

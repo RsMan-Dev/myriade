@@ -332,10 +332,7 @@ impl Game<'_> {
             // down, so a wind charge spares the moved-wrongly check and the
             // impulse reset for 40 ticks, not for good.
             player.impulse.tick_grace_time();
-            // Player.aiStep's entity contacts run with the player's body,
-            // even when the level and its mobs are frozen. Flush their damage
-            // events and marked velocity through the existing guest path.
-            game.touch_pufferfish();
+            // Player.aiStep's pufferfish contact comes from the ECS (`MiscEvent::PufferSting`), applied when the host drains its events.
             let Some(player) = game.player.as_mut() else {
                 return (events, None);
             };

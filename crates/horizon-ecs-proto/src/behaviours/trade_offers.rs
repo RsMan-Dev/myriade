@@ -41,6 +41,15 @@ pub struct Merchant {
     pub variant: u8,
     pub wandering: bool,
 }
+/// `Merchant.profession` of a villager whose saved profession the world's table does not know (a mod not loaded): no index of the
+/// table, so its name is empty and its screen opaque; the offers stay untouched.
+pub const UNRESOLVED: u8 = u8::MAX;
+
+/// The saved id of an unresolved profession, written back unchanged by the save.
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct UnresolvedProfession(pub String);
+
 impl Merchant {
     /// Offres pas encore faites (liste nulle de vanilla) : elles se font à la première demande.
     pub fn new(wandering: bool, profession: u8, variant: u8) -> Self {
@@ -96,6 +105,8 @@ pub fn set_profession(w: &mut World, e: Entity, profession: u8) {
         m.profession = profession;
         m.trade.offers.clear();
         m.trade.unset = true;
+        // A known profession replaces a mod's unloaded one: its saved name no longer applies.
+        w.entity_mut(e).remove::<UnresolvedProfession>();
     }
 }
 

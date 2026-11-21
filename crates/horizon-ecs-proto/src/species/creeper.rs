@@ -21,5 +21,7 @@ pub static DEF: Def = Def {
         Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
     ],
     spawn: Some(crate::spawning::SpawnDef::MONSTER), despawn: Some(crate::despawn::DespawnDef::MOB),
+    not_in_peaceful: true,
+    rules: &[crate::rules::RuleEntry::new(&crate::ignite::IGNITE, &crate::ignite::IgniteParams::CREEPER)],
     ..Def::EMPTY
 };

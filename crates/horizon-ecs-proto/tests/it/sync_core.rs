@@ -23,5 +23,5 @@ fn a_creature_without_fire_sends_only_its_base_entries_then_fire_adds_entry_0() 
 #[test]
 fn the_core_indices_are_the_ones_it_can_read() {
     let indices: Vec<u8> = sync_core::SLOTS.iter().map(|s| s.index).collect();
-    assert_eq!(indices, [0, 1, 4, 7, 9, 11, 14, 15]);
+    assert_eq!(indices, [0, 1, 2, 3, 4, 5, 7, 9, 11, 14, 15, 16, 17]);
 }

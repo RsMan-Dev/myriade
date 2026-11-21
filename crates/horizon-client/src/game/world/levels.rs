@@ -633,7 +633,7 @@ impl Levels {
             l.remote_entities.iter().filter(|m| !m.removed).count()
                 + l.dropped.len()
                 + l.orbs.len()
-                + l.ecs_cart_count()
+                + l.ecs.entity_count()
                 + l.boats.len()
                 + l.falling.len()
                 + l.paintings.len()
@@ -644,11 +644,6 @@ impl Levels {
                 + l.rockets.len()
                 + l.tnts.len(),
         )
-    }
-
-    /// The minecarts of a parked level's ECS world, every cart kind (a scan for the reports).
-    fn ecs_cart_count(&self) -> usize {
-        self.ecs.count_by_kind().iter().filter(|(k, _)| k.ends_with("minecart")).map(|(_, n)| n).sum()
     }
 
     /// The mobs of a parked level.
@@ -669,14 +664,20 @@ impl Levels {
         })
     }
 
-    /// A parked level's loose entities, for `horizon-report`: items, experience orbs,
-    /// minecarts and boats.
+    /// The ECS entities of every parked level, by kind (a scan for the reports): the minecarts and boats among them are counted here,
+    /// by kind, as the level in place's are.
+    pub(super) fn parked_ecs_kinds(&self) -> impl Iterator<Item = (&'static str, usize)> + '_ {
+        self.parked.values().flat_map(|l| l.ecs.count_by_kind())
+    }
+
+    /// A parked level's loose entities kept in lists, for `horizon-report`: items, experience orbs,
+    /// minecarts (no list: ECS entities) and boats.
     pub(super) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 4]> {
         self.parked.get(&dim).map(|l| {
             [
                 l.dropped.len(),
                 l.orbs.len(),
-                l.ecs_cart_count(),
+                0,
                 l.boats.len(),
             ]
         })
@@ -1001,101 +1002,38 @@ impl Game<'_> {
         Ok(())
     }
 
-    /// Follow the direct mount of a travelling player through complete source objects.
-    /// A later player in the same travelling stack finds no source root: the first
-    /// arrival already moved it, keeping every id that the guests' mounts name.
+    /// Follow the direct mount of a travelling player up to the root of its vehicle tree, in the parked level's ECS world: every
+    /// vehicle and rider there is an ECS entity, so the chain is the seats'. None when the root is gone or being removed (a later
+    /// player in the same travelling stack finds no root: the first arrival already moved it).
     pub(super) fn parked_vehicle_root(&self, from: Dim, mut id: u32) -> Option<u32> {
         let p = self.levels.parked.get(&from)?;
-        for _ in 0..=p.remote_entities.len() + p.persist.off_level.len() + 1 {
-            let mob = p
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .or_else(|| {
-                    p.persist
-                        .off_level
-                        .get(&id)
-                        .and_then(persist::OffLevel::as_mob)
-                })
-                .filter(|m| !m.removed);
-            if let Some(parent) = mob.and_then(|m| m.extra.mount) {
-                id = parent;
-                continue;
-            }
-            let present = mob.is_some()
-                || p.boats.iter().any(|b| b.id == id)
-                || p.ecs.cart_kind(id).is_some();
-            let removed = p.persist.removals.iter().chain(p.persist.destroying_vehicles.iter()).any(|target| matches!(
-                target, commands::Target::Mob(n) | commands::Target::Boat(n) | commands::Target::Cart(n) if *n == id
-            ));
-            return (present && !removed).then_some(id);
+        for _ in 0..64 {
+            let Some(parent) = p.ecs.vehicle_of(id) else { break };
+            id = parent;
         }
-        None
+        let removed = p.persist.removals.iter().chain(p.persist.destroying_vehicles.iter()).any(|target| matches!(
+            target, commands::Target::Mob(n) | commands::Target::Boat(n) | commands::Target::Cart(n) if *n == id
+        ));
+        (p.ecs.entity_of(id).is_some() && !removed).then_some(id)
     }
 
-    /// Move the source tree's object memory and take its Mob descendants in
-    /// canonical postorder. The caller owns the extracted root and admits it last.
-    /// Transfer removal preserves lifetimes; residency is decided in the destination.
-    pub(super) fn move_entity_memory(&mut self, from: Dim, root: u32) -> Vec<Mob> {
-        let Some(p) = self.levels.parked.get_mut(&from) else {
-            return Vec::new();
-        };
-        let mut edges: Vec<_> = p
-            .remote_entities
-            .iter()
-            .chain(
-                p.persist
-                    .off_level
-                    .values()
-                    .filter_map(persist::OffLevel::as_mob),
-            )
-            .filter(|mob| !mob.removed)
-            .map(|mob| (mob.extra.mount, mob.extra.vehicle_order, mob.id))
-            .collect();
-        edges.sort_by_key(|&(_, order, id)| (order, id));
-        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
-        for (parent, _, id) in edges {
-            if let Some(parent) = parent {
-                children.entry(parent).or_default().push(id);
+    /// Takes the ECS vehicle tree rooted at `root` out of the parked level `from`: the ids of the tree (the root first, each vehicle
+    /// before its riders) and the root's saved form, whose `Passengers` carry the riders. The tree is despawned there; per-entity
+    /// state lives in components, so nothing else of the source is moved.
+    pub(super) fn take_parked_ecs_tree(
+        &mut self,
+        from: Dim,
+        root: u32,
+    ) -> Option<(Vec<u32>, horizon_core::nbt::Compound)> {
+        let p = self.levels.parked.get_mut(&from)?;
+        let saved = p.ecs.entity_nbt(p.ecs.entity_of(root)?)?;
+        let tree = p.ecs.ride_tree(root);
+        for id in &tree {
+            if let Some(e) = p.ecs.entity_of(*id) {
+                p.ecs.despawn(e);
             }
         }
-        let mut pending = vec![(root, false)];
-        let mut seen = std::collections::HashSet::new();
-        let mut ordered = Vec::new();
-        while let Some((id, done)) = pending.pop() {
-            if done {
-                ordered.push(id);
-            } else if seen.insert(id) {
-                pending.push((id, true));
-                if let Some(riders) = children.get(&id) {
-                    pending.extend(riders.iter().rev().map(|&rider| (rider, false)));
-                }
-            }
-        }
-        let mut moved = Vec::new();
-        for id in ordered {
-            p.persist.move_object_to(id, &mut self.persist);
-            if id == root {
-                continue;
-            }
-            if let Some(state) = p.portal_states.remove(&id) {
-                self.portals.entities.insert(id, state);
-            }
-            let mob = if let Some(index) = p.remote_entities.iter().position(|m| m.id == id) {
-                Some(p.remote_entities.remove_for_transfer(index))
-            } else {
-                // Boats and carts are only roots, which the caller takes.
-                match p.persist.off_level.remove(&id) {
-                    Some(persist::OffLevel::Mob(mob)) => Some(mob),
-                    _ => None,
-                }
-            };
-            if let Some(mut mob) = mob {
-                mob.join = horizon_client::join_seq::JoinSeq::UNJOINED;
-                moved.push(mob);
-            }
-        }
-        moved
+        Some((tree, saved))
     }
 
     /// An already-owned body changes level, never construction identity.

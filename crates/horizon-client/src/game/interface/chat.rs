@@ -2104,6 +2104,14 @@ impl Game<'_> {
             3 => Difficulty::Hard,
             _ => Difficulty::Normal,
         };
+        // The ECS reads the difficulty (raids, targeting) and drops what peaceful forbids; the same value again costs nothing.
+        self.ecs.set_difficulty(self.ui.difficulty);
+        // `ServerLevel.isSpawningMonsters`, read by the reinforcements a hurt creature calls.
+        let rules = &self.ui.rules;
+        self.ecs.set_monster_spawning(
+            rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
+                && rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS),
+        );
     }
     /// `ServerClockManager.ServerClockInstance.loadFrom`: restore the existing
     /// Overworld state when a world opens; clear the other command-state cache.

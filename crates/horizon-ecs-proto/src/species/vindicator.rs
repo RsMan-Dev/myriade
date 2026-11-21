@@ -20,7 +20,7 @@ pub static DEF: Def = Def {
         Entry::new(&crate::behaviours::raid_move_through_village::MODULE, 4, &crate::behaviours::raid_move_through_village::Params::DEFAULT),
         Entry::new(&crate::behaviours::long_distance_patrol::MODULE, 4, &crate::behaviours::long_distance_patrol::Params::DEFAULT),
         Entry::new(&crate::behaviours::celebration::MODULE, 5, &()),
-        Entry::new(&hold_ground_attack::MODULE, 4, &hold_ground_attack::Params::DEFAULT),
+        Entry::new(&hold_ground_attack::MODULE, 4, &hold_ground_attack::Params::VINDICATOR),
         Entry::new(&break_door::RAID, 2, &break_door::Params::VINDICATOR),
         Entry::new(&raider_open_door::MODULE, 3, &()),
         Entry::new(&float::MODULE, 0, &float::Params::DEFAULT),
@@ -31,5 +31,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
     ],
+    rules: &[crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::VINDICATOR)],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

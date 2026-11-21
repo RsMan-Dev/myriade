@@ -74,6 +74,10 @@ impl Game<'_> {
     /// crystals and the like are not supported.
     fn native_dragon_valid_target(&self, target: Target) -> bool {
         match target {
+            // `Mob.asValidTarget`: alive and not invulnerable (the entity's `Invulnerable` tag).
+            Target::Mob(id) if self.ecs.is_active() => {
+                self.ecs.alive(id) && !self.ecs_flag(id, "Invulnerable").unwrap_or(false)
+            }
             Target::Mob(id) => self
                 .remote_entities
                 .iter()

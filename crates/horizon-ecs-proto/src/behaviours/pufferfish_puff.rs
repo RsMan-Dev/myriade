@@ -37,6 +37,11 @@ pub struct Puff {
 #[component(storage = "SparseSet")]
 pub struct Puffing;
 
+/// A pufferfish that is inflated (size above 0), the only kind `Pufferfish.playerTouch` is looked up for. Sparse: absent at rest.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Inflated;
+
 pub static MODULE: Module = Module {
     name: "pufferfish_puff",
     flags: 0,
@@ -81,6 +86,11 @@ fn rescale(w: &mut World, e: Entity) {
 }
 fn set_puff(w: &mut World, e: Entity, size: u8) {
     w.get_mut::<Puff>(e).unwrap().size = size;
+    if size > 0 {
+        w.entity_mut(e).insert(Inflated);
+    } else {
+        w.entity_mut(e).remove::<Inflated>();
+    }
     rescale(w, e);
 }
 fn arm_at_local(w: &mut World, e: Entity, at: u64) {
@@ -168,7 +178,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
     }
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
-    s.add_systems((puff_players, puff_cells, puff_run).chain().in_set(slot));
+    s.add_systems((puff_players, puff_cells, puff_run, puff_sting).chain().in_set(slot));
 }
 /// A player entered the watch of a pufferfish: it is asked (the goal does not run yet).
 fn puff_players(w: &mut World) {
@@ -222,6 +232,35 @@ fn puff_run(w: &mut World, q: &mut QueryState<Entity, With<Puffing>>) {
         if !somebody_near(w, e) {
             let slot = w.get::<Puff>(e).unwrap().slot;
             end_goal(w, e, slot);
+        }
+    }
+}
+
+/// `Pufferfish.playerTouch`: `Player.aiStep` calls it every tick for each entity in the player's box grown by (1, 0.5, 1). Each inflated, living
+/// pufferfish reports the players (alive, not spectators) whose grown box meets its own; the damage (1 + size), the sound and the
+/// poison are the host's, which knows whether the hurt landed. A deflated pufferfish has no `Inflated` and costs nothing.
+fn puff_sting(w: &mut World, q: &mut QueryState<Entity, With<Inflated>>) {
+    let list: Vec<Entity> = q.iter(w).collect();
+    for e in list {
+        let (Some(pos), Some(b), Some(size), Some(h)) = (w.get::<Pos>(e).map(|q| q.0), w.get::<Bounds>(e).map(|b| b.0), w.get::<Puff>(e).map(|p| p.size), w.get::<Health>(e)) else {
+            continue;
+        };
+        if h.0 <= 0.0 {
+            continue;
+        }
+        let silent = w.get::<super::elder_curse::Silent>(e).is_some();
+        let mut hits = Vec::new();
+        let players = w.resource::<PlayerState>();
+        w.resource::<Online>().for_near(pos.x, pos.z, 3.0, |pl| {
+            let reach = crate::targeting::player_box(&pl).inflate(Vec3::new(1.0, 0.5, 1.0));
+            if players.alive(pl.id) && !players.spectator(pl.id) && reach.intersects(b) {
+                hits.push(pl.id);
+            }
+        });
+        for player in hits {
+            w.get_resource_or_insert_with(crate::colony_register::MiscOut::default)
+                .0
+                .push(crate::host_out_misc::MiscEvent::PufferSting { fish: e, player, size, silent });
         }
     }
 }
@@ -282,6 +321,29 @@ mod tests {
         h.tick();
         h.tick();
         assert!(size(&h, p) == 1, "witness: a frightening creature inflates the puffer at once");
+    }
+
+    /// `Pufferfish.playerTouch`: an inflated puffer reports the player touching it, every tick; a player beside a puffer that is
+    /// not inflated (witness: far away, nothing reported) is not.
+    #[test]
+    fn an_inflated_puffer_reports_the_player_touching_it() {
+        let Some(mut h) = herd() else { return };
+        let p = puffer(&mut h);
+        h.tick();
+        let stings = |h: &Herd| -> Vec<crate::host_out_misc::MiscEvent> {
+            h.world.get_resource::<crate::colony_register::MiscOut>().map_or_else(Vec::new, |o| o.0.clone())
+        };
+        assert!(stings(&h).is_empty(), "a deflated puffer reports nothing");
+        h.world.resource_mut::<Online>().set(Player { id: 1, x: 1.0, y: 1.0, z: 0.5, ..Default::default() });
+        for _ in 0..6 {
+            h.tick();
+        }
+        assert_eq!(size(&h, p), 1, "witness: the player inflated it");
+        assert!(
+            stings(&h).contains(&crate::host_out_misc::MiscEvent::PufferSting { fish: p, player: 1, size: 1, silent: false }),
+            "the inflated puffer reports its touch: {:?}",
+            stings(&h)
+        );
     }
 
     /// A frightening creature: the puffer starts, size 1 then 2 at 40 ticks, and deflates after it leaves.

@@ -38,6 +38,24 @@ pub fn insert(w: &mut World, e: Entity, item: &str, mut count: u8) -> u8 {
     count
 }
 
+/// Retire jusqu'à `count` objets `item` (`SimpleContainer.removeItemType`, du premier emplacement au dernier). Rend le nombre retiré.
+pub fn take(w: &mut World, e: Entity, item: &str, count: u8) -> u8 {
+    let Some(mut s) = w.get::<Stock>(e).cloned() else { return 0 };
+    let mut left = count;
+    for (_, n) in s.0.iter_mut().filter(|(name, _)| name == item) {
+        let cut = (*n).min(left);
+        *n -= cut;
+        left -= cut;
+    }
+    s.0.retain(|(_, n)| *n > 0);
+    if s.0.is_empty() {
+        w.entity_mut(e).remove::<Stock>();
+    } else {
+        w.entity_mut(e).insert(s);
+    }
+    count - left
+}
+
 /// Retire un objet d'aliment (qui a des points) : rend son nom, ou `None` s'il n'y en a pas.
 fn take_food(w: &mut World, e: Entity, items: &Items) -> Option<String> {
     let mut s = w.get::<Stock>(e)?.clone();

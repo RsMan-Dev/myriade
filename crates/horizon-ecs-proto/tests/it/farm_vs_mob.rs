@@ -133,7 +133,7 @@ fn eating_breaks_short_grass_regrows_wool_and_ages_a_baby() {
         h.world.get_mut::<Graze>(e).unwrap().armed = true;
     }
     h.tick();
-    assert!(!shear(&mut h.world, eb), "a baby is not shorn");
+    assert!(!horizon_ecs_proto::behaviours::shear::shear_entity(&mut h.world, eb, None), "a baby is not shorn");
     // Both graze at tick 5: the mobs by their own draw is not imposed here, the goal is started by hand.
     for t in 1..=60 {
         if t == 5 {

@@ -4,7 +4,7 @@
 use crate::bridge::{host::EcsWorld, view};
 use crate::cart_state::{Cart, CommandBlock, Contents, Flipped};
 use crate::boat_state::BoatMarker;
-use crate::cow::{Bounds, Index, Pos};
+use crate::cow::{Bounds, Health, Index, Pos};
 use crate::rules::{boat::WIDTH as BOAT_WIDTH, seat_rules::CART_WIDTH};
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::items::ItemStack;
@@ -16,8 +16,29 @@ use std::collections::HashSet;
 const STEP: f64 = 0.5;
 /// The widest vehicle's half width: a box is grown by it so every vehicle whose position is outside but whose box reaches in is found.
 const MAX_HALF: f64 = (if BOAT_WIDTH > CART_WIDTH { BOAT_WIDTH } else { CART_WIDTH }) / 2.0;
+/// The widest living half width (the ender dragon's 16 wide body): a box is grown by it so every creature whose box reaches in is found.
+const LIVING_REACH: f64 = 8.0;
 
 impl EcsWorld {
+    /// The living creatures alive whose box meets `min..=max`: what a projectile can hit (`Entity.canBeHitByProjectile`: alive and pickable).
+    pub fn living_touching(&self, min: Vec3, max: Vec3) -> Vec<Entity> {
+        let w = self.world();
+        let Some(index) = w.get_resource::<Index>() else { return Vec::new() };
+        let (cx, cz) = ((min.x + max.x) / 2.0, (min.z + max.z) / 2.0);
+        let reach = (max.x - min.x).hypot(max.z - min.z) / 2.0 + LIVING_REACH;
+        let mut out = Vec::new();
+        index.for_radius(cx, cz, reach, |e| {
+            let alive = w.get::<Health>(e).is_some_and(|h| h.0 > 0.0);
+            let meets = w.get::<Bounds>(e).is_some_and(|b| {
+                let (lo, hi) = (b.0.min_position(), b.0.max_position());
+                lo.x <= max.x && hi.x >= min.x && lo.y <= max.y && hi.y >= min.y && lo.z <= max.z && hi.z >= min.z
+            });
+            if alive && meets {
+                out.push(e);
+            }
+        });
+        out
+    }
     /// The slots of the contents of cart `e`; None when it has none (no chest, no hopper).
     pub fn cart_items(&self, e: Entity) -> Option<&[Option<ItemStack>]> {
         self.world().get::<Contents>(e).map(|k| k.slots.as_slice())

@@ -17,6 +17,7 @@ mod monde_divers;
 mod vehicules;
 mod fixes_generales;
 mod mob_events;
+mod mob_events_vivants;
 mod mod_vivants;
 mod hooks;
 mod serveur_objets_tenus;
@@ -38,6 +39,7 @@ mod misc;
 mod portal;
 mod tnt;
 mod trident;
+mod modificateurs_objets;
 mod boats;
 mod sorties;
 #[cfg(test)]

@@ -3,10 +3,9 @@
 //! loot of `loot` (the bartering table) drops at the animal's feet. What wakes it: the item put in the off hand (the item
 //! event asks the goal). What ticks it: `tick`, over the admiring animals only.
 use super::*;
-use crate::{cow::*, equipment, goals::*, item, loot};
+use crate::{cow::*, equipment, goals::*, loot};
 use crate::goals::Slot;
 use crate::rules::admire;
-use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
@@ -37,6 +36,7 @@ pub static MODULE: Module = Module {
     start,
     stop,
     tick: Some(tick),
+    interact,
     requires: &[Cap::Body, Cap::Goals, Cap::Head, Cap::Locomotion],
     ..Module::DEFAULT
 };
@@ -60,6 +60,29 @@ fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Admiring { until });
     let at = w.get::<Pos>(e).unwrap().0;
     w.resource_mut::<Events>().host.sound("minecraft:entity.piglin.admiring_item", [at.x, at.y, at.z], 1.0, 1.0);
+}
+/// `PiglinAi.mobInteract`: a player's click with the admired item, on an adult whose off hand is empty and that admires nothing: one item goes to
+/// its off hand (the goal then starts), the player's stack loses it. The jar (`PiglinAi.canAdmire`, `wasHurtBy`): refused for a baby, while admiring, and for 400 ticks after a player hit it; combat and a finished trade disable nothing. The item already in the off hand is thrown out (its stack count is not kept: one is thrown). DOUTE: the `Admiring` start on a hit (the off hand dropped, the admiring stopped) is not done.
+fn interact(w: &mut World, e: Entity, _: Inst, i: &Interaction) -> bool {
+    let Some(a) = w.get::<Admire>(e).copied() else { return false };
+    if i.item == 0 || i.item != crate::items::item_id(a.0.item) || w.get::<GrowAt>(e).is_some() || w.get::<Admiring>(e).is_some() {
+        return false;
+    }
+    // `canAdmire`: not while admiring is disabled (400 ticks after a player hit it). `holdInOffhand`: what the off hand held is thrown first.
+    if crate::behaviours::hurt_by::hit_by_player_within(w, e, 400) {
+        return false;
+    }
+    let held = crate::goals::equipped(w, e, Slot::Off);
+    if held != 0 {
+        equipment::take_slot(w, e, Slot::Off);
+        let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
+        if let Some(name) = crate::items::item_name(held) {
+            crate::behaviours::shear::drop_stacks(w, vec![horizon_client_lib::items::ItemStack::new(name, 1)], at);
+        }
+    }
+    equipment::set_slot(w, e, Slot::Off, i.item);
+    crate::give_item::take_from_hand(w, i);
+    true
 }
 fn stop(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).remove::<Admiring>();
@@ -85,8 +108,6 @@ fn trade(w: &mut World, e: Entity) {
     equipment::take_slot(w, e, Slot::Off);
     let seed = w.get_mut::<Rng>(e).unwrap().next_u32() as i64;
     let baby = w.get::<GrowAt>(e).is_some();
-    let at: Vec3 = w.get::<Pos>(e).unwrap().0;
-    for stack in loot::roll(w, a.0.loot, false, baby, seed) {
-        item::drop_item(w, stack, at, Vec3::new(0.0, 0.3, 0.0), 40);
-    }
+    let stacks = loot::roll(w, a.0.loot, false, baby, seed);
+    crate::gift_drop::throw_toward_player_or_nearby(w, e, stacks, 16.0, 4, 2);
 }

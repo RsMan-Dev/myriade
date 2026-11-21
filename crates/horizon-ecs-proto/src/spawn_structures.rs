@@ -67,6 +67,10 @@ impl StructureHost {
         self.hook = Some(hook);
         self
     }
+    /// Whether a piece of the structure `id` holds the position (`StructureManager.getStructureWithPieceAt`), read once at a spawn.
+    pub fn has_piece_at(&self, pos: [i32; 3], id: &str) -> bool {
+        self.source.structures_at(pos, &|s| s == id).iter().any(|s| s.in_piece)
+    }
     /// Whether some structure overrides the category's spawns.
     pub fn covers(&self, cat: Category) -> bool {
         self.lists.covered[cat as usize]

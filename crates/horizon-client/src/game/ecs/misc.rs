@@ -33,6 +33,7 @@ impl Game<'_> {
 
     /// Applies the misc events the ECS level queued since the last call, in order.
     pub(in crate::game) fn ecs_misc_events(&mut self, evs: impl IntoIterator<Item = MiscEvent>) {
+        let mut victims = Vec::new();
         for ev in evs {
             match ev {
                 MiscEvent::Lightning { at, cosmetic } => {
@@ -50,6 +51,28 @@ impl Game<'_> {
                     }
                 }
                 MiscEvent::CrystalBlast { .. } => {}
+                MiscEvent::BeeEnterHive { bee, hive } => {
+                    let id = self.ecs_id_of(bee);
+                    self.bee_enter_hive(id, hive);
+                }
+                MiscEvent::TreasureAsk { dolphin, at } => {
+                    // ServerLevel.findNearestMapStructure(#dolphin_located, 50).
+                    let names = self.structure_tag("minecraft:dolphin_located");
+                    let found = self.end.locator().filter(|_| !names.is_empty()).and_then(|t| t.locate(&names, at, 50)).map(|(_, p)| p);
+                    self.ecs.dolphin_treasure(dolphin, found);
+                    if found.is_some() {
+                        let id = self.ecs_id_of(dolphin);
+                        self.mob_event_particles(id, 38);
+                    }
+                }
+                MiscEvent::Drowned { entity, at, bubbles } => {
+                    let id = self.ecs_id_of(entity);
+                    self.mob_drown_ecs(id, at, bubbles);
+                }
+                MiscEvent::LeashBroke { entity, at, sound, knot } => {
+                    let id = self.ecs_id_of(entity);
+                    self.ecs_leash_broke(id, at, sound, knot);
+                }
                 MiscEvent::FangsBite { at } => {
                     self.play_fang_bite(at);
                 }
@@ -65,7 +88,61 @@ impl Game<'_> {
                     }
                 }
                 MiscEvent::CloudEffect { target: Who::Entity(_), .. } => {}
+                MiscEvent::PlayerEffect { player, effect, ticks, amplifier, ambient } => {
+                    // The client's effect ids carry no namespace (`speed`, `breath_of_the_nautilus`).
+                    let mut inst = EffectInstance::new(effect.strip_prefix("minecraft:").unwrap_or(effect), ticks, amplifier);
+                    inst.ambient = ambient;
+                    let guest = self.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|g| g.entity_id as u32 == player).map(|g| g.conn));
+                    if let Some(conn) = guest {
+                        self.as_guest(conn, |g| g.add_player_effect(inst));
+                    } else if self.player.as_ref().is_some_and(|me| me.entity_id as u32 == player) {
+                        self.add_player_effect(inst);
+                    }
+                }
+                MiscEvent::DestroyAsk { breaker, pos } => {
+                    let id = self.ecs_id_of(breaker);
+                    if self.mob_may_destroy(id, pos) {
+                        let air = self.world.air;
+                        if let Err(error) = self.level_set(pos, air) {
+                            log::warn!("a creature's block break failed: {error}");
+                        }
+                    }
+                }
+                MiscEvent::PlayerIgnite { player, ticks } => {
+                    let guest = self.lan.as_ref().and_then(|host| host.hub.guests.iter().find(|g| g.entity_id as u32 == player).map(|g| g.conn));
+                    // `Entity.igniteForSeconds` asks only `fireImmune()` (the type): a creative player ignites too, its invulnerability stops the damage.
+                    let result = if let Some(conn) = guest {
+                        self.as_guest(conn, |g| g.player.as_mut().map_or(Ok(()), |p| p.ignite_for_ticks(ticks))).unwrap_or(Ok(()))
+                    } else if self.player.as_ref().is_some_and(|me| me.entity_id as u32 == player) {
+                        self.player.as_mut().map_or(Ok(()), |p| p.ignite_for_ticks(ticks))
+                    } else {
+                        Ok(())
+                    };
+                    if let Err(error) = result {
+                        log::warn!("a player's ignition failed: {error}");
+                    }
+                }
+                MiscEvent::PufferSting { fish, player, size, silent } => self.ecs_puffer_sting(fish, player, size, silent),
+                MiscEvent::LinkedHurt { entity, by_player } => {
+                    let id = self.ecs_id_of(entity);
+                    if let Some(link) = self.ecs.heart_link(id) {
+                        self.creaking_hurt(link.pos, id, by_player);
+                        self.ecs.creaking_voice(id, "entity.creaking.sway");
+                    }
+                }
+                MiscEvent::HeartAsked { entity, pos } => {
+                    let id = self.ecs_id_of(entity);
+                    self.creaking_check_heart(pos, id);
+                }
+                MiscEvent::Crumbled { center, spread, .. } => self.creaking_tear_down(center, spread),
+                MiscEvent::LightningVictim { victim, .. } => {
+                    let id = self.ecs_id_of(victim);
+                    victims.push(self.ecs_predicate_view(id));
+                }
             }
+        }
+        if !victims.is_empty() {
+            self.trigger_channeled_lightning(&victims);
         }
     }
 }

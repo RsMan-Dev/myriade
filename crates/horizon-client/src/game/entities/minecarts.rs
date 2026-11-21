@@ -530,7 +530,7 @@ impl Game<'_> {
     /// The cart the aim enters first within reach, by its network id; the cart the player rides is passed over.
     pub(super) fn cart_hit(&self) -> Option<(u32, f64)> {
         let (eye, dir) = self.aim()?;
-        self.ecs.aimed_cart_except(eye, dir, self.entity_reach, self.riding)
+        self.ecs.aimed_cart_except(Vec3::new(eye[0], eye[1], eye[2]), Vec3::new(dir[0], dir[1], dir[2]), self.entity_reach, self.riding)
     }
     /// The client's own carts (the remote list): the index of the cart the aim enters first, with the distance.
     pub(super) fn remote_cart_hit(&self) -> Option<(usize, f64)> {
@@ -602,7 +602,7 @@ impl Game<'_> {
     /// (`Entity.interact` passes), so nothing here lights it.
     pub(super) fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((id, d)) = (match target {
-            Some(t) => self.ecs.cart_kind(t.id).map(|_| (t.id, 0.0)),
+            Some(t) => u32::try_from(t.id).ok().and_then(|id| self.ecs.cart_kind(id).map(|_| (id, 0.0))),
             None => self.cart_hit(),
         }) else {
             return false;

@@ -115,7 +115,7 @@ impl Game<'_> {
 
     /// The registry id of a client-syncable attribute the entity type has
     /// (`AttributeMap.getInstance` is null for the others), by name.
-    fn synced_attribute(&self, entity: &str, name: &str) -> Option<i32> {
+    pub(in crate::game) fn synced_attribute(&self, entity: &str, name: &str) -> Option<i32> {
         let catalog = &self.motion.attributes;
         let id = catalog.id(name)?;
         (catalog.attribute(id).syncable && catalog.default_base(entity, id).is_some())
@@ -262,6 +262,36 @@ impl Game<'_> {
                 },
             );
         }
+    }
+
+    /// The synced instances of the ECS entity `e` of type `kind`, read through the bridge: what its `AttrMods`, worn items and armour
+    /// hold, with the type's default base where none was written. Only the syncable attributes the type has (`getSyncableAttributes`).
+    pub(in crate::game) fn ecs_attributes(&self, e: bevy_ecs::entity::Entity, kind: &str) -> Vec<AttributeSnapshot> {
+        use horizon_ecs_proto::attr_mod::Operation as Op;
+        self.ecs
+            .attribute_instances(e)
+            .into_iter()
+            .filter_map(|(name, base, mods)| {
+                let full = format!("minecraft:{name}");
+                let attribute = self.synced_attribute(kind, &full)?;
+                Some(AttributeSnapshot {
+                    attribute,
+                    base: base.unwrap_or_else(|| self.attribute_default(kind, &full)),
+                    modifiers: mods
+                        .into_iter()
+                        .map(|m| AttributeModifier {
+                            id: m.id,
+                            amount: m.amount,
+                            operation: match m.operation {
+                                Op::AddValue => 0,
+                                Op::AddMultipliedBase => 1,
+                                Op::AddMultipliedTotal => 2,
+                            },
+                        })
+                        .collect(),
+                })
+            })
+            .collect()
     }
 
     /// An armor stand's synced instances: movement speed (its first

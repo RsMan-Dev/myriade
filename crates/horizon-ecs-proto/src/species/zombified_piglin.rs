@@ -22,5 +22,14 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 8, &look_at_player::Params { range: 8.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
+    rules: &[
+        // `ZombifiedPiglin extends Zombie`: it inherits `Zombie.doHurtTarget` (the jar has none of its own).
+        crate::rules::RuleEntry::new(&crate::hostile::IGNITE_ON_HIT, &crate::hostile::ZOMBIE_FIRE),
+        crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
+        crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::ZOMBIE),
+        crate::rules::RuleEntry::new(&crate::reinforcements::RULE, &crate::reinforcements::Params::PIGLIN),
+        crate::rules::RuleEntry::new(&crate::spawn_gear::RULE, &crate::spawn_gear::ZOMBIFIED_PIGLIN),
+    ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

@@ -17,7 +17,7 @@ fn the_first_of_a_group_is_never_a_baby() {
     let mut r = LegacyRandom::new(7);
     let (baby, g) = ageable_roll(None, &mut r);
     assert!(!baby);
-    assert_eq!(g, Group::Ageable { should_baby: true, size: 1, chance: BABY_CHANCE });
+    assert_eq!(g, Group::Ageable { should_baby: true, size: 1, chance: BABY_CHANCE, variant: None });
 }
 
 #[test]

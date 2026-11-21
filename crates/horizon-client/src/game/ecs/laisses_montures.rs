@@ -122,9 +122,19 @@ impl Game<'_> {
         self.ecs.boost(e)
     }
 
-    /// The entity id of the acting player, from the UUID the acting turn holds.
+    /// The entity id of the acting player: a guest's turn swaps it into the player in place, so it is the own id.
     pub(in crate::game) fn acting_player_uuid_id(&self) -> Option<u32> {
-        self.player_id(self.acting_player_uuid())
+        u32::try_from(self.own_entity_id()).ok()
+    }
+
+    /// The entity id of the player with `uuid`: the one in place, or a server guest.
+    pub(in crate::game) fn player_id(&self, uuid: [i32; 4]) -> Option<u32> {
+        use crate::game::commands::Target;
+        match self.target_by_uuid(horizon_client::lan::playerdata::ints_uuid(uuid))? {
+            Target::Player => u32::try_from(self.own_entity_id()).ok(),
+            Target::Guest(conn) => u32::try_from(self.lan.as_ref()?.hub.guest(conn)?.entity_id).ok(),
+            _ => None,
+        }
     }
 
     /// `AbstractHorse.tameWithName` on the ECS mount `id` by the acting player: the owner and the health are P's (`tame::tame`).
@@ -134,8 +144,8 @@ impl Game<'_> {
             return;
         };
         // AnimalTameEvent cancelled: the roll fails and P refuses the rider (`EcsLevel::refuse_rider`, missing).
-        let tamer = self.native_acting_id();
-        if self.ecs.tame_cancelled(e, tamer) {
+        let (tamer, tamer_entity) = (self.native_acting_id(), self.own_entity_id());
+        if self.ecs_animal_tame_cancelled(id, tamer, tamer_entity) {
             self.ecs.refuse_rider(e);
             return;
         }
@@ -144,15 +154,21 @@ impl Game<'_> {
             horizon_ecs_proto::tame::tame(w, e, Who::Player(owner), health);
         }
         self.mob_event_particles(id, 7);
-        if let Some(view) = self.ecs_view(id) {
+        if self.ecs.entity_of(id).is_some() {
+            let view = self.ecs_predicate_view(id);
             self.trigger_entity("minecraft:tame_animal", "entity", &view);
         }
     }
 
-    /// `removePassenger` on the ECS: the rider of the mount `id` is let off by P's `mount::dismount`; the placement is not read back yet.
+    /// `removePassenger` on the ECS: the rider of the mount `id` is let off by P's `mount::dismount`, and the player is placed where
+    /// P says the mount lets them out (`EcsWorld::dismount_point`, read before the rider leaves).
     pub(in crate::game) fn dismount_mount_ecs(&mut self, id: u32) {
-        if let Some(e) = self.ecs.entity_of(id) {
-            self.ecs.dismount(e);
+        let Some(e) = self.ecs.entity_of(id) else { return };
+        let spot = self.ecs_with(|ecs, mw| ecs.dismount_point(mw, e));
+        self.ecs.dismount(e);
+        if let (Some(at), Some(p)) = (spot, self.player.as_mut()) {
+            p.position = horizon_core::geometry::Vec3::new(at[0], at[1], at[2]);
+            p.velocity = horizon_core::geometry::Vec3::ZERO;
         }
     }
 }

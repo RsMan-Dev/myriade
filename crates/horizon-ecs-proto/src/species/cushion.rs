@@ -23,7 +23,7 @@ pub const CHECK_PERIOD: u64 = 101;
 /// Ticks of the dropped cushion's pickup delay (`spawnAtLocation`).
 const DROP_DELAY: i64 = 10;
 /// `DyeColor` by ordinal.
-const DYES: [&str; 16] = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
+pub(crate) const DYES: [&str; 16] = ["white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray", "light_gray", "cyan", "purple", "blue", "brown", "green", "red", "black"];
 /// The wool each colour breaks into (`showBreakingParticles`).
 const WOOL: [&str; 16] = [
     "minecraft:white_wool", "minecraft:orange_wool", "minecraft:magenta_wool", "minecraft:light_blue_wool", "minecraft:yellow_wool", "minecraft:lime_wool", "minecraft:pink_wool", "minecraft:gray_wool",

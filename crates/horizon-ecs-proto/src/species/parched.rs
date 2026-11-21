@@ -21,5 +21,6 @@ pub static DEF: Def = Def {
         ),
         Change::Add(Section::Goals, Entry::new(&ranged_bow::MODULE, 4, &ranged_bow::Params { interval: 70, effect: Some((Kind::Weakness, 0, 600)), ..ranged_bow::Params::DEFAULT })),
     ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

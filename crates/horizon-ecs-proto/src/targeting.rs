@@ -94,10 +94,14 @@ pub struct Targets<'w, 's> {
     pub on: Res<'w, Online>,
     pub ps: Res<'w, PlayerState>,
     ents: Query<'w, 's, (&'static Pos, &'static Bounds, &'static SpeciesId, Has<GrowAt>, &'static Eye, Has<Invisible>, Option<&'static Equipment>)>,
+    crumbling: Query<'w, 's, (), crate::tear_down::Dead>,
 }
 impl Targets<'_, '_> {
     pub fn info(&self, who: Who) -> Option<Info> {
-        read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l, i, q)| (p.0, b.0, s.0, g, l.0, creature_visibility(i, q))))
+        let mut i = read(&self.on, &self.ps, who, |e| self.ents.get(e).ok().map(|(p, b, s, g, l, i, q)| (p.0, b.0, s.0, g, l.0, creature_visibility(i, q))))?;
+        // A crumbling creature is dying: `TargetingConditions` refuse the dead.
+        i.exempt |= matches!(who, Who::Entity(e) if self.crumbling.contains(e));
+        Some(i)
     }
 }
 /// `LivingEntity.getVisibilityPercent` of a creature: invisible, it is scaled by the worn slots (at least a tenth). Crouching and
@@ -123,9 +127,11 @@ pub fn creature_visibility_to(w: &World, c: Entity, looker: Option<u8>) -> f64 {
 }
 /// [`Targets::info`] for the code that holds the world.
 pub fn info(w: &World, who: Who) -> Option<Info> {
-    read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
+    let mut i = read(w.resource::<Online>(), w.resource::<PlayerState>(), who, |e| {
         Some((w.get::<Pos>(e)?.0, w.get::<Bounds>(e)?.0, w.get::<SpeciesId>(e)?.0, w.get::<GrowAt>(e).is_some(), w.get::<Eye>(e)?.0, creature_visibility(w.get::<Invisible>(e).is_some(), w.get::<Equipment>(e))))
-    })
+    })?;
+    i.exempt |= matches!(who, Who::Entity(e) if crate::tear_down::is_dead(w, e));
+    Some(i)
 }
 /// `TargetingConditions`: the range an attacker sees a target at: the follow range, scaled by the target's visibility,
 /// never under 2 blocks.

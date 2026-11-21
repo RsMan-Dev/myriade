@@ -97,9 +97,14 @@ pub fn open(w: &mut World, e: Entity, player: u32) {
     let origin = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
     let profession = profession_name(w, profession);
     let reputation = reputation_of(w, e, player);
-    let hero = player_hero(w, player);
+    let hero = if wandering { None } else { player_hero(w, player) };
     let sequences = lend_for_levels(w, &profession, level);
     let mut session = Session::new(offers, !wandering);
+    // The merchant's own random (`rewardTradeXp`) is seeded from the entity's generator, two draws for 64 bits.
+    if let Some(mut r) = w.get_mut::<crate::cow::Rng>(e) {
+        let seed = (i64::from(r.next_u32()) << 32) | i64::from(r.next_u32());
+        session.random = horizon_core::random::LegacyRandom::new(seed);
+    }
     session.xp = xp;
     session.level = level;
     session.profession = profession;
@@ -159,7 +164,8 @@ pub fn buy(w: &mut World, e: Entity, index: usize, a: &mut Option<ItemStack>, b:
 pub fn refresh_prices(w: &mut World, e: Entity) {
     let Some(player) = w.get::<Trading>(e).map(|t| t.player) else { return };
     let reputation = reputation_of(w, e, player);
-    let hero = player_hero(w, player);
+    let wandering = w.get::<Merchant>(e).is_some_and(|m| m.wandering);
+    let hero = if wandering { None } else { player_hero(w, player) };
     let Some(mut t) = w.get_mut::<Trading>(e) else { return };
     t.session.reputation = reputation;
     t.session.hero = hero;
@@ -187,10 +193,9 @@ pub fn reputation_of(w: &World, e: Entity, player: u32) -> i32 {
     w.get::<Gossips>(e).map_or(0, |g| g.reputation(player))
 }
 
-/// L'amplificateur de Héros du village du joueur. ASSUMED : `effects.rs` n'a pas de lecture d'amplificateur (`effects::add` seul) ;
-/// None tant qu'elle n'existe pas, donc pas de remise héros.
-pub fn player_hero(_w: &World, _player: u32) -> Option<i32> {
-    None
+/// L'amplificateur de Héros du village du joueur : un fait écrit par l'hôte avec le joueur (`PlayerFact.hero`).
+pub fn player_hero(w: &World, player: u32) -> Option<i32> {
+    w.get_resource::<crate::bridge::players::PlayerFacts>()?.0.get(&player)?.hero
 }
 
 /// Envoie les événements de la session vers le monde : orbes d'expérience, régénération à la montée de niveau, sons du commerce.
@@ -199,7 +204,9 @@ fn emit(w: &mut World, e: Entity, events: Vec<Event>) {
     for ev in events {
         match ev {
             Event::Orb(v) => {
-                let p = w.get::<Pos>(e).map_or_else(Default::default, |p| p.0);
+                // `Villager.rewardTradeXp`: the orb stands half a block above the villager's feet.
+                let mut p = w.get::<Pos>(e).map_or_else(Default::default, |p| p.0);
+                p.y += 0.5;
                 crate::orb::spawn_orb(w, v, 1, p, Default::default());
             }
             Event::LevelUp(_) => {

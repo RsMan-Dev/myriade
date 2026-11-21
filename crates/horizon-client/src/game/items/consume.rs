@@ -262,65 +262,71 @@ impl Game<'_> {
         result.unwrap_or(false)
     }
 
-    /// `apply_fox_consumption` for the ECS fox `decision.mob`: the same steps, the mob side through the bridge.
-    pub(super) fn apply_fox_consumption_ecs(&mut self, decision: &horizon_client::mobs::fox::Consumption) -> bool {
-        if !self.ecs.fox_still_valid(decision) {
+    /// `HostEvent::HeldConsume`: the item in the mouth of the ECS creature `e` is eaten now. The effects, the sounds and the remainder
+    /// are the item's (host data); P owns the mouth, the clock and the stack, and is told at the end (`finish_held_use`).
+    pub(in crate::game) fn ecs_held_consume_event(&mut self, e: bevy_ecs::entity::Entity, stack: ItemStack, seed: i64, silent: bool) {
+        let mob = self.entity_id(e);
+        self.apply_held_consumption_ecs(mob, &stack, seed, silent);
+    }
+
+    /// `apply_fox_consumption` for the ECS creature `mob`: the same steps, the mob side through the bridge. `seed` seeds the random of
+    /// the sounds and of the teleport (P's own generator is not a `LegacyRandom`).
+    fn apply_held_consumption_ecs(&mut self, mob: u32, stack: &ItemStack, seed: i64, silent: bool) -> bool {
+        if !self.ecs.held_use_valid(mob, stack, None) {
             return false;
         }
-        let Some(consumer) = self.entity(decision.mob).and_then(|e| self.living(e)) else {
+        let Some(consumer) = self.entity(mob).and_then(|e| self.living(e)) else {
             return false;
         };
-        let Some(consumable) = self.consumable(&decision.stack) else {
+        let Some(consumable) = self.consumable(stack) else {
             return false;
         };
-        let remainder = self
-            .items()
-            .get(&decision.stack.item)
-            .and_then(|info| info.use_remainder.as_deref())
-            .map(std::sync::Arc::<str>::from);
-        let remainder = horizon_client::item_sync::use_remainder(&decision.stack, remainder.map(|value| value.to_string()))
-            .map(std::sync::Arc::<str>::from);
+        let info = self.items().get(&stack.item);
+        let food = horizon_client::item_sync::food(stack, info.and_then(|i| i.food));
+        let remainder = info.and_then(|i| i.use_remainder.as_deref()).map(std::sync::Arc::<str>::from);
+        let remainder = horizon_client::item_sync::use_remainder(stack, remainder.map(|value| value.to_string()));
         let dim = self.dim;
         let consumed = std::cell::OnceCell::new();
         let result: Result<bool, ()> = mod_api::run_transaction(self, |game, _| {
-            let events = game.ecs.fox_consumed_before_effects(decision.mob, &decision.stack);
+            let Some(at) = game.ecs.position(mob) else {
+                return Ok(false);
+            };
+            let mut rng = LegacyRandom::new(seed);
+            let mut events = Vec::new();
+            // `emitParticlesAndSounds(random, user, stack, 16)`, then `FoodProperties.onConsume`'s sound at full volume.
+            let _ = consumable.emit(&mut HeldEater { rng: &mut rng, at, silent, events: &mut events }, (), stack.clone(), 16);
+            if food.is_some() {
+                let pitch = rng.triangle_float(1.0, 0.4);
+                events.push(horizon_client::mobs::MobEvent::SoundId(consumable.sound.clone(), at, 1.0, pitch));
+            }
             if game.handle_mob_events(events).is_err() {
                 return Ok(false);
             }
             for effect in &consumable.effects {
-                if let ConsumeEffect::PlaySound(_) = effect {
-                    if game.apply_consume_effect(&decision.stack, effect, Some(consumer)).is_none() {
-                        return Ok(false);
-                    }
-                } else if let ConsumeEffect::TeleportRandomly(teleport) = effect {
-                    let consumed = consumed.get_or_init(|| consumed_snapshot(&decision.stack));
-                    let mut actor = EcsFoxTeleporter {
-                        game,
-                        consumer,
-                        decision,
-                        dim,
-                        consumed: consumed.as_ref(),
-                    };
+                if let ConsumeEffect::TeleportRandomly(teleport) = effect {
+                    let consumed = consumed.get_or_init(|| consumed_snapshot(stack));
+                    let mut actor = EcsHeldTeleporter { game, consumer, mob, stack, from: Vec3::new(at[0], at[1], at[2]), rng: &mut rng, dim, consumed: consumed.as_ref() };
                     if teleport.apply(&mut actor, dim).is_err() {
                         return Ok(false);
                     }
-                } else {
-                    game.ecs.apply_fox_consume_effect(decision.mob, effect, crate::game::entity::damage_level_of!(game));
+                } else if game.apply_consume_effect(stack, effect, Some(consumer)).is_none() {
+                    return Ok(false);
                 }
             }
-            let Some(at) = game.ecs.position(decision.mob) else {
+            let Some(at) = game.ecs.position(mob) else {
                 return Ok(false);
             };
             let event = horizon_client::mobs::MobEvent::GameEvent {
                 event: if consumable.animation == UseAnimation::Drink { "minecraft:drink" } else { "minecraft:eat" },
                 at,
-                source: decision.mob,
+                source: mob,
                 state: horizon_world::registry::BlockStateId(0),
             };
             if game.handle_mob_events(vec![event]).is_err() {
                 return Ok(false);
             }
-            Ok(game.ecs.finish_fox_use(decision.mob, remainder.clone()))
+            let remainder = remainder.clone().map(|name| ItemStack::new(&name, 1));
+            Ok(game.ecs.finish_held_use(mob, stack, remainder))
         });
         result.unwrap_or(false)
     }
@@ -477,9 +483,10 @@ impl Game<'_> {
             return;
         }
         let Some((from, to, width, height)) = self.ecs.teleport_box(id as u32) else { return };
-        let Some(random) = self.ecs.random_mut(id as u32) else { return };
+        let Some(seed) = self.ecs.draw_seed(id as u32) else { return };
+        let mut random = LegacyRandom::new(seed);
         let mut spawned = Vec::with_capacity(128);
-        horizon_client::particles::living_teleport_particles(random, from, to, width, height, |p, v| spawned.push((p, v)));
+        horizon_client::particles::living_teleport_particles(&mut random, from, to, width, height, |p, v| spawned.push((p, v)));
         let options = ParticleOptions::simple(ParticleType::Portal);
         for (p, v) in spawned {
             self.particles.add(&options, p, v);
@@ -536,8 +543,8 @@ impl Game<'_> {
             }
             return;
         }
-        if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-            self.dismount(i);
+        if self.ecs.boat_status(id).is_some() {
+            self.dismount_boat(id);
         } else if self.ecs.cart_kind(id).is_some() {
             self.dismount_cart(id);
         } else if let Some(c) = self.cushions.iter().find(|c| c.id == id).cloned() {
@@ -866,33 +873,36 @@ impl TeleportConsumeWorld for FoxTeleporter<'_, '_> {
     }
 }
 
-/// `FoxTeleporter` for an ECS fox: the position, the random, the riding and the fall come from the bridge.
-struct EcsFoxTeleporter<'a, 'g> {
+/// `FoxTeleporter` for an ECS creature that eats: the position, the riding and the fall come from the bridge, the random is seeded by P.
+struct EcsHeldTeleporter<'a, 'g> {
     game: &'a mut Game<'g>,
     consumer: mod_api::LivingRef,
-    decision: &'a horizon_client::mobs::fox::Consumption,
+    mob: u32,
+    stack: &'a ItemStack,
+    from: Vec3,
+    rng: &'a mut LegacyRandom,
     dim: Dim,
     consumed: Option<&'a mod_api::ItemStack>,
 }
-impl EcsFoxTeleporter<'_, '_> {
+impl EcsHeldTeleporter<'_, '_> {
     fn at(&self) -> Result<Vec3, ()> {
-        self.game.ecs.alive_position(self.decision.mob).ok_or(())
+        self.game.ecs.held_use_valid(self.mob, self.stack, None).then(|| self.game.ecs.position(self.mob)).flatten().map(|p| Vec3::new(p[0], p[1], p[2])).ok_or(())
     }
 }
-impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
+impl TeleportConsumeWorld for EcsHeldTeleporter<'_, '_> {
     type Error = ();
     type Level = Dim;
-    type Random = u32;
+    type Random = ();
     type Source = LegacyRandom;
     fn position_field(&self) -> Vec3 {
-        self.at().unwrap_or(self.decision.from)
+        self.at().unwrap_or(self.from)
     }
-    fn get_random(&mut self) -> Result<u32, ()> {
+    fn get_random(&mut self) -> Result<(), ()> {
         self.at()?;
-        Ok(self.decision.mob)
+        Ok(())
     }
-    fn random_source(&mut self, id: u32) -> &mut LegacyRandom {
-        self.game.ecs.random_mut(id).expect("get_random validated the actor without an intervening callback")
+    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
+        self.rng
     }
     fn min_y(&mut self, _: Dim) -> Result<i32, ()> {
         Ok(self.game.world.shape.min_y)
@@ -901,10 +911,10 @@ impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
         Ok(self.game.world.shape.logical_height)
     }
     fn is_passenger(&mut self) -> Result<bool, ()> {
-        Ok(self.game.ecs_vehicle_of(self.decision.mob).is_some())
+        Ok(self.game.ecs_vehicle_of(self.mob).is_some())
     }
     fn stop_riding(&mut self) -> Result<(), ()> {
-        self.game.ecs_dismount(self.decision.mob);
+        self.game.ecs_dismount(self.mob);
         Ok(())
     }
     fn position(&mut self) -> Result<Vec3, ()> {
@@ -919,8 +929,8 @@ impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
         }
         if self.game.dim != self.dim
             || !matches!(self.game.native_living_target(self.consumer),
-                Some(super::commands::Target::Mob(id)) if id == self.decision.mob)
-            || !self.game.ecs.fox_still_valid_at(self.decision, from)
+                Some(super::commands::Target::Mob(id)) if id == self.mob)
+            || !self.game.ecs.held_use_valid(self.mob, self.stack, Some([from.x, from.y, from.z]))
         {
             return Err(());
         }
@@ -935,7 +945,7 @@ impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
         Ok(self.game.living_random_teleport(self.consumer, [at.x, at.y, at.z], Some("minecraft:consumable_does_not_teleport_to")))
     }
     fn teleport_event(&mut self, _: Dim, old: Vec3) -> Result<(), ()> {
-        let ctx = self.game.who_context(Some(Who::Mob(self.decision.mob)), None);
+        let ctx = self.game.who_context(Some(Who::Mob(self.mob)), None);
         self.game.post_game_event("minecraft:teleport", [old.x, old.y, old.z], ctx);
         Ok(())
     }
@@ -954,9 +964,44 @@ impl TeleportConsumeWorld for EcsFoxTeleporter<'_, '_> {
         Ok(())
     }
     fn reset_fall_distance(&mut self) -> Result<(), ()> {
-        self.game.ecs.reset_fall_distance(self.decision.mob).ok_or(())
+        self.game.ecs.reset_fall_distance(self.mob).ok_or(())
     }
     fn reset_impulse(&mut self) -> Result<(), ()> {
+        Ok(())
+    }
+}
+
+/// The eating creature as `Consumable`'s user: a random seeded by P, and its own ears (a silent one is not heard).
+struct HeldEater<'a> {
+    rng: &'a mut LegacyRandom,
+    at: [f64; 3],
+    silent: bool,
+    events: &'a mut Vec<horizon_client::mobs::MobEvent>,
+}
+impl EmissionWorld for HeldEater<'_> {
+    type Error = Infallible;
+    type Stack = ItemStack;
+    type Sound = String;
+    type Random = ();
+    type Source = LegacyRandom;
+    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
+        self.rng
+    }
+    /// A server does nothing with the crumbs (the clients throw them on entity event 45).
+    fn spawn_item_particles(&mut self, _: ItemStack, _: i32) -> Result<(), Infallible> {
+        Ok(())
+    }
+    fn overrides_consume_sound(&self) -> bool {
+        false
+    }
+    fn consume_sound(&mut self, _: ItemStack) -> Result<String, Infallible> {
+        unreachable!("the consumable plays its own sound")
+    }
+    /// `Entity.playSound`: at the creature's feet, and nothing from a silent one.
+    fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
+        if !self.silent {
+            self.events.push(horizon_client::mobs::MobEvent::SoundId(sound, self.at, volume, pitch));
+        }
         Ok(())
     }
 }

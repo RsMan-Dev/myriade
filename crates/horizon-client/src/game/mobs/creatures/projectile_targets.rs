@@ -31,11 +31,8 @@ impl Game<'_> {
     /// the End crystals (under reserved ids, game/dragon.rs), and the vehicles
     /// and item frames.
     pub(in crate::game) fn projectile_targets(&self, min: Vec3, max: Vec3) -> Vec<(Who, Aabb)> {
-        let mut targets: Vec<(Who, Aabb)> = self
-            .mobs
-            .iter()
-            .filter(|m| m.alive())
-            .map(|m| (Who::Mob(m.id), m.bounds()))
+        let mut targets: Vec<(Who, Aabb)> = (self.ecs.living_touching(min, max).into_iter())
+            .filter_map(|id| self.ecs.bounds(id).map(|b| (Who::Mob(id), b)))
             .collect();
         if let Some(p) = self.player_view()
             && p.alive

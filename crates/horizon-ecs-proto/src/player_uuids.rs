@@ -25,6 +25,8 @@ pub enum Slot {
     Projectile,
     /// `CloudSpec.owner` of a potion cloud.
     Cloud,
+    /// `PlayerCredit.player`.
+    Credit,
 }
 
 /// The players by id and by uuid, and the waiting entities by uuid. A uuid is held as one `u128`.
@@ -105,6 +107,11 @@ fn pose(w: &mut World, e: Entity, who: Who, slot: Slot) -> bool {
         Slot::Leash => {
             if let Who::Player(id) = who {
                 return attach(w, e, Holder::Player(id));
+            }
+        }
+        Slot::Credit => {
+            if let (Who::Player(id), Some(mut k)) = (who, w.get_mut::<crate::credit::PlayerCredit>(e)) {
+                k.player = Some(id);
             }
         }
         Slot::Item => {}

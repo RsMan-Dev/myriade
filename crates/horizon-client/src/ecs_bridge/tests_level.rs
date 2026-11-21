@@ -43,5 +43,4 @@ fn an_unbound_entity_or_a_host_only_event_is_kept() {
     let e = world.spawn_empty().id();
     assert!(to_mob_event(&world, HostEvent::PullEntity { entity: e, velocity: [0.0; 3] }).is_none());
     assert!(to_mob_event(&world, HostEvent::Pearl { player: 1, to: [0.0; 3], damage: 0.0, endermite: false }).is_none());
-    assert!(to_mob_event(&world, HostEvent::GolemState { entity: e, state: 0 }).is_none());
 }

@@ -22,6 +22,11 @@ impl EcsLevel {
         self.ecs().map_or(0, |e| e.count_triggers_in(area, mobs_only))
     }
 
+    /// The ids of the creatures whose box meets `area`.
+    pub fn creatures_in(&self, area: Aabb) -> Vec<u32> {
+        self.ecs().map_or_else(Vec::new, |e| e.creatures_in(area))
+    }
+
     /// The boxes of the minecarts meeting `area`.
     pub fn cart_bounds_in(&self, area: Aabb) -> Vec<Aabb> {
         self.ecs().map_or_else(Vec::new, |e| e.cart_bounds_in(area))

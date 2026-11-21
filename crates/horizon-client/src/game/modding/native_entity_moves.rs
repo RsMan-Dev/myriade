@@ -140,6 +140,13 @@ impl Game<'_> {
                     true
                 }) == Some(true)
             }
+            Target::Mob(id) if self.ecs.is_active() => match self.ecs.entity_of(id) {
+                Some(e) => {
+                    self.ecs.set_rotation(e, yaw, pitch);
+                    true
+                }
+                None => false,
+            },
             Target::Mob(id) => {
                 let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
                     return false;
@@ -170,6 +177,10 @@ impl Game<'_> {
             return Some(g.head_yaw);
         }
         if let Target::Mob(id) = t {
+            if self.ecs.is_active() {
+                let (head, _) = self.ecs.head_body_yaw(id)?;
+                return Some(if head.is_nan() { self.ecs.yaw(id)? } else { head });
+            }
             return Some(self.remote_entities.iter().find(|m| m.id == id)?.head_yaw);
         }
         Some(0.0)
@@ -181,6 +192,9 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(entity)? else {
             return None;
         };
+        if self.ecs.is_active() {
+            return Some(self.ecs.head_body_yaw(id)?.1);
+        }
         Some(self.remote_entities.iter().find(|m| m.id == id)?.body_yaw)
     }
     /// Turns a mob's head to `yaw` (`Entity.setYHeadRot`); its body follows
@@ -191,6 +205,7 @@ impl Game<'_> {
             return false;
         }
         match self.native_entity_target(entity) {
+            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.set_head_yaw(id, yaw),
             Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.head_yaw = yaw;
@@ -242,6 +257,11 @@ impl Game<'_> {
             return self.native_player_motion(target, |v| {
                 Vec3::new(v.x + delta[0], v.y + delta[1], v.z + delta[2])
             });
+        }
+        if let Target::Mob(id) = target
+            && self.ecs.is_active()
+        {
+            return self.ecs.entity_of(id).map(|_| self.ecs.push(id, delta)).is_some();
         }
         let Some(h) = self.native_walk_entity(entity.id()) else {
             return false;

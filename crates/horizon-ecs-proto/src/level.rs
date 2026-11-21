@@ -30,9 +30,13 @@ pub fn is_liquid(w: &World, p: [i32; 3]) -> bool {
 pub fn can_grief(w: &World, _e: Entity) -> bool {
     mob_griefing(w)
 }
-/// `IBlockExtension.canEntityDestroy` without a per-entity rule: the vanilla answer.
-pub fn can_entity_destroy(_w: &World, _e: Entity, _p: [i32; 3], vanilla: bool) -> bool {
-    vanilla
+/// `IBlockExtension.canEntityDestroy`: `vanilla`, the creature's own rule, unless the host's block parts answer otherwise (`MobWorld::mob_hooks`,
+/// absent while no mod listens).
+pub fn can_entity_destroy(w: &World, e: Entity, p: [i32; 3], vanilla: bool) -> bool {
+    match crate::bridge::ids::id_of(w, e) {
+        Some(id) => world_of(w).can_entity_destroy(id, p, vanilla),
+        None => vanilla,
+    }
 }
 /// The cells of the entity's box grown by `inflate` on every side (`floor` of the low and high corners, both included).
 pub fn cells_in(w: &World, e: Entity, inflate: f64) -> Vec<[i32; 3]> {
@@ -58,10 +62,36 @@ pub fn jump(w: &mut World, e: Entity) {
         v.0.y = jump_speed(v.0.y);
     }
 }
-/// The jump after a break waits for the host's answer on each block, which `HostOut` does not give yet: no jump here.
-pub fn jump_if_kept(_w: &mut World, _e: Entity) {}
-/// Asks for the block at `p` to become air. The drop and the names of the breaker are not sent: no output for them yet.
-pub fn break_block(w: &mut World, p: [i32; 3], _drop: bool, _by: Option<Entity>, _breaker: Option<Entity>) {
+/// The cells a creature asked the host to break, whose answer comes with the host's writes: `kept_check` jumps if none became air.
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct AskedBreaks(pub Vec<[i32; 3]>);
+/// The jump after a break (`IfBroke`): the host answers each asked block by writing the air or not, so the jump is decided two
+/// ticks later (`kept_check`) from what the cells still hold, once per bump and not by tick.
+pub fn jump_if_kept(w: &mut World, e: Entity, cells: Vec<[i32; 3]>) {
+    if cells.is_empty() {
+        return;
+    }
+    w.entity_mut(e).insert(AskedBreaks(cells));
+    crate::cow::after(w, e, 2, kept_check);
+}
+fn kept_check(w: &mut World, e: Entity) {
+    let Some(AskedBreaks(cells)) = w.entity_mut(e).take::<AskedBreaks>() else { return };
+    if cells.iter().all(|p| !block_empty(w, *p)) && is_on_ground(w, e) {
+        jump(w, e);
+    }
+}
+/// Asks for the block at `p` to become air. The drop and the names of the breaker are not sent: no output for them yet. While a mod hears
+/// `LivingDestroyBlockEvent`, a creature's break goes to the host (`MiscEvent::DestroyAsk`), which writes the air unless a mod cancels.
+pub fn break_block(w: &mut World, p: [i32; 3], _drop: bool, _by: Option<Entity>, breaker: Option<Entity>) {
+    if let Some(breaker) = breaker
+        && asks_living_destroy_block(w)
+    {
+        w.get_resource_or_insert_with(crate::colony_register::MiscOut::default)
+            .0
+            .push(crate::host_out_misc::MiscEvent::DestroyAsk { breaker, pos: p });
+        return;
+    }
     set_state(w, p, "minecraft:air", &[]);
 }
 pub fn asks_living_destroy_block(w: &World) -> bool {

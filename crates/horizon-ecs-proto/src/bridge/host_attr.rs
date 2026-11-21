@@ -10,7 +10,7 @@ fn key(name: &str) -> &str {
 }
 
 /// Runs `f` on the attribute list of `e`, created when absent and dropped when it empties; false when `e` does not exist.
-fn edit(w: &mut World, e: Entity, f: impl FnOnce(&mut AttrMods) -> bool) -> bool {
+fn edit(w: &mut World, e: Entity, name: &str, f: impl FnOnce(&mut AttrMods) -> bool) -> bool {
     if w.get_entity(e).is_err() {
         return false;
     }
@@ -24,6 +24,9 @@ fn edit(w: &mut World, e: Entity, f: impl FnOnce(&mut AttrMods) -> bool) -> bool
     drop(list);
     if empty {
         w.entity_mut(e).remove::<AttrMods>();
+    }
+    if done {
+        crate::attr_mod::touched(w, e, name);
     }
     done
 }
@@ -42,7 +45,7 @@ impl EcsWorld {
     /// Adds a modifier to attribute `name`; false when `e` does not exist or a modifier of the same id is already there.
     pub fn add_attribute_modifier(&mut self, e: Entity, name: &str, m: Modifier) -> bool {
         let k = key(name).to_owned();
-        edit(self.world_mut(), e, |list| {
+        edit(self.world_mut(), e, &k, |list| {
             let i = match list.0.iter().position(|x| x.0 == k) {
                 Some(i) => i,
                 None => {
@@ -62,7 +65,7 @@ impl EcsWorld {
     /// Removes the modifier `id` from attribute `name`; false when `e` does not exist or has no such modifier.
     pub fn remove_attribute_modifier(&mut self, e: Entity, name: &str, id: &str) -> bool {
         let k = key(name).to_owned();
-        edit(self.world_mut(), e, |list| {
+        edit(self.world_mut(), e, &k, |list| {
             let Some(i) = list.0.iter().position(|x| x.0 == k) else { return false };
             let mods = &mut list.0[i].2;
             let Some(j) = mods.iter().position(|x| x.id == id) else { return false };
@@ -74,12 +77,59 @@ impl EcsWorld {
     /// Writes the base of attribute `name` over the species' one; false when `e` does not exist.
     pub fn set_attribute_base(&mut self, e: Entity, name: &str, base: f64) -> bool {
         let k = key(name).to_owned();
-        edit(self.world_mut(), e, |list| {
+        edit(self.world_mut(), e, &k, |list| {
             match list.0.iter().position(|x| x.0 == k) {
                 Some(i) => list.0[i].1 = base,
                 None => list.0.push((k, base, Vec::new())),
             }
             true
         })
+    }
+
+    /// `setBaseValue` of the species' own base (`/attribute base reset`): drops the written base, keeping the modifiers; the entry
+    /// leaves the component once it holds nothing. False when `e` does not exist.
+    pub fn reset_attribute_base(&mut self, e: Entity, name: &str) -> bool {
+        let k = key(name).to_owned();
+        edit(self.world_mut(), e, &k, |list| {
+            if let Some(i) = list.0.iter().position(|x| x.0 == k) {
+                list.0[i].1 = f64::NAN;
+            }
+            true
+        })
+    }
+
+    /// The entities whose attribute instances changed since the last call (`getAttributesToSync`); empty, and free, at rest.
+    pub fn drain_attribute_changes(&mut self) -> Vec<Entity> {
+        let mut v: Vec<Entity> =
+            self.world_mut().get_resource_mut::<crate::attr_mod::AttrDirty>().map_or_else(Vec::new, |mut d| d.0.drain().collect());
+        v.sort_unstable_by_key(|e: &Entity| e.to_bits());
+        v
+    }
+
+    /// The attribute instances `e` holds that the clients may be told of: (name without `minecraft:`, the base written over the species'
+    /// (None: the species' own), the modifiers). The host keeps the syncable ones and gives the species' base.
+    pub fn attribute_instances(&self, e: Entity) -> Vec<(String, Option<f64>, Vec<Modifier>)> {
+        let w = self.world();
+        let mut names: Vec<String> = w.get::<AttrMods>(e).map_or_else(Vec::new, |l| l.0.iter().map(|x| x.0.clone()).collect());
+        if let Some(l) = w.get::<crate::equip_attrs::WornModifiers>(e) {
+            names.extend(l.0.iter().map(|r| r.1.clone()));
+        }
+        if w.get::<crate::equipment::Armor>(e).is_some() || w.get::<crate::attributes::ArmorModifiers>(e).is_some() {
+            names.push("armor".to_owned());
+        }
+        if w.get::<crate::cow::Body>(e).is_some() {
+            names.extend(["movement_speed".to_owned(), "max_health".to_owned()]);
+        }
+        names.extend(crate::effects::attribute_names(w, e).map(str::to_owned));
+        names.sort_unstable();
+        names.dedup();
+        names
+            .into_iter()
+            .map(|n| {
+                let base = w.get::<AttrMods>(e).and_then(|l| l.0.iter().find(|x| x.0 == n)).map(|x| x.1).filter(|b| !b.is_nan());
+                let mods = self.attribute_modifiers(e, &n);
+                (n, base, mods)
+            })
+            .collect()
     }
 }

@@ -78,6 +78,22 @@ impl GoalSet {
         assert_eq!(entries.len(), self.entries.len());
         self.entries = entries;
     }
+    /// The selector over `entries`, which keeps the slots of this one and may extend it (`goal_edit.rs`): what runs, waits and
+    /// is locked carries over, and the instance numbers of the slots already there do not move.
+    pub(crate) fn rebuilt(&self, entries: &'static [Entry]) -> Self {
+        let mut g = Self::new(entries);
+        let n = self.entries.len().min(entries.len());
+        g.nth[..n].copy_from_slice(&self.nth[..n]);
+        g.running = self.running;
+        g.pending = self.pending;
+        g.lock = self.lock;
+        g.disabled = self.disabled;
+        g
+    }
+    /// The goal of `slot` no longer waits for a flag.
+    pub(crate) fn unqueue(&mut self, slot: u8) {
+        self.pending &= !(1 << slot);
+    }
     pub fn module(&self, slot: u8) -> &'static Module {
         self.entries[slot as usize].module
     }
@@ -826,6 +842,9 @@ pub struct Events {
     pub extinguished: Ev,
     pub entered_fluid: Ev,
     pub left_fluid: Ev,
+    /// The eyes went under water / out of it (`fluid_update`, a change of `FluidState::eye_in_water` while the body stays in a fluid).
+    pub eye_entered_water: Ev,
+    pub eye_left_water: Ev,
     /// The feet reached the ground after being in the air.
     pub landed: Ev,
     /// The active mode of locomotion changed (`locomotion::switch`: a fluid, or a goal that takes off or lands).
@@ -885,6 +904,8 @@ impl Events {
         self.extinguished.swap();
         self.entered_fluid.swap();
         self.left_fluid.swap();
+        self.eye_entered_water.swap();
+        self.eye_left_water.swap();
         self.item_dropped.swap();
         self.landed.swap();
         self.mode_changed.swap();
@@ -1025,6 +1046,10 @@ impl PlayerWatch {
     }
     pub fn is_inside(&self, player: u32) -> bool {
         self.inside.binary_search(&player).is_ok()
+    }
+    /// Whether some player is inside the radius now.
+    pub fn any_inside(&self) -> bool {
+        !self.inside.is_empty()
     }
 }
 /// Something to update: a player event or a cell move this tick, and some entity that watches (the system's parameters are not fetched otherwise).
@@ -1317,6 +1342,15 @@ pub fn dispatch_damaged(w: &mut World, e: Entity, d: &crate::behaviours::Damaged
 /// A player uses an item on the entity: the first module of its selector that answers true handles it (`Mob.mobInteract`), then
 /// its rules (shearing); false when nothing did.
 pub fn interact(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) -> bool {
+    crate::keep_on_use::on_use(w, e);
+    // `Mob.checkAndHandleImportantInteractions`: the spawn egg works on any creature, before its own interactions.
+    if crate::spawn_offspring::interact(w, e, &(), i) {
+        return true;
+    }
+    // `AgeableMob.mobInteract`: the golden dandelion flips the age lock of a baby.
+    if crate::age_lock::interact(w, e, i) {
+        return true;
+    }
     if let Some(g) = w.get::<GoalSet>(e) {
         for slot in 0..g.len() as u8 {
             let Some((m, inst)) = of(w, e, slot) else { break };
@@ -1427,8 +1461,11 @@ pub(crate) fn end_goal(w: &mut World, e: Entity, slot: u8) {
     if m.retry_on_end {
         start_goal(w, e, slot);
     }
-    // A goal that was waiting for the flags it held tries again, in registration order.
-    let g = w.get::<GoalSet>(e).unwrap();
+    release_waiting(w, e);
+}
+/// A goal that was waiting for the flags a goal held tries again, in registration order.
+pub(crate) fn release_waiting(w: &mut World, e: Entity) {
+    let Some(g) = w.get::<GoalSet>(e) else { return };
     let waiting: Vec<u8> = (0..g.len() as u8).filter(|i| g.pending >> i & 1 == 1).collect();
     changed(w, e, Change::Ended);
     for p in waiting {

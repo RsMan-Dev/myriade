@@ -22,6 +22,7 @@ impl Game<'_> {
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.position),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.position(id),
             Target::Mob(id) => self
                 .remote_entities
                 .iter()
@@ -127,6 +128,7 @@ impl Game<'_> {
     pub(in crate::game) fn target_type(&self, t: Target) -> String {
         match t {
             Target::Player | Target::Guest(_) => "minecraft:player".into(),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.kind(id).unwrap_or_default().to_owned(),
             Target::Mob(id) => self
                 .remote_entities
                 .iter()

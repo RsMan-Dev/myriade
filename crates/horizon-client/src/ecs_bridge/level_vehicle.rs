@@ -79,6 +79,18 @@ impl EcsLevel {
             b.set_trade_offers(e, offers);
         }
     }
+    /// `EcsWorld::install_trades`.
+    pub fn install_trades(
+        &mut self,
+        trades: crate::merchant::Trades,
+        items: &'static crate::items::Items,
+        enchantments: &'static horizon_items::enchant::Enchantments,
+        seed: i64,
+    ) {
+        if let Some(b) = self.ecs_mut() {
+            b.install_trades(trades, items, enchantments, seed);
+        }
+    }
     pub fn trade_open(&mut self, id: u32, player: u32) {
         let Some(e) = self.entity_of(id) else { return };
         if let Some(b) = self.ecs_mut() {
@@ -93,6 +105,86 @@ impl EcsLevel {
     }
     pub fn trade_busy(&self, id: u32) -> bool {
         self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.trade_busy(e))
+    }
+    /// Some(true) for a villager, Some(false) for a wandering trader, None without a merchant (`EcsWorld::is_villager`).
+    pub fn is_villager(&self, id: u32) -> Option<bool> {
+        self.ecs()?.is_villager(self.entity_of(id)?)
+    }
+    /// The merchant's side of the open screen of `id` (`EcsWorld::trade_session`).
+    pub fn merchant_session(&self, id: u32) -> Option<horizon_client_lib::merchant::Session> {
+        self.ecs()?.trade_session(self.entity_of(id)?)
+    }
+    /// The offers and the experience of the merchant `id` (`EcsWorld::trade_store`).
+    pub fn trade_store(&mut self, id: u32, offers: Vec<MerchantOffer>, xp: i32) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.trade_store(e, offers, xp);
+        }
+    }
+    pub fn trade_random(&self, id: u32) -> Option<horizon_core::random::LegacyRandom> {
+        self.ecs()?.trade_random(self.entity_of(id)?)
+    }
+    pub fn set_trade_random(&mut self, id: u32, random: horizon_core::random::LegacyRandom) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_trade_random(e, random);
+        }
+    }
+    pub fn ambient_timer(&self, id: u32) -> Option<i32> {
+        self.ecs()?.ambient_timer(self.entity_of(id)?)
+    }
+    pub fn set_ambient_timer(&mut self, id: u32, time: i32) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_ambient_timer(e, time);
+        }
+    }
+    pub fn set_trade_level(&mut self, id: u32, level: i32) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_trade_level(e, level);
+        }
+    }
+    /// `Villager.getVillagerXp` (`EcsWorld::trade_xp`).
+    pub fn trade_xp(&self, id: u32) -> Option<i32> {
+        self.ecs()?.trade_xp(self.entity_of(id)?)
+    }
+    pub fn set_trade_xp(&mut self, id: u32, xp: i32) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_trade_xp(e, xp);
+        }
+    }
+    /// `VillagerData.level` (`EcsWorld::trade_level`).
+    pub fn trade_level(&self, id: u32) -> Option<i32> {
+        self.ecs()?.trade_level(self.entity_of(id)?)
+    }
+    /// `VillagerData.type`, a registry id (`EcsWorld::trade_variant`).
+    pub fn trade_variant(&self, id: u32) -> Option<String> {
+        self.ecs()?.trade_variant(self.entity_of(id)?)
+    }
+    pub fn set_trade_variant(&mut self, id: u32, variant: u8) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_trade_variant(e, variant);
+        }
+    }
+    /// `VillagerData.profession`, a registry id; None for a wandering trader (`EcsWorld::trade_profession`).
+    pub fn trade_profession(&self, id: u32) -> Option<String> {
+        self.ecs()?.trade_profession(self.entity_of(id)?)
+    }
+    pub fn set_trade_profession(&mut self, id: u32, index: u8) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_trade_profession(e, index);
+        }
+    }
+    /// `Villager.setUnhappy` (`EcsWorld::set_unhappy`).
+    pub fn set_unhappy(&mut self, id: u32) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(b) = self.ecs_mut() {
+            b.set_unhappy(e);
+        }
     }
     /// The client moves the mount `id` (`EcsWorld::moved_by_client`).
     pub fn moved_by_client(&self, id: u32) -> bool {

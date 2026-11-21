@@ -30,6 +30,33 @@ impl Game<'_> {
         })
     }
 
+    /// The table of a creature's melee weapon (`melee_gear::MeleeGearFn`): `EnchantmentHelper.modifyDamage` on the blow, `modifyKnockback`
+    /// on the attribute's knockback, and the `minecraft:ignite` seconds of `doPostAttackEffects`. It shares the level's tables.
+    pub(in crate::game) fn melee_gear_fn(&self) -> horizon_ecs_proto::melee_gear::MeleeGearFn {
+        use horizon_ecs_proto::melee_gear::Blow;
+        let enchants = world_stations!(self).enchantments.clone();
+        let items = self.server_items.clone().or_else(|| self.world_tables.as_ref().map(|t| t.items.clone()));
+        Box::new(move |stack, attacker, victim, base| {
+            let Some(items) = items.as_deref() else { return base };
+            let ctx = EffectContext {
+                items: Some(items),
+                this: Some(victim),
+                attacker: Some(attacker),
+                direct_attacker: Some(attacker),
+                is_direct: true,
+                damage_type: Some("minecraft:mob_attack"),
+                ..Default::default()
+            };
+            let mut random = LegacyRandom::new(0);
+            let levels = stack.all_enchantments();
+            Blow {
+                damage: enchants.modify_damage(&levels, &ctx, &mut random, base.damage, &mut |_, _, _, value| value),
+                knockback: enchants.modify_value(Some(stack), "minecraft:knockback", &ctx, &mut random, base.knockback),
+                ignite_seconds: enchants.ignite_seconds(&levels, &ctx, &mut random),
+            }
+        })
+    }
+
     /// The connection of the guest whose entity id is `id`, None for this game's player or a mob.
     fn ecs_guest_conn(&self, who: Option<Who>) -> Option<u32> {
         let Some(Who::Player(id)) = who else { return None };
@@ -46,8 +73,12 @@ impl Game<'_> {
                     Who::Player(_) => {
                         self.thrower_dealt_absorbed(guest);
                         match self.ecs_guest_conn(Some(victim)) {
-                            Some(conn) => self.guest_hit_by(conn, |g| g.mob_hits_player(base, at, "minecraft:trident")),
-                            None => self.mob_hits_player(base, at, "minecraft:trident"),
+                            Some(conn) => {
+                                self.guest_hit_by(conn, |g| g.mob_hits_player(base, at, "minecraft:trident"));
+                            }
+                            None => {
+                                self.mob_hits_player(base, at, "minecraft:trident");
+                            }
                         }
                     }
                     Who::Entity(e) => {

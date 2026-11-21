@@ -16,5 +16,6 @@ pub static DEF: Def = Def {
         Entry::new(&melee::MODULE, 4, &melee::Params::DEFAULT),
         Entry::new(&silverfish_merge::MODULE, 5, &silverfish_merge::Params::DEFAULT),
     ],
+    not_in_peaceful: true,
     ..Def::EMPTY
 };

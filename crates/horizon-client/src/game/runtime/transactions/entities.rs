@@ -256,8 +256,11 @@ impl Game<'_> {
         let id = super::super::native_entities::target_id(*target);
         let open = self.transactions.iter().any(|level| {
             level.dimension == Some(dimension)
-                && (level.lifetimes.removals.iter())
-                    .any(|removal| matches!(removal, Removal::Other(e) if Some(e.id()) == id))
+                && (level.lifetimes.removals.iter()).any(|removal| match removal {
+                    Removal::Other(e) => Some(e.id()) == id,
+                    // An ECS mob has no `removed` flag to mark: its pending removal reads as gone here.
+                    Removal::Mob { id: mob, .. } => Some(*mob) == id,
+                })
         });
         // A commit's removals wait for its joins to be told: its entities read as gone until then.
         open || (self.transactions.committing.iter()).any(|commit| {

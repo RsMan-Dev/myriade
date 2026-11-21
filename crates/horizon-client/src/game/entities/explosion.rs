@@ -1189,11 +1189,6 @@ impl Game<'_> {
                             }
                             self.resolve_player_responsible(victim, source);
                         }
-                        // Enderman.hurtServer teleports inside the hurt, before
-                        // the push (the mob order stays as it was).
-                        if let Err(e) = self.settle_hurt_teleports() {
-                            log::warn!("Horizon: explosion: enderman teleport: {e}");
-                        }
                     }
                     // `ItemEntity.hurtServer`: the damage comes off `Health`
                     // (5 to start) in f32 and the item is destroyed at zero, so
@@ -1248,12 +1243,12 @@ impl Game<'_> {
                     EntityHandle::Boat(i) => {
                         let kind = self.boats[i].entity_type();
                         if !blocked_damage!(entity as i32, &kind) {
-                            let Some(EntityHandle::Boat(i)) =
+                            let Some(EntityHandle::Boat(_)) =
                                 self.refresh_entity_handle(entity, handle)
                             else {
                                 continue;
                             };
-                            self.hurt_boat_by(i, amount, false, self.explosion_kill_credit());
+                            self.hurt_boat_by(entity, amount, false, self.explosion_kill_credit());
                         }
                     }
                     // `hurtServer` does nothing to the rest.

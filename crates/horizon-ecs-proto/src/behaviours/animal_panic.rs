@@ -126,6 +126,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     }
     let dur = rules::duration(f.p.min, with_rng(w, e, |r| r.next_int(f.p.spread)));
     w.entity_mut(e).insert((Fleeing { end: rules::ends_at(now, dur), ..f }, AnimalPanicking));
+    super::event_listen::panic_started(w, e);
     stop_nav(w, e);
     if let Some(p) = spot(w, e, &f.p) {
         go_to_at(w, e, p, f.p.speed, 1);

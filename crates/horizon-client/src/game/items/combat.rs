@@ -776,7 +776,7 @@ impl Game<'_> {
             mob.species,
             Some(Species::Wolf | Species::Cat | Species::Parrot | Species::Nautilus | Species::ZombieNautilus)
         );
-        let Some(owner) = self.ecs.owner(id).filter(|_| tamable && mob.tame) else {
+        let Some(owner) = self.ecs.tamable_values(id).and_then(|(_, uuid)| uuid).filter(|_| tamable && mob.tame) else {
             return;
         };
         if !self.ui.rules.bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES) {
@@ -856,10 +856,8 @@ impl Game<'_> {
         let credit = if self.ecs.last_hurt_by_player(id) > 0 && player.is_some() {
             player.clone()
         } else {
-            let age = self.ecs.age(id) as i32;
             self.ecs
-                .last_hurt_by(id)
-                .filter(|_| age - self.ecs.last_hurt_by_time(id) <= 100)
+                .recent_attacker(id)
                 .and_then(|w| name(self, w))
         };
         let now = self.world.game_time;

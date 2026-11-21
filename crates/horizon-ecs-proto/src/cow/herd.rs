@@ -373,7 +373,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
         read: crate::nbt_tag::read,
     }];
     crate::nbt::begin_declarations(world);
-    for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::common::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::owners::FIELDS, crate::nbt_fields::falling::FIELDS, crate::nbt_fields::effect_cloud::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::mount_inventory::FIELDS, crate::firework_burst::FIELDS, crate::cart_state::FIELDS, crate::nbt_fields::living_state::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
+    for fields in [crate::nbt::COMMON, crate::nbt_fields::common::FIELDS, crate::nbt_fields::common::CREATORS, crate::credit::CREATORS, crate::passive::FIELDS, crate::dragon::save::FIELDS, crate::behaviours::trade_offers::FIELDS, crate::behaviours::variant::FIELDS,crate::behaviours::swallow_hold::FIELDS, crate::nbt_fields::owners::FIELDS, crate::nbt_fields::falling::FIELDS, crate::nbt_fields::effect_cloud::FIELDS, crate::nbt_fields::creatures::FIELDS, crate::nbt_fields::mount_inventory::FIELDS, crate::firework_burst::FIELDS, crate::cart_state::FIELDS, crate::nbt_fields::living_state::FIELDS, crate::nbt_fields::creatures_more::FIELDS, crate::nbt_fields::creatures_more::CREATORS, crate::coating::FIELDS, crate::nbt_fields::rides::FIELDS, crate::nbt_fields::things::FIELDS, &tags[..]] {
         crate::nbt::register(world, fields);
     }
     crate::nbt::register_creators(world, crate::nbt_fields::rides::CREATORS);
@@ -381,6 +381,8 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     crate::nbt::register_creators(world, crate::nbt_fields::creatures_more::CREATORS);
     crate::nbt::register_creators(world, crate::nbt_fields::living_state::CREATORS);
     crate::nbt::register_creators(world, crate::dispense::CREATORS);
+    crate::nbt::register_creators(world, crate::behaviours::stew_flower::CREATORS);
+    crate::nbt::register_creators(world, crate::credit::CREATORS);
     crate::cart_state::register_nbt(world);
     crate::boat_state::register_nbt(world);
     // Every species, then the passive types, then the sorts with a constructor (which replaces the species' recipe of their id).

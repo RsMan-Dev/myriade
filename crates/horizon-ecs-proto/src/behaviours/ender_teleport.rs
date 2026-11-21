@@ -56,6 +56,11 @@ fn damaged(w: &mut World, e: Entity, _: Inst, d: &Damaged) {
 /// `LivingEntity.randomTeleport(x, y, z, true, avoid)`.
 pub fn teleport_to(w: &mut World, e: Entity, target: Vec3) -> bool {
     let Some(Teleporter(p)) = w.get::<Teleporter>(e).copied() else { return false };
+    teleport_avoiding(w, e, target, p.avoid, p.dry_ground)
+}
+
+/// The same for any creature, the tag to avoid and the dry-ground rule given (a mod's `randomTeleport`).
+pub fn teleport_avoiding(w: &mut World, e: Entity, target: Vec3, avoid: Option<&str>, dry_ground: bool) -> bool {
     let (Some(b), Some(_)) = (w.get::<Body>(e).copied(), w.get::<Pos>(e)) else { return false };
     let level = *w.resource::<Level>();
     let mw = level.mw.0;
@@ -63,7 +68,7 @@ pub fn teleport_to(w: &mut World, e: Entity, target: Vec3) -> bool {
     if !mw.world.loaded(bx, bz) {
         return false;
     }
-    let refused = |name: &str| p.avoid.is_some_and(|tag| mw.has_tag(tag, name));
+    let refused = |name: &str| avoid.is_some_and(|tag| mw.has_tag(tag, name));
     let mut by = target.y.floor() as i32;
     let mut ny = target.y;
     let ground = loop {
@@ -94,7 +99,7 @@ pub fn teleport_to(w: &mut World, e: Entity, target: Vec3) -> bool {
             }
         }
     }
-    if p.dry_ground && mw.fluid(bx, by, bz) == horizon_client_lib::blocks::Fluid::Water {
+    if dry_ground && mw.fluid(bx, by, bz) == horizon_client_lib::blocks::Fluid::Water {
         return false;
     }
     land(w, e, Vec3::new(target.x, ny, target.z));

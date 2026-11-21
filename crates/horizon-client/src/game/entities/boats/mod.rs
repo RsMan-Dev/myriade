@@ -310,30 +310,30 @@ impl Game<'_> {
     /// down over anything but water (the block under its `blockPosition`)
     /// adds to it.
     pub(super) fn boat_fall(&self, b: &Boat, moved_y: f64) -> f64 {
-        if b.on_ground {
+        self.boat_fall_at(b.position, b.on_ground, b.fall_distance, moved_y)
+    }
+    /// `boat_fall` on the plain numbers, for a boat the ECS holds.
+    pub(in crate::game) fn boat_fall_at(&self, position: Vec3, on_ground: bool, fall_distance: f64, moved_y: f64) -> f64 {
+        if on_ground {
             return 0.0;
         }
         if moved_y < 0.0 {
             let below = self.res.facts().get(self.world.block(
-                b.position.x.floor() as i32,
-                (b.position.y.floor() as i32).wrapping_sub(1),
-                b.position.z.floor() as i32,
+                position.x.floor() as i32,
+                (position.y.floor() as i32).wrapping_sub(1),
+                position.z.floor() as i32,
             ));
             if below.fluid != Fluid::Water {
-                return b.fall_distance - f64::from(moved_y as f32);
+                return fall_distance - f64::from(moved_y as f32);
             }
         }
-        b.fall_distance
+        fall_distance
     }
     /// `AbstractBoat.tick` for one boat (`controlled` when the player rides it).
     pub(super) fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
         b.previous = b.position;
         b.previous_yaw = b.yaw;
-        // Entity.baseTick ends with Leashable.tickLeash, on a server only
-        // (a ridden boat's lead ticks on the ECS).
-        if !controlled && self.remote.is_none() {
-            self.tick_boat_leash(&mut b);
-        }
+        // The lead of a boat ticks on the ECS (a server's boats live there).
         let had_status = std::mem::replace(&mut b.status_known, true);
         b.old_status = b.status;
         b.status = self.boat_status(&mut b);
@@ -598,7 +598,8 @@ impl Game<'_> {
     /// override `onInsideBubbleColumn`), applied by the column's own push below
     /// the surface.
     pub(super) fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
-        if !self.boat_can_simulate_movement(self.boats[i].id) {
+        // Client display only (the server's boats live in the ECS): a client moves only the boat its player drives.
+        if !self.controls_boat(self.boats[i].id) {
             return;
         }
         self.boats.update(i, |b| column.push(&mut b.velocity));
@@ -660,7 +661,7 @@ impl Game<'_> {
     /// `AbstractBoat.handleBubbleColumnEffect`: an up column throws the boat
     /// up at 0.6, a down column pulls it down by 0.7.
     pub(super) fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
-        if !self.boat_can_simulate_movement(self.boats[i].id) {
+        if !self.controls_boat(self.boats[i].id) {
             return;
         }
         self.boats.update(i, |b| {
@@ -697,8 +698,44 @@ impl Game<'_> {
         false
     }
     /// Where the boat at `i` lets a player facing `yaw` off.
-    pub(super) fn boat_player_dismount_target(&self, i: usize, yaw: f32) -> Vec3 {
-        self.boat_dismount_target(&self.boats[i], 0.6, yaw)
+    pub(super) fn boat_player_dismount_target(&self, id: u32, yaw: f32) -> Vec3 {
+        let Some(v) = self.ecs_view(id) else {
+            return Vec3::ZERO;
+        };
+        let at = Vec3::new(v.position[0], v.position[1], v.position[2]);
+        self.boat_dismount_target(&Boat::new(id, Arc::from(""), at, v.yaw), 0.6, yaw)
+    }
+    /// `getDismountLocationForPassenger` for the player riding the ECS boat `id`: the rider leaves its seat and
+    /// stands in front of it or on top.
+    pub(super) fn dismount_boat(&mut self, id: u32) {
+        if self.riding == Some(id) && !self.native_may_leave(id) {
+            return;
+        }
+        self.riding = None;
+        self.ecs.boat_release(id);
+        let Some(at) = self.ecs_view(id).map(|v| Vec3::new(v.position[0], v.position[1], v.position[2])) else {
+            return;
+        };
+        if self.dismount_in_portal(at) {
+            return;
+        }
+        let target = self.boat_player_dismount_target(id, self.yaw);
+        if let Some(p) = self.player.as_mut() {
+            p.position = target;
+            p.velocity = Vec3::ZERO;
+        }
+    }
+    /// The ECS spawns a boat of `wood` and links it to a network id (`BoatItem.use` and the dispenser share it).
+    pub(super) fn spawn_boat_ecs(&mut self, wood: &str, chest: bool, at: [f64; 3], yaw: f32) -> Option<u32> {
+        let mut next = self.next_entity;
+        let id = self.with_ecs(|ecs, mw| {
+            ecs.spawn_boat_id(mw, wood, chest, at, yaw, &mut || {
+                next += 1;
+                next
+            })
+        });
+        self.next_entity = next;
+        id
     }
     /// `getDismountLocationForPassenger` for a passenger `width` wide
     /// facing `yaw`.
@@ -771,6 +808,25 @@ impl Game<'_> {
             .and_then(|id| self.ecs.entity_of(id))
             .and_then(|e| self.ecs.boat_wood(e))
             .is_some_and(|(_, chest)| chest)
+    }
+    /// `AbstractChestBoat.openCustomInventoryScreen`: the inventory key while riding a chest boat opens its chest.
+    pub(super) fn open_ridden_chest_boat(&mut self) -> bool {
+        let Some(id) = self.riding.filter(|_| self.riding_chest_boat()) else {
+            return false;
+        };
+        self.open_chest_boat_container(id);
+        true
+    }
+    /// `AbstractBoat.modifyPassengerFluidInteractionBox`: the ridden boat's top and whether it is under water, for
+    /// `Entity.getFluidInteractionBox`; the ECS holds the boat.
+    pub(super) fn riding_boat_fluid_box(&self) -> Option<RiddenBoat> {
+        let id = self.riding?;
+        let status = self.ecs.boat_status(id)?;
+        let v = self.ecs_view(id)?;
+        Some(RiddenBoat {
+            under_water: status.under_water,
+            max_y: Boat::bounds_at(Vec3::new(v.position[0], v.position[1], v.position[2])).max_position().y,
+        })
     }
     /// `BoatItem.use`: the ECS spawns the boat `boat_to_place` finds and links it to a network id.
     pub(super) fn place_boat(&mut self, stack: &ItemStack) -> bool {
@@ -965,6 +1021,19 @@ impl Game<'_> {
             HitResult::Hurt => Some(false),
             HitResult::Broken { .. } => Some(true),
         }
+    }
+    /// `VehicleEntity.hurtServer` for fire (`inFire`, `onFire`) or a cactus, which an `Invulnerable` boat ignores.
+    /// True when the boat broke.
+    pub(super) fn burn_boat(&mut self, id: u32, damage: f32, damage_type: &str) -> bool {
+        let invulnerable = self.saved_refuses_damage(id, damage_type, false);
+        let kind = self.ecs_view(id).map_or("", |v| v.kind).to_owned();
+        let source = horizon_client::health::HurtSource {
+            damage_type,
+            causing: 0,
+            direct: 0,
+            position: None,
+        };
+        !self.native_nonliving_invulnerable(id, &kind, source, invulnerable) && self.hurt_boat(id, damage, false)
     }
     /// Hurts the boat `id` from a non-player source; true when it was removed.
     pub(super) fn hurt_boat(&mut self, id: u32, damage: f32, creative: bool) -> bool {

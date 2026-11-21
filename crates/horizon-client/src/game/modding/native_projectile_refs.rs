@@ -9,7 +9,8 @@ use horizon_client::{
     mobs::Who,
     projectiles::{OwnerFields, Turn},
 };
-use horizon_core::{geometry::Vec3, nbt::{Compound, Tag}};
+use horizon_core::{geometry::Vec3, nbt::{Compound, JavaString, Tag}};
+use horizon_ecs_proto::arrow_more::Turn as EcsTurn;
 use horizon_ecs_proto::targeting::Who as EcsWho;
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 
@@ -197,7 +198,16 @@ impl Game<'_> {
             _ => unreachable!("(Deflection, Option<EntityRef>): unhandled variant"),
         };
         match backing {
-            Backing::Ecs(id) => self.ecs.deflect_projectile(id, turn, power, new_who, by_attack),
+            Backing::Ecs(id) => {
+                let (ecs_turn, dir) = match turn {
+                    Turn::Reverse => (EcsTurn::Reverse, power),
+                    Turn::Direction(None) => (EcsTurn::None, power),
+                    Turn::Direction(Some(d)) => {
+                        (EcsTurn::AimDeflect, [d.x * power[0], d.y * power[1], d.z * power[2]])
+                    }
+                };
+                self.ecs.deflect_projectile(id, ecs_turn, dir, new_who, by_attack)
+            }
             Backing::Rocket(i) => {
                 let r = &mut self.rockets[i];
                 if let Some((velocity, _)) = turn.apply(r.velocity, power, &mut r.random) {
@@ -213,7 +223,7 @@ impl Game<'_> {
     /// The NBT value under `key` of the ECS projectile `id`; None for a stale
     /// id or an absent key.
     fn native_projectile_tag(&self, id: u32, key: &str) -> Option<Tag> {
-        self.ecs.entity_nbt(self.ecs.entity_of(id)?)?.get(key).cloned()
+        self.ecs.entity_nbt(self.ecs.entity_of(id)?)?.get(&JavaString::from(key)).cloned()
     }
 
     /// Merges `tag` under `key` into the ECS projectile `id`; false when it has no entity.

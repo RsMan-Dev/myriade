@@ -314,15 +314,19 @@ impl Game<'_> {
     /// `canBeCollidedWith`): a boat, a living shulker, a happy ghast held
     /// still. A pushed boat or minecart collides by `canVehicleCollide`
     /// instead, which this doesn't cover, and the player moves itself.
-    fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
+    fn pushed_entity_colliders(&self, target: MoveWho, movement: Vec3) -> Vec<Aabb> {
         match target {
             MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
             MoveWho::Entity(handle) => {
                 let own = with_entity!(self, handle, entity => Entity::bounds(entity));
-                let mut boxes = self.item_entity_collisions();
+                let mut boxes = self.item_entity_collisions([own.expand_towards(movement)]);
                 boxes.retain(|b| *b != own);
                 boxes
             }
+            // An entity of the ECS: its own solids (a boat or a cart gets none there, `canVehicleCollide` instead).
+            MoveWho::Ecs(id) => self.ecs.bounds(id).map_or_else(Vec::new, |own| {
+                self.ecs.solid_colliders(id, own, [movement.x, movement.y, movement.z])
+            }),
             _ => Vec::new(),
         }
     }
@@ -385,7 +389,6 @@ impl Game<'_> {
         let steps = self.push_step_heights();
         let root = self.lid_root(lid);
         // The armor stands' obstacles, built at the first stand the lid meets.
-        let mut stand_grid = None;
         self.push_targets().for_each(|target| {
             let Some(body) = self.push_body(target, None, &steps) else {
                 return;
@@ -405,7 +408,7 @@ impl Game<'_> {
             if self.lid_spares(lid, root, target, no_physics) {
                 return;
             }
-            self.move_by_lid(lid, target, body, movement, no_physics, &mut stand_grid);
+            self.move_by_lid(lid, target, body, movement, no_physics);
         });
         self.lid_breaks_attached(area, root);
     }
@@ -519,7 +522,6 @@ impl Game<'_> {
         body: Body,
         movement: Vec3,
         no_physics: bool,
-        stand_grid: &mut Option<horizon_client::entities::ObstacleGrid>,
     ) {
         if target == MoveWho::Player {
             self.shulker_push_player(lid.mover(), movement);
@@ -527,7 +529,7 @@ impl Game<'_> {
         }
         // Armor stands arm their gate in their own collided shove.
         if let MoveWho::Entity(EntityHandle::ArmorStand(i)) = target {
-            self.lid_shoves_armor_stand(i, lid.shulker(), movement, stand_grid);
+            self.lid_shoves_armor_stand(i, lid.shulker(), movement);
             return;
         }
         let mut gate = self.entity_move(target, lid.mover(), movement);
@@ -540,7 +542,7 @@ impl Game<'_> {
             self.apply_push(&mut gate, target, movement);
             return;
         }
-        let entities = self.pushed_entity_colliders(target);
+        let entities = self.pushed_entity_colliders(target, movement);
         let Ok(moved) = pushed_movement(
             &mut gate,
             SceneCollisions {
@@ -643,6 +645,33 @@ impl Game<'_> {
         } else {
             0.0
         };
+        // The ECS creatures: one push for the whole block (limit, slime bounce, honey, fix in the base), P's.
+        if self.ecs.world().is_some() {
+            let block = horizon_ecs_proto::world_push::PushBlock {
+                boxes: &boxes,
+                slime,
+                honey,
+                sticky_top,
+            };
+            let state = piston.shape_state();
+            // The `entity_move` gate of each pushed creature, only while a mod listens: without one the push costs nothing more.
+            let listened = mod_api::__private::listened(mod_api::HookId::EntityMove);
+            let context = listened.then(|| self.loop_context.clone());
+            let mut next = self.next_entity;
+            self.ecs_with(|ecs, mw| {
+                let mut alloc = || {
+                    next += 1;
+                    next
+                };
+                let mut arm = |id: u32, kind: &str, want: Vec3| {
+                    let gate = horizon_client::move_gate::armed(context.as_deref()?, id, kind, MoverType::Piston, want);
+                    (!gate.skipped()).then(|| gate.delta())
+                };
+                let gate = context.is_some().then(|| horizon_ecs_proto::world_push::PushGate { alloc: &mut alloc, arm: &mut arm });
+                ecs.piston_push(mw, pos, state, new_progress, movement, &block, gate)
+            });
+            self.next_entity = next;
+        }
 
         let search = shape.bounds().map(|bounds| {
             piston_push::movement_search_area(
@@ -930,19 +959,10 @@ impl Game<'_> {
         let Some(limited) = self.limit_piston(target, movement, accumulators) else {
             return;
         };
-        if let MoveWho::Ecs(id) = target {
-            // P's `Entity.move` by the piston, its collisions and its block effects in one call.
-            self.ecs.piston_move(id, limited, piston_direction);
-            return;
-        }
         // `limitPistonMovement` returns zero once the tick's budget is spent.
         if limited == Vec3::ZERO {
             // `Entity.move` stops there; `moveEntityByPiston` still applies
             // the block effects.
-            if let MoveWho::Entity(EntityHandle::Tnt(i)) = target {
-                let from = self.tnts[i].position;
-                self.tnt_piston_block_effects(i, from);
-            }
             if let MoveWho::Entity(EntityHandle::Projectile(i)) = target {
                 let at = self.creatures.projectiles[i].position;
                 self.projectile_piston_block_effects(i, at);
@@ -966,29 +986,14 @@ impl Game<'_> {
             }
             _ => None,
         };
-        // Primed TNT: a `PISTON` move uses up a pending stuck multiplier
-        // without scaling the push, and powder snow reads its fall.
-        let tnt = match target {
-            MoveWho::Entity(EntityHandle::Tnt(i)) => {
-                let t = &mut self.tnts[i];
-                t.take_stuck();
-                Some((
-                    i,
-                    t.position,
-                    t.powder_snow_subject(),
-                    t.collision_context(),
-                ))
-            }
-            _ => None,
-        };
-        let entities = self.pushed_entity_colliders(target);
+        let entities = self.pushed_entity_colliders(target, limited);
         let resolved = with_piston_noclip(piston_direction, || {
             pushed_movement(
                 &mut gate,
                 SceneCollisions {
                     world: &self.world,
                     binding: self.collision,
-                    subject: tnt.as_ref().map(|t| t.2),
+                    subject: None,
                 },
                 self.border.geometry(),
                 at,
@@ -996,7 +1001,7 @@ impl Game<'_> {
                 limited,
                 step_height,
                 on_ground,
-                tnt.as_ref().map(|t| t.3),
+                None,
                 &entities,
             )
             .unwrap_or(Vec3::ZERO)
@@ -1030,9 +1035,7 @@ impl Game<'_> {
         {
             self.remote_entities[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
         }
-        let tnt_after_move =
-            tnt.is_some() && !self.options.execution_role.is_client() && self.remote.is_none();
-        if mob.is_none() && !tnt_after_move {
+        if mob.is_none() {
             self.restitute_piston(target, limited, resolved);
         }
         let moved = resolved.length_squared() > 1.0e-7
@@ -1067,11 +1070,6 @@ impl Game<'_> {
             if let Err(payload) = result {
                 std::panic::resume_unwind(payload);
             }
-        } else if tnt_after_move {
-            self.restitute_piston(target, limited, resolved);
-        }
-        if let Some((i, from, ..)) = tnt {
-            self.finish_tnt_piston_move(i, from, resolved);
         }
         if let Some((i, from)) = projectile_from {
             self.projectile_piston_block_effects(i, from);
@@ -1159,7 +1157,6 @@ impl Game<'_> {
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
             MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.remote_entities[i].piston),
-            MoveWho::Ecs(id) => self.ecs.piston_limit(id, movement, time),
             _ => limit(accumulators.entry(target).or_default()),
         }
     }
@@ -1188,7 +1185,7 @@ impl Game<'_> {
                     g.entity_id as u32
                 })
             }),
-            // P moved it in `piston_move`; the section it left is tracked by its id.
+            // P moved it in `piston_push`; the section it left is tracked by its id.
             MoveWho::Ecs(id) => Some(id),
             MoveWho::Entity(handle) => {
                 let id = with_entity_mut!(self, handle, entity => {
@@ -1247,7 +1244,8 @@ impl Game<'_> {
                     motion.velocity = piston_push::bounce_velocity(movement, motion.velocity);
                 }
             }
-            MoveWho::Ecs(id) => self.ecs.piston_slime_bounce(id, movement),
+            // The ECS creatures are pushed, bounced and limited by P's `piston_push`, once per block.
+            MoveWho::Ecs(_) => {}
             MoveWho::Entity(handle) => {
                 with_entity_mut!(self, handle, entity => Entity::piston_slime_bounce(entity, movement))
             }
@@ -1380,6 +1378,14 @@ mod order_tests {
     use horizon_world::level::pistons::MovingPiston;
     use std::sync::Arc;
 
+    /// Runs the summon command of a TNT near (5.5, 200, 5.5) and returns its network id in the ECS (the one that was not there before).
+    pub(super) fn summon_tnt(game: &mut Game<'_>, command: &str) -> u32 {
+        let before = game.ecs.ids_near([5.5, 200.0, 5.5], 4.0);
+        assert!(game.run_command(command));
+        let new = game.ecs.ids_near([5.5, 200.0, 5.5], 4.0).into_iter().find(|id| !before.contains(id));
+        new.expect("the TNT is an entity of the ECS")
+    }
+
     /// A stone pushes a primed TNT east, into the cell a second stone is
     /// sliding north out of (half way there). The TNT collides with that
     /// stone at its progress when the push happens
@@ -1459,9 +1465,8 @@ mod order_tests {
                 vec![near, far]
             };
             game.sync_moving_pistons();
-            game.tnts.clear();
-            assert!(game.run_command("summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.0d,0.0d,0.0d]}"));
-            let before = game.tnts[0].position.x;
+            let tnt = summon_tnt(&mut game, "summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.0d,0.0d,0.0d]}");
+            let before = game.ecs.motion(tnt).unwrap().position[0];
             // PistonMovingBlockEntity.tick of each, in order: half a block on.
             let pushes: Vec<_> = game
                 .block_ticks
@@ -1473,7 +1478,7 @@ mod order_tests {
                 piston.progress += 0.5;
             }
             game.push_piston_entities(pushes);
-            moved.push(game.tnts[0].position.x - before);
+            moved.push(game.ecs.motion(tnt).unwrap().position[0] - before);
         }
         // The near stone's box reaches the TNT's centre at x 5.5: half its
         // vanilla EntityTypes.TNT width (0.98F, widened to double) plus
@@ -1578,11 +1583,11 @@ mod order_tests {
                 game.block_ticks.moving_pistons =
                     vec![(BlockPos::new(5, 200, 5), piston(1, Direction::East, 0.0))];
                 game.sync_moving_pistons();
-                game.tnts.clear();
-                assert!(
-                    game.run_command("summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.0d,0.0d,0.0d]}")
+                let tnt = summon_tnt(
+                    &mut game,
+                    "summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.0d,0.0d,0.0d]}",
                 );
-                let before = game.tnts[0].position.x;
+                let before = game.ecs.motion(tnt).unwrap().position[0];
                 let pushes: Vec<_> = game
                     .block_ticks
                     .moving_pistons
@@ -1593,7 +1598,7 @@ mod order_tests {
                     piston.progress += 0.5;
                 }
                 game.push_piston_entities(pushes);
-                travelled.push(game.tnts[0].position.x - before);
+                travelled.push(game.ecs.motion(tnt).unwrap().position[0] - before);
             }
             assert!(
                 travelled[0].abs() < 1e-9,
@@ -1676,13 +1681,9 @@ mod order_tests {
         };
         game.block_ticks.moving_pistons = vec![(BlockPos::new(5, 200, 5), piston)];
         game.sync_moving_pistons();
-        game.tnts.clear();
-        assert!(game.run_command("summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.4d,0.0d,0.0d]}"));
-        assert!(
-            (game.tnts[0].velocity.x - 0.4).abs() < 1.0e-9,
-            "TNT starts with vx 0.4, got {:?}",
-            game.tnts[0].velocity
-        );
+        let tnt = summon_tnt(&mut game, "summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.4d,0.0d,0.0d]}");
+        let velocity = game.ecs.motion(tnt).unwrap().velocity;
+        assert!((velocity[0] - 0.4).abs() < 1.0e-9, "TNT starts with vx 0.4, got {velocity:?}");
         // Piston advances from progress 0 to 0.5 and pushes the TNT east.
         let pushes: Vec<_> = game
             .block_ticks
@@ -1695,11 +1696,8 @@ mod order_tests {
         }
         game.push_piston_entities(pushes);
         // The stone wall at x=6 stops the TNT; its horizontal velocity must be zeroed.
-        assert!(
-            game.tnts[0].velocity.x.abs() < 1.0e-9,
-            "TNT velocity.x should be zeroed by the wall, got {:?}",
-            game.tnts[0].velocity
-        );
+        let velocity = game.ecs.motion(tnt).unwrap().velocity;
+        assert!(velocity[0].abs() < 1.0e-9, "TNT velocity.x should be zeroed by the wall, got {velocity:?}");
     }
 
     /// A primed TNT pushed down by a piston onto a slime block bounces up,
@@ -1778,11 +1776,11 @@ mod order_tests {
             game.world.set(5, 199, 5, floor).unwrap();
             game.block_ticks.moving_pistons = vec![(BlockPos::new(5, 200, 5), piston)];
             game.sync_moving_pistons();
-            game.tnts.clear();
-            assert!(game.run_command(&format!(
-                "summon tnt 5.5 {y} 5.5 {{fuse:80,Motion:[0.0d,{vy}d,0.0d]}}"
-            )));
-            assert_eq!(game.tnts[0].velocity.y, vy);
+            let tnt = summon_tnt(
+                &mut game,
+                &format!("summon tnt 5.5 {y} 5.5 {{fuse:80,Motion:[0.0d,{vy}d,0.0d]}}"),
+            );
+            assert_eq!(game.ecs.motion(tnt).unwrap().velocity[1], vy);
             let pushes: Vec<_> = game
                 .block_ticks
                 .moving_pistons
@@ -1793,9 +1791,10 @@ mod order_tests {
                 piston.progress += 0.5;
             }
             game.push_piston_entities(pushes);
-            assert_eq!(game.tnts[0].position, Vec3::new(5.5, final_y, 5.5));
-            assert_eq!(game.tnts[0].velocity.y.to_bits(), final_vy.to_bits());
-            assert!(game.tnts[0].on_ground);
+            let motion = game.ecs.motion(tnt).unwrap();
+            assert_eq!(motion.position, [5.5, final_y, 5.5]);
+            assert_eq!(motion.velocity[1].to_bits(), final_vy.to_bits());
+            assert!(motion.on_ground);
         }
     }
 }
@@ -2079,20 +2078,21 @@ mod h255_mob_piston_ground_tests {
         ] {
             with_role_game(role, |game| {
                 assert!(game.run_command("setblock 5 199 5 slime_block"));
-                assert!(
-                    game.run_command("summon tnt 5.5 200.5 5.5 {fuse:80,Motion:[0d,-0.4d,0d]}")
+                let tnt = super::order_tests::summon_tnt(
+                    game,
+                    "summon tnt 5.5 200.5 5.5 {fuse:80,Motion:[0d,-0.4d,0d]}",
                 );
                 let mut budget = std::collections::HashMap::new();
                 let push = |game: &mut Game<'_>,
                             budget: &mut std::collections::HashMap<_, _>,
                             movement| {
-                    let tnt = &game.tnts[0];
+                    let (bounds, motion) = (game.ecs.bounds(tnt).unwrap(), game.ecs.motion(tnt).unwrap());
                     game.move_pushed(
-                        MoveWho::Entity(EntityHandle::Tnt(0)),
-                        tnt.bounds(),
-                        [tnt.position.x, tnt.position.z],
+                        MoveWho::Ecs(tnt),
+                        bounds,
+                        [motion.position[0], motion.position[2]],
                         0.0,
-                        tnt.on_ground,
+                        motion.on_ground,
                         movement,
                         Direction::Down,
                         budget,
@@ -2100,20 +2100,26 @@ mod h255_mob_piston_ground_tests {
                     );
                 };
                 push(game, &mut budget, Vec3::ZERO);
-                assert_eq!(game.tnts[0].position.y, 200.5);
-                assert_eq!(game.tnts[0].velocity.y, -0.4);
+                let motion = game.ecs.motion(tnt).unwrap();
+                assert_eq!(motion.position[1], 200.5);
+                assert_eq!(motion.velocity[1], -0.4);
                 push(game, &mut budget, Vec3::new(0.0, -0.51, 0.0));
                 let expected = if role.is_client() {
                     0.0_f64
                 } else {
                     0.3510000138133766
                 };
-                assert_eq!(game.tnts[0].velocity.y.to_bits(), expected.to_bits());
-                game.tnts[0].position.y = 200.5;
-                game.tnts[0].velocity.y = -0.4;
+                assert_eq!(game.ecs.motion(tnt).unwrap().velocity[1].to_bits(), expected.to_bits());
+                game.ecs_with(|ecs, mw| {
+                    if let Some(e) = ecs.entity_of(tnt) {
+                        ecs.teleport(mw, e, [5.5, 200.5, 5.5]);
+                        ecs.set_velocity(e, Vec3::new(0.0, -0.4, 0.0));
+                    }
+                });
                 push(game, &mut budget, Vec3::new(0.0, -0.51, 0.0));
-                assert_eq!(game.tnts[0].position.y, 200.5);
-                assert_eq!(game.tnts[0].velocity.y, -0.4);
+                let motion = game.ecs.motion(tnt).unwrap();
+                assert_eq!(motion.position[1], 200.5);
+                assert_eq!(motion.velocity[1], -0.4);
             });
         }
     }

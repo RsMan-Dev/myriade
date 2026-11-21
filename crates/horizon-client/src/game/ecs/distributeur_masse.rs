@@ -13,7 +13,6 @@ use horizon_ecs_proto::{
     },
     cow::{Bounds, GrowAt, Health, Pos, TypeName},
     despawn::Persistent,
-    farm,
     goals::{self, Slot},
     items::{item_id, item_name},
     leash::{self, Holder},
@@ -122,12 +121,6 @@ impl Game<'_> {
         let w = self.ecs.world()?;
         goals::main_hand(w, self.ecs.entity_of(id)?).cloned()
     }
-    /// `Sheep.shear` on the entity `id` (`farm::shear`): the colour of its wool when it was shorn now; None otherwise.
-    pub(in crate::game) fn ecs_shear_wool(&mut self, id: u32) -> Option<u8> {
-        let e = self.ecs.entity_of(id)?;
-        let color = self.ecs.world()?.get::<farm::Wool>(e)?.color;
-        self.ecs.world_mut().is_some_and(|w| farm::shear(w, e)).then_some(color)
-    }
     /// `Leashable.dropLeash` on the ECS level: detaches the leash of `own` and of the entities within `area` that `holder`
     /// holds. Returns where each detached entity drops its lead; nothing when none was leashed.
     pub(in crate::game) fn ecs_unleash(&mut self, own: Option<u32>, holder: Option<Holder>, area: Aabb) -> Vec<Vec3> {
@@ -150,6 +143,9 @@ impl Game<'_> {
     /// `LivingEntity.hurtServer` on the entity `id`: the ECS applies it, and its events come back on the next tick.
     pub(in crate::game) fn ecs_hurt(&mut self, id: u32, amount: f32, source: HurtSource) {
         let Some(e) = self.ecs.entity_of(id) else { return };
+        if let HurtSource::Player(player) = source {
+            self.ecs_note_killer(e, player);
+        }
         self.with_ecs(|ecs, mw| ecs.hurt(mw, e, amount, source));
     }
 }
@@ -178,10 +174,11 @@ mod tests {
     }
 
     #[test]
-    fn a_sheep_is_shorn_once_and_gives_the_colour_of_its_wool() {
+    fn a_sheep_is_shorn_once() {
         let (mut game, id) = ecs_game_with("minecraft:sheep", [0.5, 64.0, 0.5]);
-        assert!(game.ecs_shear_wool(id).is_some());
-        assert!(game.ecs_shear_wool(id).is_none());
+        let e = game.ecs.entity_of(id).unwrap();
+        assert!(game.ecs.world_mut().is_some_and(|w| horizon_ecs_proto::behaviours::shear::shear_entity(w, e, None)));
+        assert!(!game.ecs.world_mut().is_some_and(|w| horizon_ecs_proto::behaviours::shear::shear_entity(w, e, None)));
     }
 
     #[test]

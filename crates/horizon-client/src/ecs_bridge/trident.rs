@@ -31,6 +31,18 @@ impl EcsLevel {
         ecs.trident_pickup(e, player)
     }
 
+    /// The stack the thrown trident `id` gives back; None when inert or `id` is no trident.
+    pub fn trident_stack(&self, id: u32) -> Option<ItemStack> {
+        self.ecs()?.trident_stack(id)
+    }
+
+    /// Sets the table of a creature's melee weapon (`EcsWorld::set_melee_gear`; no-op when inert).
+    pub fn set_melee_gear(&mut self, f: horizon_ecs_proto::melee_gear::MeleeGearFn) {
+        if let Some(ecs) = self.ecs_mut() {
+            ecs.set_melee_gear(f);
+        }
+    }
+
     /// Sets the enchantment bonus of a blow for the host's table (no-op when inert).
     pub fn set_trident_hit_bonus(&mut self, f: BlowBonus) {
         if let Some(ecs) = self.ecs_mut() {

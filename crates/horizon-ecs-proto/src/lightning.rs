@@ -25,7 +25,13 @@ pub struct Bolt {
     /// The seed the client draws the branches from (`LightningBolt.seed`).
     pub seed: i64,
     pub rng: LegacyRandom,
+    /// The player whose trident summoned it (`LightningBolt.setCause`): the victims it hits go to their channeled-lightning trigger.
+    pub cause: Option<u32>,
 }
+
+/// The cause the next `strike` takes (set by the host just before it casts a channeled bolt).
+#[derive(Resource, Default)]
+pub struct NextCause(pub Option<u32>);
 
 /// Once per bolt: the mooshrooms and copper golems it already changed (a flip is not repeated on the next tick).
 #[derive(Component, Default)]
@@ -51,7 +57,8 @@ pub fn strike(w: &mut World, at: Vec3, visual: bool, rng_seed: u64) -> Entity {
     let mut rng = LegacyRandom::new(rng_seed as i64);
     let seed = rng.next_long();
     let flashes = rng.next_int_bound(3).unwrap_or(0) as u8 + 1;
-    let e = w.spawn((Pos(at), Bolt { life: 2, flashes, visual, fires: 0, seed, rng })).id();
+    let cause = w.get_resource_mut::<NextCause>().and_then(|mut c| c.0.take());
+    let e = w.spawn((Pos(at), Bolt { life: 2, flashes, visual, fires: 0, seed, rng, cause })).id();
     cow::after(w, e, 1, step);
     e
 }
@@ -146,6 +153,13 @@ fn thunder_hit(w: &mut World, bolt: Entity, at: [f64; 3]) {
         let hit = strike_hit(p.0, b.width, b.height, at);
         if hit && h.0 > 0.0 {
             struck.push((e, p.0));
+        }
+    }
+    if let Some(cause) = w.get::<Bolt>(bolt).and_then(|b| b.cause) {
+        for (victim, _) in &struck {
+            w.get_resource_or_insert_with(crate::colony_register::MiscOut::default)
+                .0
+                .push(crate::host_out_misc::MiscEvent::LightningVictim { cause, victim: *victim });
         }
     }
     for (t, pos) in struck {

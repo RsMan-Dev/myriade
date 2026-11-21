@@ -281,13 +281,7 @@ impl Game<'_> {
             }
             Some("dig") => {
                 // Let every warden's minute of calm run out.
-                for m in self
-                    .remote_entities
-                    .iter_mut()
-                    .filter(|m| m.species() == Species::Warden)
-                {
-                    warden::expire_dig_cooldown(m);
-                }
+                self.ecs.expire_dig_cooldowns();
                 Ok(serde_json::json!({ "ok": true }))
             }
             Some("warn") => {
@@ -1753,7 +1747,7 @@ impl Game<'_> {
     }
 
     /// `Warden.applyDarknessAround` / `MobEffectUtil.addEffectToPlayersAround`.
-    pub(super) fn apply_darkness(&mut self, at: [f64; 3], radius: f64) {
+    pub(in crate::game) fn apply_darkness(&mut self, at: [f64; 3], radius: f64) {
         self.for_each_player(|g| g.darkness_on_player(at, radius));
     }
     fn darkness_on_player(&mut self, at: [f64; 3], radius: f64) {

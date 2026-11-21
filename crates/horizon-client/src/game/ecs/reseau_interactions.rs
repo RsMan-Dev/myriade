@@ -2,7 +2,7 @@
 //! par id. Ce qui est dans `Game.ecs` passe par `EcsLevel` ; le reste (`remote_entities`, rôle Client) garde le code d'origine.
 //! Imports à ajouter au fichier d'accueil : `horizon_core::geometry::{Aabb, Vec3}`, `horizon_client::items::ItemStack`, `horizon_client::mobs::equine`, `horizon_ecs_proto::bridge::host::HurtSource`, `horizon_protocol::packets::play::{self, Clientbound as C}`.
 use super::super::Game;
-use horizon_client::{items::ItemStack, mobs::equine};
+use horizon_client::{items::ItemStack, mobs::{equine, Who}};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::bridge::host::HurtSource;
 use horizon_protocol::packets::play::{self, Clientbound as C};
@@ -131,7 +131,8 @@ impl Game<'_> {
                 g.attack_ticks = 0;
                 if admitted {
                     let source = g.player.as_ref().map_or(0, |p| p.entity_id as u32);
-                    g.ecs.hurt(e, amount, HurtSource::Player(source));
+                    g.ecs_note_killer(e, source);
+                    g.ecs_with(|ecs, mw| ecs.hurt(mw, e, amount, HurtSource::Player(source)));
                 }
                 g.swing_arm();
                 let p = g.player.as_mut()?;
@@ -154,21 +155,95 @@ impl Game<'_> {
         let uid = u32::try_from(id).ok()?;
         let e = self.ecs.entity_of(uid)?;
         // The host's leads, mount and saddle rules come before the bridge's generic interaction.
-        let item = self.held().map(|s| s.item.to_string()).unwrap_or_default();
-        if self.interact_leash_ecs(uid, &item).is_some()
-            || self.interact_mount_ecs(uid, &item)
-            || self.shear_saddle_ecs(uid, &item) == Some(true)
+        let held = self.held().cloned();
+        let item = held.as_ref().map(|s| s.item.to_string()).unwrap_or_default();
+        // `Mob.checkAndHandleImportantInteractions`: a named name tag, then a spawn egg of the creature's own type, before anything else.
+        // `NameTagItem.interactLivingEntity`: a name tag with a name names a living entity whose type is saved (not the leash knot, the
+        // lightning bolt, the bobber), makes it persistent and is used up; anything else passes on to the entity's own interaction.
+        if item == "minecraft:name_tag" {
+            if let Some(name) = held.as_ref().and_then(|s| s.custom_name()).filter(|_| self.ecs.can_serialize(uid)) {
+                if self.mob_alive(uid) {
+                    self.ecs.set_custom_name(uid, Some(name.clone()));
+                    self.ecs.set_persistent(e);
+                    self.consume_held();
+                    if let (Some(player), Some(player_name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+                        self.native_player_name_entity(player, &player_name, uid, &name);
+                    }
+                }
+                return Some(true);
+            }
+        }
+        if item.ends_with("_spawn_egg") {
+            return Some(self.ecs_use_stack(e, conn, hand, held));
+        }
+        self.ecs_interact_host_first(uid, e, &item, conn, hand, held)
+    }
+
+    /// P's interaction with the whole stack in the rules' reach (components, wear), and the player's creative state.
+    fn ecs_use_stack(&mut self, e: bevy_ecs::entity::Entity, conn: u32, hand: u8, held: Option<horizon_client::items::ItemStack>) -> bool {
+        let creative = self.creative;
+        self.ecs_with(|ecs, mw| match held {
+            Some(stack) => ecs.interact_with(mw, e, conn, hand, stack, creative),
+            None => ecs.interact(mw, e, conn, hand),
+        })
+    }
+
+    /// The host's leads, mount and saddle rules and the merchant's screen, then P's modules and rules.
+    fn ecs_interact_host_first(&mut self, uid: u32, e: bevy_ecs::entity::Entity, item: &str, conn: u32, hand: u8, held: Option<horizon_client::items::ItemStack>) -> Option<bool> {
+        if self.interact_leash_ecs(uid, item).is_some()
+            || self.interact_mount_ecs(uid, item)
+            || self.shear_saddle_ecs(uid, item) == Some(true)
         {
             return Some(true);
         }
-        Some(self.ecs.interact(e, conn, hand))
+        // A merchant: the host's screen, stat and refusals (`interact_trader_ecs`) decide. P's `trade_session` interact opens the
+        // session but no screen, so a merchant never reaches it from here.
+        if self.ecs.is_villager(uid).is_some() {
+            return Some(self.interact_trader_ecs(uid, item).unwrap_or(false));
+        }
+        // `player_shear_entity`: shears on a creature that is ready for them. A mod may cancel (the interaction is used, nothing changes);
+        // the hook has `&mut self`, so the creature and the shears are found again before P shears.
+        if item == "minecraft:shears"
+            && let Some(done) = self.player_shear_ecs(uid, e, hand != 0, held.as_ref())
+        {
+            return Some(done);
+        }
+        Some(self.ecs_use_stack(e, conn, hand, held))
+    }
+
+    /// `interact_mob` on the ECS level: the creature a guest's packet named, or the one under the crosshair before any block,
+    /// then `ecs_interact` (host leads, mount and saddle rules, then P's modules and rules). The acting hand is `self.hand`.
+    pub(in crate::game) fn interact_mob_ecs(&mut self, target: Option<super::super::InteractTarget>) -> bool {
+        let id = match target {
+            Some(t) => match u32::try_from(t.id) {
+                Ok(id) if self.creature_species(id).is_some() && self.mob_alive(id) && Some(id) != self.riding => id,
+                _ => return false,
+            },
+            None => match self.ecs_mob_hit() {
+                Some((id, d)) if self.before_block(d) && Some(id) != self.riding => id,
+                _ => return false,
+            },
+        };
+        let Some(conn) = self.acting_player_uuid_id() else { return false };
+        let hand = u8::from(self.hand != mod_api::Hand::Main);
+        let used = self.ecs_interact(id as i32, hand, conn) == Some(true);
+        if used {
+            // `Mob.interact`: a use that consumed the action posts `ENTITY_INTERACT` at the entity, for the player.
+            if let Some(at) = self.ecs.position(id) {
+                let ctx = self.who_context(Some(Who::Player), None);
+                self.post_game_event("minecraft:entity_interact", at, ctx);
+            }
+            self.swing_arm();
+        }
+        used
     }
 
     /// Too-fast check and move of a steered mount the ECS holds (`handleMoveVehicle`): a refused move sends the mount back;
-    /// an accepted one is a teleport request. Its collision, fall and the motion write are not bridged yet (listed in the report).
-    pub(in crate::game) fn ecs_mount_move(&mut self, conn: u32, v: u32, target: Vec3, yaw: f32, owner: bool) {
+    /// an accepted one is `absSnapTo` (position, yaw, pitch) and the move as the motion. True when accepted. The collision test
+    /// ("moved wrongly") and the fall of `vehicle.move` are not bridged yet (listed in the report).
+    pub(in crate::game) fn ecs_mount_move(&mut self, conn: u32, v: u32, target: Vec3, yaw: f32, pitch: f32, owner: bool) -> bool {
         let (Some(e), Some(m)) = (self.ecs.entity_of(v), self.ecs.motion(v)) else {
-            return;
+            return false;
         };
         let old = Vec3::new(m.position[0], m.position[1], m.position[2]);
         let velocity = Vec3::new(m.velocity[0], m.velocity[1], m.velocity[2]);
@@ -176,10 +251,14 @@ impl Game<'_> {
         if moved > 100.0 && !owner {
             log::warn!("vehicle {v} moved too quickly! {moved}");
             self.send_vehicle_back(conn, old, m.yaw);
-            return;
+            return false;
         }
-        self.ecs.teleport(e, [target.x, target.y, target.z]);
-        let _ = yaw;
+        self.ecs_with(|ecs, mw| {
+            ecs.teleport(mw, e, [target.x, target.y, target.z]);
+            ecs.set_rotation(e, yaw, pitch);
+            ecs.set_velocity(e, target.subtract(old));
+        });
+        true
     }
 
     /// `MoveVehicle` sent back to the guest's client at `at`.

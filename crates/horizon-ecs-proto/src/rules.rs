@@ -49,7 +49,7 @@ pub fn params<T: 'static>(p: &'static (dyn Any + Sync)) -> &'static T {
     p.downcast_ref::<T>().expect("the parameters of another rule")
 }
 /// The rules of the base, in the order of their registration (a mod adds its own to `species::Builder`).
-pub static BUILTIN: &[&Rule] = &[&crate::farm::WOOL, &crate::farm::LAY_EGG, &crate::farm::WING_FLAP, &crate::hostile::SUN_BURN, &crate::tame::TAME, &crate::loot::XP, &crate::mount::RIDE, &crate::leash::LEASH, &crate::equipment::EQUIP, &crate::behaviours::held_swap::HELD_SWAP, &crate::size::SIZE, &crate::effects::ON_HIT, &crate::behaviours::breed::LOVE];
+pub static BUILTIN: &[&Rule] = &[&crate::behaviours::shear::SHEAR, &crate::behaviours::brush::RULE, &crate::behaviours::stew_flower::STEW_FLOWER, &crate::behaviours::stew_flower::STEW_BOWL, &crate::farm::LAY_EGG, &crate::farm::WING_FLAP, &crate::hostile::SUN_BURN, &crate::tame::TAME, &crate::loot::XP, &crate::loot::BABY_DROPS, &crate::loot::FLAT_XP, &crate::loot::NO_XP_DROP, &crate::mount::RIDE, &crate::leash::LEASH, &crate::equipment::EQUIP, &crate::behaviours::held_swap::HELD_SWAP, &crate::size::SIZE, &crate::effects::ON_HIT, &crate::behaviours::breed::LOVE, &crate::give_item::GIVE, &crate::hand_over::HAND_OVER, &crate::fit_chest::FIT_CHEST, &crate::coating::COAT, &crate::behaviours::contact_damage::VICTIM, &crate::gift_drop::PERIODIC_GIFT, &crate::gift_drop::GROW_GIFT, &crate::ignite::IGNITE, &crate::dye::DYE, &crate::spawn_offspring::SPAWN_BY_EGG, &crate::body_armor::WEAR];
 /// Gives an entity the state of every rule of its configuration.
 pub fn equip_all(world: &mut World, e: Entity, rules: &[RuleEntry]) {
     for r in rules {
@@ -149,7 +149,6 @@ pub mod flight;
 pub mod float;
 pub mod float_around;
 pub mod fly;
-pub mod fly_steer;
 pub mod fly_stroll;
 pub mod follow_adult;
 pub mod follow_flock_leader;
@@ -260,7 +259,6 @@ pub mod projectile_more;
 pub mod pufferfish_puff;
 pub mod push_on_touch;
 pub mod raid_garden;
-pub mod raids;
 pub mod random_look;
 pub mod random_sitting;
 pub mod random_stand;
@@ -288,6 +286,7 @@ pub mod snow_trail;
 pub mod social_gift_hero;
 pub mod social_socialize_bell;
 pub mod sonic_boom;
+pub mod spawn_draw;
 pub mod spawn_finalize;
 pub mod spawn_reference;
 pub mod spawn_spawner;

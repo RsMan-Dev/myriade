@@ -333,7 +333,14 @@ pub fn merge(w: &mut World, e: Entity, patch: &Compound) -> bool {
 
 /// Removes a free key: false when there is none, when the entity is not `Saved`, or when a field applies to the key (its component owns it).
 pub fn remove(w: &mut World, e: Entity, key: &str) -> bool {
-    if w.get::<Saved>(e).is_none() || applicable(w, e, key).is_some() {
+    if w.get::<Saved>(e).is_none() {
+        return false;
+    }
+    // The key a creaking's link owns: removing it unlinks the heart (the only declared key a removal is allowed on).
+    if crate::nbt_fields::common::remove_heart_key(w, e, key) {
+        return true;
+    }
+    if applicable(w, e, key).is_some() {
         return false;
     }
     let Some(mut free) = w.get::<NbtData>(e).map(|t| (*t.0).clone()) else { return false };
@@ -694,6 +701,38 @@ pub fn declared(w: &World, id: &str) -> bool {
 /// loaded. An `id` no recipe declares, or an entity that cannot be made, is set aside (`set_aside`) and None is returned: nothing is
 /// spawned. `Passengers` restores the riders and seats them (`nbt_fields::rides`).
 pub fn restore(w: &mut World, c: &Compound) -> Option<Entity> {
+    let slot = w.get_resource_mut::<RestoreTrail>().and_then(|mut t| {
+        let v = t.0.as_mut()?;
+        v.push(None);
+        Some(v.len() - 1)
+    });
+    let made = restore_one(w, c);
+    if let (Some(slot), Some(e)) = (slot, made)
+        && let Some(mut t) = w.get_resource_mut::<RestoreTrail>()
+        && let Some(v) = t.0.as_mut()
+    {
+        v[slot] = Some(e);
+    }
+    made
+}
+
+/// The entities a `restore_tree` is making, one slot per compound met in the order of the NBT (the root, then each rider and its own
+/// riders); a slot stays None when its compound made nothing.
+#[derive(Resource, Default)]
+struct RestoreTrail(Option<Vec<Option<Entity>>>);
+
+/// `restore` of `c` and of the riders in its `Passengers`: the slot of each compound in NBT order, root first.
+pub fn restore_tree(w: &mut World, c: &Compound) -> Vec<Option<Entity>> {
+    w.init_resource::<RestoreTrail>();
+    let outer = w.resource_mut::<RestoreTrail>().0.replace(Vec::new());
+    restore(w, c);
+    let mut t = w.resource_mut::<RestoreTrail>();
+    let done = t.0.take().unwrap_or_default();
+    t.0 = outer;
+    done
+}
+
+fn restore_one(w: &mut World, c: &Compound) -> Option<Entity> {
     let Some(Tag::String(id)) = c.get(&JavaString::from("id")) else { return None };
     let name = id.to_string_lossy();
     let at = c.get(&JavaString::from("Pos")).and_then(tag_vec3)?;

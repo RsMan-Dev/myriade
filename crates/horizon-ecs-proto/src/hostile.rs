@@ -9,7 +9,7 @@ use crate::bridge::teams::allied;
 use crate::targeting::{self, Target, Who, info, player_box};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::ParamSet;
-use crate::rules::hostile::{attack_damage, burn_chance, cooldown_expired_at_restart, eye_block, failures_before, far_repath_extra, health_after, melee_reach, melee_retry_wait, melee_wait, unreachable_too_long};
+use crate::rules::hostile::{attack_damage, burn_chance, cooldown_expired_at_restart, eye_block, failures_before, far_repath_extra, health_after, melee_reach, melee_retry_wait, melee_wait, spread_damage, unreachable_too_long};
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// `MeleeAttackGoal`'s data (from the species: damage, interval, speed) and state.
@@ -39,8 +39,13 @@ pub struct Attack {
     pub armed: bool,
     /// The rank of the melee goal in the animal's selector (`u8::MAX`: none).
     pub melee_slot: u8,
-    /// Called (in the next flush) when a strike lands: the bee's sting, which costs it its life.
-    pub on_hit: Option<fn(&mut World, Entity)>,
+    /// Called (in the next flush) when a strike lands, with its victim and the damage dealt (`doHurtTarget`'s `hurtServer` was true):
+    /// the bee's sting, the toss of the golem, the headbutt.
+    pub on_hit: Option<fn(&mut World, Entity, Who, f32)>,
+    /// Called at every strike, landed or not (what `doHurtTarget` does before the blow): the golem's attack event, the ravager's bite.
+    pub on_blow: Option<fn(&mut World, Entity)>,
+    /// `IronGolem.doHurtTarget`: the damage is half the attack plus a draw below its integer part, not the fixed value.
+    pub spread: bool,
     /// `StopAttackingIfTargetInvalid`: the target is forgotten when the last path to it has not reached it for this many ticks (`Nav.cant_reach_since`); the brain animals' rule.
     pub forget_unreachable: Option<i32>,
 }
@@ -237,6 +242,8 @@ pub fn ensure_attack(w: &mut World, e: Entity) {
         armed: false,
         melee_slot: u8::MAX,
         on_hit: None,
+        on_blow: None,
+        spread: false,
         forget_unreachable: None,
     });
 }
@@ -334,11 +341,15 @@ pub fn melee_run(
     level: Res<Level>,
     tg: targeting::Targets,
     mut dq: ResMut<DamageQueue>,
-    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Has<crate::effects::OnHit>, Option<(&crate::behaviours::melee::QuitsInLight, &targeting::Eye)>, Option<&Occupied>), With<Meleeing>>,
+    mut q: Query<(Aim, &Bounds, &mut Attack, Option<&Target>, &mut Rng, Has<GrowAt>, Option<(&crate::behaviours::melee::QuitsInLight, &targeting::Eye)>, Option<&Occupied>), With<Meleeing>>,
     mut reqs: ResMut<Requests>,
     mut cmd: Commands,
+    gear: Option<Res<crate::melee_gear::MeleeGear>>,
+    held: Query<&crate::equip_stack::Equipment>,
+    kinds: Query<&SpeciesId>,
+    species: Res<SpeciesTable>,
 ) {
-    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, effects, quits, busy) in &mut q {
+    for ((e, pos, mut look, looking, _following, _asked), bounds, mut a, g, mut rng, baby, quits, busy) in &mut q {
         // `Ravager.isImmobile`: the goals do not tick while it lasts, so the strike cooldown stands still.
         // The goal is restarted by the frame, so the pause is measured in world time: from the first run seen busy to the first one free.
         if busy.is_some_and(|o| o.0 & crate::behaviours::hunt_speed::BUSY != 0) {
@@ -381,29 +392,147 @@ pub fn melee_run(
             let interval = if baby { a.interval_baby.unwrap_or(a.interval) } else { a.interval };
             a.until = interval;
             a.next_strike = clock.0 + interval as u64;
-            if let Some(f) = a.on_hit {
+            // `MeleeAttackGoal.checkAndPerformAttack`: `mob.swing(MAIN_HAND)` before the blow.
+            cmd.queue(move |w: &mut World| {
+                crate::swing::swing(w, e, false);
+            });
+            if let Some(f) = a.on_blow {
                 cmd.queue(move |w: &mut World| f(w, e));
             }
+            let damage = if a.spread { spread_damage(a.damage, |n| rng.next_int(n)) } else { a.damage };
+            // `EnchantmentHelper.modifyDamage` of the held weapon, by the host's table, once per blow.
+            let damage = match (gear.as_deref(), held.get(e).ok().and_then(|q| q.slots[0].as_ref())) {
+                (Some(gear), Some(stack)) => {
+                    let name = |s: Option<&SpeciesId>| s.map_or("", |s| species.0[s.0 as usize].name);
+                    let victim = match g.who {
+                        Who::Player(_) => "minecraft:player",
+                        Who::Entity(t) => name(kinds.get(t).ok()),
+                    };
+                    (gear.0)(stack, name(kinds.get(e).ok()), victim, crate::melee_gear::Blow { damage, ..Default::default() }).damage
+                }
+                _ => damage,
+            };
             match g.who {
                 Who::Player(id) => {
-                    let (tick, amount, from) = (clock.0, a.damage, (pos.0.x, pos.0.z));
+                    let (tick, from) = (clock.0, (pos.0.x, pos.0.z));
                     let by = Who::Entity(e);
-                    cmd.queue(move |w: &mut World| w.resource_mut::<PlayerState>().hurt(tick, id, amount, from, Some(by)));
-                    if effects {
-                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, Who::Player(id)));
-                    }
+                    // The host gives no answer for a player: the blow is taken as landed.
+                    cmd.queue(move |w: &mut World| {
+                        w.resource_mut::<PlayerState>().hurt(tick, id, damage, from, Some(by));
+                        landed(w, e, Who::Player(id), damage);
+                    });
                 }
-                Who::Entity(t) => {
-                    dq.add_by_entity(t, a.damage, (pos.0.x, pos.0.z), e);
-                    if effects {
-                        cmd.queue(move |w: &mut World| crate::effects::hit_effects(w, e, Who::Entity(t)));
-                    }
-                }
+                // The victim's `apply_damage` tells `landed` the result.
+                Who::Entity(t) => dq.add_by_entity(t, damage, (pos.0.x, pos.0.z), e),
             }
         }
     }
 }
 
+/// What follows a melee blow that dealt `dealt` to `who` (`doHurtTarget` when `hurtServer` returned true): the effects, the fire, the extra
+/// knockback, then the hook of the species. Called by `apply_damage` for a creature, at once for a player.
+pub fn landed(w: &mut World, e: Entity, who: Who, dealt: f32) {
+    if w.get_entity(e).is_err() {
+        return;
+    }
+    crate::effects::hit_effects(w, e, who);
+    ignite_on_hit(w, e, who);
+    // The weapon's enchantments: the knockback (`getKnockback`) and Fire Aspect (`doPostAttackEffects`), from the host's table.
+    let base_knockback = w.get::<SpeciesId>(e).map_or(0.0, |s| w.resource::<SpeciesTable>().0[s.0 as usize].attack_knockback as f32);
+    let blow = crate::melee_gear::blow(w, e, who, crate::melee_gear::Blow { damage: dealt, knockback: base_knockback, ignite_seconds: 0.0 });
+    extra_knockback(w, e, who, f64::from(blow.knockback));
+    if blow.ignite_seconds > 0.0 {
+        let ticks = (blow.ignite_seconds * 20.0) as i32;
+        match who {
+            Who::Entity(t) => set_on_fire(w, t, ticks as u64),
+            Who::Player(player) => w
+                .get_resource_or_insert_with(crate::colony_register::MiscOut::default)
+                .0
+                .push(crate::host_out_misc::MiscEvent::PlayerIgnite { player, ticks }),
+        }
+    }
+    if let Some(f) = w.get::<Attack>(e).and_then(|a| a.on_hit) {
+        f(w, e, who, dealt);
+    }
+    if w.get::<crate::behaviours::contact_damage::ContactDamage>(e).is_some() {
+        crate::behaviours::contact_damage::attack_sound(w, e);
+    }
+}
+/// `Zombie.doHurtTarget`: a burning attacker with an empty hand sets its target on fire with a chance of 0.3 per point of the effective
+/// difficulty, for 2 seconds per whole point. Params of the rule `ignite_on_hit`.
+#[derive(Clone, Copy, Debug)]
+pub struct IgniteParams {
+    pub chance: f32,
+    pub seconds: i32,
+}
+pub static ZOMBIE_FIRE: IgniteParams = IgniteParams { chance: 0.3, seconds: 2 };
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct IgniteOnHit(pub &'static IgniteParams);
+pub static IGNITE_ON_HIT: crate::rules::Rule = crate::rules::Rule { name: "ignite_on_hit", equip: equip_ignite_on_hit, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
+fn equip_ignite_on_hit(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
+    w.entity_mut(e).insert(IgniteOnHit(crate::rules::params::<IgniteParams>(p)));
+}
+fn ignite_on_hit(w: &mut World, e: Entity, who: Who) {
+    let Some(IgniteOnHit(p)) = w.get::<IgniteOnHit>(e).copied() else { return };
+    let now = now_of(w, e);
+    if !w.get::<Burning>(e).is_some_and(|b| b.until > now) || crate::equip_stack::get(w, e, 0).is_some() {
+        return;
+    }
+    let effective = crate::effects::effective_difficulty(w, e);
+    let draw = w.get_mut::<Rng>(e).map_or(1.0, |mut r| r.next_f64() as f32);
+    if draw >= effective * p.chance {
+        return;
+    }
+    let ticks = p.seconds * effective as i32 * 20;
+    match who {
+        Who::Entity(t) => set_on_fire(w, t, ticks as u64),
+        Who::Player(player) => w
+            .get_resource_or_insert_with(crate::colony_register::MiscOut::default)
+            .0
+            .push(crate::host_out_misc::MiscEvent::PlayerIgnite { player, ticks }),
+    }
+}
+/// `LivingEntity.knockback`: the target's velocity is halved and pushed along `(x, z)` by `strength` less its resistance; on the ground it also
+/// rises (up to 0.4). A creature only; a player's push goes through the host.
+pub fn knock(w: &mut World, target: Entity, strength: f64, x: f64, z: f64) {
+    let strength = strength * (1.0 - w.get::<Resist>(target).map_or(0.0, |r| r.0).clamp(0.0, 1.0));
+    if strength <= 0.0 {
+        return;
+    }
+    let ground = w.get::<Contact>(target).is_some_and(|c| c.on_ground);
+    let l = (x * x + z * z).sqrt();
+    let (kx, kz) = if l > 0.0 { (x / l * strength, z / l * strength) } else { (0.0, 0.0) };
+    let Some(mut v) = w.get_mut::<Vel>(target) else { return };
+    let y = if ground { (v.0.y / 2.0 + strength).min(0.4) } else { v.0.y };
+    v.0 = Vec3::new(v.0.x / 2.0 - kx, y, v.0.z / 2.0 - kz);
+    w.entity_mut(target).insert(Moving);
+}
+/// `Mob.doHurtTarget`'s `causeExtraKnockback`: half of `knockback` (`getKnockback`: the species' attribute plus the held weapon's Knockback)
+/// along the attacker's facing, and its own motion slowed (x and z by 0.6).
+pub fn extra_knockback(w: &mut World, e: Entity, who: Who, knockback: f64) {
+    // The hoglin's `doHurtTarget` does not call `Mob.doHurtTarget`: its headbutt throws instead.
+    if w.get::<crate::behaviours::headbutt::Headbutt>(e).is_some() {
+        return;
+    }
+    push_along_facing(w, e, who, knockback / 2.0);
+}
+/// `LivingEntity.causeExtraKnockback(target, power, ..)`: `who` is pushed by `power` along the facing of `e`, whose own motion slows.
+pub fn push_along_facing(w: &mut World, e: Entity, who: Who, power: f64) {
+    use horizon_core::geometry::trig::Mth;
+    if power <= 0.0 {
+        return;
+    }
+    let yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0).to_radians();
+    let (x, z) = (f64::from(yaw.msin()), -f64::from(yaw.mcos()));
+    match who {
+        Who::Entity(t) => knock(w, t, power, x, z),
+        Who::Player(id) => w.resource_mut::<Events>().host.push_player(id, [-x * power, 0.0, -z * power]),
+    }
+    if let Some(mut v) = w.get_mut::<Vel>(e) {
+        v.0 = Vec3::new(v.0.x * 0.6, v.0.y, v.0.z * 0.6);
+    }
+}
 /// One blow of `e` on `who` for `amount`, with its knock-back: the damage queue for a creature, the player's state for a player.
 pub fn strike(w: &mut World, e: Entity, who: Who, amount: f32) {
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };

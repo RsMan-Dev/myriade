@@ -186,31 +186,20 @@ impl Game<'_> {
             .passenger_slots
             .keys()
             .copied()
-            .chain(self.remote_entities.iter().filter_map(|m| m.extra.mount))
+            .chain(self.ecs.ridden_vehicles())
             .collect();
         vehicles.sort_unstable();
         vehicles.dedup();
         for vehicle in vehicles {
+            // The ECS orders its own riders (seats, then the mount's, the driver first).
+            let mut riders = self.ecs.passengers_of(vehicle);
             for rider in self.ordered_live_passengers(vehicle) {
+                if !riders.contains(&rider) {
+                    riders.push(rider);
+                }
+            }
+            for rider in riders {
                 riding.add(vehicle as i32, rider as i32);
-            }
-        }
-        for (&vehicle, pass) in &mut riding.passengers {
-            // Players occupy the leading seats, as in `position_riders`.
-            // `extra.rider` orders mob passengers, not a player's driver seat.
-            if guests.iter().any(|&(id, _)| id as i32 == vehicle) {
-                continue;
-            }
-            if let Some(driver) = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == vehicle as u32)
-                .and_then(|m| m.extra.rider)
-                && let Some(pos) = pass.iter().position(|&p| p == driver as i32)
-                && pos != 0
-            {
-                let d = pass.remove(pos);
-                pass.insert(0, d);
             }
         }
     }

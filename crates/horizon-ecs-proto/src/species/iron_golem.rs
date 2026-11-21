@@ -17,11 +17,13 @@ pub static DEF: Def = Def {
     goals: &[
         Entry::new(&crate::behaviours::offer_flower::MODULE, 5, &crate::behaviours::offer_flower::Params { candidates: &["minecraft:villager", "minecraft:copper_golem"], ..crate::behaviours::offer_flower::Params::DEFAULT }),
         Entry::new(&melee::MODULE, 1, &melee::Params::DEFAULT),
+        Entry::new(&crate::behaviours::target_toss::MODULE, 1, &crate::behaviours::target_toss::Params::DEFAULT),
         Entry::new(&move_towards_target::MODULE, 2, &move_towards_target::Params::DEFAULT),
         Entry::new(&village_walk::MODULE, 2, &village_walk::Params::BACK),
         Entry::new(&village_walk::MODULE, 4, &village_walk::Params::IN_VILLAGE),
         Entry::new(&look_at_player::MODULE, 7, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
         Entry::new(&random_look::MODULE, 8, &random_look::Params::DEFAULT),
     ],
+    rules: &[crate::rules::RuleEntry::new(&crate::give_item::GIVE, &crate::give_item::GiveParams::IRON_REPAIR), crate::rules::RuleEntry::new(&crate::behaviours::contact_damage::VICTIM, &()), crate::rules::RuleEntry::new(&crate::raids::BAIT, &())],
     ..Def::EMPTY
 };

@@ -14,7 +14,7 @@ use crate::brain::behaviours::{calm_down, look_and_interact, look_at_entity, vil
 // lot V4
 use crate::behaviours::bonemeal;
 use crate::behaviours::breed_love;
-use crate::brain::behaviours::{work_swim, work_wake_up};
+use crate::brain::behaviours::{panic_golem, work_swim, work_wake_up};
 // lot V3
 use crate::brain::behaviours::{raid_status, village_brownian_walk, village_go_to_village, village_home_walk, village_stroll};
 use crate::brain::sensors::village_hostile;
@@ -287,6 +287,7 @@ pub static DEF: Def = Def {
             // lot V4 : `Swim(60,60)` du cœur (prio 0, `villager_brain.rs:4032`), `MakeLove` ordonné de l'inactivité (prio 3, `:4161`)
             BEntry { behaviour: &work_swim::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &work_wake_up::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &panic_golem::BEHAVIOUR, activity: "core", priority: 0, params: &(), needs: &[], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &breed_love::BIRTH, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &breed_love::MAKE_LOVE, activity: "idle", priority: 3, params: &(), needs: &[(&BREED_TARGET, Need::Present)], duration: Some((350, 350)), kids: &[] },
             // lot 6 : regards, interactions et calme (un `SetLookAndInteract` par activité du Mob, à sa priorité)
@@ -344,6 +345,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &social_gift_hero::BEHAVIOUR, activity: "idle", priority: 3, params: &GIFT, needs: &[], duration: Some((100, 100)), kids: &[] },
         ],
     },
+    draws: Some(&crate::behaviours::spawn_draw::VILLAGER_TYPE),
     ..Def::EMPTY
 };
 

@@ -12,6 +12,13 @@ impl EcsLevel {
         w.id_for(e, alloc)
     }
 
+    /// `EcsWorld::set_next_bolt_cause`: the player whose trident summons the next bolt.
+    pub fn set_next_bolt_cause(&mut self, player: Option<u32>) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_next_bolt_cause(player);
+        }
+    }
+
     /// `EcsWorld::spawn_crystal`: an end crystal at `at` (its feet).
     pub fn spawn_crystal(&mut self, mw: &MobWorld<'_>, at: [f64; 3], show_bottom: bool, alloc: &mut dyn FnMut() -> u32) -> u32 {
         let Some(w) = self.ecs_mut() else { return 0 };

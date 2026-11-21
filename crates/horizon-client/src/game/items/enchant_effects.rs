@@ -759,7 +759,7 @@ impl Game<'_> {
             let alive = g.mob_alive(attacker);
             g.ecs_hurt(attacker, damage, HurtSource::Player(player));
             if alive && !g.mob_alive(attacker) {
-                g.ecs_kill_event(attacker);
+                g.native_ecs_kill(attacker);
             }
             g.remember_mob_player_credit(attacker);
         });
@@ -1049,14 +1049,17 @@ impl Game<'_> {
             }
             Some("change_item_damage") => {
                 let amount = level_value(&effect["amount"], level) as u32;
-                self.wear_mob_piece_ecs(wearer, slot, amount);
+                if let Some(slot) = horizon_ecs_proto::stand::slot_of_index(slot) {
+                    self.wear_mob_piece_ecs(wearer, slot, amount);
+                }
             }
             _ => {}
         }
     }
     /// `wear_mob_piece` for an ECS wearer: the piece is read by its item name, so only a break (the piece leaves the slot) is written.
     fn wear_mob_piece_ecs(&mut self, id: u32, slot: Slot, amount: u32) {
-        let Some(stack) = self.ecs.equipment_stack(id, slot) else { return };
+        let index = horizon_ecs_proto::equipment_drop::index(slot);
+        let Some(stack) = self.ecs.equipment_stack(id, index) else { return };
         if amount == 0 || !horizon_client::stations::is_damageable(world_items!(self), &stack) {
             return;
         }
@@ -1066,7 +1069,7 @@ impl Game<'_> {
         }
         let max = world_items!(self).get(&stack.item).map_or(0, |i| i.max_damage);
         if stack.damage + loss < max {
-            self.ecs.damage_equipment(id, slot, loss);
+            self.ecs.damage_equipment(id, index, loss as i32);
             return;
         }
         let Some(at) = self.ecs.position(id) else { return };

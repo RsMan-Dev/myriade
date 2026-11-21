@@ -783,7 +783,7 @@ impl Game<'_> {
                 return;
             };
             // Mob.hurt with the magic kind (HurtSource::Magic, missing in P: listed).
-            self.ecs_hurt(id, 4.0, horizon_ecs_proto::bridge::host::HurtSource::Magic);
+            self.ecs_hurt(id, 4.0, horizon_ecs_proto::bridge::host::HurtSource::IndirectMagic { owner: None });
             self.audio.play("minecraft:block.conduit.attack.target", Some(at), 1.0, 1.0);
             return;
         }

@@ -10,6 +10,11 @@ impl EcsLevel {
         self.ecs_mut().is_some_and(|w| w.boat_input(id, left, right, up, down))
     }
 
+    /// The paddle strokes the client of the boat `id` reports (`handlePaddleBoat`); false when `id` is not a boat in the level.
+    pub fn boat_paddle(&mut self, id: u32, paddles: [bool; 2]) -> bool {
+        self.ecs_mut().is_some_and(|w| w.boat_paddle(id, paddles))
+    }
+
     /// The rider of the boat `id` left.
     pub fn boat_release(&mut self, id: u32) {
         let Some(e) = self.entity_of(id) else { return };

@@ -61,6 +61,11 @@ impl EcsWorld {
         }
     }
 
+    /// `FishingHook.openWater` of the hook; None when it is not a hook.
+    pub fn hook_open_water(&self, hook: Entity) -> Option<bool> {
+        self.world().get::<fishing_hook::Hook>(hook).map(|h| h.open_water)
+    }
+
     /// The hook of `owner` (its last cast), None when it has none.
     pub fn hook_of(&self, owner: u32) -> Option<Entity> {
         let w = self.world();

@@ -263,7 +263,8 @@ impl Game<'_> {
     /// move to where the level keeps a joined entity's tags.
     pub(super) fn join_spawn_tags(&mut self, from: usize) {
         if self.ecs.is_active() {
-            return self.ecs.join_spawn_tags(from);
+            // An ECS entity is named by id, not by list index: its tags go through `ecs.add_spawn_tag(id, tag)` at its spawn.
+            return;
         }
         for i in from..self.remote_entities.len() {
             if self.remote_entities[i].extra.spawn_tags.is_empty() {

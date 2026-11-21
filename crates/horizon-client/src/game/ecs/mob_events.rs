@@ -52,11 +52,24 @@ impl Game<'_> {
                         }
                     }
                 }
+                MobEvent::EntityEvent { mob, event, at } => self.ecs_mob_entity_event(mob, event, at),
+                MobEvent::CreakingHurt { home, by_player, id } => self.creaking_hurt(home, id, by_player),
+                MobEvent::CreakingTearDown { center, spread } => self.creaking_tear_down(center, spread),
+                MobEvent::Push { target, velocity } => match target {
+                    Who::Player => {
+                        if let Some(p) = self.player.as_mut() {
+                            p.velocity = p.velocity.add_vector(Vec3::new(velocity[0], velocity[1], velocity[2]));
+                        }
+                    }
+                    Who::Mob(id) => self.ecs_mob_push(id, velocity),
+                },
+                MobEvent::SetTarget { mob, target } => self.ecs_mob_target(mob, target),
+                // The ECS's `reinforcements` module decides at the hit (`Zombie.hurtServer`); the legacy request has no list to act on.
+                MobEvent::Reinforcements { .. } => {}
                 other @ (
                 MobEvent::ForPlayer{ .. }
                 | MobEvent::Drown{ .. }
                 | MobEvent::SunProtectionWear{ .. }
-                | MobEvent::EntityEvent{ .. }
                 | MobEvent::ItemParticles{ .. }
                 | MobEvent::BoundSound{ .. }
                 | MobEvent::BubbleColumnParticles{ .. }
@@ -84,7 +97,6 @@ impl Game<'_> {
                 | MobEvent::DamagePlayer{ .. }
                 | MobEvent::ElderCurse{ .. }
                 | MobEvent::RemoveKilled{ .. }
-                | MobEvent::Push{ .. }
                 | MobEvent::SonicBoom{ .. }
                 | MobEvent::LidPush{ .. }
                 | MobEvent::Wololo{ .. }
@@ -101,7 +113,6 @@ impl Game<'_> {
                 | MobEvent::PufferfishSting{ .. }
                 | MobEvent::StabDismount{ .. }
                 | MobEvent::Knockback{ .. }
-                | MobEvent::SetTarget{ .. }
                 | MobEvent::PiglinAlertTarget(..)
                 | MobEvent::HoglinAttackTarget{ .. }
                 | MobEvent::HuntHoglin{ .. }
@@ -170,11 +181,8 @@ impl Game<'_> {
                 | MobEvent::CureZombieVillager{ .. }
                 | MobEvent::Vibration{ .. }
                 | MobEvent::DigParticles{ .. }
-                | MobEvent::Reinforcements{ .. }
                 | MobEvent::BlockBreakEffect{ .. }
                 | MobEvent::Darkness{ .. }
-                | MobEvent::CreakingHurt{ .. }
-                | MobEvent::CreakingTearDown{ .. }
                 | MobEvent::PandaSneezed{ .. }
                 | MobEvent::FallToPassengers{ .. }
                 ) => self.handle_mob_events_legacy(other)?,

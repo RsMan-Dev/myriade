@@ -5,7 +5,7 @@ use horizon_client_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::cow::now_of;
-use horizon_ecs_proto::dispense::{Brushable, Shearable};
+use horizon_ecs_proto::dispense::Brushable;
 use horizon_ecs_proto::tnt::{FUSE, Primed};
 
 fn setup() -> HostSetup {
@@ -19,13 +19,11 @@ fn shearing_takes_once_and_only_a_shearable_creature() {
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
     let mut h = EcsWorld::new(&setup(), mw, types, &tags);
     let plain = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
-    assert!(!h.set_sheared(plain, true), "a creature without Shearable is not shorn");
-    assert!(!h.is_sheared(plain));
-    let e = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 0.5], None).expect("a known species");
-    h.world_mut().entity_mut(e).insert(Shearable);
-    assert!(h.set_sheared(e, true), "the first shearing takes");
-    assert!(!h.set_sheared(e, true), "a second shearing changes nothing");
-    assert!(h.is_sheared(e));
+    assert!(!h.can_shear(plain) && !h.shear(plain), "a creature with no shearing is not shorn");
+    let e = h.spawn(mw, "minecraft:sheep", [2.5, 1.0, 0.5], None).expect("a known species");
+    assert!(h.can_shear(e));
+    assert!(h.shear(e), "the first shearing takes");
+    assert!(!h.can_shear(e) && !h.shear(e), "a second shearing changes nothing");
 }
 
 #[test]

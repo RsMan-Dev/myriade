@@ -79,7 +79,9 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).is_some() && self.ecs.add_goal(id, priority, goal);
+            return self.filters_known(goal)
+                && self.ecs_mod_live(id).is_some()
+                && self.ecs.add_goal(id, priority, goal);
         }
         let Some((species, navigation)) = self
             .remote_entities
@@ -111,7 +113,9 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).is_some() && self.ecs.add_target_goal(id, priority, goal);
+            return self.filters_known(goal)
+                && self.ecs_mod_live(id).is_some()
+                && self.ecs.add_target_goal(id, priority, goal);
         }
         let Some((species, navigation)) = self
             .remote_entities
@@ -532,6 +536,16 @@ impl Game<'_> {
                 Some(Box::new(g))
             }
             _ => unreachable!("&GoalSpec: unhandled variant"),
+        }
+    }
+
+    /// Whether every species id a goal names (`prey`, `what`, `only`) is a known mob type.
+    fn filters_known(&self, goal: &GoalSpec) -> bool {
+        match goal {
+            GoalSpec::AvoidEntity { what: MobFilter::Species(ids), .. }
+            | GoalSpec::NearestTarget { prey: MobFilter::Species(ids), .. } => self.species_list(ids).is_some(),
+            GoalSpec::LookAtPlayer { only: Some(id), .. } => self.species_of(id).is_some(),
+            _ => true,
         }
     }
 

@@ -32,6 +32,8 @@ pub(in crate::game) fn effect_kind(id: &str) -> Option<Kind> {
         "blindness" => Kind::Blindness,
         "jump_boost" => Kind::JumpBoost,
         "weaving" => Kind::Weaving,
+        "strength" => Kind::Strength,
+        "infested" => Kind::Infested,
         _ => return None,
     })
 }
@@ -125,7 +127,7 @@ impl Game<'_> {
             .filter(|&e| {
                 Some(e) != bearer
                     && self.ecs.kind_of(e).is_some_and(|k| k.trim_start_matches("minecraft:") == "slime")
-                    && self.ecs.bounds(e).is_some_and(|b| b.intersects(near))
+                    && self.ecs.bounds_of(e).is_some_and(|b| b.intersects(near))
             })
             .count()
             .min(limit as usize) as i32;
@@ -151,9 +153,9 @@ impl Game<'_> {
         let vehicle = vehicle.and_then(|v| self.ecs.entity_of(v));
         let q = Select { kind: None, tag: None, near: Some(([p.x, p.y, p.z], 4.0)), limit: usize::MAX };
         let hit = self.ecs.select(&q).into_iter().find(|&e| {
-            (left_owner || Some(e) != vehicle) && self.ecs.bounds(e).is_some_and(|b| hit_by(b, p, 0.125))
+            (left_owner || Some(e) != vehicle) && self.ecs.bounds_of(e).is_some_and(|b| hit_by(b, p, 0.125))
         })?;
-        let feet = self.ecs.bounds(hit)?.bottom_center();
+        let feet = self.ecs.bounds_of(hit)?.bottom_center();
         let breeze = self.ecs.kind_of(hit).is_some_and(|k| k.trim_start_matches("minecraft:") == "breeze");
         Some((self.ecs_link(hit), feet, breeze))
     }
@@ -166,13 +168,13 @@ impl Game<'_> {
             .ecs
             .select(&q)
             .into_iter()
-            .filter(|&e| self.ecs.bounds(e).is_some_and(|b| b.intersects(area)))
+            .filter(|&e| self.ecs.bounds_of(e).is_some_and(|b| b.intersects(area)))
             .collect();
         found
             .into_iter()
             .filter_map(|e| {
                 let kind = self.ecs.kind_of(e)?.to_owned();
-                let feet = self.ecs.bounds(e)?.bottom_center();
+                let feet = self.ecs.bounds_of(e)?.bottom_center();
                 Some((self.ecs_link(e), kind, feet.x, feet.z))
             })
             .collect()
@@ -191,7 +193,7 @@ impl Game<'_> {
         let q = Select { kind: None, tag: None, near: Some(([at.x, at.y, at.z], 4.0)), limit: usize::MAX };
         let mut hits = Vec::new();
         for e in self.ecs.select(&q) {
-            let Some(b) = self.ecs.bounds(e) else { continue };
+            let Some(b) = self.ecs.bounds_of(e) else { continue };
             if let Some(d2) = super::super::potions::splash_distance_sqr(at, age, b) {
                 hits.push((e, 1.0 - d2.sqrt() / 4.0));
             }

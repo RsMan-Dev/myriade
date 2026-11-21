@@ -43,6 +43,63 @@ pub struct HurtAt {
     pub last: f32,
 }
 
+/// `Entity.invulnerableTime` set by a mod, as the entity tick it ends at (the window counts down by the clock, nothing runs per tick).
+/// Absent: 0. While it runs the entity refuses what `isInvulnerableToBase` refuses (`isTemporarilyInvulnerable`).
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct InvulnerableUntil(pub u64);
+
+/// `Entity.isInvulnerableToBase` for the `Invulnerable` flag (`flag`) or the `invulnerableTime` window (`window`): refused unless the
+/// source is in `#bypasses_invulnerability` (`out_of_world`, `generic_kill`) or its causing entity is a creative player.
+pub fn invulnerability_refuses(flag: bool, window: bool, cause: Cause, creative_attacker: bool) -> bool {
+    (flag || window) && cause != Cause::OutOfWorld && !creative_attacker
+}
+
+/// One hit of the `CombatTracker` (`CombatEntry`): what the death message reads.
+#[derive(Clone, Copy, Debug)]
+pub struct CombatEntry {
+    pub damage_type: &'static str,
+    pub by: Option<crate::targeting::Who>,
+    pub amount: f32,
+    pub in_water: bool,
+    pub fall_distance: f32,
+    /// The blow is the attacker's own (not a projectile it shot): `DamageSource.getDirectEntity` is the attacker.
+    pub direct: bool,
+    /// The type of the projectile that carried the blow (the direct entity of its damage source, as a loot table reads it).
+    pub projectile: Option<&'static str>,
+}
+
+/// `CombatTracker`: the hits taken lately, put on the entity by its first hit (nothing before). The hits are forgotten after 100 ticks
+/// without one (300 in a fight), checked when the next one lands.
+#[derive(Component, Clone, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct CombatLog {
+    pub entries: Vec<CombatEntry>,
+    pub last: u64,
+    pub in_combat: bool,
+}
+
+/// `CombatTracker.recordDamage` for a hit that took `amount`.
+pub fn record_combat(w: &mut World, e: Entity, damage_type: &'static str, by: Option<crate::targeting::Who>, direct: bool, projectile: Option<&'static str>, amount: f32) {
+    let now = now_of(w, e);
+    let in_water = w.get::<FluidState>(e).is_some_and(|f| f.in_water);
+    let fall_distance = w.get::<Contact>(e).map_or(0.0, |c| c.fall_distance);
+    if w.get::<CombatLog>(e).is_none() {
+        w.entity_mut(e).insert(CombatLog::default());
+    }
+    let Some(mut log) = w.get_mut::<CombatLog>(e) else { return };
+    let reset = if log.in_combat { 300 } else { 100 };
+    if !log.entries.is_empty() && now.wrapping_sub(log.last) > reset {
+        log.entries.clear();
+        log.in_combat = false;
+    }
+    log.entries.push(CombatEntry { damage_type, by, amount, in_water, fall_distance, direct, projectile });
+    log.last = now;
+    if by.is_some() {
+        log.in_combat = true;
+    }
+}
+
 /// On fire until this tick; its damage is in the timer wheel (`Due::Burn`, every 20 ticks).
 #[derive(Component, Clone, Copy, Debug)]
 #[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
@@ -109,29 +166,31 @@ pub struct Hit {
     pub direct: bool,
     /// The knockback's power when the attacker sets it (a goat's ram); `None`: the default 0.4.
     pub power: Option<f64>,
+    /// The projectile that carried the blow (`DamageSource.getDirectEntity` is it): its type id; `None` for a blow with no projectile.
+    pub projectile: Option<&'static str>,
 }
 
 impl DamageQueue {
     pub fn add(&mut self, target: Entity, amount: f32, cause: Cause) {
-        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: None, by: None, direct: false, power: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: None, by: None, direct: false, power: None, projectile: None });
     }
     pub fn add_by(&mut self, target: Entity, amount: f32, from: (f64, f64), player: u32) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "player_attack", from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "player_attack", from: Some(from), by: Some(crate::targeting::Who::Player(player)), direct: true, power: None, projectile: None });
     }
     /// A blow of a creature standing at `from`: the victim may take it as its target.
     pub fn add_by_entity(&mut self, target: Entity, amount: f32, from: (f64, f64), attacker: Entity) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: Some(crate::targeting::Who::Entity(attacker)), direct: true, power: None, projectile: None });
     }
     /// A blow of `who` through a projectile: the victim may take `who` as its target, but the blow is not direct.
-    pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: cause_name(Cause::Entity, Some(who)), from: Some(from), by: Some(who), direct: false, power: None });
+    pub fn add_via(&mut self, target: Entity, amount: f32, from: (f64, f64), who: crate::targeting::Who, projectile: &'static str) {
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: cause_name(Cause::Entity, Some(who)), from: Some(from), by: Some(who), direct: false, power: None, projectile: Some(projectile) });
     }
     /// A blow of a creature at `from` that pushes its target with `power` (`LivingEntity.knockback`), as a ram does.
     pub fn add_ram(&mut self, target: Entity, amount: f32, from: (f64, f64), power: f64) {
-        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: None, direct: false, power: Some(power) });
+        self.0.push(Hit { target, amount, cause: Cause::Entity, damage: "mob_attack", from: Some(from), by: None, direct: false, power: Some(power), projectile: None });
     }
     pub fn add_from(&mut self, target: Entity, amount: f32, cause: Cause, from: (f64, f64)) {
-        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: Some(from), by: None, direct: false, power: None });
+        self.0.push(Hit { target, amount, cause, damage: cause_name(cause, None), from: Some(from), by: None, direct: false, power: None, projectile: None });
     }
 }
 
@@ -449,6 +508,9 @@ pub(crate) fn apply_damage(
     mut events: ResMut<crate::goals::Events>,
     watched: Option<Res<HitWatched>>,
     intakes: Query<&Intake>,
+    flags: Query<&crate::nbt::NbtData>,
+    // The limit is 16 parameters: the new read-only queries go in this group.
+    (windows, mut links, netids, raiders, dead): (Query<&InvulnerableUntil>, Query<&mut crate::damage_link::DamageLink>, Query<&crate::bridge::ids::NetId>, Query<&crate::raids::Raider>, Query<(), crate::tear_down::Dead>),
     mut commands: Commands,
 ) {
     // The causes of the previous step were read by the goals (they run after this system in the chain).
@@ -467,9 +529,31 @@ pub(crate) fn apply_damage(
         };
         // A stack that resists fire or explosions takes no such hit, and no event of it.
         if dying
+            || dead.contains(e)
             || (hit.cause.is_fire() && immune.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)))
             || (hit.cause == Cause::Blast && blast_resist)
         {
+            continue;
+        }
+        // A damage-linked entity takes nothing: the blow goes to its link (once per window).
+        if let Ok(mut link) = links.get_mut(e) {
+            use crate::damage_link::{Verdict, handed, verdict};
+            let now = clock.of(e);
+            match verdict(hit.cause, link.until > now, hit.by.is_some()) {
+                Verdict::Takes => {}
+                Verdict::Refused => continue,
+                Verdict::Handed => {
+                    link.until = now + crate::damage_link::WINDOW;
+                    let by = hit.by;
+                    commands.queue(move |w: &mut World| handed(w, e, by));
+                    continue;
+                }
+            }
+        }
+        let flag = flags.get(e).is_ok_and(|d| matches!(d.0.get(&horizon_core::nbt::JavaString::from("Invulnerable")), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0));
+        let window = windows.get(e).is_ok_and(|u| u.0 > clock.of(e));
+        let creative = matches!(hit.by, Some(crate::targeting::Who::Player(id)) if ps.creative(id));
+        if invulnerability_refuses(flag, window, hit.cause, creative) {
             continue;
         }
         if spiky {
@@ -492,7 +576,20 @@ pub(crate) fn apply_damage(
             applied = crate::equipment::absorb(applied, a, t);
         }
         *hurt = HurtAt { at: now, last: hit.amount };
+        // `Raider.hurtServer`: the raid's bar is recomputed before the damage, with the health the raider has now.
+        if let Ok(r) = raiders.get(e)
+            && let Some(raid) = r.raid
+            && let Ok(&crate::bridge::ids::NetId(id)) = netids.get(e)
+        {
+            events.host.raider_hurt(raid, id, h.0);
+        }
         h.0 -= applied;
+        // `Mob.doHurtTarget`'s `hurtServer` returned true: what follows a landed melee blow (`hostile::landed`).
+        if let (Some(crate::targeting::Who::Entity(attacker)), true, "mob_attack") = (hit.by, hit.direct, hit.damage) {
+            commands.queue(move |w: &mut World| crate::hostile::landed(w, attacker, crate::targeting::Who::Entity(e), applied));
+        }
+        let (damage_type, by_log, direct_log, projectile) = (hit.damage, hit.by, hit.direct, hit.projectile);
+        commands.queue(move |w: &mut World| record_combat(w, e, damage_type, by_log, direct_log, projectile, applied));
         if let Some(who) = hit.by
             && watched.as_ref().is_some_and(|w| w.0)
         {
@@ -500,6 +597,10 @@ pub(crate) fn apply_damage(
         }
         let by_who = hit.by;
         commands.queue(move |w: &mut World| crate::item::hurt_event(w, e, by_who));
+        // `resolvePlayerResponsibleForDamage`: before a fatal hit is settled, so that the death reads it.
+        commands.queue(move |w: &mut World| crate::credit::record(w, e, by_who));
+        commands.queue(move |w: &mut World| crate::reinforcements::on_hurt(w, e, by_who));
+        commands.queue(move |w: &mut World| crate::hurt_spawn::on_hurt(w, e));
         if h.0 <= 0.0 {
             // A totem may save it, the host may keep it `Dying`: `using::lethal` ends the hit once the commands run.
             let (damage, at, left) = (hit.damage, [pos.0.x, pos.0.y, pos.0.z], h.0);
@@ -508,6 +609,14 @@ pub(crate) fn apply_damage(
         }
         hurts.0.push(e);
         events.hurt.push(e);
+        if let Ok(&crate::bridge::ids::NetId(id)) = netids.get(e) {
+            let cause = match hit.by {
+                Some(crate::targeting::Who::Player(p)) => p,
+                Some(crate::targeting::Who::Entity(a)) => netids.get(a).map_or(0, |n| n.0),
+                None => 0,
+            };
+            events.host.hurt(id, hit.damage, cause, hit.direct, [pos.0.x, pos.0.y, pos.0.z]);
+        }
         events.vibration.push(crate::behaviours::vibration_listen::Vibration { pos: [pos.0.x, pos.0.y, pos.0.z], source: hit.by, owner: None, projectile: false });
         if hit.by.is_some() {
             events.hurt_by_entity.push(e);

@@ -39,6 +39,11 @@ fn flag_name(flag: Flag) -> Option<&'static str> {
 }
 
 impl EcsLevel {
+    /// The facts a loot predicate reads about the entity `id` (`/loot ... kill`); None when inert or gone.
+    pub fn loot_entity(&self, id: u32) -> Option<horizon_world::loot::LootEntity> {
+        self.ecs()?.loot_entity(self.entity_of(id)?)
+    }
+
     /// `LivingEntity.getEffect` for the registry effect at `index`, or None when `id` has none.
     pub fn effect(&self, id: u32, index: usize) -> Option<EffectInstance> {
         let (ecs, e) = (self.ecs()?, self.entity_of(id)?);
