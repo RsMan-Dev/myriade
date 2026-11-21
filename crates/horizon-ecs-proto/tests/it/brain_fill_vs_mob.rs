@@ -51,7 +51,10 @@ fn the_temptation_restarts_after_its_cooldown_as_the_mob_does() {
         ids.push((i, e));
     }
     h.tick();
-    let (item, name) = tempt_item();
+    // The item is the first the species' temptation goal lists (read from the configuration); a species with no such goal gets wheat and starts none.
+    let tempt = species().goals.param::<horizon_ecs_proto::behaviours::tempt::Params>(&horizon_ecs_proto::behaviours::tempt::MODULE, 0);
+    let name: &'static str = tempt.and_then(|p| p.items.first().copied()).unwrap_or("minecraft:wheat");
+    let item = horizon_ecs_proto::items::item_id(name);
     let (mut mob_starts, mut ecs_starts) = (0usize, 0usize);
     let mut was = vec![(false, false); ids.len()];
     for _ in 1..=1200 {
@@ -70,12 +73,9 @@ fn the_temptation_restarts_after_its_cooldown_as_the_mob_does() {
             was[k] = now;
         }
     }
-    // A species whose goals hold no tempt goal starts none on either side; the Mob's count then says it, not a skip by name.
-    let tempted = species().goals.entries.iter().any(|en| std::ptr::eq(en.module, &horizon_ecs_proto::behaviours::tempt::MODULE));
-    // `tempt_item` gives the item of the cow, the pig and the chicken: for these the Mob must be tempted. For another species the item
-    // may not be the one it likes (a bee wants flowers): the Mob starts none and the equality below then asks the ECS for none too.
-    if tempted && matches!(species().name, "minecraft:cow" | "minecraft:pig" | "minecraft:chicken") {
-        assert!(mob_starts > 0, "the mobs were never tempted by the item");
+    // The species has a temptation goal in its configuration: the Mob (the jar's goal) must be tempted by the item that goal lists.
+    if tempt.is_some() {
+        assert!(mob_starts > 0, "the mobs were never tempted by {name}");
     }
     assert_eq!(ecs_starts, mob_starts);
 }
