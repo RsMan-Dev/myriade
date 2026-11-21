@@ -1295,7 +1295,7 @@ impl MotionWorld<'_, '_, '_> {
         } else {
             None
         };
-        let modified = crate::input::modify_input(direction, self.player.item_use_speed, sneak);
+        let modified = crate::sprint::modify_input(direction, self.player.item_use_speed, sneak);
         self.player.applied_input = modified;
         self.simulation_tick_with_fluids(modified, keys.jump)
     }

@@ -22,6 +22,8 @@ pub mod jigsaw_block;
 pub use horizon_world::json_folder;
 pub mod level_loading;
 pub mod light;
+pub mod lod;
+pub mod particle_options;
 pub mod logging;
 pub mod mod_chunk_tickets;
 pub mod mod_list;

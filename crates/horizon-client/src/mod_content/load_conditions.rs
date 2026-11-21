@@ -215,7 +215,7 @@ pub fn build_with_conditions(
         for layer in &group.layers {
             if let Some(jar) = layer.jar {
                 for name in layer.data.list("assets/").into_iter().filter(|name| {
-                    !crate::packs::merge_stacks(name) && m.content.files.contains(name)
+                    !crate::pack_meta::merge_stacks(name) && m.content.files.contains(name)
                 }) {
                     warnings.push(format!(
                         "mod {}: jar {} also provides {name}; the mod's own file wins",

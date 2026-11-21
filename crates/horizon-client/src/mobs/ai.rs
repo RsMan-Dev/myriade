@@ -407,7 +407,6 @@ fn block_contact_damage(
     }
 }
 
-#[derive(Clone, Debug, Default)]
 /// `SwingAnimation`: the swing's kind and its base ticks, as the mob sends them.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SwingAnimation {
@@ -435,6 +434,7 @@ pub fn swing_duration(animation: SwingAnimation, dig_speed: Option<i32>, fatigue
     }
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct Ai {
     /// `Mob.homePosition` and `homeRadius`: where a restricted mob stays
     /// (a lead's holder, a happy ghast's float area).

@@ -56,6 +56,7 @@ pub mod llama;
 mod mob_slot;
 pub mod mod_behaviors;
 pub mod monster_brain;
+mod model;
 pub mod nautilus;
 pub mod neutral_anger;
 pub use mob_slot::MobSlot;
@@ -108,7 +109,6 @@ pub mod undead;
 pub mod vex;
 pub mod villager;
 pub mod villager_brain;
-pub mod villager_hats;
 pub mod visibility;
 pub use visibility::mob_visibility;
 pub mod warden;
@@ -122,8 +122,6 @@ pub mod world;
 pub use world::{TargetInfo, VisualShape, single_player_pos, visual_clip, visual_shape};
 pub mod dragon_contacts;
 pub mod zombie_villager;
-/// A mob's stored active effect with its registry index resolved once at creation.
-#[derive(Clone, Copy, Debug, PartialEq)]
 /// The dye colours in `DyeColor`'s order.
 pub const DYE_NAMES: [&str; 16] = [
     "white",
@@ -148,6 +146,8 @@ pub const VILLAGER_TYPES: [&str; 7] = [
     "plains", "desert", "jungle", "savanna", "snow", "swamp", "taiga",
 ];
 
+/// A mob's stored active effect with its registry index resolved once at creation.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StoredEffect {
     pub id: &'static str,
     pub duration: i32,
@@ -182,7 +182,6 @@ impl StoredEffect {
 use crate::{
     blocks::BlockFacts,
     health::{DamageContainer, DamageLevel, Reduction},
-    mesher::Vertex,
     world::World,
 };
 pub use data::MobData;
@@ -195,7 +194,6 @@ use horizon_world::native_load_context::LoopContext;
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-use model::ModelNormals;
 pub use model::{Part, Polygon};
 
 /// Kept for callers of the earlier simple AI; species now select behaviour.
@@ -223,8 +221,6 @@ mod powder_snow_move_tests;
 
 #[derive(Clone, Debug)]
 pub struct MobType {
-    /// Resolved content renderer shadow; vanilla uses its normal table.
-    pub shadow: Option<(f32, f32)>,
     pub id: String,
     pub species: Species,
     pub width: f64,
@@ -317,11 +313,6 @@ pub(crate) fn exact_attributes(bytes: &[u8]) -> HashMap<String, HashMap<String, 
             Some((id, values))
         })
         .collect()
-}
-
-/// The models that draw with `RenderTypes::entityCutoutCull`.
-fn culls_back_faces(key: &str) -> bool {
-    matches!(key, "minecraft:bat#main" | "minecraft:turtle_baby#main")
 }
 
 pub struct MobTypes {
@@ -491,10 +482,7 @@ impl MobTypes {
                 for prefix in def.layer_prefixes() {
                     let start = format!("minecraft:{prefix}#");
                     for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
-                        let mut part = Part::parse("root", v);
-                        if culls_back_faces(k) {
-                            part.set_cull_back();
-                        }
+                        let part = Part::parse("root", v);
                         layers.insert(
                             k.trim_start_matches("minecraft:").to_owned(),
                             Arc::new(part),
@@ -512,7 +500,6 @@ impl MobTypes {
             out.insert(
                 id.clone(),
                 MobType {
-                    shadow: crate::shadows::content_shadow(t),
                     species: def.species,
                     item_stack_limits: item_stack_limits.clone(),
                     attribute_bounds,
@@ -546,13 +533,7 @@ impl MobTypes {
                     model: model.map_or_else(
                         || empty_model.clone(),
                         |model| {
-                            Arc::new({
-                                let mut part = Part::parse("root", model);
-                                if culls_back_faces(&model_key) {
-                                    part.set_cull_back();
-                                }
-                                part
-                            })
+                            Arc::new(Part::parse("root", model))
                         },
                     ),
                     layers,
@@ -1148,8 +1129,6 @@ pub struct Extra {
     pub spectator: bool,
     pub elytra: ElytraAnimation,
     pub swim: SwimAnimation,
-    /// `ClientAvatarState` of a player: the cloak, bob and walked distance its cape swings with.
-    pub avatar: crate::camera::AvatarBob,
     /// The arm the current swing moves (`currentSwing.hand().asArm`): `Some(true)`
     /// for the right arm.
     pub swing_right_arm: Option<bool>,
@@ -1635,8 +1614,6 @@ pub struct Mob {
     /// A mannequin's `DATA_PROFILE` (ResolvableProfile): the profile's
     /// `textures` property resolves to `skin` like a player's.
     pub profile: Option<horizon_protocol::entity_data::Profile>,
-    /// The packs' random texture variants it wears (`random_textures::choose`).
-    pub random_textures: random_textures::Choice,
     /// What `entity_size` answered for its pose and vanilla size (`EntityEvent.Size`):
     /// `dims` uses it while it holds.
     pub size_answer: Option<crate::pose::SizeAnswer>,
@@ -3679,7 +3656,6 @@ impl Mob {
             skin_3d: None,
             cape: None,
             profile: None,
-            random_textures: Default::default(),
             size_answer: None,
             memo: Default::default(),
             attrs: Attrs {
@@ -4945,10 +4921,6 @@ impl Mob {
     }
 }
 
-#[cfg(test)]
-#[path = "mobs/lighting_tests.rs"]
-mod lighting_tests;
-
 /// `LivingEntity.elytraAnimationState`: eased wing angles and render interpolation.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ElytraAnimation {
@@ -5027,8 +4999,6 @@ impl Mob {
     /// player from its synched pose and flags: the glide count, the wings
     /// (`elytraAnimationState`) and the swim amount (`updateSwimAmount`).
     pub fn tick_avatar_pose(&mut self, in_water: bool) {
-        let (p, v) = (self.previous, self.velocity);
-        let on_ground_alive = self.on_ground && self.alive();
         let e = &mut self.extra;
         e.fall_fly_ticks = if e.fall_flying {
             e.fall_fly_ticks + 1
@@ -5040,17 +5010,6 @@ impl Mob {
         let visually = e.synced_pose == 3 || (!e.fall_flying && e.synced_pose == 1);
         e.elytra.tick(e.fall_flying, e.crouching, self.velocity);
         e.swim.tick(visually, in_water);
-        // AbstractClientPlayer.tick's ClientAvatarState.tick (from where the
-        // player was before this tick's move), RemotePlayer.aiStep's
-        // updateBob and rideTick's resetBob.
-        e.avatar.tick([p.x, p.y, p.z]);
-        if e.passenger {
-            e.avatar.reset_bob();
-        } else {
-            let swimming = e.synced_pose == 3;
-            e.avatar
-                .update_bob(on_ground_alive && !swimming, [v.x, v.y, v.z]);
-        }
     }
 }
 

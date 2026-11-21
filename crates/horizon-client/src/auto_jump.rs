@@ -128,7 +128,7 @@ pub fn update_auto_jump<W: AutoJumpWorld>(
     if let Some(amplifier) = p.jump_boost {
         jump_height += (amplifier + 1) as f32 * 0.75;
     }
-    let look_ahead = crate::camera::java_max(current_speed * 7.0, 1.0 / inverted);
+    let look_ahead = (current_speed * 7.0).max(1.0 / inverted);
     let seg_begin = move_begin;
     let seg_end = move_end.add_vector(move_dir.scale(f64::from(look_ahead)));
     let (width, height) = (p.width, p.height);

@@ -2006,7 +2006,7 @@ impl ArmorStand {
     /// (`LivingEntityRenderer.solveBodyRot`: `Mth.rotLerp(partialTick,
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
-        self.previous_yaw + alpha * crate::camera::wrap_degrees(self.yaw - self.previous_yaw)
+        self.previous_yaw + alpha * mod_api::client::camera::wrap_degrees(self.yaw - self.previous_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of
@@ -2019,7 +2019,7 @@ impl ArmorStand {
         self.previous_yaw = self.yaw;
         if let Some((at, yaw)) = step {
             self.position = at;
-            self.yaw += crate::camera::wrap_degrees(yaw - self.yaw);
+            self.yaw += mod_api::client::camera::wrap_degrees(yaw - self.yaw);
         }
     }
     /// Put there at once, with nothing to blend from

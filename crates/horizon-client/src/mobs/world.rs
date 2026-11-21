@@ -617,7 +617,10 @@ impl MobWorld<'_> {
         // `LevelReader.getLightLevelDependentMagicValue`: the curved level
         // lerped with the dimension's ambient light (0 overworld, 0.1 nether,
         // 0.25 end).
-        crate::screen_effects::lightmap_brightness(self.dimension_type.ambient_light, level)
+        let v = f32::from(level) / 15.0;
+        let curved = v / (4.0 - 3.0 * v);
+        let ambient = self.dimension_type.ambient_light;
+        curved + (1.0 - curved) * ambient
     }
     pub fn sky_darken(&self) -> i32 {
         if self.daylight { 0 } else { 11 }

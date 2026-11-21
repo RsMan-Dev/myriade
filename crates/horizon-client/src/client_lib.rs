@@ -9,12 +9,15 @@ static TEST_ALLOCATOR: horizon_threads::allocation_probe::Allocator =
 pub mod advancements;
 pub mod api_text;
 pub mod arrows;
+pub mod audio;
 pub mod bed_geometry;
 pub mod block_contact;
+pub mod block_entity_render;
 pub mod block_sounds;
 pub mod item_damage;
 pub mod packet_source;
 pub mod parallel;
+pub mod particles;
 pub mod powder_snow;
 #[cfg(any(test, feature = "proto"))]
 mod test_log;
@@ -23,7 +26,8 @@ mod test_resources;
 pub use horizon_client_render::{
     assets, auth, biome, block_entities, block_entity_anim, block_states, brewing, chunk,
     chunk_map, collisions, command_block, containers, crash, datapack, effects, environment,
-    fast_hash, level_loading, light, logging, mod_chunk_tickets, mod_list, poi_sections,
+    fast_hash, jigsaw_block, level_loading, light, lod, logging, mod_chunk_tickets, mod_list,
+    pack_meta, poi_sections,
     potent_sulfur, providers, random_source, sculk, section_mask, signs, skins, sound_events,
     spans, streaming, structure_block, test_block, test_instance_block, testgen, vault, weather,
     world, worldborder,
@@ -36,7 +40,6 @@ pub mod beehive;
 pub mod block_entity_item;
 pub mod block_pattern;
 pub mod block_transform;
-pub mod boss_overlay;
 pub mod breathing;
 pub mod build_mismatch;
 pub mod cauldron;
@@ -57,11 +60,8 @@ pub mod end_gateway;
 pub mod entities;
 pub mod entity_nbt;
 pub mod entity_rules;
-pub mod extras_hud;
 pub mod falling_block;
-pub mod fire_render;
 pub mod flatgen;
-pub mod fluid_tooltip;
 pub mod furnace;
 pub mod game_mode_switcher;
 pub mod gossip;
@@ -87,7 +87,6 @@ pub mod menu_extra_net;
 pub mod merchant;
 pub mod mobs;
 pub mod mod_content;
-pub mod mod_registry;
 pub mod modgen;
 pub mod motion;
 pub mod native_stack_hooks;
@@ -97,7 +96,6 @@ pub mod offline_name;
 pub mod old_world;
 pub mod patrol;
 pub mod perf_net;
-pub mod perf_overlay;
 pub mod pick_item;
 pub mod player_sync;
 pub mod portal_sections;
@@ -136,10 +134,6 @@ pub mod tick_chunk_membership;
 pub mod ticket_levels;
 pub mod vanillagen;
 pub mod viewed_levels_net;
-pub mod voxel_occlusion;
-// Keep the old path for native callers while giving the implementation a name
-// that does not collide with the gameplay adapter in `game/interface/entity_culling/mod.rs`.
-pub use voxel_occlusion as entity_culling;
 pub mod world_primitives;
 pub mod world_spawn;
 pub use horizon_client_core::Result;

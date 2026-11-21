@@ -755,7 +755,7 @@ impl StructureSpawns {
             .flatten()
         {
             let dir = ns.path().join("worldgen/structure");
-            let Ok(files) = crate::json_folder::list(&dir) else {
+            let Ok(files) = horizon_world::json_folder::list(&dir) else {
                 continue;
             };
             for (name, path) in files {

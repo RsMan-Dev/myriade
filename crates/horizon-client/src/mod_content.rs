@@ -122,7 +122,6 @@ pub fn set_fluid_looks(mods: &[ContentMod]) {
         .flat_map(|m| &m.content.fluids)
         .map(|f| (f.id.clone(), f.clone()))
         .collect();
-    crate::fluid_models::set_world_looks(looks.values());
     *FLUID_LOOKS.write().unwrap_or_else(|e| e.into_inner()) = looks;
 }
 
@@ -2594,7 +2593,7 @@ fn modifier_tags(
         if !dir.is_dir() {
             continue;
         }
-        for file in &crate::json_folder::read(&dir)?.files {
+        for file in &horizon_world::json_folder::read(&dir)?.files {
             result.insert(
                 format!("{}:{}", ns.file_name().to_string_lossy(), file.name),
                 std::str::from_utf8(file.bytes()?)?.to_owned(),
@@ -3088,17 +3087,17 @@ fn tables(base: &Path, plan: &Plan, overlay: &Overlay<'_>, jobs: &[(&str, u64)])
 }
 
 struct ModLayer<'a> {
-    assets: crate::packs::Pack,
+    assets: crate::pack_meta::Pack,
     data: crate::datapack::DataPack,
     jar: Option<&'a JarRef>,
 }
 
 impl<'a> ModLayer<'a> {
-    fn new(id: String, source: crate::packs::Source, jar: Option<&'a JarRef>) -> Result<Self> {
+    fn new(id: String, source: crate::pack_meta::Source, jar: Option<&'a JarRef>) -> Result<Self> {
         let source = source.open()?;
         let data = crate::datapack::DataPack::from_source(id.clone(), source.clone());
         Ok(Self {
-            assets: crate::packs::Pack::mod_layer(id, crate::packs::Source::Opened(source)),
+            assets: crate::pack_meta::Pack::mod_layer(id, crate::pack_meta::Source::Opened(source)),
             data,
             jar,
         })
@@ -3123,7 +3122,7 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
         for jar in &m.jars {
             layers.push(ModLayer::new(
                 format!("{}/{}", m.id, jar.id()),
-                crate::packs::Source::Zip(jar.cache_path(jar_store)),
+                crate::pack_meta::Source::Zip(jar.cache_path(jar_store)),
                 Some(jar),
             )?);
         }
@@ -3132,10 +3131,10 @@ fn load_layers<'a>(jar_store: &Path, mods: &'a [ContentMod]) -> Result<Vec<ModLa
             layers.push(ModLayer::new(
                 m.id.clone(),
                 if source.is_dir() {
-                    crate::packs::Source::Dir(source)
+                    crate::pack_meta::Source::Dir(source)
                 } else {
                     // Exactly the entries the package's checks read.
-                    crate::packs::Source::Opened(
+                    crate::pack_meta::Source::Opened(
                         horizon_assets::resource_source::ResourceSource::opened_archive(
                             horizon_assets::zip::Zip::open_exact(&source)?,
                         ),
@@ -3257,7 +3256,7 @@ pub fn resolved_resources(
         files.extend(changes.clone());
         assets_base = ResourceSource::indexed(files);
     }
-    let assets = crate::packs::resources(assets_base, &layers)?;
+    let assets = crate::pack_meta::resources(assets_base, &layers)?;
     data.extend(changes.clone());
     Ok(ResourceRoot::new(prepared, cache, assets).with_data(
         ResourceSource::indexed(data),

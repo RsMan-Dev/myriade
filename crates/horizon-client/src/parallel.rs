@@ -4,10 +4,17 @@
 //! results stay in order.
 //!
 //! Whether a tick's phases share their work is the Parallel Tick setting's
-//! (`graphics::ParallelTickMode`: Off, Auto or On), decided between ticks for the next one
+//! (`ParallelTickMode`: Off, Auto or On), decided between ticks for the next one
 //! ([`after_tick`]) and never during one. `HORIZON_PARALLEL_TICK` wins over the setting, and is
 //! all a dedicated server follows (`server.toml`'s `parallel_tick`).
-use crate::graphics::ParallelTickMode;
+/// The `parallel_tick` setting: never, while the tick is heavy, or always.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum ParallelTickMode {
+    #[default]
+    Off = 0,
+    Auto = 1,
+    On = 2,
+}
 use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock, PoisonError};
 

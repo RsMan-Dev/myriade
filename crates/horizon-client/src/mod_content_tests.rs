@@ -843,7 +843,7 @@ fn a_mods_atlas_sources_follow_vanillas() {
     let vanilla = r#"{"sources": [{"type": "directory", "source": "block", "prefix": "block/"}]}"#;
     let more = [serde_json::json!({"type": "directory", "source": "mek_chemical"})];
     let merged: serde_json::Value = serde_json::from_slice(
-        &crate::packs::append_atlas_sources(Some(vanilla), &more, "a").unwrap(),
+        &crate::pack_meta::append_atlas_sources(Some(vanilla), &more, "a").unwrap(),
     )
     .unwrap();
     let sources: Vec<_> = merged["sources"]

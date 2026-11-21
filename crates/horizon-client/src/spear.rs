@@ -1,6 +1,9 @@
 //! Spears: `KineticWeapon` (what holding the use button does: the speed
 //! conditions of a stab, `Item.Properties.spear`'s numbers) and the reach of a stab.
-use horizon_core::geometry::{Aabb, Vec3 as Vec3d};
+use crate::mobs::ai::SwingAnimation;
+use horizon_core::geometry::{Aabb, Vec3 as Vec3d, trig::Mth};
+use horizon_core::jmath::pow;
+use std::f32::consts::PI;
 use horizon_items::kinetic_weapon::UseDuration;
 pub use horizon_items::kinetic_weapon::UseTiming;
 
@@ -210,6 +213,154 @@ pub fn hits_in_reach(
         }
     }
     hits_along(boxes, from, to, f64::from(margin), &clip)
+}
+
+/// SpearAnimations' third-person arm: the pose of a hand holding a spear.
+pub fn third_person_arm(
+    k: &Kinetic,
+    ticks_using: f32,
+    right: bool,
+    head: (f32, f32),
+    gliding_or_swimming: bool,
+) -> (f32, f32, f32) {
+    let invert = if right { 1.0 } else { -1.0 };
+    let degrees = PI / 180.0;
+    let mut y = -0.1 * invert + head.1;
+    let mut x = -PI / 2.0 + head.0 + 0.8;
+    if gliding_or_swimming {
+        x -= 0.959_931_1;
+    }
+    y = degrees * clamp(180.0 / PI * y, -60.0, 60.0);
+    x = degrees * clamp(180.0 / PI * x, -120.0, 30.0);
+    let mut z = 0.0;
+    if ticks_using > 0.0 {
+        let u = UseParams::of(k, ticks_using);
+        y += -invert * u.sway_fast * degrees * u.sway_intensity;
+        z = -invert * u.sway_slow * degrees * u.sway_intensity * 0.5;
+        x += degrees
+            * (-40.0 * u.raise_start
+                + 30.0 * u.raise_middle
+                + -20.0 * u.raise_end
+                + 20.0 * u.lower
+                + 10.0 * u.raise_back
+                + 0.6 * u.sway_slow * u.sway_intensity);
+    }
+    (x, y, z)
+}
+
+/// SpearAnimations.thirdPersonAttackHand: the arm's turn of a STAB swing.
+pub fn third_person_attack_arm(swing: f32) -> f32 {
+    let prepare = in_out_sine(progress(swing, 0.0, 0.05));
+    let attack = in_quad(progress(swing, 0.05, 0.2));
+    let retract = in_out_expo(progress(swing, 0.4, 1.0));
+    (90.0 * prepare - 120.0 * attack + 30.0 * retract).to_radians()
+}
+
+fn clamp(v: f32, lo: f32, hi: f32) -> f32 {
+    if v < lo { lo } else { v.min(hi) }
+}
+fn progress(time: f32, start: f32, end: f32) -> f32 {
+    clamp((time - start) / (end - start), 0.0, 1.0)
+}
+fn square(x: f32) -> f32 {
+    x * x
+}
+fn cube(x: f32) -> f32 {
+    x * x * x
+}
+fn p(x: f32, y: f64) -> f64 {
+    pow(f64::from(x), y)
+}
+fn in_quad(x: f32) -> f32 {
+    x * x
+}
+fn out_cubic(x: f32) -> f32 {
+    1.0 - cube(1.0 - x)
+}
+fn in_out_sine(x: f32) -> f32 {
+    -((PI * x).mcos() - 1.0) / 2.0
+}
+fn in_out_expo(x: f32) -> f32 {
+    if x < 0.5 {
+        if x == 0.0 {
+            0.0
+        } else {
+            (p(2.0, f64::from(20.0 * x - 10.0)) / 2.0) as f32
+        }
+    } else if x == 1.0 {
+        1.0
+    } else {
+        ((2.0 - p(2.0, f64::from(-20.0 * x + 10.0))) / 2.0) as f32
+    }
+}
+fn in_out_elastic(x: f32) -> f32 {
+    if x == 0.0 {
+        return 0.0;
+    }
+    if x == 1.0 {
+        return 1.0;
+    }
+    let sin = (f64::from(20.0 * x - 11.125) * f64::from(PI * 4.0 / 9.0)).sin();
+    if x < 0.5 {
+        (-(p(2.0, f64::from(20.0 * x - 10.0)) * sin) / 2.0) as f32
+    } else {
+        (p(2.0, f64::from(-20.0 * x + 10.0)) * sin / 2.0 + 1.0) as f32
+    }
+}
+fn out_circ(x: f32) -> f32 {
+    f64::from(1.0 - square(x - 1.0)).sqrt() as f32
+}
+fn in_circ(x: f32) -> f32 {
+    (-f64::from(1.0 - x * x).sqrt()) as f32 + 1.0
+}
+
+struct UseParams {
+    raise: f32,
+    raise_start: f32,
+    raise_middle: f32,
+    raise_end: f32,
+    sway: f32,
+    lower: f32,
+    raise_back: f32,
+    sway_intensity: f32,
+    sway_slow: f32,
+    sway_fast: f32,
+}
+impl UseParams {
+    fn of(k: &Kinetic, time: f32) -> Self {
+        let finish_raising = k.delay_ticks;
+        let finish_swaying = k.dismount.max_duration_ticks + finish_raising;
+        let start_swaying = finish_swaying - 20;
+        let finish_lowering = k.knockback.max_duration_ticks + finish_raising;
+        let start_lowering = finish_lowering - 40;
+        let finish_raising_back = k.damage.max_duration_ticks + finish_raising;
+        let raise = progress(time, 0.0, finish_raising as f32);
+        let sway = progress(time, start_swaying as f32, finish_swaying as f32);
+        let lower = out_cubic(in_out_elastic(progress(
+            time - 20.0,
+            start_lowering as f32,
+            finish_lowering as f32,
+        )));
+        let raise_back = progress(
+            time,
+            (finish_raising_back - 5) as f32,
+            finish_raising_back as f32,
+        );
+        let sway_intensity = 2.0 * out_circ(sway) - 2.0 * in_circ(raise_back);
+        let degrees = PI / 180.0;
+        Self {
+            raise,
+            raise_start: progress(raise, 0.0, 0.5),
+            raise_middle: progress(raise, 0.5, 0.8),
+            raise_end: progress(raise, 0.8, 1.0),
+            sway,
+            lower,
+            raise_back,
+            sway_intensity,
+            sway_slow: (time * 19.0 * degrees).msin() * sway_intensity,
+            sway_fast: (time * 30.0 * degrees).msin() * sway_intensity,
+        }
+    }
 }
 
 #[cfg(test)]

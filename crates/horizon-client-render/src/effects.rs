@@ -3,7 +3,8 @@
 //! effects (regeneration, poison, wither, hunger, saturation, instant
 //! effects), and the derived flags the movement and damage code read.
 use horizon_client_core::potions;
-use mod_api::client::particles::ParticleOptions;
+use crate::particle_options::ParticleOptions;
+use horizon_client_core::particle_type::ParticleType;
 use horizon_protocol::entity_data::Value;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -254,28 +255,24 @@ pub fn visible_effect_particles(
 /// The particle of one effect: its own kind for the omens and the others,
 /// else an entity-effect swirl tinted by its colour (faded when ambient).
 pub fn effect_particle(effect: &str, ambient: bool) -> Option<ParticleOptions> {
-    let simple = |name: &str| {
-        mod_api::__private::particle_named_key(name).map(ParticleOptions::simple)
-    };
-    match effect.trim_start_matches("minecraft:") {
-        "trial_omen" => simple("minecraft:trial_omen"),
-        "raid_omen" => simple("minecraft:raid_omen"),
-        "wind_charged" => simple("minecraft:small_gust"),
-        "weaving" => simple("minecraft:item_cobweb"),
-        "oozing" => simple("minecraft:item_slime"),
-        "infested" => simple("minecraft:infested"),
+    Some(match effect.trim_start_matches("minecraft:") {
+        "trial_omen" => ParticleOptions::simple(ParticleType::TrialOmen),
+        "raid_omen" => ParticleOptions::simple(ParticleType::RaidOmen),
+        "wind_charged" => ParticleOptions::simple(ParticleType::SmallGust),
+        "weaving" => ParticleOptions::simple(ParticleType::ItemCobweb),
+        "oozing" => ParticleOptions::simple(ParticleType::ItemSlime),
+        "infested" => ParticleOptions::simple(ParticleType::Infested),
         other => {
             let color = potions::effect(other)?.color;
             let channel = |shift: u32| ((color >> shift) & 255) as f32 / 255.0;
             // MobEffect.AMBIENT_ALPHA is 38 of 255.
             let alpha = if ambient { 38.0 / 255.0 } else { 1.0 };
-            let key = mod_api::__private::particle_named_key("minecraft:entity_effect")?;
-            Some(ParticleOptions::colored(
-                key,
+            ParticleOptions::colored(
+                ParticleType::EntityEffect,
                 [channel(16), channel(8), channel(0), alpha],
-            ))
+            )
         }
-    }
+    })
 }
 /// A living entity's `DATA_EFFECT_PARTICLES` and `DATA_EFFECT_AMBIENCE_ID`
 /// as the native mods left them (`effect_particle_modification`), with the
