@@ -16,6 +16,7 @@ const SHATTER_AT: i32 = 81;
 
 /// The eye's flight: where it goes and whether it survives its end (`surviveAfterDeath`, one chance in five of shattering).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
 pub struct Eye {
     pub target: Vec3,
     pub survive: bool,
@@ -53,5 +54,5 @@ fn shatter(w: &mut World, e: Entity) {
 }
 
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems(fly);
+    s.add_systems(fly.run_if(|w: &World| crate::goals::sparse_any::<Eye>(w)));
 }

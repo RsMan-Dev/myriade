@@ -492,9 +492,14 @@ impl Brain {
 }
 /// A walk toward a fixed block, the brain asleep: it wakes when the walk ends or the entity comes within `close` (`MoveToTargetSink`).
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 pub struct SinkWatch {
     pub target: [i32; 3],
     pub close: i32,
+}
+/// A walk ended this tick, or some walk is watched: the system's four parameters are not fetched otherwise.
+fn walks_due(a: RemovedComponents<Following>, b: RemovedComponents<NeedsPath>, w: &World) -> bool {
+    !a.is_empty() || !b.is_empty() || crate::goals::sparse_any::<SinkWatch>(w)
 }
 fn wake_walks(
     mut ended: (RemovedComponents<Following>, RemovedComponents<NeedsPath>),
@@ -546,7 +551,7 @@ fn wake_on_item(ev: Res<Events>, items: Query<&Pos, With<crate::item::Item>>, id
     }
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((wake_walks, wake_on_item, brain_step).chain().after(arbitrate).before(pathfind));
+    s.add_systems((wake_walks.run_if(walks_due), wake_on_item, brain_step).chain().after(arbitrate).before(pathfind));
 }
 /// The components of the capability (the plan is the species' resolved brain).
 pub fn bundle(plan: &'static Plan) -> Brain {

@@ -11,7 +11,7 @@ use horizon_core::geometry::Aabb;
 
 /// The box of this entity, grown by `reach` (x, y, z), is where the entities that touch it are looked for.
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_add = crate::goals::toucher_in, on_remove = crate::goals::toucher_out)]
 pub struct Toucher {
     pub reach: [f64; 3],
 }

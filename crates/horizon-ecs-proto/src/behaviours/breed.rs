@@ -30,17 +30,16 @@ impl Params {
 /// The parameters; `slot` is the goal's rank, `partner` what `can_use` chose for `start`.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct BreedData {
-    pub speed: f64,
-    pub range: f64,
-    pub delay: u64,
-    pub love: u64,
-    pub rest: u64,
-    pub baby_age: u64,
-    pub foods: &'static [&'static str],
-    pub xp: bool,
-    pub carries: bool,
+    /// The species' parameters, referenced (read through `Deref`): never copied into the entity.
+    p: &'static Params,
     pub slot: u8,
     partner: Option<Entity>,
+}
+impl std::ops::Deref for BreedData {
+    type Target = Params;
+    fn deref(&self) -> &Params {
+        self.p
+    }
 }
 /// `BreedData.slot` of an animal that breeds by its brain (`make_love`), not by a goal.
 pub const NO_SLOT: u8 = u8::MAX;
@@ -90,7 +89,7 @@ fn damaged(w: &mut World, e: Entity, _: Inst, _: &Damaged) {
 }
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
-    w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: inst.slot, partner: None });
+    w.entity_mut(e).insert(BreedData { p, slot: inst.slot, partner: None });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(breed_run.in_set(slot));
@@ -307,7 +306,7 @@ pub static LOVE: crate::rules::Rule = crate::rules::Rule {
     name: "love",
     equip: |w, e, p| {
         let p = crate::rules::params::<Params>(p);
-        w.entity_mut(e).insert(BreedData { speed: p.speed, range: p.range, delay: p.delay, love: p.love, rest: p.rest, baby_age: p.baby_age, foods: p.foods, xp: p.xp, carries: p.carries, slot: NO_SLOT, partner: None });
+        w.entity_mut(e).insert(BreedData { p, slot: NO_SLOT, partner: None });
     },
     attrs: crate::rules::no_attrs,
     interact: |w, e, p, i| {

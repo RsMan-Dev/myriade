@@ -25,7 +25,7 @@ pub struct Config {
 }
 
 #[derive(Component, Clone, Copy, Debug)]
-#[component(storage = "SparseSet")]
+#[component(storage = "SparseSet", on_add = crate::goals::homing_in, on_remove = crate::goals::homing_out)]
 pub struct Homing {
     pub target: Who,
     pub dir: Option<u8>,

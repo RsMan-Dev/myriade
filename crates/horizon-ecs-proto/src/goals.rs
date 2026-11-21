@@ -204,6 +204,11 @@ pub struct Head {
     pub stable: f32,
     pub stable_time: i32,
     pub at: (f64, f64),
+}
+/// What a look that lasts remembers (sparse: laid and taken off with `Looking`, the animals at rest carry none).
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(storage = "SparseSet")]
+pub struct LookMemo {
     /// The angles to the look target, kept while neither the target nor the animal moves (the arc tangents are not
     /// worked out every tick of a look that lasts 40).
     pub angles: Option<([f64; 3], Vec3, Option<f32>, Option<f32>)>,
@@ -616,7 +621,7 @@ pub fn goals_bundle(sp: &Species, uid: u64) -> impl Bundle {
 pub fn head_bundle(sp: &Species) -> impl Bundle {
     (
         Look { target: [0.0; 3], cooldown: 0, y_default: 10.0, y_speed: 10.0, x_max: 40.0, x_default: 40.0, max_head_y: 75.0, eye: sp.eye_height },
-        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0), angles: None, settled: None },
+        Head { yaw: f32::NAN, pitch: 0.0, body: 0.0, stable: 0.0, stable_time: 0, at: (0.0, 0.0) },
     )
 }
 /// Creates the state of every module of the animal's configuration from the parameters of its entries (once).
@@ -630,6 +635,33 @@ fn equip_goals(w: &mut World, e: Entity) {
     }
 }
 
+/// The rare components that `tick_modules` serves (homing shots, touchers): counted by the hooks of their components, so a tick with none costs
+/// one read of this resource, not a lookup of the storage by component.
+#[derive(Resource, Default)]
+pub struct Rare {
+    pub homing: u32,
+    pub touchers: u32,
+}
+pub(crate) fn homing_in(mut w: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    if let Some(mut r) = w.get_resource_mut::<Rare>() {
+        r.homing += 1;
+    }
+}
+pub(crate) fn homing_out(mut w: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    if let Some(mut r) = w.get_resource_mut::<Rare>() {
+        r.homing = r.homing.saturating_sub(1);
+    }
+}
+pub(crate) fn toucher_in(mut w: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    if let Some(mut r) = w.get_resource_mut::<Rare>() {
+        r.touchers += 1;
+    }
+}
+pub(crate) fn toucher_out(mut w: bevy_ecs::world::DeferredWorld, _: bevy_ecs::lifecycle::HookContext) {
+    if let Some(mut r) = w.get_resource_mut::<Rare>() {
+        r.touchers = r.touchers.saturating_sub(1);
+    }
+}
 /// The live carriers of each module (by its rank in the registry): a module with none has its systems skipped by a run condition
 /// on its set, tested once per tick. Kept by the hooks of `GoalSet` and `Modes`, at creation and death.
 #[derive(Resource, Default)]
@@ -668,6 +700,7 @@ fn goalset_added(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifec
 /// Registers the resources, the systems; call from `Herd::new` / `schedule()`.
 pub fn insert_resources(world: &mut World) {
     world.insert_resource(Carriers(vec![0; crate::species::registry().modules.len()], Default::default(), 0));
+    world.insert_resource(Rare::default());
     world.insert_resource(Fired::default());
     world.insert_resource(Entered::default());
     world.insert_resource(Requests::default());
@@ -717,7 +750,7 @@ pub fn insert_mob_maps(world: &mut World, maps: Arc<NeoForgeMobMaps>) {
 /// The framework's systems, then the modules' (in the order of the table), then the selector and the look control.
 pub fn register(s: &mut Schedule) {
     s.add_systems(online_events.after(due).before(player_near));
-    s.add_systems(player_watch.after(online_events).before(player_near));
+    s.add_systems(player_watch.after(online_events).before(player_near).run_if(watch_due));
     s.add_systems((entered_events, arbitrate).chain().before(pathfind));
     s.add_systems((arbitrate_end, look_control).chain().after(arbitrate).before(pathfind));
     s.add_systems((crate::targeting::sight_eval, crate::targeting::target_continue).chain().after(apply_damage));
@@ -981,6 +1014,7 @@ fn entered_events(mut en: ResMut<Entered>, mut reqs: ResMut<Requests>) {
 /// and the cell moves, never by a scan of everyone). Limit: an entity that moves inside its cell does not fire until its cell
 /// changes or the player moves; the radius is at most 64 blocks. The players inside are a sorted list (any number of players).
 #[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
 pub struct PlayerWatch {
     pub radius: f32,
     inside: Vec<u32>,
@@ -992,6 +1026,11 @@ impl PlayerWatch {
     pub fn is_inside(&self, player: u32) -> bool {
         self.inside.binary_search(&player).is_ok()
     }
+}
+/// Something to update: a player event or a cell move this tick, and some entity that watches (the system's parameters are not fetched otherwise).
+fn watch_due(w: &World) -> bool {
+    let (on, moves) = (w.resource::<Online>(), w.resource::<CellMoves>());
+    (!on.seen.is_empty() || !moves.0.is_empty()) && sparse_any::<PlayerWatch>(w)
 }
 /// Updates the watchers touched by the player events of the tick and by the cell moves.
 fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: Query<(&Pos, &mut PlayerWatch)>, mut ev: ResMut<Events>) {
@@ -1106,11 +1145,12 @@ fn tick_modules(world: &mut World) {
             t(world);
         }
     }
-    if sparse_any::<crate::behaviours::homing_projectile::Homing>(world) {
+    let rare = world.get_resource::<Rare>().map_or((0, 0), |r| (r.homing, r.touchers));
+    if rare.0 > 0 {
         crate::behaviours::homing_projectile::tick(world);
     }
     // The touches: looked at only while some creature carries a `Toucher` (no system in the schedule).
-    if sparse_any::<crate::touch::Toucher>(world) {
+    if rare.1 > 0 {
         tick_state(world, crate::touch::touch_events);
     }
 }
@@ -1418,13 +1458,14 @@ fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
 /// body that moved takes the yaw; a head turned by more than 15 degrees drags the body; a head still for 10 ticks
 /// brings it back over 10 more). Leaves when the head, the pitch and the body are at rest.
 #[allow(clippy::type_complexity)]
-fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>), With<Looking>>, mut cmd: Commands) {
+fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>, Option<&mut LookMemo>), With<Looking>>, mut cmd: Commands) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
-    for (e, pos, yaw, mut look, mut h, walking) in &mut q {
+    for (e, pos, yaw, mut look, mut h, walking, mut kept) in &mut q {
+        let mut memo = kept.as_deref().copied().unwrap_or_default();
         if h.yaw.is_nan() {
-            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z), angles: None, settled: None };
+            *h = Head { yaw: yaw.0, pitch: 0.0, body: yaw.0, stable: yaw.0, stable_time: 0, at: (pos.0.x, pos.0.z) };
         }
-        if look.cooldown > 0 && h.settled == Some((look.target, pos.0, look.y_speed, walking)) {
+        if look.cooldown > 0 && memo.settled == Some((look.target, pos.0, look.y_speed, walking)) {
             look.cooldown -= 1;
             continue;
         }
@@ -1433,14 +1474,14 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
         h.pitch = 0.0;
         if look.cooldown > 0 {
             look.cooldown -= 1;
-            let (ty, tp) = match h.angles {
+            let (ty, tp) = match memo.angles {
                 Some((t, p, ty, tp)) if t == look.target && p == pos.0 => (ty, tp),
                 _ => {
                     let (dx, dy, dz) = (look.target[0] - pos.0.x, look.target[1] - (pos.0.y + look.eye), look.target[2] - pos.0.z);
                     let sd = (dx * dx + dz * dz).sqrt();
                     let ty = (dz.abs() > 1.0e-5 || dx.abs() > 1.0e-5).then(|| trig::atan2_degrees(dz, dx) - 90.0);
                     let tp = (dy.abs() > 1.0e-5 || sd > 1.0e-5).then(|| -trig::atan2_degrees(dy, sd));
-                    h.angles = Some((look.target, pos.0, ty, tp));
+                    memo.angles = Some((look.target, pos.0, ty, tp));
                     (ty, tp)
                 }
             };
@@ -1472,9 +1513,16 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
                 h.body = rotate_if_necessary(h.body, h.yaw, look.max_head_y * (1.0 - f));
             }
         }
-        h.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
+        memo.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
         if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {
-            cmd.entity(e).remove::<Looking>();
+            cmd.entity(e).remove::<(Looking, LookMemo)>();
+        } else if kept.is_some() || memo.angles.is_some() || memo.settled.is_some() {
+            match kept.as_mut() {
+                Some(k) => **k = memo,
+                None => {
+                    cmd.entity(e).insert(memo);
+                }
+            }
         }
     }
 }
