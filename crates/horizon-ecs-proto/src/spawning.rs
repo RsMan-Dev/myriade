@@ -13,11 +13,15 @@
 //! charge (soul sand valley...), the sky light and the block flags (read from the real world of the prototype, the bridge supplies the game's).
 use crate::cow::{box_at, Clock, Index, Level, SpeciesId, SpeciesTable};
 use crate::despawn::DespawnDef;
+use crate::level::block_name;
+use crate::spawn_structures::StructureHost;
 use bevy_ecs::prelude::*;
 use bevy_ecs::{lifecycle::HookContext, world::DeferredWorld};
+use horizon_client_lib::biome::SpawnEntry;
 use horizon_client_lib::mobs::spawn_rules::{is_dark_enough, SpawnLevel};
 use horizon_core::geometry::Vec3;
 use horizon_core::random::{LegacyRandom, RandomSource};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// `MobCategory`.
@@ -131,14 +135,19 @@ impl Table {
         let mut t = Table::default();
         for (cat, list) in &info.spawns {
             let Some(c) = Category::from_name(cat) else { continue };
-            for e in list {
-                match species.0.iter().find(|s| s.name == e.entity && spawn_def(s).is_some()) {
-                    Some(s) => t.lists[c as usize].push(Entry { species: s.id, weight: e.weight as i32, min: e.min, max: e.max, constant: e.constant }),
-                    None => t.unported.push(e.entity.clone()),
-                }
-            }
+            resolve(&mut t.lists[c as usize], &mut t.unported, list, species);
         }
         t
+    }
+}
+/// A `natural_mob_spawns` or `spawn_overrides` list resolved to the species: the lines of a species the prototype does not have (or that
+/// have no `SpawnDef`) go to `unported`.
+pub fn resolve(out: &mut Vec<Entry>, unported: &mut Vec<String>, list: &[SpawnEntry], species: &SpeciesTable) {
+    for e in list {
+        match species.0.iter().find(|s| s.name == e.entity && spawn_def(s).is_some()) {
+            Some(s) => out.push(Entry { species: s.id, weight: e.weight as i32, min: e.min, max: e.max, constant: e.constant }),
+            None => unported.push(e.entity.clone()),
+        }
     }
 }
 
@@ -514,6 +523,7 @@ struct Ctx<'a> {
     biome: &'a str,
     players: &'a [[f64; 3]],
     time: u64,
+    host: Option<&'a StructureHost>,
 }
 fn nearest_sqr(players: &[[f64; 3]], x: f64, y: f64, z: f64) -> Option<f64> {
     players.iter().map(|p| (p[0] - x).powi(2) + (p[1] - y).powi(2) + (p[2] - z).powi(2)).reduce(f64::min)
@@ -556,7 +566,11 @@ fn category_for_position(w: &mut World, sp: &mut Spawner, cx: &Ctx, cat: Categor
                 continue;
             }
             if current.is_none() {
-                let Some(e) = pick(&cx.table[cat as usize], &mut sp.rng).copied() else { break };
+                let list = match cx.host {
+                    Some(h) => h.list_at(cx.table, cat, [x, y, z], || block_name(&*w, [x, y - 1, z]) == "minecraft:nether_bricks"),
+                    None => Cow::Borrowed(cx.table[cat as usize].as_slice()),
+                };
+                let Some(e) = pick(&list, &mut sp.rng).copied() else { break };
                 max = if e.constant { e.min as i32 } else { (e.min + sp.rng.next_int_bound((e.max.saturating_sub(e.min) + 1) as i32).unwrap_or(0) as u32) as i32 };
                 current = Some((e, [x, y, z]));
             }
@@ -673,6 +687,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
         return;
     }
     let mw = w.resource::<Level>().mw.0;
+    let host = w.get_resource::<StructureHost>().cloned();
     // The blocks that changed: their column is looked at again.
     let dirty = std::mem::take(&mut w.resource_mut::<DirtyColumns>().0);
     for (x, z) in dirty {
@@ -779,7 +794,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
     // The categories under their cap (the counts are kept, not recounted).
     let open: Vec<Category> = {
         let c = w.resource::<SpawnCounts>();
-        Category::SPAWNING.into_iter().filter(|k| !sp.table.lists[*k as usize].is_empty() && (!k.persistent() || time % 400 == 0) && i64::from(c.global[*k as usize]) < i64::from(k.max()) * i64::from(sp.union) / 289).collect()
+        Category::SPAWNING.into_iter().filter(|k| (!sp.table.lists[*k as usize].is_empty() || host.as_ref().is_some_and(|h| h.covers(*k))) && (!k.persistent() || time % 400 == 0) && i64::from(c.global[*k as usize]) < i64::from(k.max()) * i64::from(sp.union) / 289).collect()
     };
     if open.is_empty() || sp.cand.is_empty() || sp.pmax <= 0.0 {
         sp.stats.idle += 1;
@@ -818,7 +833,7 @@ fn cycle(w: &mut World, sp: &mut Spawner, time: u64) {
     let (species, table, defs) = (&shared.0, &shared.1, &shared.2[..]);
     let players: Vec<[f64; 3]> = online.iter().map(|p| [p.1, p.2, p.3]).collect();
     let biome = sp.biome.clone();
-    let cx = Ctx { mw, table, species, defs, biome: &biome, players: &players, time };
+    let cx = Ctx { mw, table, species, defs, biome: &biome, players: &players, time, host: host.as_ref() };
     for (i, cat) in picked {
         let chunk = sp.cand[i];
         {

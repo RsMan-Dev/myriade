@@ -45,6 +45,7 @@ pub mod rules;
 pub mod size;
 pub mod spawn_reference;
 pub mod spawning;
+pub mod spawn_structures;
 pub mod spots;
 pub mod species;
 pub mod tame;

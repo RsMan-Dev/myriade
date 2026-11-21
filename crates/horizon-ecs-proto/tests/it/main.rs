@@ -74,6 +74,7 @@ mod shots_vs_mob;
 mod spells_vs_mob;
 mod spots_vs_mob;
 mod spawning_vs_mob;
+mod spawn_structures;
 mod despawn_vs_mob;
 mod squid_vs_mob;
 mod swim_controls_vs_mob;
