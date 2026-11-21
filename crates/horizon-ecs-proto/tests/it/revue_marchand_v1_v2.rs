@@ -86,7 +86,8 @@ fn ecs_trader_beside(ticks: usize) -> (f64, bool) {
     let mut faces = false;
     for _ in 0..ticks {
         h.tick();
-        faces |= matches!(look_target(&h.world, e), Some(Tracker::Entity(Who::Player(1), _)));
+        // The trader is a goal-based creature (no brain memory): the look control's target is the player's position.
+        faces |= h.world.get::<horizon_ecs_proto::goals::Look>(e).is_some_and(|l| (l.target[0] - 2.5).abs() < 0.5 && (l.target[2] - 0.5).abs() < 0.5);
     }
     (h.world.get::<Pos>(e).unwrap().0.x, faces)
 }

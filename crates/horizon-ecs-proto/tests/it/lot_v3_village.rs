@@ -452,3 +452,58 @@ fn react_to_bell_awake() {
     assert!(ecs_quiet && !ecs_raid, "ECS : sans raid {ecs_quiet}, avec raid hide {ecs_raid}");
     assert!(mob_quiet && mob_raid, "Mob : sans raid {mob_quiet}, avec raid {mob_raid}");
 }
+
+/// The tick, counted from the order, at which the activity shows: `pre_raid` after `SetRaidStatus(before)`, `raid` after the victory and
+/// `hide` after the bell. `hide` is compared tick for tick (2 at most). `SetRaidStatus` and `ResetRaidStatus` draw `nextInt(20) == 0` per
+/// try in the jar, so the activity of a raid comes after a geometric wait of mean 20 ticks (`RaidDue`); the `Mob` sets its `raid` field at
+/// once (2 ticks): the ECS latency is measured over 30 villagers and must have the jar's mean (10 to 40).
+#[test]
+fn raid_hide_and_pre_raid_latency_against_the_mob_and_the_jar_awake() {
+    if skip() {
+        return;
+    }
+    let mob_latency = |act: &str| {
+        let mut r = mob_ref();
+        let i = r.add_kind(Vec3::new(0.5, 1.0, 0.5), mob_kind("minecraft:villager"));
+        mstep(&mut r);
+        match act {
+            "pre_raid" => villager::ext_mut(&mut r.mobs[i]).raid = villager::PRE_RAID,
+            "raid" => {
+                villager::ext_mut(&mut r.mobs[i]).raid = villager::RAID_VICTORY;
+                villager::ext_mut(&mut r.mobs[i]).raid_wave = true;
+            }
+            _ => villager_brain::heard_bell(&mut r.mobs[i], r.t),
+        }
+        (1..=200u32).find(|_| {
+            mstep(&mut r);
+            mob_token(&r.mobs[i], act)
+        })
+    };
+    let ecs_latency = |act: &str, status: i64, seed: u64| {
+        let mut h = Herd::with_slab_awake(40, true, false);
+        let e = spawn(&mut h, "minecraft:villager", 0.5, 0.5, seed);
+        h.tick();
+        h.tick();
+        if act == "hide" {
+            let now = now_of(&h.world, e) as i64;
+            set(&mut h.world, e, &HEARD_BELL, MemValue::Int(now), None);
+        } else {
+            raid::set_status(&mut h.world, [0.5, 1.0, 0.5], 64.0, status);
+        }
+        (1..=600u32).find(|_| {
+            h.tick();
+            ecs_act(&h.world, e) == act
+        })
+    };
+    let hide = (ecs_latency("hide", 0, 13), mob_latency("hide"));
+    eprintln!("latency hide: ecs {:?} mob {:?}", hide.0, hide.1);
+    let (Some(a), Some(b)) = hide else { panic!("hide: {hide:?}") };
+    assert!(a.abs_diff(b) <= 2, "hide: ecs {a} mob {b}");
+    for (act, status) in [("pre_raid", raid::RAID_BEFORE), ("raid", raid::RAID_VICTORY)] {
+        let waits: Vec<u32> = (0..30).map(|k| ecs_latency(act, status, 100 + k).unwrap_or(600)).collect();
+        let mean = f64::from(waits.iter().sum::<u32>()) / waits.len() as f64;
+        eprintln!("latency {act}: ecs mean {mean:.1} (min {:?} max {:?}) mob {:?}", waits.iter().min(), waits.iter().max(), mob_latency(act));
+        assert!((10.0..=40.0).contains(&mean), "{act}: mean wait {mean} is not the jar's 1 in 20 per tick");
+        assert!(mob_latency(act).is_some_and(|m| m <= 5), "{act}: the Mob sets its field at once");
+    }
+}

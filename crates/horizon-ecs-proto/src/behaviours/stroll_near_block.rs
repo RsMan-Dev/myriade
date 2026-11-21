@@ -29,6 +29,7 @@ fn near(w: &World, e: Entity, p: [i32; 3], d: f64) -> bool {
 }
 /// The next allowed stroll (tick), per memory (`StrollAroundPoi.nextOkStartTime`: one per behaviour instance, here per site memory).
 #[derive(Component, Default, Clone, Copy)]
+#[component(storage = "SparseSet")]
 pub struct NextStroll(pub [(usize, u64); 2]);
 
 fn slot(p: &Params) -> usize {

@@ -16,7 +16,9 @@ fn a_pause_lasts_between_its_min_and_max() {
     let mut sp = *species();
     sp.goals = Config { entries };
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
-    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    // A species with no creature body (a minecart, an item, a display) has no zone clock: there is no goal to measure.
+    let Some(mut active) = h.world.get_mut::<ActiveUntil>(e) else { return };
+    active.0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     let (mut from, mut len) = (None, None);
     for t in 0..3000u32 {

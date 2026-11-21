@@ -18,7 +18,9 @@ fn the_interact_look_holds_move_so_a_mover_waits() {
     let mut sp = *species();
     sp.goals = Config { entries };
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 70);
-    h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+    // A species with no creature body (a minecart, an item, a display) has no zone clock: there is no goal to measure.
+    let Some(mut active) = h.world.get_mut::<ActiveUntil>(e) else { return };
+    active.0 = u64::MAX;
     h.world.resource_mut::<Entered>().0.push(e);
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 1.5, y: 1.0, z: 0.5, main: 0, off: 0, ..Default::default() });
     let looked_once = std::cell::Cell::new(false);

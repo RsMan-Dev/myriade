@@ -28,6 +28,7 @@ pub fn active(w: &World, e: Entity) -> bool {
 /// Tick (the creature's own clock) from which `SetRaidStatus`/`ResetRaidStatus` may act: the Mob rolls `nextInt(20) == 0` every tick, so the
 /// first success after a status change is a geometric draw, taken once here (the brain sleeps between wakes) and armed as a wake.
 #[derive(Component)]
+#[component(storage = "SparseSet")]
 pub struct RaidDue(pub u64);
 
 pub fn due(w: &World, e: Entity) -> bool {
