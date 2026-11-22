@@ -110,8 +110,7 @@ impl Game<'_> {
         }
         if (matches!(
             kind.as_str(),
-            "minecraft:experience_orb"
-                | "minecraft:arrow"
+            "minecraft:arrow"
                 | "minecraft:spectral_arrow"
                 | "minecraft:llama_spit"
                 | "minecraft:shulker_bullet"

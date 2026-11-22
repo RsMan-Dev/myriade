@@ -878,11 +878,6 @@ impl Game<'_> {
         self.load_item_transferred(tag, uuid, None);
     }
 
-    /// A saved experience orb (or the orbs it stands for).
-    pub(super) fn load_orb(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_orb_transferred(tag, uuid, None);
-    }
-
     /// A saved arrow or spectral arrow.
     pub(super) fn load_arrow(
         &mut self,
@@ -2103,22 +2098,6 @@ impl Game<'_> {
             );
             self.save_portal_cooldown(id, &mut tag);
             (chunk_of(at), tag)
-        })
-    }
-    pub(super) fn save_orb(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let o = &self.orbs[i];
-        keys.contains(&chunk_of(o.position)).then(|| {
-            let raw = anon_raw(&self.persist, "minecraft:experience_orb", o.position);
-            let uuid = saved_uuid(&self.persist, o.id);
-            let tag = with_raw(
-                with_raw(entity_nbt::orb_to_nbt(o, uuid), raw.as_ref()),
-                self.persist.raw.get(&o.id),
-            );
-            (chunk_of(o.position), tag)
         })
     }
     pub(super) fn save_projectile(

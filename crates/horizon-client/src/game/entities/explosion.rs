@@ -1211,18 +1211,6 @@ impl Game<'_> {
                             }
                         }
                     }
-                    // `ExperienceOrb.hurtServer` takes the damage off their 5 health.
-                    EntityHandle::Orb(i) => {
-                        let id = self.orbs[i].id as i32;
-                        if !blocked_damage!(id, "minecraft:experience_orb") {
-                            let Some(EntityHandle::Orb(i)) =
-                                self.refresh_entity_handle(entity, handle)
-                            else {
-                                continue;
-                            };
-                            destroyed = self.orbs[i].hurt(amount);
-                        }
-                    }
                     // `VehicleEntity.hurtServer`: damage * 10, broken past 40.
                     EntityHandle::Boat(i) => {
                         let kind = self.boats[i].entity_type();
@@ -1243,9 +1231,6 @@ impl Game<'_> {
                         Some(EntityHandle::Item(i)) => {
                             self.dropped.remove(i);
                         }
-                        Some(EntityHandle::Orb(i)) => {
-                            self.orbs.remove(i);
-                        }
                         _ => {}
                     }
                 }
@@ -1263,7 +1248,7 @@ impl Game<'_> {
                     continue;
                 };
                 match handle {
-                    EntityHandle::Item(_) | EntityHandle::Orb(_) if destroyed => {}
+                    EntityHandle::Item(_) if destroyed => {}
                     EntityHandle::Boat(i) => {
                         self.boats.update(i, |boat| boat.push_from_explosion(push))
                     }

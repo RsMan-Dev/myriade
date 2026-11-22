@@ -1,8 +1,8 @@
 //! What a cactus does to the entities that are not living, and the
 //! `entity_damage` game event of their hits: `CactusBlock.entityInside` hurts
 //! every entity inside it, so a boat (`AbstractBoat.tick`'s two
-//! `applyEffectsFromBlocks`), a minecart (its behaviour's) and an experience
-//! orb (`ExperienceOrb.tick`'s) wear down in one, and `VehicleEntity.hurtServer`
+//! `applyEffectsFromBlocks`) and a minecart (its behaviour's) wear down in one,
+//! and `VehicleEntity.hurtServer`
 //! and `ItemEntity.hurtServer` post `entity_damage` for every hit they take.
 use super::commands::Target;
 use super::*;
@@ -55,14 +55,6 @@ impl Game<'_> {
         });
         self.hurt_boat_result(id, damage, creative, who)
             .unwrap_or(false)
-    }
-    /// `ExperienceOrb.tick`'s `applyEffectsFromBlocks` after its move: each
-    /// cactus its box is in takes a point off its 5 health
-    /// (`ExperienceOrb.hurtServer`, no event). True when that destroyed it.
-    pub(super) fn orb_cactus_hits(&mut self, i: usize) -> bool {
-        let bounds = self.orbs[i].bounds();
-        let hits = cells_named(self, bounds, "minecraft:cactus").len();
-        (0..hits).any(|_| self.orbs[i].hurt(1.0))
     }
 }
 

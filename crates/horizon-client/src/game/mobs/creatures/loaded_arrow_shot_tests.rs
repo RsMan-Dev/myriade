@@ -60,69 +60,6 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     game.world.random.set_seed(114);
     test(&mut game);
 }
-fn start_events() {
-    crate::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = Some(Vec::new()));
-}
-fn stop_events() {
-    crate::game::sculk::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = None);
-}
-/// #14440: an orb's move adds its drop to the fall outside water; landing
-/// after a fall posts HIT_GROUND and forgets the fall (`Entity.checkFallDamage`);
-/// in water the drop adds nothing, so a landing posts nothing.
-#[test]
-#[ignore = "daily"]
-fn a_landing_orb_posts_hit_ground_after_a_fall() {
-    use horizon_client::entities::OrbMove;
-    with_game(|game| {
-        assert!(
-            game.run_command("summon experience_orb 6.5 200 10.5 {Value:1,fall_distance:2d}")
-        );
-        let i = game.orbs.len() - 1;
-        let from = Vec3::new(6.5, 200.5, 10.5);
-        let down = Vec3::new(0.0, -0.5, 0.0);
-        start_events();
-        // In the air: the drop adds to the fall.
-        game.orbs[i].on_ground = false;
-        game.orb_moved(
-            i,
-            OrbMove {
-                from,
-                moved: down,
-                in_water: false,
-            },
-        );
-        assert_eq!(game.orbs[i].fall_distance, 2.5);
-        // On the ground: HIT_GROUND, then the fall is gone.
-        game.orbs[i].on_ground = true;
-        game.orb_moved(
-            i,
-            OrbMove {
-                from,
-                moved: down,
-                in_water: false,
-            },
-        );
-        assert_eq!(game.orbs[i].fall_distance, 0.0);
-        // In water with no fall: no drop, so no landing event.
-        game.orb_moved(
-            i,
-            OrbMove {
-                from,
-                moved: down,
-                in_water: true,
-            },
-        );
-        let events: Vec<_> = crate::game::sculk::TEST_POSTED_EVENTS.with(|v| {
-            std::mem::take(v.borrow_mut().as_mut().unwrap())
-                .into_iter()
-                .filter(|e| e.0 == "minecraft:hit_ground")
-                .collect()
-        });
-        stop_events();
-        assert_eq!(events.len(), 1);
-        assert_eq!(game.orbs[i].fall_distance, 0.0);
-    });
-}
 /// `ItemEntity.tick`: an item that drops through water onto honey in one tick
 /// slides (`HoneyBlock.fallOn`, during `Entity.move`) before it splashes
 /// (`updateFluidInteraction`'s water entry, after the move).

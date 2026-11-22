@@ -455,7 +455,7 @@ impl Game<'_> {
             Target::Mob(id) if self.ecs_has(id) => self.ecs.age(id)?,
             Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.age as i32,
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
-            Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
+            Target::Orb(id) => self.ecs.orb(id)?.age as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
             _ => return None,
         })
@@ -702,7 +702,6 @@ mod tests {
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
         use super::super::minecarts::{CartKind, Minecart};
-        use horizon_client::entities::ExperienceOrb;
         use horizon_client::items::ItemStack;
         use horizon_core::geometry::Vec3;
         use mod_api::WorldEpoch;
@@ -738,28 +737,8 @@ mod tests {
             let item = game.entity(game.dropped[0].id).unwrap();
             assert_eq!(item.tick_count(game), Some(77));
 
-            game.orbs.push(ExperienceOrb {
-                attachment_lifetime: Default::default(),
-                fall_distance: 0.0,
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id: 43,
-                position: Vec3::ZERO,
-                previous: Vec3::ZERO,
-                velocity: Vec3::ZERO,
-                value: 7,
-                age: 600,
-                on_ground: true,
-                count: 1,
-                fire_ticks: 0,
-                ticks: 21,
-                health: 5,
-                air: 300,
-                no_gravity: true,
-                following: None,
-            });
-            let orb = game.entity(43).unwrap();
-            assert_eq!(orb.tick_count(game), Some(21));
+            let orb = game.ecs_orb_moving(7, [0.0; 3], [0.0; 3]).expect("an orb");
+            assert_eq!(game.entity(orb).unwrap().tick_count(game), Some(0));
 
             game.carts
                 .push(Minecart::new(44, CartKind::Rideable, Vec3::ZERO));
@@ -787,7 +766,7 @@ mod tests {
         use super::super::{
             Dim, boats::Boat, minecarts::CartKind, minecarts::Minecart,
         };
-        use horizon_client::entities::{ArmorStand, ExperienceOrb};
+        use horizon_client::entities::ArmorStand;
         use horizon_client::items::ItemStack;
         use horizon_client::projectiles::{Projectile, ProjectileKind};
         use horizon_core::{geometry::Vec3, position::BlockPos};
@@ -832,26 +811,7 @@ mod tests {
                 0,
             );
             let item = game.dropped[0].id;
-            game.orbs.push(ExperienceOrb {
-                attachment_lifetime: Default::default(),
-                fall_distance: 0.0,
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                no_gravity: false,
-                id: 41,
-                position: Vec3::ZERO,
-                previous: Vec3::ZERO,
-                velocity: Vec3::ZERO,
-                value: 1,
-                age: 0,
-                on_ground: false,
-                count: 1,
-                fire_ticks: 0,
-                ticks: 0,
-                health: 5,
-                air: 300,
-                following: None,
-            });
+            let orb = game.ecs_orb_moving(1, [0.0; 3], [0.0; 3]).expect("an orb");
             game.boats
                 .push(Boat::new(42, "oak".into(), Vec3::ZERO, 0.0));
             game.carts
@@ -891,7 +851,7 @@ mod tests {
             // Projectile to 2 (`getDimensionChangingDelay` in vanilla 26.3).
             for (id, delay) in [
                 (item, 300),
-                (41, 300),
+                (orb, 300),
                 (42, 10),
                 (43, 10),
                 (tnt, 300),

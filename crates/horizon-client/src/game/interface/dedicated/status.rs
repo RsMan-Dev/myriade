@@ -120,7 +120,6 @@ impl Game<'_> {
         self.ecs.entity_count()
             + self.remote_entities.iter().filter(|m| !m.removed).count()
             + self.dropped.len()
-            + self.orbs.len()
             + self.creatures.projectiles.len()
             + self.carts.len()
             + self.boats.len()

@@ -43,7 +43,6 @@ impl Game<'_> {
             self.ecs.despawn(e);
         }
         self.dropped.clear();
-        self.orbs.clear();
         self.hoppers.clear();
         self.level_events.clear();
         self.session.rules = Default::default();

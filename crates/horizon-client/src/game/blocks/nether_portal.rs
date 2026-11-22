@@ -1171,7 +1171,7 @@ impl Game<'_> {
         if let Some(p) = self.ecs.position(id).filter(|_| self.ecs.species(id) == Some("minecraft:firework_rocket")) {
             return Some((Vec3::new(p[0], p[1], p[2]), 0.25, 0.25));
         }
-        if let Some(o) = self.orbs.iter().find(|o| o.id == id) {
+        if let Some(o) = self.ecs.orb(id) {
             return Some((o.position, 0.5, 0.5));
         }
         let entity = self.entity(id)?;
@@ -1224,6 +1224,7 @@ impl Game<'_> {
                 | Target::Cloud(_)
                 | Target::Trident(_)
                 | Target::Rocket(_)
+                | Target::Orb(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
             super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
@@ -1240,7 +1241,7 @@ impl Game<'_> {
                 Target::Dragon(_) => self.discard_resident_dragon(),
                 Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),
                 Target::Cloud(_) => self.breath_clouds.retain(|e| e.id != id),
-                Target::Falling(_) | Target::Trident(_) | Target::Rocket(_) => {
+                Target::Falling(_) | Target::Trident(_) | Target::Rocket(_) | Target::Orb(_) => {
                     if let Some(e) = self.ecs.entity_of(id) {
                         self.ecs.despawn(e);
                     }
@@ -1252,7 +1253,6 @@ impl Game<'_> {
         }
         enum List {
             Item,
-            Orb,
         }
         let (mut tag, list, i) = if let Some(i) = self.dropped.iter().position(|e| e.id == id) {
             let uuid = self.uuid_for(id);
@@ -1263,10 +1263,6 @@ impl Game<'_> {
                 self.items(),
             );
             (tag, List::Item, i)
-        } else if let Some(i) = self.orbs.iter().position(|o| o.id == id) {
-            let uuid = self.uuid_for(id);
-            let tag = horizon_client::entity_nbt::orb_to_nbt(&self.orbs[i], uuid);
-            (tag, List::Orb, i)
         } else {
             return None;
         };
@@ -1276,10 +1272,6 @@ impl Game<'_> {
             List::Item => {
                 self.remove_dropped(i);
                 self.detach_entity(id);
-            }
-            List::Orb => {
-                self.orbs.remove(i);
-                self.forget_entity(id);
             }
         }
         Some((tag, state))

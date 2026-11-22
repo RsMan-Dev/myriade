@@ -19,6 +19,8 @@ mod level_write_ai;
 mod level_acts;
 mod level_vehicle;
 mod level_leash;
+mod orbs;
+pub use orbs::OrbView;
 
 pub use level::EcsLevel;
 pub use level_raids::RaiderNow;

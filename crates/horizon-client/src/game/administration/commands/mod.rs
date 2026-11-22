@@ -1588,7 +1588,7 @@ impl Game<'_> {
                         });
                 }
             }
-            Target::Mob(id) | Target::Projectile(id) if self.ecs.is_active() => {
+            Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) if self.ecs.is_active() => {
                 // Entity.teleport, as the ECS's mob: the same stopRiding, then the place, the motion and the turn.
                 self.dismount_mob(id);
                 if let Some(e) = self.ecs.entity_of(id) {
@@ -1639,17 +1639,10 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Orb(id) => {
-                if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id) {
-                    o.position = v;
-                    o.previous = v;
-                    if let Some(r) = rotation {
-                        Entity::set_rotation(o, r);
-                    }
-                }
-            }
             // A projectile is an ECS entity: its place is written by the ECS teleport above.
             Target::Projectile(_) => {}
+            // An orb is an ECS entity as well: its place is written by the ECS teleport above.
+            Target::Orb(_) => {}
             Target::Stand(id) => {
                 if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
                     a.position = v;
@@ -2153,11 +2146,6 @@ impl Game<'_> {
                     self.remove_dropped(i);
                 }
             }
-            Target::Orb(id) => {
-                if let Some(o) = self.orbs.iter_mut().find(|o| o.id == id) {
-                    o.age = u32::MAX / 2;
-                }
-            }
             Target::Projectile(id) => self.remove_projectile(id),
             Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
             Target::Frame(id) => {
@@ -2180,7 +2168,7 @@ impl Game<'_> {
             Target::Fangs(id) => self.fangs.list.retain(|f| f.id != id),
             Target::Crystal(id) => self.kill_crystal(id),
             Target::Dragon(id) => self.kill_dragon(id),
-            Target::Tnt(id) => {
+            Target::Tnt(id) | Target::Orb(id) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     self.ecs.despawn(e);
                 }
@@ -2198,8 +2186,6 @@ impl Game<'_> {
             // No command names a part, and `kill` on one would not stop its dragon.
             Target::DragonPart(_) => {}
         }
-        // The orbs marked for removal are gone (Entity.kill removes them).
-        self.orbs.retain(|o| o.age < u32::MAX / 2);
         if let Some(at) = died {
             self.post_game_event("minecraft:entity_die", at, context);
         }
@@ -2277,17 +2263,11 @@ impl Game<'_> {
                 "experience_orb" => {
                     // `EntityType`'s factory, `new ExperienceOrb(EntityType, Level)`,
                     // which only `snapTo`s: the position is kept, even in a block.
-                    self.next_entity += 1;
-                    let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let orb = horizon_client::entities::ExperienceOrb::new(
-                        self.next_entity,
-                        at,
-                        Vec3::ZERO,
-                        0,
-                    );
-                    self.orbs.push(orb);
+                    let Some(id) = self.ecs_orb_moving(0, pos, [0.0; 3]) else {
+                        return Err(err("commands.summon.failed.uuid", &[]));
+                    };
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
-                    if !self.native_joins_flush(false, self.next_entity) {
+                    if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
                     name = Text::translate("entity.minecraft.experience_orb", &[]);

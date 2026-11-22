@@ -1193,8 +1193,8 @@ impl Game<'_> {
         for s in spill.spawns {
             self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
         }
-        for (at, value, merge_id) in spill.orbs {
-            self.award_orb(at, value, merge_id);
+        for (at, value, _merge_id) in spill.orbs {
+            self.award_orb(at, value);
         }
         for (pos, entity) in spill.removed {
             let key = (pos[0], pos[1], pos[2]);

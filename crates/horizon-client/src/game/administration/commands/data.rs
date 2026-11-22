@@ -129,7 +129,6 @@ impl Game<'_> {
         Some(tag)
     }
     fn entity_nbt_in_level(&mut self, t: Target) -> Option<Tag> {
-        let player_uuid = self.saved_player_uuid();
         Some(match t {
             // `FishingHook.shouldBeSaved` is false, and it keeps no compound here.
             // Neither is saved: `FishingHook.shouldBeSaved` and
@@ -210,11 +209,6 @@ impl Game<'_> {
                 let o = self.others.iter().find(|o| o.id == id)?.clone();
                 self.other_to_nbt(&o, uuid)
             }
-            Target::Orb(id) => {
-                let uuid = self.uuid_for(id);
-                let tag = entity_nbt::orb_to_nbt(self.orbs.iter().find(|o| o.id == id)?, uuid);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
-            }
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
                 let raw = self.persist_anon("minecraft:end_crystal", c.position);
@@ -229,7 +223,7 @@ impl Game<'_> {
                 let tag = d.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
                 crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
             }
-            Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) => {
+            Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
                 Tag::Compound(self.ecs_mob_tree(id)?)
             }
             Target::Cushion(id) => {
@@ -579,43 +573,7 @@ impl Game<'_> {
                     horizon_client::join_seq::store_back(&mut self.item_frames[i], new);
                 }
             }
-            Target::Orb(id) => {
-                // Entity.load and ExperienceOrb.readAdditionalSaveData on the
-                // resident orb: its runtime id, join and tick count stay.
-                let new = entity_nbt::orbs_from_nbt(&tag)
-                    .into_iter()
-                    .next()
-                    .ok_or_else(stale)?;
-                let uuid = self.uuid_for(id);
-                let orb = self
-                    .orbs
-                    .iter_mut()
-                    .find(|o| o.id == id)
-                    .ok_or_else(stale)?;
-                orb.rotation = new.rotation;
-                orb.position = new.position;
-                orb.previous = new.previous;
-                orb.velocity = new.velocity;
-                orb.value = new.value;
-                orb.age = new.age;
-                orb.on_ground = new.on_ground;
-                orb.count = new.count;
-                orb.health = new.health;
-                orb.no_gravity = new.no_gravity;
-                orb.fall_distance = new.fall_distance;
-                // Entity.load reads portalCooldown and leaves the portal
-                // process as it is.
-                if let Some(portal) = self.portals.entities.get_mut(&id) {
-                    portal.cooldown = match tag.get("PortalCooldown") {
-                        Some(Tag::Int(cooldown)) => *cooldown,
-                        _ => 0,
-                    };
-                } else {
-                    self.restore_portal_cooldown(id, &tag);
-                }
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
-            }
-            Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) => {
+            Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 let Tag::Compound(patch) = &tag else {

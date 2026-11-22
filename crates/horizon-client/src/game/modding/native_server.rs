@@ -1784,8 +1784,9 @@ impl Game<'_> {
         {
             return Vec::new();
         }
-        self.orbs
-            .iter()
+        self.ecs
+            .orb_views()
+            .into_iter()
             .filter(|o| o.count > 0)
             .map(|o| mod_api::ExperienceOrb {
                 id: o.id,
@@ -1820,13 +1821,20 @@ impl Game<'_> {
         {
             return false;
         }
-        let Some(orb) = self.orbs.iter_mut().find(|o| o.id == id) else {
+        if self.ecs.orb(id).is_none() {
             return false;
-        };
-        orb.value = value.unwrap_or(orb.value);
-        orb.count = count.unwrap_or(orb.count);
-        orb.age = age.unwrap_or(orb.age);
-        true
+        }
+        let mut patch = horizon_core::nbt::Compound::new();
+        if let Some(v) = value {
+            patch.insert("Value".into(), horizon_core::nbt::Tag::Short(v as i16));
+        }
+        if let Some(c) = count {
+            patch.insert("Count".into(), horizon_core::nbt::Tag::Int(c as i32));
+        }
+        if let Some(a) = age {
+            patch.insert("Age".into(), horizon_core::nbt::Tag::Short(a as i16));
+        }
+        self.ecs_merge_mob(id, &patch)
     }
     pub(super) fn native_as_player_handle(
         &mut self,
@@ -2396,26 +2404,7 @@ mod tests {
         let mut game = crate::game::game_tests::tests::server_game(&mut resources);
         game.options.dedicated = Some(Vec::new());
         let at = horizon_core::geometry::Vec3::new(1.0, 70.0, 1.0);
-        game.orbs.push(horizon_client::entities::ExperienceOrb {
-            attachment_lifetime: Default::default(),
-            fall_distance: 0.0,
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            id: 40,
-            position: at,
-            previous: at,
-            velocity: horizon_core::geometry::Vec3::ZERO,
-            value: 3,
-            age: 0,
-            on_ground: true,
-            count: 1,
-            fire_ticks: 0,
-            ticks: 0,
-            health: 5,
-            air: 300,
-            no_gravity: true,
-            following: None,
-        });
+        let id = game.ecs_orb_moving(3, [at.x, at.y, at.z], [0.0; 3]).expect("an orb");
         let dimension = game.dim.id().to_owned();
         let ids = |game: &Game<'_>, min, max| -> Vec<u32> {
             game.experience_orbs(&dimension, min, max)
@@ -2423,7 +2412,7 @@ mod tests {
                 .map(|orb| orb.id)
                 .collect()
         };
-        assert_eq!(ids(&game, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0]), [40]);
+        assert_eq!(ids(&game, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0]), [id]);
         for (min, max) in [
             ([f64::NAN, 69.0, 0.0], [2.0, 71.0, 2.0]),
             ([0.0, 69.0, 0.0], [2.0, f64::NAN, 2.0]),
@@ -2433,8 +2422,8 @@ mod tests {
         ] {
             assert_eq!(ids(&game, min, max), Vec::<u32>::new(), "{min:?} {max:?}");
         }
-        assert_eq!(ids(&game, [2.0, 69.0, 0.0], [0.0, 71.0, 2.0]), [40]);
-        assert_eq!(ids(&game, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]), [40]);
+        assert_eq!(ids(&game, [2.0, 69.0, 0.0], [0.0, 71.0, 2.0]), [id]);
+        assert_eq!(ids(&game, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]), [id]);
     }
 
     /// A mod's `announce` reaches the dedicated server's event stream and nothing else's.

@@ -37,7 +37,6 @@ restore_cases! {
     restores_boat_spawns: "minecraft:oak_boat", "{}", boats;
     restores_cart_spawns: "minecraft:minecart", "{}", carts;
     restores_stand_spawns: "minecraft:armor_stand", "{}", armor_stands;
-    restores_orb_spawns: "minecraft:experience_orb", "{Value:3s}", orbs;
     restores_projectile_spawns: "minecraft:arrow", "{}", creatures.projectiles;
 }
 

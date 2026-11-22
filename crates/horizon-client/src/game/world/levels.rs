@@ -15,7 +15,7 @@
 use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, ExperienceOrb, Game, ItemEntity, Mob, boats, commands,
+    Dim, Game, ItemEntity, Mob, boats, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
@@ -87,7 +87,7 @@ macro_rules! entity_count_view {
         crate::game::levels::EntityCountView {
             fixed: [
                 ("minecraft:item", $level.dropped.len()),
-                ("minecraft:experience_orb", $level.orbs.len()),
+                ("minecraft:experience_orb", $level.ecs.species_count("minecraft:experience_orb")),
                 ("minecraft:boat", $level.boats.len()),
                 ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
                 ("minecraft:painting", $level.paintings.len()),
@@ -155,9 +155,6 @@ pub(super) struct Parked {
     breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
     ominous_spawners:
         horizon_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    /// Its orbs', TNT's and falling blocks' place in the tick order beyond
-    /// their joins (`ordered_tick::TickRestarts`).
-    tick_restarts: super::ordered_tick::TickRestarts,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
     pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
@@ -165,7 +162,6 @@ pub(super) struct Parked {
     knot_ids: HashMap<[i32; 3], u32>,
     knots: horizon_client::join_seq::JoinList<super::leads::Knot>,
     dropped: horizon_client::join_seq::JoinList<ItemEntity>,
-    orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
     persist: persist::EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -628,7 +624,6 @@ impl Levels {
         Some(
             l.remote_entities.iter().filter(|m| !m.removed).count()
                 + l.dropped.len()
-                + l.orbs.len()
                 + l.ecs.entity_count()
                 + l.boats.len()
                 + l.ecs.species_count("minecraft:falling_block")
@@ -672,7 +667,7 @@ impl Levels {
         self.parked.get(&dim).map(|l| {
             [
                 l.dropped.len(),
-                l.orbs.len(),
+                l.ecs.species_count("minecraft:experience_orb"),
                 0,
                 l.boats.len(),
             ]
@@ -751,14 +746,12 @@ impl Game<'_> {
             dragon: Default::default(),
             breath_clouds: Default::default(),
             ominous_spawners: Default::default(),
-            tick_restarts: Default::default(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
             remote_entities: Default::default(),
             knot_ids: HashMap::new(),
             knots: Default::default(),
             dropped: Default::default(),
-            orbs: Default::default(),
             persist: Default::default(),
             lectern_pulses: Vec::new(),
             lid_openers: HashMap::new(),
@@ -895,14 +888,12 @@ impl Game<'_> {
         swap(&mut self.dragon, &mut p.dragon);
         swap(&mut self.breath_clouds, &mut p.breath_clouds);
         swap(&mut self.ominous_spawners, &mut p.ominous_spawners);
-        swap(&mut self.ordered.restarts, &mut p.tick_restarts);
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.remote_entities, &mut p.remote_entities);
         swap(&mut self.ecs, &mut p.ecs);
         swap(&mut self.knot_ids, &mut p.knot_ids);
         swap(&mut self.resident_entities.knots, &mut p.knots);
         swap(&mut self.dropped, &mut p.dropped);
-        swap(&mut self.orbs, &mut p.orbs);
         swap(&mut self.persist, &mut p.persist);
         swap(&mut self.lectern_pulses, &mut p.lectern_pulses);
         swap(&mut self.lid_openers, &mut p.lid_openers);

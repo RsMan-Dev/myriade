@@ -45,7 +45,6 @@ macro_rules! resident_owners {
             ($this)
             Mob => Mob: remote_entities,
             Item => Item: dropped,
-            Orb => Orb: orbs,
             Stand => Stand: armor_stands,
             Frame => Frame: item_frames,
             Painting => Painting: paintings,
@@ -188,7 +187,7 @@ macro_rules! define_resident_access {
                     let Some(part) = $this.dragon.as_mut().and_then(|dragon| dragon.parts.get_mut(usize::from(offset))) else { return SlotAccess::Missing; };
                     SlotAccess::Done(visit(part.attachment_lifetime()))
                 },
-                Kind::Player | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Player | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -215,7 +214,7 @@ macro_rules! define_resident_access {
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }
-                Kind::Player | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => None,
+                Kind::Player | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => None,
             };
             source
         }

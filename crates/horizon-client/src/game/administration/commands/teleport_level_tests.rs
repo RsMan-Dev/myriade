@@ -56,10 +56,11 @@ fn a_mod_sends_an_experience_orb_to_another_level_with_its_value_and_motion() {
             game,
             "minecraft:experience_orb",
             "{Value:7s,Count:2,Motion:[0.1d,0.2d,-0.3d]}",
-            |g| g.orbs.first().map(|o| o.id),
+            |g| g.ecs.orb_views().first().map(|o| o.id),
         );
-        assert_eq!(game.orbs.len(), 1);
-        let orb = &game.orbs[0];
+        let views = game.ecs.orb_views();
+        assert_eq!(views.len(), 1);
+        let orb = views[0];
         assert_eq!((orb.value, orb.count), (7, 2));
         assert_eq!(orb.position, Vec3::new(3.5, 70.0, -2.5));
         assert_eq!(orb.velocity, Vec3::new(0.1, 0.2, -0.3));

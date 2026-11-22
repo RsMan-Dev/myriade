@@ -4,7 +4,7 @@
 //! state it had when it was taken (`extractEntity(from, 1.0F)`).
 use super::Game;
 use horizon_client::{
-    entities::{ExperienceOrb, ItemEntity},
+    entities::ItemEntity,
     projectiles::Projectile,
 };
 
@@ -14,7 +14,6 @@ const LIFE_TIME: u32 = 3;
 /// The taken entity, as it was when taken.
 pub(in crate::game) enum Taken {
     Item(Box<ItemEntity>),
-    Orb(Box<ExperienceOrb>),
     Arrow(Box<Projectile>),
     Trident(Box<super::trident::ThrownTrident>),
     /// An ECS item or orb taken (`kind` "item" or "orb"): its network id, its count and its position, read before it left the level.
@@ -25,7 +24,6 @@ impl Taken {
     fn position(&self) -> [f64; 3] {
         let p = match self {
             Taken::Item(i) => i.position,
-            Taken::Orb(o) => o.position,
             Taken::Arrow(a) => a.position,
             Taken::Trident(t) => t.position,
             Taken::Ecs { at, .. } => return *at,
@@ -36,7 +34,6 @@ impl Taken {
     fn entity_id(&self) -> u32 {
         match self {
             Taken::Item(i) => i.id,
-            Taken::Orb(o) => o.id,
             Taken::Arrow(a) => a.id,
             Taken::Trident(t) => t.id,
             Taken::Ecs { id, .. } => *id,
@@ -47,7 +44,7 @@ impl Taken {
         match self {
             Taken::Item(i) => i.stack.count as i32,
             Taken::Ecs { count, .. } => *count,
-            Taken::Orb(_) | Taken::Arrow(_) | Taken::Trident(_) => 1,
+            Taken::Arrow(_) | Taken::Trident(_) => 1,
         }
     }
 }
@@ -149,7 +146,6 @@ impl Game<'_> {
     ) {
         let kind = match taken {
             Taken::Item(_) => "item",
-            Taken::Orb(_) => "orb",
             Taken::Arrow(_) => "arrow",
             Taken::Trident(_) => "trident",
             Taken::Ecs { kind, .. } => kind,
@@ -187,34 +183,10 @@ impl Game<'_> {
 mod tests {
     use super::*;
 
-    fn orb_at(x: f64, y: f64, z: f64) -> Taken {
-        let at = horizon_core::geometry::Vec3::new(x, y, z);
-        Taken::Orb(Box::new(ExperienceOrb {
-            attachment_lifetime: Default::default(),
-            fall_distance: 0.0,
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            no_gravity: false,
-            id: 0,
-            position: at,
-            previous: at,
-            velocity: horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
-            value: 1,
-            age: 0,
-            on_ground: false,
-            count: 1,
-            ticks: 0,
-            health: 5,
-            air: 300,
-            following: None,
-            fire_ticks: 0,
-        }))
-    }
-
     #[test]
     fn flies_along_the_square_of_its_age_to_the_moving_target() {
         let mut p = Pickup {
-            taken: orb_at(0.0, 64.0, 0.0),
+            taken: Taken::Ecs { id: 0, count: 1, at: [0.0, 64.0, 0.0], kind: "orb" },
             collector: Collector::Player,
             life: 0,
             target: [3.0, 65.0, 0.0],

@@ -355,7 +355,6 @@ impl Game<'_> {
             self.creatures.projectiles.clear();
         }
         self.dropped.clear();
-        self.orbs.clear();
         self.level_events.clear();
         self.session.rules = Default::default();
         for (rule, value) in [
@@ -512,7 +511,7 @@ impl Game<'_> {
         let mut known: HashSet<u32> = self.remote_entities.iter().map(|m| m.id).chain(sources.iter().copied()).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
         let mut known_items = self.dropped.len();
-        let mut known_orbs = self.orbs.len();
+        let mut known_orbs = 0u32;
         let mut last: HashMap<[i32; 3], String> = HashMap::new();
         let mut region_last: HashMap<[i32; 3], String> = HashMap::new();
         let (mut last_player, mut last_rng) = (String::new(), String::new());
@@ -617,10 +616,12 @@ impl Game<'_> {
             }
             known_items = self.dropped.len();
             // Where an orb flies comes from its own random: its value only.
-            for orb in &self.orbs[known_orbs.min(self.orbs.len())..] {
+            // Orb ids only grow: the orbs past the last seen id are new.
+            let orbs = self.ecs.orb_views();
+            for orb in orbs.iter().filter(|o| o.id > known_orbs) {
                 lines.push(format!("new minecraft:experience_orb value={}", orb.value));
             }
-            known_orbs = self.orbs.len();
+            known_orbs = orbs.iter().map(|o| o.id).max().unwrap_or(known_orbs).max(known_orbs);
             if s.trace_events {
                 for m in &self.remote_entities {
                     if let Some(st) = &m.extra.warden {

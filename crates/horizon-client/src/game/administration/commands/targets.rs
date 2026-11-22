@@ -33,12 +33,7 @@ impl Game<'_> {
                 .iter()
                 .find(|i| i.id == id)
                 .map(|i| [i.position.x, i.position.y, i.position.z]),
-            Target::Orb(id) => self
-                .orbs
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| [o.position.x, o.position.y, o.position.z])
-                .or_else(|| self.ecs_view(id).map(|v| v.position)),
+            Target::Orb(id) => self.ecs.orb(id).map(|o| [o.position.x, o.position.y, o.position.z]),
             Target::Projectile(id) => self.ecs_view(id).map(|v| v.position),
             Target::Stand(id) => self
                 .armor_stands

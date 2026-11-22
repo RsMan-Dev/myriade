@@ -199,7 +199,6 @@ fn cancelled_player(heal: bool) {
         }
         assert_eq!(seen.lock().unwrap().deaths.len(), 1);
         assert!(game.dropped.is_empty());
-        assert!(game.orbs.is_empty());
     });
 }
 

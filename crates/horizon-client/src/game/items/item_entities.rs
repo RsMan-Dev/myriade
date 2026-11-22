@@ -1,5 +1,5 @@
 //! Dropped items and experience orbs: their tick (`tick_items`, `tick_dropped_items`,
-//! `tick_experience`), the stacks a destroyed container lets fall, and spawning and merging orbs.
+//! `tick_experience`), the stacks a destroyed container lets fall, and spawning orbs.
 use super::*;
 
 /// Whether a native mod's invulnerability, the vanilla `isInvulnerableTo` and a saved
@@ -353,173 +353,14 @@ impl Game<'_> {
         while value > 0 {
             let v = ExperienceOrb::split(value);
             value -= v;
-            let merge_id = self.world.random.next_int_bound(40).unwrap_or(0);
-            if !self.merge_new_orb(at, v, merge_id) {
-                self.add_orb_toward(at, roughly, v);
-            }
+            // The merge id is drawn from the level random; the ECS merges the orb with those near it.
+            let _ = self.world.random.next_int_bound(40);
+            self.add_orb_toward(at, roughly, v);
         }
     }
-    /// `ExperienceOrb.tryMergeToExisting`: an orb of the same value within a
-    /// 1 block box of `at`, whose id is a multiple of 40 from `merge_id`, takes
-    /// the new one as one more in its count (and restarts its age); otherwise
-    /// a fresh orb spawns.
-    pub(super) fn award_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) {
-        if !self.merge_new_orb(at, value, merge_id) {
-            self.add_orb(at, value);
-        }
-    }
-    /// `tryMergeToExisting`: true when an orb took the new one.
-    pub(super) fn merge_new_orb(&mut self, at: [f64; 3], value: u32, merge_id: i32) -> bool {
-        // The ECS merges the orb with those near it (P's `orb`): the host spawns it there, unmerged.
-        if self.ecs.is_active() {
-            return false;
-        }
-        let centre = Vec3::new(at[0], at[1], at[2]);
-        let half = Vec3::new(0.5, 0.5, 0.5);
-        let area = Aabb::new(centre.subtract(half), centre.add_vector(half));
-        // A server's orbs are its own; a LAN or server guest only shows them.
-        {
-            for i in 0..self.orbs.len() {
-                let o = &self.orbs[i];
-                if !o.bounds().intersects(area) {
-                    continue;
-                }
-                let vanilla = o.can_merge(merge_id as u32, value as i32);
-                let (join, id, count, age) = (o.join, o.id, o.count, o.age);
-                let orb_value = o.value;
-                if !self.orb_merges(id, orb_value, count, 0, value as i32, 1, vanilla) {
-                    self.restore_orb(join, orb_value, count, age);
-                    continue;
-                }
-                let Some(i) = self.orbs.locate(join) else {
-                    continue;
-                };
-                let o = &mut self.orbs[i];
-                // A mod's write in the merge hook is the merged orb; else one more in its count.
-                if (o.value, o.count) == (orb_value, count) {
-                    if count >= crate::orb_limits::MAX_COUNT {
-                        continue;
-                    }
-                    o.count += 1;
-                }
-                o.age = 0;
-                return true;
-            }
-        }
-        false
-    }
-    /// Puts back what a merge hook may have written to the orb `join`: a refused merge
-    /// leaves both orbs as they were.
-    fn restore_orb(&mut self, join: crate::join_seq::JoinSeq, value: i32, count: u32, age: u32) {
-        // Under the ECS no merge touched the host's list: nothing to put back.
-        if self.ecs.is_active() {
-            return;
-        }
-        if let Some(i) = self.orbs.locate(join) {
-            let orb = &mut self.orbs[i];
-            (orb.value, orb.count, orb.age) = (value, count, age);
-        }
-    }
-    /// Whether orb `into` takes orb `from` (0: a spawning orb of `from_value`),
-    /// given vanilla's `canMerge` answer: the mods may flip it, then cancel the merge.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn orb_merges(
-        &mut self,
-        into: u32,
-        into_value: i32,
-        into_count: u32,
-        from: u32,
-        from_value: i32,
-        from_count: u32,
-        vanilla: bool,
-    ) -> bool {
-        let dimension = self.dim.id();
-        let mut can_merge = vanilla;
-        self.native_experience_orb_can_merge(
-            dimension,
-            into,
-            from,
-            into_value,
-            from_value,
-            &mut can_merge,
-        );
-        if !can_merge {
-            return false;
-        }
-        let mut canceled = false;
-        self.native_experience_orb_merge(mod_api::__private::ExperienceOrbMergeCall {
-            dimension,
-            into,
-            from,
-            into_value,
-            into_count,
-            from_value,
-            from_count,
-            canceled: &mut canceled,
-        });
-        !canceled
-    }
-    /// `ExperienceOrb.tick`'s scan before movement, once every twenty ticks.
-    /// Hooks can change the resident list, so retain join identities, not indices.
-    pub(super) fn merge_orb(&mut self, i: usize) {
-        // The ECS scans its own orbs (P's `orb`); the host's list is empty under it.
-        if self.ecs.is_active() || !self.orbs[i].ticks.is_multiple_of(20) {
-            return;
-        }
-        let into_join = self.orbs[i].join;
-        let area = self.orbs[i].bounds().inflate(Vec3::new(0.5, 0.5, 0.5));
-        let candidates: Vec<_> = self
-            .orbs
-            .iter()
-            .filter(|o| o.join != into_join && o.bounds().intersects(area))
-            .map(|o| o.join)
-            .collect();
-        for from_join in candidates {
-            let Some(i) = self.orbs.locate(into_join) else {
-                return;
-            };
-            let Some(j) = self.orbs.locate(from_join) else {
-                continue;
-            };
-            let (a, b) = (&self.orbs[i], &self.orbs[j]);
-            let (into, into_value, into_count, into_age) = (a.id, a.value, a.count, a.age);
-            let (from, from_value, from_count) = (b.id, b.value, b.count);
-            let vanilla = b.can_merge(a.id, a.value);
-            if !self.orb_merges(
-                into, into_value, into_count, from, from_value, from_count, vanilla,
-            ) {
-                self.restore_orb(into_join, into_value, into_count, into_age);
-                continue;
-            }
-            let Some(i) = self.orbs.locate(into_join) else {
-                return;
-            };
-            let written = (self.orbs[i].value, self.orbs[i].count) != (into_value, into_count);
-            let fresh = self.orbs.locate(from_join).filter(|&j| {
-                let (a, b) = (&self.orbs[i], &self.orbs[j]);
-                (b.value, b.count) == (from_value, from_count)
-                    && b.bounds()
-                        .intersects(a.bounds().inflate(Vec3::new(0.5, 0.5, 0.5)))
-            });
-            // A mod's write in the merge hook is the merged orb; else `into` adds the
-            // source's count. A stale source, or a count past what a save holds, refuses
-            // the merge and puts a written `into` back.
-            let count = if written {
-                Some(self.orbs[i].count)
-            } else {
-                into_count
-                    .checked_add(from_count)
-                    .filter(|&c| c <= crate::orb_limits::MAX_COUNT)
-            };
-            let (Some(j), Some(count)) = (fresh, count) else {
-                self.restore_orb(into_join, into_value, into_count, into_age);
-                continue;
-            };
-            let age = self.orbs[j].age;
-            self.orbs[i].count = count;
-            self.orbs[i].age = self.orbs[i].age.min(age);
-            self.orbs.remove(j);
-        }
+    /// `ExperienceOrb.award` for one orb, unmerged: the ECS merges it with those near it.
+    pub(super) fn award_orb(&mut self, at: [f64; 3], value: u32) {
+        self.add_orb(at, value);
     }
     /// `ExperienceOrb.unstuckIfPossible`, which the orb's constructor runs on an
     /// orb whose box is in a block: the free spot nearest its box's centre. An
@@ -563,38 +404,10 @@ impl Game<'_> {
         if len_sqr > 0.0 && dot < 0.0 {
             velocity = Vec3::new(-velocity.x, -velocity.y, -velocity.z);
         }
-        if self.ecs.is_active() {
-            self.ecs_orb_moving(value, [p.x, p.y, p.z], [velocity.x, velocity.y, velocity.z]);
-            self.native_joins_flush(false, 0);
-            return;
-        }
-        self.next_entity += 1;
-        self.orbs.push(ExperienceOrb {
-            attachment_lifetime: Default::default(),
-            fall_distance: 0.0,
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            no_gravity: false,
-            id: self.next_entity,
-            position: p,
-            previous: p,
-            velocity,
-            // `getExperienceValue` sizes: 1 to 2477.
-            value: value as i32,
-            age: 0,
-            on_ground: false,
-            count: 1,
-            ticks: 0,
-            health: 5,
-            air: 300,
-            following: None,
-            fire_ticks: 0,
-        });
-        // ServerLevel.addFreshEntity.
+        self.ecs_orb_moving(value, [p.x, p.y, p.z], [velocity.x, velocity.y, velocity.z]);
         self.native_joins_flush(false, 0);
     }
-    /// The orbs' tick, but for the movement: that is `run_ordered_ticks`'s,
-    /// in join order with the other kinds.
+    /// The player's pickups of orbs: the ECS moves and merges them.
     pub(in crate::game) fn tick_experience(&mut self) {
         if self.xp_delay > 0 {
             self.xp_delay -= 1;
@@ -604,90 +417,8 @@ impl Game<'_> {
             .player
             .as_ref()
             .filter(|p| !p.health.dead_or_dying() && !spectator);
-        // Player.aiStep: standing, the pickup area is the player's box
-        // inflated by (1, 0.5, 1); riding, the union with the vehicle's box
-        // inflated by (1, 0, 1).
-        let bounds = player.map(|p| {
-            let w = f64::from(p.dimensions.width) / 2.0;
-            let own = Aabb::new(
-                Vec3::new(p.position.x - w, p.position.y, p.position.z - w),
-                Vec3::new(
-                    p.position.x + w,
-                    p.position.y + f64::from(p.dimensions.height),
-                    p.position.z + w,
-                ),
-            );
-            let area = match self.riding_box() {
-                Some(vehicle) => own.union_bounds(vehicle).inflate(Vec3::new(1.0, 0.0, 1.0)),
-                None => own.inflate(Vec3::new(1.0, 0.5, 1.0)),
-            };
-            (
-                [
-                    area.min_position().x,
-                    area.min_position().y,
-                    area.min_position().z,
-                ],
-                [
-                    area.max_position().x,
-                    area.max_position().y,
-                    area.max_position().z,
-                ],
-            )
-        });
-        if self.ecs.is_active() {
-            let feet = player.map(|p| [p.position.x, p.position.y, p.position.z]);
-            return self.ecs_player_orbs(feet);
-        }
-        let mut orbs = self.orbs.lift();
-        #[cfg(test)]
-        crate::game::entity::taken_pass_tests::after_take(self);
-        let mut gained = 0;
-        let mut taken = Vec::new();
-        if let Some((min, max)) = bounds {
-            orbs.retain_mut(|o| {
-                let touching = o.position.x + 0.25 > min[0]
-                    && o.position.x - 0.25 < max[0]
-                    && o.position.y + 0.5 > min[1]
-                    && o.position.y < max[1]
-                    && o.position.z + 0.25 > min[2]
-                    && o.position.z - 0.25 < max[2];
-                if touching && self.xp_delay == 0 {
-                    // ExperienceOrb.playerTouch: one orb every 2 ticks; a
-                    // merged orb gives its value once per count.
-                    self.xp_delay = 2;
-                    gained += o.points();
-                    taken.push(o.clone());
-                    o.count -= 1;
-                    return o.count > 0;
-                }
-                true
-            });
-        }
-        self.orbs
-            .restore(orbs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-        if gained > 0 {
-            gained = self.mending(gained);
-        }
-        for o in taken {
-            // ClientPacketListener.handleTakeItemEntity: every orb taken sounds
-            // at the orb, whether mending took its points or not.
-            let mut r = random_source::create();
-            let pitch = (r.next_float() - r.next_float()) * 0.35 + 0.9;
-            let at = [o.position.x, o.position.y, o.position.z];
-            self.audio.play(
-                "minecraft:entity.experience_orb.pickup",
-                Some(at),
-                0.1,
-                pitch,
-            );
-            self.add_pickup(
-                crate::game::pickups::Taken::Orb(Box::new(o)),
-                crate::game::pickups::Collector::Player,
-            );
-        }
-        if gained > 0 {
-            self.give_experience_points(gained as i32);
-        }
+        let feet = player.map(|p| [p.position.x, p.position.y, p.position.z]);
+        self.ecs_player_orbs(feet);
     }
 
     /// `Player.dropEquipment` for the player who died: unless keep_inventory
@@ -726,13 +457,6 @@ impl Game<'_> {
         let e = self.dropped.remove(i);
         self.native_entity_left(e.id);
         e
-    }
-
-    /// Experience orb `i` leaves the level (`Entity.discard`); mods hear it.
-    pub(super) fn remove_orb(&mut self, i: usize) -> ExperienceOrb {
-        let o = self.orbs.remove(i);
-        self.native_entity_left(o.id);
-        o
     }
 
     /// The item entity `spawn_item` just added, unless a native mod kept it

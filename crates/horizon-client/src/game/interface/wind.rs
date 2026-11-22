@@ -310,7 +310,6 @@ impl Game<'_> {
             spared: None,
         };
         let source = self.creatures.wind_source;
-        let done = self.ordered.done;
         let mut late = Vec::new();
         let mut entities = self.take_entities();
         for_each_entity_mut!(entities, entity => {
@@ -336,11 +335,8 @@ impl Game<'_> {
             // joined before the charge has ticked by now in vanilla, so the
             // push is for its next tick; here its kind ticks after the
             // projectiles, so the push waits for that tick to run.
-            // Joined before the charge and not ticked yet: the push is for its next tick.
-            // Where it ticks: where it joined, or where it started ticking again.
-            let key = self.ordered.tick_key(entity.join_seq());
-            let waiting = entity.ticks_after_projectiles() && done.is_none_or(|d| key > d);
-            if push_waits_for_tick(waiting, key, source) {
+            let key = entity.join_seq();
+            if push_waits_for_tick(entity.ticks_after_projectiles(), key, source) {
                 late.push((entity.id(), push));
             } else {
                 entity.push_from_explosion(push);

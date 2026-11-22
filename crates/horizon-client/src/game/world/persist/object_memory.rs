@@ -85,31 +85,6 @@ impl Game<'_> {
         }
     }
 
-    pub(in crate::game) fn load_orb_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        mut transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
-    ) {
-        for (i, mut orb) in entity_nbt::orbs_from_nbt(&tag).into_iter().enumerate() {
-            self.next_entity += 1;
-            orb.id = self.next_entity;
-            let id = orb.id;
-            // Horizon splits a saved `count` into orbs: the first is the saved one.
-            if i == 0 {
-                if let Some(state) = transferred.take() {
-                    self.adopt_transferred_entity_state(id, state);
-                }
-                self.remember_uuid(id, uuid, &tag);
-                self.bind_saved_entity_attachments(id, &mut orb.attachment_lifetime);
-            }
-            // An orb that came through a portal keeps its cooldown.
-            self.restore_portal_cooldown(id, &tag);
-            self.orbs.push(orb);
-            self.remember_tags(id, &tag);
-        }
-    }
-
     /// Loads the saved projectile `tag` in the ECS level and gives it its id, which keeps its portal cooldown, its transferred state
     /// and its uuid; None when the level refuses the saved form.
     fn load_projectile_ecs(

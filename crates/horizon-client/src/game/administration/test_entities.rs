@@ -64,8 +64,13 @@ impl Game<'_> {
         // EntityType.ITEM and EXPERIENCE_ORB.
         self.dropped
             .retain(|i| !intersects(standing(at(i.position), 0.25, 0.25), bounds));
-        self.orbs
-            .retain(|o| !intersects(standing(at(o.position), 0.5, 0.5), bounds));
+        for orb in self.ecs.orb_views() {
+            if intersects(standing(at(orb.position), 0.5, 0.5), bounds) {
+                if let Some(e) = self.ecs.entity_of(orb.id) {
+                    self.ecs.despawn(e);
+                }
+            }
+        }
         // The ECS projectiles in the box: a bounded query on their marker, each one removed.
         for id in self.ecs.projectiles_in(bounds.0, bounds.1) {
             self.remove_projectile(id);

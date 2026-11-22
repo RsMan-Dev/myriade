@@ -307,7 +307,7 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
 }
 
 fn orb_total(g: &Game<'_>) -> i64 {
-    g.orbs.iter().map(|o| i64::from(o.value) * i64::from(o.count)).sum()
+    g.ecs.orb_views().iter().map(|o| i64::from(o.value) * i64::from(o.count)).sum()
 }
 
 /// The blocks around the podium and the gateway that are not air or the ground (the ECS test reads the same boxes).

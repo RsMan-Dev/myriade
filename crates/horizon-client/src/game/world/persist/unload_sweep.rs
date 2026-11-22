@@ -110,7 +110,6 @@ impl Game<'_> {
             }
             keep
         });
-        self.orbs.retain(|o| !gone(o.position));
         // Unloaded with their chunk: PersistentEntitySectionManager.stopTracking.
         self.native_leaves_flush();
         self.persist

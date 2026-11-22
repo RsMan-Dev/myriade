@@ -218,7 +218,7 @@ mod tests {
             place(game, ore, "minecraft:diamond_ore");
             assert!(game.player_destroy_block(player, ore, true));
             assert_eq!(carried(game, "minecraft:diamond"), 1);
-            assert!(!game.orbs.is_empty(), "the ore's experience");
+            assert!(!game.ecs.orb_views().is_empty(), "the ore's experience");
         });
     }
 
@@ -380,12 +380,12 @@ mod tests {
                     ]
                 );
                 // Each diamond ore gives 3 to 7 points, all of them awarded at the origin.
-                let points: u32 = game.orbs.iter().map(|o| o.points()).sum();
+                let points: u32 = game.ecs.orb_views().iter().map(|o| o.value.max(0) as u32).sum();
                 assert!(
                     (3 * ores as u32..=7 * ores as u32).contains(&points),
                     "{points}"
                 );
-                assert!(game.orbs.iter().all(|o| {
+                assert!(game.ecs.orb_views().iter().all(|o| {
                     let p = o.position;
                     near([p.x, p.y, p.z], 0.01)
                 }));

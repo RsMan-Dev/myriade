@@ -47,9 +47,10 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         ("Health", Tag::Short(5)),
         ("NoGravity", Tag::Byte(1)),
     ]);
-    game.load_orb(tag, Some(uuid));
-    assert_eq!(game.orbs.len(), 1);
-    let id = game.orbs[0].id;
+    let Tag::Compound(c) = tag else {
+        panic!("a compound")
+    };
+    let id = game.ecs_load(&c).unwrap();
     assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
     let time = game.world.game_time;
     for raw in [

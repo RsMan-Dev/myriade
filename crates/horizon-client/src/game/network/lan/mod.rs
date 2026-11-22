@@ -1815,15 +1815,6 @@ impl Game<'_> {
             }
             e.meta.push((8, serializer::ITEM_STACK, Value::Item(stack)));
         }
-        for o in self.orbs.iter().filter(|o| o.id > after) {
-            let e = out.add(o.id as i32, entity_uuid(o.id), "minecraft:experience_orb");
-            e.position = [o.position.x, o.position.y, o.position.z];
-            e.idle = idle_at(o.position);
-            e.on_ground = o.on_ground;
-            e.velocity = [o.velocity.x, o.velocity.y, o.velocity.z];
-            // ExperienceOrb.DATA_VALUE.
-            e.meta.push((8, serializer::INT, Value::Int(o.value)));
-        }
         self.lan_object_states(out, drain_minecart_steps, after);
     }
 

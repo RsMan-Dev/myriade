@@ -2333,8 +2333,6 @@ mod respawn_position_tests {
 mod pickup_xp_tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
-    use horizon_client::entities::ExperienceOrb;
-    use horizon_core::geometry::Vec3;
 
     /// Listens to `pickup_xp`, canceling it when told to.
     struct Listen(bool);
@@ -2363,29 +2361,9 @@ mod pickup_xp_tests {
             g.loaded = true;
             g.position = [0.5, 70.0, 0.5];
             game.lan.as_mut().unwrap().hub.guests.push(g);
-            let p = Vec3::new(0.5, 70.0, 0.5);
-            game.orbs.push(ExperienceOrb {
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id: 40,
-                position: p,
-                previous: p,
-                velocity: Vec3::ZERO,
-                value: 7,
-                age: 0,
-                on_ground: true,
-                count: 1,
-                fire_ticks: 0,
-                ticks: 0,
-                air: 300,
-                health: 5,
-                no_gravity: true,
-                following: None,
-                fall_distance: 0.0,
-            });
+            let id = game.ecs_orb_moving(7, [0.5, 70.0, 0.5], [0.0; 3]).unwrap();
             game.guest_orbs(0);
-            let left = game.orbs.iter().any(|o| o.id == 40);
+            let left = game.ecs.orb(id).is_some();
             out = (left, game.lan.as_ref().unwrap().hub.guests[0].xp_total);
         });
         out

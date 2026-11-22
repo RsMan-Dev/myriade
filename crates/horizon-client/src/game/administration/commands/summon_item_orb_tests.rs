@@ -72,10 +72,10 @@ fn a_summoned_orb_keeps_the_position_it_was_asked_for() {
         // Its box (0.5 tall) reaches into the stone's top 0.2, which is what
         // makes the constructor's unstuck search move it in the first place.
         assert!(game.run_command("summon minecraft:experience_orb 4.5 100.8 4.5"));
-        let orb = game.orbs.last().expect("an orb");
+        let orb = game.ecs.orb_views().pop().expect("an orb");
         assert_eq!(orb.position, Vec3::new(4.5, 100.8, 4.5));
         assert_eq!(orb.velocity, Vec3::ZERO);
-        assert_eq!(orb.points(), 0);
+        assert_eq!(orb.value, 0);
         assert_eq!(orb.count, 1);
     });
 }

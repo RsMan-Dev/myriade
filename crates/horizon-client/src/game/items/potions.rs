@@ -2430,7 +2430,11 @@ mod xp_bottle_tests {
                 ),
                 (None, Vec3::new(0.0, 0.0, 1.0), 2, -1.0),
             ] {
-                game.orbs.clear();
+                for o in game.ecs.orb_views() {
+                    if let Some(e) = game.ecs.entity_of(o.id) {
+                        game.ecs.despawn(e);
+                    }
+                }
                 game.splash(
                     &bottle,
                     at,
@@ -2441,9 +2445,9 @@ mod xp_bottle_tests {
                     false,
                     motion,
                 );
-                assert!(!game.orbs.is_empty());
+                assert!(!game.ecs.orb_views().is_empty());
                 let at = [at.x, at.y, at.z];
-                for o in game.orbs.iter() {
+                for o in game.ecs.orb_views().iter() {
                     let p = [o.position.x, o.position.y, o.position.z];
                     let v = [o.velocity.x, o.velocity.y, o.velocity.z];
                     assert!((p[axis] - (at[axis] + sign * 0.25)).abs() < 1e-9, "{p:?}");

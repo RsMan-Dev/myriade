@@ -976,9 +976,7 @@ struct Game<'a> {
     ticks_until_autosave: i64,
     applied_modifiers: Vec<(String, String)>,
     experience: Experience,
-    orbs: horizon_client::join_seq::JoinList<ExperienceOrb>,
     xp_delay: u32,
-    ordered: ordered_tick::OrderedTicks,
     level_up_sound: horizon_client::entities::LevelUpSound,
     /// How many arm swings started.
     swings_started: u32,
@@ -3427,19 +3425,16 @@ impl Game<'_> {
             // `EntityTickList.forEach`: what joined before the entity pass
             // (function summons, dropped or dispensed items) ticks in it;
             // what joins during it waits for the next tick
-            // (`ensureActiveIsNotIterated`). Primed TNT and falling blocks
-            // keep their own packet cutoff (`ordered.announced`, #10063).
+            // (`ensureActiveIsNotIterated`).
             self.ticked_entities_through = self.next_entity;
         }
         // ChunkMap still ticks while /tick freeze holds block/entity ticks.
         if !running {
             span("save_chunks_eagerly", || self.save_chunks_eagerly());
         }
-        self.begin_ordered_ticks();
         if running {
             self.tick_explicit_knots();
             self.tick_summoned_eyes();
-            self.ordered_before(ordered_tick::Batch::ArmorStands)?;
             horizon_client::spans::time("tick_armor_stands", || self.tick_armor_stands())?;
             horizon_client::spans::time("tick_cushions", || self.tick_cushions());
             // ServerLevel.tick: the arrivals of this server tick are in the level
@@ -3447,7 +3442,6 @@ impl Game<'_> {
             // own tick opens.
             span("portal_arrivals", || self.land_portal_arrivals());
             span("vehicle_portals", || self.handle_vehicle_portals());
-            self.ordered_before(ordered_tick::Batch::Boats)?;
             self.tick_vehicle_watch();
             let from = self.lan_synced_from();
             horizon_client::spans::time("tick_thunder", || self.tick_thunder());
@@ -3456,8 +3450,6 @@ impl Game<'_> {
             horizon_client::spans::time("tick_maps", || self.tick_maps());
             self.tick_lodestone_compasses();
             horizon_client::spans::time("tick_bolts", || self.tick_bolts());
-            self.ordered_before(ordered_tick::Batch::Tridents)?;
-            self.ordered_before(ordered_tick::Batch::Rockets)?;
             horizon_client::spans::time("tick_ominous_item_spawners", || {
                 self.tick_ominous_item_spawners()
             });
@@ -3467,7 +3459,6 @@ impl Game<'_> {
                 self.handle_entity_portals();
                 self.handle_end_gateway_portals();
             });
-            self.ordered_before(ordered_tick::Batch::Items)?;
             horizon_client::spans::time("tick_items", || self.tick_items());
             {
                 span("hoppers_catch_items", || self.hoppers_catch_items());
@@ -3480,13 +3471,10 @@ impl Game<'_> {
         // The ride the player's file names, once the vehicle is in the world.
         self.restore_root_vehicle();
         if running {
-            self.ordered_before(ordered_tick::Batch::Mobs)?;
             horizon_client::spans::time("tick_mobs", || self.tick_mobs())?;
             // Dead, despawned or gone into a hive.
             span("mods_leaves_flush", || self.native_leaves_flush());
             span("mod_viewers", || self.tick_mod_container_viewers());
-            // Orbs, primed TNT and falling blocks still to tick, in join order.
-            self.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)?;
             horizon_client::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
             span("mods_leaves_flush", || self.native_leaves_flush());
@@ -3527,14 +3515,8 @@ impl Game<'_> {
             span("end_gateways", || self.keep_gateway_destinations());
         }
         if running {
-            // Primed TNT and falling blocks that joined since the spawn packets.
-            self.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, true)?;
             span("late_wind_pushes", || self.apply_late_wind_pushes());
         }
-        // Everything that has joined has had its spawn packet and, if it joined
-        // before the entity passes (TNT a piston or repeater primed), its first
-        // tick in the late pass above (#10063).
-        self.ordered.announced = horizon_client::join_seq::JoinSeq::upcoming();
         if running {
             horizon_client::spans::time("tick_moving_pistons", || self.tick_moving_pistons())?;
             horizon_client::spans::time("tick_block_entities", || self.tick_block_entities())?;
@@ -3984,7 +3966,6 @@ impl Game<'_> {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
         self.dropped.clear();
-        self.orbs.clear();
         self.creatures.projectiles.clear();
         self.boats.clear();
         self.carts.clear();
@@ -4619,60 +4600,6 @@ impl Game<'_> {
         let pos = BlockPos::new(target[0], target[1], target[2]);
         let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
         self.level_set(target, state)
-    }
-    /// `ExperienceOrb.followNearbyPlayer`'s candidates: each orb goes for the
-    /// nearest living player within 8 blocks, the host's own or a guest. Each
-    /// is the player's feet, the point the orb homes on and the player's UUID.
-    pub(super) fn orb_followed(&self) -> Vec<xp_orb_targeting::OrbCandidate> {
-        let spectator = self.spectator();
-        let player = self
-            .player
-            .as_ref()
-            .filter(|p| !p.health.dead_or_dying() && !spectator && !self.lan_acting_fake);
-        // ExperienceOrb.followNearbyPlayer: each orb goes for the nearest
-        // living player within 8 blocks, the host's own or a guest.
-        let uuid = self
-            .level
-            .player_uuid
-            .map(horizon_client::lan::playerdata::ints_uuid);
-        let mut followed: Vec<xp_orb_targeting::OrbCandidate> = player
-            .map(|p| {
-                let feet = [p.position.x, p.position.y, p.position.z];
-                let eye = f64::from(p.dimensions.eye_height);
-                (
-                    feet,
-                    [feet[0], feet[1] + eye / 2.0, feet[2]],
-                    uuid,
-                    p.entity_id as u32,
-                )
-            })
-            .into_iter()
-            .collect();
-        if let Some(host) = self.lan.as_ref() {
-            followed.extend(
-                host.hub
-                    .guests
-                    .iter()
-                    .filter(|g| {
-                        g.placed
-                            && g.participates_in_player_simulation()
-                            && g.loaded
-                            && !g.dead
-                            && g.health > 0.0
-                    })
-                    .filter(|g| !g.spectator())
-                    .map(|g| {
-                        let p = g.position;
-                        (
-                            p,
-                            [p[0], p[1] + g.eye_height() / 2.0, p[2]],
-                            Some(g.uuid),
-                            g.entity_id as u32,
-                        )
-                    }),
-            );
-        }
-        followed
     }
     /// `Player.getVehicle().getBoundingBox()` for the local player's vehicle
     /// (`riding`): a mob, one of `object_target`'s kinds (boat, cart, armour
@@ -5534,9 +5461,7 @@ impl<'a> Game<'a> {
             ticks_until_autosave: 6000,
             applied_modifiers: Vec::new(),
             experience: Experience::default(),
-            orbs: Default::default(),
             xp_delay: 0,
-            ordered: Default::default(),
             level_up_sound: Default::default(),
             swings_started: 0,
             predicted_swings: 0,
@@ -6059,51 +5984,6 @@ fn test_server_load() -> horizon_world::native_load_context::LoadContext {
         Arc::new(LoadInputs::new(Default::default(), Default::default())),
         [],
     )
-}
-
-#[cfg(test)]
-mod nested_orb_spawn_tests {
-    #[test]
-    #[ignore = "daily"]
-    fn experience_pickup_keeps_nested_orbs_until_the_next_ordered_pass() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-            );
-            game.block_ticks
-                .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0))
-                .unwrap();
-            for (x, value) in [(7.5, 1), (9.5, 3), (11.5, 7)] {
-                game.add_orb([x, 80.0, 3.5], value);
-            }
-            let _ = game.orbs.remove(1);
-            let mut expected: Vec<_> = game.orbs.iter().map(|o| (o.id, o.join)).collect();
-            crate::game::entity::taken_pass_tests::with_spawn(
-                |g| g.add_orb([3.5, 80.0, 3.5], 1),
-                || game.tick_experience(),
-            );
-            assert_eq!(game.orbs.len(), 3);
-            let join = game.orbs[2].join;
-            expected.push((game.orbs[2].id, join));
-            assert_eq!(
-                game.orbs.iter().map(|o| (o.id, o.join)).collect::<Vec<_>>(),
-                expected
-            );
-            assert_eq!(game.orbs[2].age, 0);
-            game.ordered.announced = horizon_client::join_seq::JoinSeq::MAX;
-            game.tickets.update(None);
-            game.begin_ordered_ticks();
-            game.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)
-                .unwrap();
-            let spawned = game.orbs.iter().find(|o| o.join == join).unwrap();
-            assert_eq!(spawned.age, 1);
-            assert_eq!(
-                game.orbs.iter().map(|o| (o.id, o.join)).collect::<Vec<_>>(),
-                expected
-            );
-        });
-    }
 }
 
 #[cfg(test)]
