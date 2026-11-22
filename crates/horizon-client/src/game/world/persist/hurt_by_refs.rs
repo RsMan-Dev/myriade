@@ -31,7 +31,7 @@ impl Game<'_> {
         let since = (m.age as i32).wrapping_sub(m.ai.last_hurt_by_time);
         let reference = match m.ai.last_hurt_by {
             Some(Who::Mob(attacker))
-                if since <= 100 && self.remote_entities.iter().any(|a| a.id == attacker && a.alive()) =>
+                if since <= 100 && self.ecs.alive(attacker) =>
             {
                 self.persist.uuid_of(attacker)
             }

@@ -538,7 +538,7 @@ impl Game<'_> {
             .collect();
         for rider in accepted {
             if self.entity_is_passenger(rider) == Some(false)
-                && !self.remote_entities.iter().any(|m| m.id == rider.id() && !m.alive())
+                && (!self.ecs.exists(rider.id()) || self.ecs.alive(rider.id()))
             {
                 // Reject callback topology changes: the shared mount path
                 // checks live handles, dimension, cycles and vehicle capacity.

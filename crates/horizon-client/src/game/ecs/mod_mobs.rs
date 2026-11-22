@@ -1,6 +1,5 @@
 //! The native mob files' side of the ECS: the mobs a mod reads or writes by network id, when the ECS runs the world (the server
-//! roles). Reads go to the view (`ecs.exists`, `ecs.alive`, the `access` reads); writes are requests the level applies. The
-//! client's copy stays on `remote_entities`, the level being inert there, so each caller branches on `self.ecs.is_active()`.
+//! roles). Reads go to the view (`ecs.exists`, `ecs.alive`, the `access` reads); writes are requests the level applies.
 use crate::ecs_bridge::EcsLevel;
 use crate::game::Game;
 use crate::mobs::MobWorld;

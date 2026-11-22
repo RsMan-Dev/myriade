@@ -604,26 +604,21 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn missing_despawned_and_readmitted_entities_refuse_but_no_listener_keeps_data() {
-        use horizon_client::{mobs::Mob, mobs::equip::EquipInput};
+        use horizon_client::mobs::equip::EquipInput;
         with_cobbler(|game, asked| {
             game.options.dedicated = Some(Vec::new());
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            let at = horizon_core::geometry::Vec3::new(6.5, 64.0, 5.5);
-            let index = game.remote_entities.len();
-            game.remote_entities.push(Mob::new(21, kind.clone(), at, 0.0));
+            game.ecs = game.test_ecs_level();
+            let at = [6.5, 64.0, 5.5];
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:zombie", at).expect("a zombie");
             let source = EquipInput::new(1, rich_helmet());
             let prepared = game.equip_stack(&source, &["minecraft:zombie"], &[21]);
             assert!(game.can_equip(&prepared, "feet", 21, "minecraft:zombie", false));
             let before = asked.load(Ordering::Relaxed);
             assert!(!game.can_equip(&prepared, "feet", 9999, "minecraft:zombie", true));
-            game.remote_entities.remove(index);
+            let e = game.ecs.entity_of(21).expect("the zombie");
+            game.ecs.despawn(e);
             assert!(!game.can_equip(&prepared, "feet", 21, "minecraft:zombie", true));
-            game.remote_entities.push(Mob::new(21, kind, at, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:zombie", at).expect("a zombie");
             assert!(!game.can_equip(&prepared, "feet", 21, "minecraft:zombie", true));
             assert_eq!(asked.load(Ordering::Relaxed), before);
             take_equip_conversions();

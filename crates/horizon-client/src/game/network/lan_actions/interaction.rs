@@ -128,15 +128,7 @@ impl Game<'_> {
             let on = (0..3).all(|k| (point[k] - inside[k]).abs() < 0.1);
             Some(if on { inside } else { middle })
         };
-        let mob_box = if self.ecs.is_active() {
-            self.ecs_corners(id)
-        } else {
-            self.remote_entities.iter().find(|m| m.id as i32 == id).map(|m| {
-                let b = m.bounds();
-                let (mn, mx) = (b.min_position(), b.max_position());
-                ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
-            })
-        };
+        let mob_box = self.ecs_corners(id);
         let centre = match mob_box {
             Some((lo, hi)) => visible_aim_point(eye, lo, hi, |p| self.block_between(eye, p)),
             None if self.object_target(id).is_some() => object()?,
@@ -214,12 +206,8 @@ impl Game<'_> {
         {
             return Some(g.bounds());
         }
-        if self.ecs.is_active() {
-            if let Some(b) = u32::try_from(id).ok().and_then(|id| self.ecs.bounds(id)) {
-                return Some(b);
-            }
-        } else if let Some(m) = self.remote_entities.iter().find(|m| m.id as i32 == id) {
-            return Some(m.bounds());
+        if let Some(b) = u32::try_from(id).ok().and_then(|id| self.ecs.bounds(id)) {
+            return Some(b);
         }
         if let Some((lo, hi, _)) = self.object_target(id) {
             return Some(Aabb::new(
@@ -611,51 +599,8 @@ impl Game<'_> {
                 true
             }) == Ok(true));
         }
-        if self.ecs.is_active() {
-            if let Some(landed) = self.ecs_guest_hit(conn, gi, id) {
-                return Ok(landed);
-            }
-        } else if let Some(index) = self
-            .remote_entities
-            .iter()
-            .position(|m| m.id as i32 == id && m.alive())
-        {
-            let Some(host) = self.lan.as_ref() else {
-                return Err(ActionRefused::Stale);
-            };
-            if host.hub.guests[gi].vehicle == Some(self.remote_entities[index].id) {
-                return Ok(false);
-            }
-            // A mace's smash sets the attacker's velocity and sends it at once, before the
-            // Wind Burst's push (MaceItem.hurtEnemy, then the post-attack effects).
-            let target_id = self.remote_entities[index].id;
-            let sent = self
-                .as_guest_at(gi, conn, |g| {
-                    let marked = g
-                        .player
-                        .as_mut()
-                        .is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
-                    if g.ecs.is_active() {
-                        g.attack_entity(target_id);
-                    } else {
-                        g.attack_mob(index);
-                    }
-                    g.swing_arm();
-                    let p = g.player.as_mut()?;
-                    let sent = std::mem::replace(&mut p.health.sync_velocity, marked);
-                    sent.then_some(p.velocity)
-                })
-                .ok()
-                .flatten();
-            self.send_guest_motion(conn, sent);
-            // The mob now answers to this guest (game/network/lan_mobs.rs).
-            if let Ok(id) = u32::try_from(id)
-                && let Some(host) = self.lan.as_mut()
-                && host.hub.guests[gi].participates_in_player_simulation()
-            {
-                host.mob_players.insert(id, conn);
-            }
-            return Ok(true);
+        if let Some(landed) = self.ecs_guest_hit(conn, gi, id) {
+            return Ok(landed);
         }
         let Some(host) = self.lan.as_ref() else {
             return Err(ActionRefused::Stale);

@@ -1,6 +1,6 @@
 //! Lot 30 (colle) : the blocks and machines that touch entities, on the server roles. Reads go to the index and the view by id
 //! (`ecs_entities_meeting`, `ecs_mob_eye`), writes are requests the level applies (`ecs_add_effect`, `ecs_launch`). Nothing
-//! scans the level: the candidates of a box are the index's. The client keeps its `remote_entities` branch in each caller.
+//! scans the level: the candidates of a box are the index's.
 use crate::game::Game;
 use horizon_client::potent_sulfur::{Level, can_be_reached_by_noxious_gas};
 use horizon_core::geometry::{Aabb, Vec3};

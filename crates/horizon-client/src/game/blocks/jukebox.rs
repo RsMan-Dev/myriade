@@ -6,10 +6,9 @@ use horizon_client::{
     block_entity_item,
     containers::{BlockEntity, Jukebox},
     items::ItemStack,
-    mobs::{Species, Who},
+    mobs::Who,
 };
 use horizon_core::{
-    geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
@@ -263,18 +262,15 @@ impl Game<'_> {
         if self.items().songs.get(song).is_none() {
             return;
         }
-        self.notify_record_playing(pos, true);
         if self.audio.capture.is_some() {
             self.lan_songs.push((pos, Some(song.to_owned())));
         }
     }
     /// `LevelEventHandler` 1011: `stopJukeboxSongAndNotifyNearby`.
-    pub(super) fn jukebox_stop_event(&mut self, pos: [i32; 3]) {
-        self.notify_record_playing(pos, false);
-    }
+    /// The parrots' dance stop (`notifyNearbyEntities`) has no ECS write yet: RESTE-SANS-ECS.
+    pub(super) fn jukebox_stop_event(&mut self, _pos: [i32; 3]) {}
     /// Level event 1011: the song ends, here and for the guests.
     fn stop_song(&mut self, pos: [i32; 3]) {
-        self.notify_record_playing(pos, false);
         if self.audio.capture.is_some() {
             self.lan_songs.push((pos, None));
         }
@@ -290,20 +286,6 @@ impl Game<'_> {
         self.post_block_game_event("minecraft:jukebox_stop_play", pos, None, Some(state));
     }
 
-    /// `LevelEventHandler.notifyNearbyEntities` (level events 1010 and 1011):
-    /// parrots within three blocks of the jukebox start or stop dancing.
-    pub(super) fn notify_record_playing(&mut self, pos: [i32; 3], playing: bool) {
-        let min = Vec3::new(f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2]));
-        let area = Aabb::new(min, min.add_vector(Vec3::new(1.0, 1.0, 1.0)))
-            .inflate(Vec3::new(3.0, 3.0, 3.0));
-        for m in self
-            .remote_entities
-            .iter_mut()
-            .filter(|m| m.species() == Species::Parrot && m.bounds().intersects(area))
-        {
-            m.extra.party_jukebox = playing.then_some(pos);
-        }
-    }
     /// `popOutTheItem`: the disc above the jukebox, and the song stops. An
     /// empty slot pops nothing out (`if (!itemBeforePoppingOut.isEmpty())`),
     /// whatever the state says.

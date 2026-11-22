@@ -37,7 +37,7 @@ impl Game<'_> {
         let Some((at, _, knot)) = self.ecs_take_leash(id, None) else {
             return;
         };
-        self.notify_knot_leashee_removed(knot, id);
+        self.notify_knot_leashee_removed(knot);
         if drop {
             self.drop_lead_item(at);
         }
@@ -115,7 +115,7 @@ impl Game<'_> {
                 any |= self.ecs_take_lead(id, Holder::Player, Some(me));
             }
         }
-        self.notify_knot_leashee_removed(Some(Holder::Knot(knot)), 0);
+        self.notify_knot_leashee_removed(Some(Holder::Knot(knot)));
         any
     }
 

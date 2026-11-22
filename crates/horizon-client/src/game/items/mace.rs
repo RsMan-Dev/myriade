@@ -246,20 +246,12 @@ impl Game<'_> {
                     feet: [p.position.x, p.position.y, p.position.z],
                 })
             }
-            horizon_client::mobs::Who::Mob(id) if self.ecs_has(id) => {
+            horizon_client::mobs::Who::Mob(id) => {
                 let m = self.ecs_mob(id)?;
                 Some(horizon_client::mobs::Aim {
                     eye: [m.at.x, m.at.y + self.ecs.eye_offset(id)?, m.at.z],
                     look: self.ecs.look_angle(id)?,
                     feet: [m.at.x, m.at.y, m.at.z],
-                })
-            }
-            horizon_client::mobs::Who::Mob(id) => {
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                Some(horizon_client::mobs::Aim {
-                    eye: [m.position.x, m.eye_y(), m.position.z],
-                    look: m.look_angle(),
-                    feet: [m.position.x, m.position.y, m.position.z],
                 })
             }
         }
@@ -294,13 +286,8 @@ impl Game<'_> {
         if projectile {
             return None;
         }
-        let (stack, kind) = match attacker.filter(|&id| self.ecs_has(id)) {
-            Some(id) => (self.ecs_main_hand(id)?, self.ecs_mob(id)?.kind.to_owned()),
-            None => {
-                let mob = self.remote_entities.iter().find(|m| Some(m.id) == attacker)?;
-                (mob.extra.main_hand_stack()?.clone(), mob.kind.id.clone())
-            }
-        };
+        let id = attacker.filter(|&id| self.ecs_has(id))?;
+        let (stack, kind) = (self.ecs_main_hand(id)?, self.ecs_mob(id)?.kind.to_owned());
         let enchantments = world_stations!(self).enchantments.clone();
         if !enchantments.has_component(&stack, "minecraft:armor_effectiveness") {
             return None;
@@ -313,119 +300,11 @@ impl Game<'_> {
             is_direct: true,
         })
     }
-    /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
-    /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
-    pub(super) fn hurt_by_player(&mut self, index: usize, amount: f32, source: Damage) -> bool {
-        let attack = self.attack_of_who(Some(horizon_client::mobs::Who::Player));
-        let held = self.held().cloned();
-        let aim = self.attacker_aim(source.attacker);
-        let kind = self.remote_entities[index].kind.id.clone();
-        let ctx = EffectContext {
-            this: Some(&kind),
-            attacker: Some("minecraft:player"),
-            direct_attacker: Some("minecraft:player"),
-            is_direct: true,
-            damage_type: Some(match source.kind {
-                horizon_client::mobs::DamageKind::MaceSmash => "minecraft:mace_smash",
-                horizon_client::mobs::DamageKind::Spear => "minecraft:spear",
-                horizon_client::mobs::DamageKind::Thorns => "minecraft:thorns",
-                _ => "minecraft:player_attack",
-            }),
-            items: Some(world_items!(self)),
-            ..Default::default()
-        };
-        let enchantments = &world_stations!(self).enchantments;
-        // CombatRules.getDamageAfterAbsorb: EnchantmentHelper.modifyArmorEffectiveness.
-        let mut breach = |fraction: f32, random: &mut horizon_core::random::LegacyRandom| {
-            enchantments.modify_value(
-                held.as_ref(),
-                "minecraft:armor_effectiveness",
-                &ctx,
-                random,
-                fraction,
-            )
-        };
-        let old_health = self.remote_entities[index].health;
-        // The causing entity's aim, for what turns a blow by where it points
-        // (`SulfurCube.knockback`).
-        self.remote_entities[index].creative_attacker = self.creative;
-        self.remote_entities[index].attacker_aim = aim;
-        self.remote_entities[index].dealt_absorbed = 0;
-        let hurt = self.remote_entities[index].damage_with(
-            crate::game::entity::damage_level_of!(self, &attack),
-            amount,
-            source,
-            Some(&mut breach),
-        );
-        self.remote_entities[index].attacker_aim = None;
-        self.remote_entities[index].creative_attacker = false;
-        // `Guardian.hurtServer`'s spikes answer the attacker inside the hurt,
-        // before `super.hurtServer` returns: those hits land here, where
-        // `Who::Player` is the player whose blow this is. Left in the outbox,
-        // the end-of-tick sweep would deal them with no player in place (a
-        // serving thread's players are all guests).
-        let raised = std::mem::take(&mut self.remote_entities[index].outbox);
-        let (hits, rest): (Vec<_>, Vec<_>) = raised.into_iter().partition(|e| {
-            matches!(
-                e,
-                MobEvent::DamagePlayer { .. } | MobEvent::DamageMob { .. }
-            )
-        });
-        self.remote_entities[index].outbox = rest;
-        let _ = self.handle_mob_events(hits);
-        // LivingEntity.actuallyHurt: Stats.DAMAGE_DEALT_ABSORBED for the attacking player,
-        // awarded here, during that player's own attack (a server's guest has its own
-        // statistics only inside `as_guest`).
-        let absorbed = std::mem::take(&mut self.remote_entities[index].dealt_absorbed);
-        if absorbed > 0 {
-            self.award_custom_stat("damage_dealt_absorbed", absorbed);
-        }
-        if hurt && self.remote_entities[index].health != old_health {
-            self.mob_damage_event(self.remote_entities[index].id);
-        }
-        hurt
-    }
     /// Takes the absorbed tenths a projectile's hit left on the mobs; the shooter gets them
     /// as `damage_dealt_absorbed` when it is the player (`LivingEntity.actuallyHurt`).
     pub(super) fn settle_dealt_absorbed(&mut self, by_player: bool) {
-        let absorbed: i32 = self
-            .remote_entities
-            .iter_mut()
-            .map(|m| std::mem::take(&mut m.dealt_absorbed))
-            .fold(0, i32::saturating_add);
-        if by_player && absorbed > 0 {
-            self.award_custom_stat("damage_dealt_absorbed", absorbed);
-        }
-    }
-    /// `Player.itemAttackInteraction` after the player's hit landed on the mob
-    /// at `index`: the item's `hurtEnemy` (the "used" statistic of a weapon),
-    /// the post-attack enchantments, then `postHurtEnemy` with the weapon's
-    /// wear.
-    pub(super) fn weapon_hit(&mut self, index: usize) {
-        let Some(stack) = self.held().cloned() else {
-            // An empty hand still meets the victim's own post-attack
-            // enchantments (Thorns).
-            self.post_attack(index);
-            return;
-        };
-        let items = self.res.items();
-        let weapon = items
-            .weapon_damage(&stack)
-            .map(|damage| (damage, items.get(&stack.item).map_or(0, |i| i.max_damage)));
-        self.native_hurt_enemy_event(&stack, index);
-        let smash = self.smash_attack();
-        if smash {
-            self.mace_hurt_enemy(index);
-        }
-        if weapon.is_some() {
-            self.award_stat("used", &stack.item, 1);
-        }
-        self.post_attack(index);
-        // MaceItem.postHurtEnemy
-        if smash && let Some(p) = self.player.as_mut() {
-            p.fall_distance = 0.0;
-        }
-        self.weapon_wear(&stack);
+        // RESTE-SANS-ECS: the absorbed tenths of an ECS mob have no field in the bridge yet.
+        let _ = by_player;
     }
     /// `ItemStack.postHurtEnemy`: `hurtAndBreak(weapon.itemDamagePerAttack)` of
     /// the weapon in the acting hand.
@@ -439,16 +318,6 @@ impl Game<'_> {
             && !self.creative
         {
             self.damage_held(per_attack);
-        }
-    }
-    /// `MaceItem.hurtEnemy` for a smash: the fall stops and its damage is
-    /// waived from where the hit landed, the ground or air smash sounds, and
-    /// the knockback around the target.
-    fn mace_hurt_enemy(&mut self, index: usize) {
-        let target_on_ground = self.remote_entities[index].on_ground;
-        if let Some(fall) = self.mace_smash_self(target_on_ground) {
-            let target = &self.remote_entities[index];
-            self.smash_knockback(target.position, Spared::Mob(target.id), fall);
         }
     }
     /// `mace_hurt_enemy` for an ECS mob, on a smash only: whether it is on the ground comes from its view.
@@ -580,13 +449,6 @@ impl Game<'_> {
         ];
         self.level_event_at(2013, on_pos, 750);
         let heavy = if fall > HEAVY_THRESHOLD { 2.0 } else { 1.0 };
-        let player = Some(self.acting_uuid());
-        for m in self.remote_entities.iter_mut().filter(|m| {
-            target != Spared::Mob(m.id) && m.alive() && !m.removed && !ally_of_player(m, player)
-        }) {
-            let resistance = m.knockback_resistance();
-            smash_push(center, heavy, m.position, &mut m.velocity, resistance);
-        }
         for s in self.armor_stand_list().into_iter().filter(|s| !s.marker && target != Spared::Stand(s.id)) {
             self.armor_stand_edit(s.id, |a| smash_push(center, heavy, a.position, &mut a.velocity, 0.0));
         }
@@ -711,18 +573,6 @@ impl Game<'_> {
             )
         };
         let mut victims: Vec<((i32, i32, i32), u32, bool)> = Vec::new();
-        for m in &self.remote_entities {
-            if spared != Spared::Mob(m.id)
-                && m.alive()
-                && !m.removed
-                && !allies.contains(&m.id)
-                && !ally_of_player(m, uuid)
-                && m.bounds().intersects(area)
-                && near(m.position)
-            {
-                victims.push((section(m.position), m.id, false));
-            }
-        }
         for s in &self.armor_stand_list() {
             if !s.marker
                 && spared != Spared::Stand(s.id)
@@ -769,25 +619,6 @@ impl Game<'_> {
                 let len = (kx * kx + kz * kz).sqrt();
                 self.ecs.knockback(id, knock.strength, kx / len, kz / len);
                 continue;
-            }
-            let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
-                continue;
-            };
-            let kind = self.remote_entities[i].kind.id.clone();
-            let kind = format!("minecraft:{}", kind.trim_start_matches("minecraft:"));
-            let amount = self.enchanted_damage(&kind, base, Some(id)) * scale;
-            let source = self.attack_source(from);
-            // hurtServer first; the knockback and post-attack effects follow
-            // only when it landed.
-            let old_health = self.remote_entities[i].health;
-            if self.hurt_by_player(i, amount, source) {
-                if old_health > 0.0 && !self.remote_entities[i].alive() {
-                    self.native_kill_event(i);
-                }
-                let level = crate::game::entity::damage_level_of!(self, &attack);
-                self.remote_entities[i].knockback(level, 0.4, xd, zd, &source, amount);
-                self.remember_mob_player_credit(self.remote_entities[i].id);
-                self.post_attack(i);
             }
         }
         // The ECS mobs in the box, read from the spatial index: each takes the sweep's hurt and knockback through the bridge.

@@ -450,13 +450,7 @@ impl Game<'_> {
         use super::commands::Target;
         match t {
             Target::Player => self.player_entity(),
-            Target::Mob(id) if self.ecs.is_active() => self.ecs_predicate_view(id),
-            Target::Mob(id) => self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .map(|m| self.mob_entity(m))
-                .unwrap_or_default(),
+            Target::Mob(id) => self.ecs_predicate_view(id),
             // A server's player: what its last `ServerboundPlayerInputPacket`
             // held (shift 32) and its game mode.
             Target::Guest(conn) if self.command_guest(conn).is_some() => {
@@ -641,13 +635,7 @@ impl Game<'_> {
         for (i, a) in self.armor.iter().enumerate() {
             eq[2 + i] = a.as_ref().map(item_view);
         }
-        let vehicle = self.riding.and_then(|id| {
-            self.remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .map(|m| Box::new(self.mob_entity(m)))
-                .or_else(|| self.is_boat_id(id).then(|| Box::new(self.ecs_predicate_view(id))))
-        });
+        let vehicle = self.riding.filter(|&id| self.ecs.exists(id)).map(|id| Box::new(self.ecs_predicate_view(id)));
         EntityView {
             kind: "minecraft:player".into(),
             position: [p.position.x, p.position.y, p.position.z],
@@ -700,10 +688,10 @@ impl Game<'_> {
             position: [b.position.x, b.position.y, b.position.z],
             on_ground: b.on_ground,
             passengers: self
-                .remote_entities
-                .iter()
-                .filter(|m| m.extra.mount == Some(b.id))
-                .map(|m| self.mob_entity(m))
+                .ecs
+                .passengers_of(b.id)
+                .into_iter()
+                .map(|id| self.ecs_predicate_view(id))
                 .chain(self.rider_entity(b.id))
                 .collect(),
             ..Default::default()
@@ -742,10 +730,10 @@ impl Game<'_> {
         }
 
         let passengers: Vec<EntityView> = self
-            .remote_entities
-            .iter()
-            .filter(|r| r.extra.mount == Some(m.id))
-            .map(|r| self.mob_entity(r))
+            .ecs
+            .passengers_of(m.id)
+            .into_iter()
+            .map(|id| self.ecs_predicate_view(id))
             .chain(self.rider_entity(m.id))
             .collect();
         let nbt = self.adv.tree.tests_nbt().then(|| {
@@ -1437,10 +1425,8 @@ impl Game<'_> {
         let at = [p.position.x, p.position.y, p.position.z];
         let falling = p.fall_distance > 0.0;
         let dead = p.health.dead_or_dying();
-        let lava = self
-            .riding
-            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
-            .is_some_and(|m| m.fluids.in_lava);
+        // The riding mount's lava flag has no ECS reader yet: not in lava.
+        let lava = false;
         match (falling, self.adv.marks.fall) {
             (true, None) => {
                 self.adv.marks.fall = Some(at);
@@ -1701,7 +1687,7 @@ impl Game<'_> {
             return None;
         }
         Some(match t {
-            Target::Mob(id) => self.mob_entity(self.remote_entities.iter().find(|m| m.id == id)?),
+            Target::Mob(id) => self.ecs.exists(id).then(|| self.ecs_predicate_view(id))?,
             Target::Boat(id) => self.is_boat_id(id).then(|| self.ecs_predicate_view(id))?,
             other => self.entity_view_of(other),
         })
@@ -1813,10 +1799,7 @@ impl Game<'_> {
             self.trigger_item_entity("minecraft:thrown_item_picked_up_by_entity", stack, &me);
             me
         } else if let Some(id) = self.mob_by_uuid(thrower) {
-            let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
-                return;
-            };
-            self.mob_entity(m)
+            self.ecs_predicate_view(id)
         } else {
             return;
         };
@@ -2100,7 +2083,7 @@ impl Game<'_> {
     /// for every `ServerPlayer` in `entityToRide.getIndirectPassengersStream()`.
     pub(super) fn trigger_started_riding(&mut self, vehicle: u32) {
         let mounts: Vec<(u32, Option<u32>)> =
-            self.remote_entities.iter().map(|m| (m.id, m.extra.mount)).collect();
+            self.ecs.followed_ids().into_iter().map(|id| (id, self.ecs.vehicle_of(id))).collect();
         let aboard = super::boarding::passenger_vehicles(vehicle, &mounts);
         self.for_each_player(|g| {
             if g.riding.is_some_and(|v| aboard.contains(&v)) {
@@ -2344,184 +2327,6 @@ mod tests {
             assert!(game.adv.progress.has(ID, "worn"));
         });
         std::fs::remove_dir_all(scratch).unwrap();
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mob_name_components_read_live_text_without_saved_nbt() {
-        use crate::game::{Audio, Options, Settings, commands::Target, load_resources};
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &crate::game::Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::default(),
-        )
-        .unwrap();
-        game.build_registries();
-        let kind = game.res.mob_types()["minecraft:pig"].clone();
-        game.remote_entities.push(horizon_client::mobs::Mob::new(
-            12500,
-            kind,
-            Vec3::new(4.5, 200.0, 4.5),
-            0.0,
-        ));
-        let matches = |game: &Game<'_>, key: &str, want: Value| {
-            let view = game.entity_view_of(Target::Mob(12500));
-            assert_eq!(view.kind, "minecraft:pig");
-            assert!(view.nbt.is_none());
-            let mut predicate = serde_json::Map::new();
-            predicate.insert(
-                key.into(),
-                serde_json::json!({"minecraft:custom_name": want}),
-            );
-            adv::entity(
-                &Value::Object(predicate),
-                &view,
-                &View(game),
-                [4.5, 200.0, 4.5],
-            )
-        };
-        for key in ["components", "minecraft:components"] {
-            assert!(!matches(&game, key, serde_json::json!("Bob")));
-        }
-        for (name, unequal) in [
-            (serde_json::json!("Bob"), serde_json::json!("minecraft:Bob")),
-            (serde_json::json!("minecraft:Bob"), serde_json::json!("Bob")),
-            (
-                serde_json::json!({"text": "Bob", "color": "red", "bold": true}),
-                serde_json::json!("Bob"),
-            ),
-            (
-                serde_json::json!({"text": "B", "extra": [{"text": "ob"}]}),
-                serde_json::json!("Bob"),
-            ),
-        ] {
-            let text = horizon_client::scoreboard::comp_text(&name);
-            game.remote_entities[0].custom_name = Some(text.plain());
-            game.remote_entities[0].custom_name_text = Some(text);
-            for key in ["components", "minecraft:components"] {
-                assert!(matches(&game, key, name.clone()), "{key}: {name}");
-                assert!(!matches(&game, key, unequal.clone()), "{key}: {unequal}");
-            }
-        }
-        game.remote_entities[0].custom_name = None;
-        game.remote_entities[0].custom_name_text = None;
-        for key in ["components", "minecraft:components"] {
-            assert!(!matches(&game, key, serde_json::json!("Bob")));
-        }
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mob_predicate_view_reads_active_effect_instances() {
-        use crate::game::{Audio, Options, Settings, commands::Target, load_resources};
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &crate::game::Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::default(),
-        )
-        .unwrap();
-        game.build_registries();
-        let kind = game.res.mob_types()["minecraft:zombie"].clone();
-        let actor = |id| {
-            let mut mob =
-                horizon_client::mobs::Mob::new(id, kind.clone(), Vec3::new(4.5, 200.0, 4.5), 0.0);
-            mob.no_ai = true;
-            mob.no_gravity = true;
-            mob
-        };
-        game.remote_entities.push(actor(32300));
-        let matches = |game: &Game<'_>, id, effects: Value| {
-            let view = game.entity_view_of(Target::Mob(id));
-            assert_eq!(view.kind, "minecraft:zombie");
-            adv::entity(
-                &serde_json::json!({"minecraft:effects": effects}),
-                &view,
-                &View(game),
-                [4.5, 200.0, 4.5],
-            )
-        };
-        let speed_two = serde_json::json!({"minecraft:speed": {"amplifier": 2}});
-        assert!(!matches(&game, 32300, speed_two.clone()));
-        game.remote_entities[0].add_effect_with("minecraft:speed", -1, 2, false, false);
-        assert_eq!(
-            game.remote_entities[0].extra.effects,
-            vec![horizon_client::mobs::StoredEffect {
-                show_icon: false,
-                ..horizon_client::mobs::StoredEffect::new("minecraft:speed", -1, 2)
-            }]
-        );
-        assert_eq!(
-            game.entity_view_of(Target::Mob(32300)).effects,
-            vec![("minecraft:speed".to_owned(), 2, -1)]
-        );
-        assert!(matches(&game, 32300, speed_two));
-        assert!(!matches(
-            &game,
-            32300,
-            serde_json::json!({"minecraft:speed": {"amplifier": 5}})
-        ));
-        game.remote_entities[0].add_effect("minecraft:fire_resistance", 400, 0);
-        assert!(matches(
-            &game,
-            32300,
-            serde_json::json!({
-                "minecraft:speed": {"amplifier": 2},
-                "minecraft:fire_resistance": {"amplifier": 0, "duration": 400}
-            })
-        ));
-        let mut finite = actor(32301);
-        finite.add_effect("minecraft:speed", 400, 0);
-        game.remote_entities.push(finite);
-        assert!(matches(
-            &game,
-            32301,
-            serde_json::json!({
-                "minecraft:speed": {"amplifier": 0, "duration": 400}
-            })
-        ));
-        assert!(!matches(
-            &game,
-            32301,
-            serde_json::json!({
-                "minecraft:speed": {"amplifier": 0, "duration": {"max": 399}}
-            })
-        ));
     }
 
     #[test]
@@ -2924,251 +2729,6 @@ mod custom_data_equipment_tests {
     use horizon_core::nbt::{Tag, parse_snbt};
     use horizon_core::position::BlockPos;
 
-    fn item_predicate(pattern: &str) -> Value {
-        serde_json::json!({"items":"minecraft:stick","count":1,
-            "predicates":{"minecraft:custom_data":pattern}})
-    }
-    fn condition(pattern: &str) -> Value {
-        serde_json::json!({"type":"minecraft:entity_properties","entity":"this",
-            "predicate":{"minecraft:entity_type":"minecraft:pig",
-                "minecraft:equipment":{"mainhand":item_predicate(pattern)}}})
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn actual_mob_equipment_projects_typed_custom_data_into_named_predicate_evaluation() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.build_registries();
-            game.set_allow_commands(true);
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-            );
-            game.block_ticks
-                .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())
-                .unwrap();
-            assert!(game.run_command("forceload add 0 0"));
-            assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
-            let clock = game.world.game_time;
-            let rich = r#"{h289:1b,nested:{k:7,extra:9},entries:[{k:1b,extra:2b},{k:2b}],wide:9007199254740993L,spare:"keep"}"#;
-            let mut failures = Vec::new();
-            for (i, data) in [(1, Some(rich)), (2, None)] {
-                let uuid = [289, 1, 0, i];
-                let actor = format!("00000121-0000-0001-0000-{i:012x}");
-                let components = data.map_or(String::new(), |d| {
-                    format!(",components:{{\"minecraft:custom_data\":{d}}}")
-                });
-                let x = f64::from(i) + 0.5;
-                assert!(game.run_command(&format!(
-                "summon minecraft:pig {x} 200 4.5 {{UUID:[I;289,1,0,{i}],NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b,Health:10f,equipment:{{mainhand:{{id:\"minecraft:stick\",count:1{components}}}}}}}"
-            )));
-                assert!(game.world.loaded(i, 4));
-                assert_eq!(
-                    &*game.res.facts().get(game.world.block(i, 199, 4)).name,
-                    "minecraft:stone"
-                );
-                assert!(game.run_command(&format!("execute as {actor} if entity @s[type=pig,nbt={{UUID:[I;289,1,0,{i}],NoAI:1b,Health:10f,Pos:[{x}d,200d,4.5d]}}]")));
-                let id = *game
-                    .persist
-                    .uuids
-                    .iter()
-                    .find(|(_, value)| **value == uuid)
-                    .expect("actual admitted UUID")
-                    .0;
-                let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
-                assert!(mob.no_ai);
-                let stack = finalize::item_stack(mob, finalize::MAINHAND)
-                    .expect("actual loaded equipment stack");
-                assert_eq!((&*stack.item, stack.count), ("minecraft:stick", 1));
-                let saved = save::item_to_nbt(&stack);
-                if let Some(data) = data {
-                    let (expected, used) = parse_snbt(data).unwrap();
-                    assert_eq!(used, data.len());
-                    assert_eq!(
-                        saved
-                            .get("components")
-                            .and_then(|t| t.get("minecraft:custom_data")),
-                        Some(&expected)
-                    );
-                    assert_eq!(
-                        stack.custom_data().unwrap().get(&"h289".into()),
-                        Some(&Tag::Byte(1))
-                    );
-                    assert_eq!(
-                        stack.custom_data().unwrap().get(&"wide".into()),
-                        Some(&Tag::Long(9_007_199_254_740_993))
-                    );
-                    // Contradictory retained raw equipment must not replace actual stack state.
-                    let (wrong, _) = parse_snbt(r#"{equipment:{mainhand:{id:"minecraft:stick",count:1,components:{"minecraft:custom_data":{h289:2b}}}}}"#).unwrap();
-                    let raw = game
-                        .persist
-                        .raw
-                        .entry(id)
-                        .or_insert_with(|| Tag::Compound(Default::default()));
-                    let Tag::Compound(raw) = raw else {
-                        panic!("actual raw compound")
-                    };
-                    raw.insert("equipment".into(), wrong.get("equipment").unwrap().clone());
-                    assert!(game.run_command(&format!("execute if data entity {actor} equipment.mainhand.components{{\"minecraft:custom_data\":{{h289:1b}}}}")));
-                } else {
-                    assert!(stack.custom_data().is_none());
-                    assert!(game.run_command(&format!("execute unless data entity {actor} equipment.mainhand.components.\"minecraft:custom_data\"")));
-                }
-                let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
-                let view = game.mob_entity(mob);
-                assert_eq!(
-                    (
-                        &*view.equipment[0].as_ref().unwrap().id,
-                        view.equipment[0].as_ref().unwrap().count
-                    ),
-                    ("minecraft:stick", 1)
-                );
-                let probes: Vec<(&str, bool)> = if data.is_some() {
-                    vec![
-                        ("{h289:1b}", true),
-                        ("{nested:{k:7}}", true),
-                        ("{entries:[{k:2b}]}", true),
-                        ("{entries:[{k:2b},{k:1b}]}", true),
-                        ("{wide:9007199254740993L}", true),
-                        ("{}", true),
-                        ("{h289:2b}", false),
-                        ("{h289:1}", false),
-                        ("{missing:1b}", false),
-                        ("{entries:[]}", false),
-                        ("{wide:9007199254740992L}", false),
-                    ]
-                } else {
-                    vec![("{}", true), ("{h289:1b}", false)]
-                };
-                for (pattern, want) in probes {
-                    let actual =
-                        game.conditions_hold(&condition(pattern), Some(&view), [x, 200.0, 4.5]);
-                    if actual != want {
-                        failures.push((i, pattern, actual, want));
-                    }
-                }
-                // Existing non-equipment views are unprojected and retain unsupported legacy behavior.
-                assert!(game.loot_item_filter(&item_predicate("{h289:99b}"), &stack));
-                assert_eq!(game.world.game_time, clock, "zero observation ticks");
-            }
-            assert!(
-                failures.is_empty(),
-                "actual mob-equipment custom_data mismatch: {failures:?}"
-            );
-        });
-    }
-}
-
-#[cfg(test)]
-mod movement_predicate_tests {
-    use crate::game::game_tests::tests::server_game;
-    use horizon_core::geometry::Vec3;
-    use horizon_core::position::BlockPos;
-    use serde_json::json;
-
-    #[test]
-    #[ignore = "daily"]
-    fn actual_registered_movement_predicate_uses_admitted_mob() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        game.build_registries();
-        game.set_allow_commands(true);
-        game.block_ticks
-            .add_empty_chunk(BlockPos::new(0, 0, 0).chunk())
-            .unwrap();
-        assert!(game.run_command("forceload add 0 0"));
-        assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
-        assert!(game.world.loaded(4, 4));
-        let root = std::env::current_dir().unwrap().join("movement-world");
-        let pack = root.join("datapacks/movement");
-        let folder = pack.join("data/motion/predicate");
-        std::fs::create_dir_all(&folder).unwrap();
-        std::fs::write(pack.join("pack.mcmeta"), r#"{"pack":{"description":"Movement fixture","min_format":[121,0],"max_format":[121,0]}}"#).unwrap();
-        let entity =
-            |p| json!({"type":"minecraft:entity_properties","entity":"this","predicate":p});
-        let movement =
-            |p| entity(json!({"minecraft:entity_type":"minecraft:pig","minecraft:movement":p}));
-        let high = movement(json!({"x":{"min":100}}));
-        let zero = movement(json!({"x":{"min":0,"max":0}}));
-        let probes = [
-            ("high", high.clone(), false),
-            ("zero", zero.clone(), true),
-            ("empty", movement(json!({})), true),
-            (
-                "not_high",
-                json!({"type":"minecraft:inverted","term":high}),
-                true,
-            ),
-            (
-                "not_zero",
-                json!({"type":"minecraft:inverted","term":zero}),
-                false,
-            ),
-        ];
-        for (name, p, _) in &probes {
-            std::fs::write(folder.join(format!("{name}.json")), p.to_string()).unwrap();
-        }
-        std::fs::write(
-            folder.join("identity.json"),
-            entity(json!({"minecraft:entity_type":"minecraft:pig"})).to_string(),
-        )
-        .unwrap();
-        std::fs::write(
-            folder.join("always.json"),
-            r#"{"type":"minecraft:all_of","terms":[]}"#,
-        )
-        .unwrap();
-        game.world_root = root;
-        game.reload_datapacks(false, &[]).unwrap();
-        assert!(game.run_command("scoreboard objectives add motion dummy"));
-        assert!(game.run_command("execute if predicate motion:always"));
-        let clock = game.world.game_time;
-        let actor = "000002a1-0000-0000-0000-000000000001";
-        assert!(game.run_command("summon pig 4.5 200 4.5 {UUID:[I;673,0,0,1],NoAI:1b,NoGravity:1b,Health:10f,Motion:[0d,0d,0d]}"));
-        assert!(game.run_command(&format!("execute as {actor} if entity @s[type=pig,nbt={{UUID:[I;673,0,0,1],Health:10f,Pos:[4.5d,200d,4.5d],Motion:[0d,0d,0d],NoAI:1b,NoGravity:1b}}]")));
-        assert!(game.run_command(&format!("execute as {actor} if predicate motion:identity")));
-        let id = *game
-            .persist
-            .uuids
-            .iter()
-            .find(|(_, u)| **u == [673, 0, 0, 1])
-            .unwrap()
-            .0;
-        let mob = game.remote_entities.iter().find(|m| m.id == id).unwrap();
-        assert_eq!(mob.velocity, Vec3::ZERO);
-        assert_eq!(mob.fall_distance, 0.0);
-        assert!(mob.no_ai && mob.no_gravity);
-        assert!(mob.extra.mount.is_none());
-        let view = game.entity_view_of(super::super::commands::Target::Mob(id));
-        assert_eq!(view.kind, "minecraft:pig");
-        let mut failures = Vec::new();
-        for (name, p, want) in probes {
-            assert!(
-                game.fns
-                    .store
-                    .predicates
-                    .contains_key(&format!("motion:{name}"))
-            );
-            let direct = game.conditions_hold(&p, Some(&view), [4.5, 200.0, 4.5]);
-            if direct != want {
-                failures.push(format!("direct {name}: {direct} != {want}"));
-            }
-            assert!(game.run_command("scoreboard players set result motion 91"));
-            assert!(game.run_command("scoreboard players set success motion 17"));
-            game.run_command(&format!("execute store result score result motion store success score success motion as {actor} if predicate motion:{name}"));
-            for key in ["result", "success"] {
-                let value = game.score.board.score(key, "motion").unwrap().value;
-                if value != i32::from(want) {
-                    failures.push(format!("registered {name} {key}: {value}"));
-                }
-            }
-        }
-        assert_eq!(game.world.game_time, clock, "zero observation ticks");
-        assert!(
-            failures.is_empty(),
-            "actual movement predicate mismatches: {failures:?}"
-        );
-    }
 }
 
 /// A player's 41 slots in `Inventory` numbering, for

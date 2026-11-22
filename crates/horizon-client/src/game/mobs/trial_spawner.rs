@@ -68,17 +68,21 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
     }
     fn entity_block(&self, uuid: Uuid) -> Option<[i32; 3]> {
         let (id, _) = self.game.persist.uuids.iter().find(|(_, u)| **u == uuid)?;
-        let m = self.game.remote_entities.iter().find(|m| m.id == *id)?;
-        (!m.removed && m.alive())
-            .then(|| [m.position.x, m.position.y, m.position.z].map(|v| v.floor() as i32))
+        let id = *id;
+        let at = self.game.ecs.position(id)?;
+        self.game
+            .ecs
+            .alive(id)
+            .then(|| at.map(|v| v.floor() as i32))
     }
     fn entity_box(&self, uuid: Uuid) -> Option<([f64; 3], f32)> {
         let (id, _) = self.game.persist.uuids.iter().find(|(_, u)| **u == uuid)?;
-        let m = self.game.remote_entities.iter().find(|m| m.id == *id)?;
-        let b = m.bounds();
-        (!m.removed && m.alive()).then(|| {
+        let id = *id;
+        let at = self.game.ecs.position(id)?;
+        let b = self.game.ecs.bounds(id)?;
+        self.game.ecs.alive(id).then(|| {
             (
-                [m.position.x, m.position.y, m.position.z],
+                at,
                 (b.max_position().y - b.min_position().y) as f32,
             )
         })

@@ -306,10 +306,7 @@ impl Game<'_> {
                         AttributeWrite::ResetBase => self.ecs.reset_attribute_base(mob, name),
                     });
                 }
-                let m = self.remote_entities.iter_mut().find(|m| m.id == mob && !m.removed)?;
-                if let Some(a) = own_attribute(m, name) {
-                    return Some(write_own_attribute(m, a, write));
-                }
+                // RESTE-SANS-ECS: the mob's own attributes (`own_attribute`) have no ECS write yet.
                 self.write_generic_attribute(t, name, id, write, default)
             }
             Target::Stand(_) => self.write_generic_attribute(t, name, id, write, default),
@@ -334,56 +331,10 @@ impl Game<'_> {
                 write.clone().apply(value, observer, default)
             })?
             .ok()?;
-        if done {
-            self.write_live_attributes(t, name, write, default);
-        }
+        // RESTE-SANS-ECS: a mob's live attribute map (`extra.live`) has no ECS write yet.
         Some(done)
     }
 
-    /// The same write on a mob's or a stand's live map: its base and
-    /// permanent modifiers go to the map's saved entries, a transient modifier
-    /// to its own list, so a rebuilt map has them again.
-    fn write_live_attributes(
-        &mut self,
-        t: Target,
-        name: &str,
-        write: AttributeWrite,
-        default: f64,
-    ) {
-        let catalog = self.motion.attributes.clone();
-        let (live, entity, seed) = match t {
-            Target::Mob(id) => {
-                let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
-                    return;
-                };
-                // The seed is only read when the map is not built yet.
-                let seed = if m.extra.live.built().is_none() {
-                    horizon_client::entity_nbt::attribute_entries(m)
-                        .into_iter()
-                        .map(|(_, entry)| entry)
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                (&mut m.extra.live, m.kind.id.clone(), seed)
-            }
-            _ => return,
-        };
-        let record = write.transient_record().map(|(id, m)| (id.to_owned(), m));
-        let done = live
-            .edit(
-                &catalog,
-                &entity,
-                name,
-                true,
-                || seed,
-                |value, observer| write.apply(value, observer, default),
-            )
-            .unwrap_or(false);
-        if done && let Some((id, modifier)) = record {
-            live.keep_transient(name, &id, modifier);
-        }
-    }
 }
 
 #[cfg(test)]
@@ -393,7 +344,6 @@ mod tests {
     use crate::game::native_merchant_refs::tests::spawn_id;
     use horizon_client::{entities::ArmorStand, items::ItemStack};
     use horizon_core::geometry::Vec3;
-    use horizon_items::equipment::{CHEST, HEAD};
     use mod_api::EquipmentSlot;
 
     fn stack(item: &str) -> Option<ItemStack> {

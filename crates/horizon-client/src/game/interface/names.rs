@@ -11,7 +11,7 @@ use horizon_client::mobs::{Mob, Who};
 
 impl Game<'_> {
     /// A named name tag names the mob under the crosshair.
-    pub(super) fn name_mob(&mut self, index: usize) -> bool {
+    pub(super) fn name_mob(&mut self, id: u32) -> bool {
         // `NameTagItem`: the mob takes the tag's `custom_name` component, style and all.
         let Some((name, text)) = self
             .held()
@@ -26,17 +26,23 @@ impl Game<'_> {
         else {
             return false;
         };
-        let m = &mut self.remote_entities[index];
-        if !m.alive() {
+        if !self.ecs.alive(id) {
             return false;
         }
-        let entity_id = m.id;
+        let entity_id = id;
         let entity_name = name.clone();
-        // NameTagItem.interactLivingEntity: setCustomName with the tag's whole name.
-        m.custom_name = Some(name);
-        m.custom_name_text = text;
-        m.persistent = true;
-        let at = [m.position.x, m.position.y, m.position.z];
+        // NameTagItem.interactLivingEntity: setCustomName with the tag's whole name, and the persistence it sets.
+        let tag = match &text {
+            Some(text) => horizon_client::scoreboard::component_tag(&text.component()),
+            None => horizon_protocol::text::literal(&name),
+        };
+        let mut patch = horizon_core::nbt::Compound::new();
+        patch.insert("CustomName".into(), tag);
+        patch.insert("PersistenceRequired".into(), horizon_core::nbt::Tag::Byte(1));
+        self.ecs_merge_mob(id, &patch);
+        let Some(at) = self.ecs.position(id) else {
+            return false;
+        };
         // itemStack.shrink(1); `Player.interactOn` puts a creative player's
         // count back, which `consume_held` skips for them.
         self.consume_held();

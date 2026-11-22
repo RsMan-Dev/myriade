@@ -49,17 +49,6 @@ impl Game<'_> {
                     self.ecs.despawn(e);
                 }
             }
-        } else {
-            for m in &mut self.remote_entities {
-                if !m.removed
-                    && intersects(
-                        standing(at(m.position), f64::from(m.width()), f64::from(m.height())),
-                        bounds,
-                    )
-                {
-                    m.removed = true;
-                }
-            }
         }
         // EntityType.ITEM and EXPERIENCE_ORB.
         for item in self.ecs.item_views() {

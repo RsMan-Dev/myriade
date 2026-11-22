@@ -118,7 +118,6 @@ impl Game<'_> {
     /// hangings, armor stands, cushions, tridents, rockets and primed TNT.
     fn entity_count(&self) -> usize {
         self.ecs.entity_count()
-            + self.remote_entities.iter().filter(|m| !m.removed).count()
             + self.ecs.item_ids().len()
             + self.ecs.cart_ids().len()
             + self.ecs.boat_ids().len()

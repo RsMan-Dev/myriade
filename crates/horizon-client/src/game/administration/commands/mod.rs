@@ -577,8 +577,7 @@ impl Game<'_> {
                 let block = Text::translate(&format!("block.{block}"), &[]);
                 Text::translate("entity.minecraft.falling_block_type", &[block])
             }
-            Target::Mob(id) if self.ecs.is_active() => self.ecs_mob_name(id),
-            Target::Mob(id) => self.mob_command_name(id),
+            Target::Mob(id) => self.ecs_mob_name(id),
             other => {
                 // Entity.getDisplayName: the CustomName component, else the type.
                 let custom = super::native_entities::target_id(other)
@@ -650,9 +649,7 @@ impl Game<'_> {
                     candidates.extend(self.level_candidates());
                 }
                 // The mobs the ECS holds, found by its index (`EcsLevel::select`).
-                if self.ecs.is_active() {
-                    candidates.extend(self.ecs_mob_candidates(s, origin).into_iter().map(Target::Mob));
-                }
+                candidates.extend(self.ecs_mob_candidates(s, origin).into_iter().map(Target::Mob));
             }
             out.extend(self.native_selector_kept(s, candidates, origin));
             if let Some(back) = back {
@@ -689,25 +686,25 @@ impl Game<'_> {
     /// The type, position, name and facing a selector reads of a candidate: an ECS mob's from its level, the others' from the host.
     fn selector_kind(&self, t: Target) -> String {
         match t {
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.kind(id).unwrap_or_default().to_owned(),
+            Target::Mob(id) => self.ecs.kind(id).unwrap_or_default().to_owned(),
             _ => self.target_type(t),
         }
     }
     fn selector_position(&self, t: Target) -> Option<[f64; 3]> {
         match t {
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.position(id),
+            Target::Mob(id) => self.ecs.position(id),
             _ => self.target_position(t),
         }
     }
     fn selector_name(&self, t: Target) -> String {
         match t {
-            Target::Mob(id) if self.ecs.is_active() => self.ecs_mob_name(id).plain(),
+            Target::Mob(id) => self.ecs_mob_name(id).plain(),
             _ => self.target_plain_name(t),
         }
     }
     fn selector_rotation(&self, t: Target) -> [f32; 2] {
         match t {
-            Target::Mob(id) if self.ecs.is_active() => self.ecs_mob_rotation(id),
+            Target::Mob(id) => self.ecs_mob_rotation(id),
             _ => self.target_rotation(t),
         }
     }
@@ -947,7 +944,6 @@ impl Game<'_> {
     ) -> Option<R> {
         // A mob the ECS holds is in the level in place: the ECS is that level's.
         if let Target::Mob(id) | Target::Frame(id) | Target::Painting(id) = t
-            && self.ecs.is_active()
             && self.ecs.exists(id)
         {
             return Some(f(self));
@@ -1415,22 +1411,12 @@ impl Game<'_> {
             return;
         }
         let _ = self.in_target_level(t, |g| {
-            if let Target::Mob(id) = t
-                && g.ecs.is_active()
-            {
+            if let Target::Mob(id) = t {
                 // The ECS stops the mob's path and lands it (fall-flying kept there).
                 if let (Some(e), Some(at)) = (g.ecs.entity_of(id), g.ecs.position(id)) {
                     g.ecs.land(e, Vec3::new(at[0], at[1], at[2]));
                 }
                 return;
-            }
-            if let Target::Mob(id) = t
-                && let Some(m) = g.remote_entities.iter_mut().find(|m| m.id == id)
-            {
-                m.nav_stop();
-                if m.extra.fall_flying {
-                    return;
-                }
             }
             target_entity_mut!(g, t, e => {
                 e.velocity_mut().y = 0.0;
@@ -1575,8 +1561,8 @@ impl Game<'_> {
                 }
             }
             // A frame or a painting is an ECS entity that hangs on a block: it takes the block that holds the position.
-            Target::Mob(id) if self.ecs.is_active() && self.ecs_hangs(id) => self.teleport_hanging(id, v),
-            Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) | Target::Item(id) if self.ecs.is_active() => {
+            Target::Mob(id) if self.ecs_hangs(id) => self.teleport_hanging(id, v),
+            Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) | Target::Item(id) => {
                 // Entity.teleport, as the ECS's mob: the same stopRiding, then the place, the motion and the turn.
                 self.dismount_mob(id);
                 if let Some(e) = self.ecs.entity_of(id) {
@@ -1587,43 +1573,6 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Mob(id) => {
-                // Entity.teleport: stopRiding() before the entity is placed,
-                // which a command's transition always does (a command's
-                // transition is never asPassenger). A rider moved without this
-                // is seated again by the next sync, so nothing moves.
-                self.dismount_mob(id);
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    m.ai.nav.stop();
-                    m.velocity = teleport_velocity(m.velocity, relative, m.extra.fall_flying);
-                    if !m.extra.fall_flying {
-                        m.on_ground = true;
-                    }
-                    m.position = v;
-                    m.previous = v;
-                    m.needs_sync = true;
-                    // Entity.teleportSetPosition: setYRot, setYHeadRot, setXRot
-                    // (clamped to -90..90), then setOldRot.
-                    if let Some([yaw, pitch]) = rotation {
-                        if yaw.is_finite() {
-                            m.yaw = yaw;
-                            m.body_yaw = yaw;
-                            m.head_yaw = yaw;
-                        }
-                        if !pitch.is_nan() {
-                            m.head_pitch = entity_pitch(pitch);
-                        }
-                        m.previous_yaw = m.yaw;
-                        m.previous_head_pitch = m.head_pitch;
-                    }
-                }
-            }
-            // A projectile is an ECS entity: its place is written by the ECS teleport above.
-            Target::Projectile(_) => {}
-            // An orb is an ECS entity as well: its place is written by the ECS teleport above.
-            Target::Orb(_) => {}
-            // An item is one too: its place is written by the ECS teleport above.
-            Target::Item(_) => {}
             Target::Stand(id) => {
                 self.armor_stand_edit(id, |a| {
                     a.position = v;
@@ -2186,19 +2135,9 @@ impl Game<'_> {
         }
         let name;
         if kind == "minecraft:ender_dragon" || self.res.mob_types().contains_key(&kind) {
-            let id = if self.ecs.is_active() {
-                self.ecs_spawn(&kind, pos, None)
-                    .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?
-            } else {
-                self.spawn_mob_spawned(
-                    &short,
-                    pos,
-                    super::creatures::SpawnSite::Finalizing(
-                        horizon_client::mobs::spawn_rules::Reason::Command,
-                    ),
-                )
-                .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?
-            };
+            let id = self
+                .ecs_spawn(&kind, pos, None)
+                .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
             name = self.target_name(Target::Mob(id));
         } else {
             match short.as_str() {
@@ -3999,43 +3938,12 @@ mod teleport_pitch_tests {
     #[ignore = "daily"]
     fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
         use super::Target;
-        use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::default(),
-        )
-        .unwrap();
-        let kind = game
-            .res
-            .mob_types()
-            .get("minecraft:zombie")
-            .unwrap()
-            .clone();
-        game.remote_entities.push(horizon_client::mobs::Mob::new(
-            42,
-            kind,
-            horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
-            0.0,
-        ));
+        use crate::game::ecs::test_support::ecs_game_with;
+        fn set_mob_rotation(game: &mut crate::game::Game<'_>, id: u32, yaw: f32, pitch: f32) {
+            let e = game.ecs.entity_of(id).unwrap();
+            game.ecs.set_rotation(e, yaw, pitch);
+        }
+        let (mut game, id) = ecs_game_with("minecraft:zombie", [0.0; 3]);
         for (rotation, expected) in [
             ([40.0, f32::NAN], [40.0, 20.0]),
             ([f32::INFINITY, 30.0], [10.0, 30.0]),
@@ -4046,10 +3954,9 @@ mod teleport_pitch_tests {
             game.pitch = 20.0;
             game.teleport_to_in_level(Target::Player, [0.0; 3], Some(rotation), [false; 3], true);
             assert_eq!([game.yaw, game.pitch], expected);
-            game.remote_entities[0].yaw = 10.0;
-            game.remote_entities[0].head_pitch = 20.0;
-            game.teleport_to_in_level(Target::Mob(42), [0.0; 3], Some(rotation), [false; 3], true);
-            assert_eq!([game.remote_entities[0].yaw, game.remote_entities[0].head_pitch], expected);
+            set_mob_rotation(&mut game, id, 10.0, 20.0);
+            game.teleport_to_in_level(Target::Mob(id), [0.0; 3], Some(rotation), [false; 3], true);
+            assert_eq!(game.ecs_mob_rotation(id), expected);
         }
         game.build_registries();
         game.set_allow_commands(true);
@@ -4059,7 +3966,7 @@ mod teleport_pitch_tests {
             ("tp @e[type=minecraft:zombie,limit=1] 0 0 0 0 270", -90.0),
         ] {
             assert!(game.run_command(command), "{command}");
-            assert_eq!(game.remote_entities[0].head_pitch, expected, "{command}");
+            assert_eq!(game.ecs_mob_rotation(id)[1], expected, "{command}");
         }
         for (source, target, angle, expected) in [
             (90.0, 90.0, "~100", 90.0),
@@ -4068,25 +3975,28 @@ mod teleport_pitch_tests {
             (0.0, 90.0, "~-100", 90.0),
         ] {
             game.pitch = source;
-            game.remote_entities[0].head_pitch = target;
+            let yaw = game.ecs_mob_rotation(id)[0];
+            set_mob_rotation(&mut game, id, yaw, target);
             assert!(game.run_command(&format!(
                 "tp @e[type=minecraft:zombie,limit=1] 0 0 0 0 {angle}"
             )));
-            assert_eq!(game.remote_entities[0].head_pitch, expected);
+            assert_eq!(game.ecs_mob_rotation(id)[1], expected);
         }
         game.yaw = 190.0;
-        game.remote_entities[0].yaw = 170.0;
+        let pitch = game.ecs_mob_rotation(id)[1];
+        set_mob_rotation(&mut game, id, 170.0, pitch);
         assert!(game.run_command("tp @e[type=minecraft:zombie,limit=1] 0 0 0 ~ ~"));
-        assert_eq!(game.remote_entities[0].yaw, 190.0, "relative yaw wraps the delta");
+        assert_eq!(game.ecs_mob_rotation(id)[0], 190.0, "relative yaw wraps the delta");
 
-        game.remote_entities[0].head_pitch = 360.0;
+        let yaw = game.ecs_mob_rotation(id)[0];
+        set_mob_rotation(&mut game, id, yaw, 360.0);
         assert!(
             game.run_command(
                 "tp @e[type=minecraft:zombie,limit=1] @e[type=minecraft:zombie,limit=1]"
             )
         );
         assert_eq!(
-            game.remote_entities[0].head_pitch, 0.0,
+            game.ecs_mob_rotation(id)[1], 0.0,
             "destination rotation wraps too"
         );
 
@@ -4095,18 +4005,17 @@ mod teleport_pitch_tests {
             assert!(game.run_command(&format!(
                 "rotate @e[type=minecraft:zombie,limit=1] 0 {pitch}"
             )));
-            assert_eq!(game.remote_entities[0].head_pitch, expected);
+            assert_eq!(game.ecs_mob_rotation(id)[1], expected);
         }
         for (yaw, pitch, expected) in [
             ("40", overflow.as_str(), [40.0, 20.0]),
             (overflow.as_str(), "30", [10.0, 30.0]),
         ] {
-            game.remote_entities[0].yaw = 10.0;
-            game.remote_entities[0].head_pitch = 20.0;
+            set_mob_rotation(&mut game, id, 10.0, 20.0);
             assert!(game.run_command(&format!(
                 "tp @e[type=minecraft:zombie,limit=1] 0 0 0 {yaw} {pitch}"
             )));
-            assert_eq!([game.remote_entities[0].yaw, game.remote_entities[0].head_pitch], expected);
+            assert_eq!(game.ecs_mob_rotation(id), expected);
         }
     }
 
@@ -4368,149 +4277,10 @@ mod fake_travel_tests {
 }
 
 #[cfg(test)]
-mod teleport_rider_tests {
-    #[test]
-    #[ignore = "daily"]
-    fn a_vehicle_carries_its_riders_and_a_rider_leaves_its_vehicle() {
-        use super::Target;
-        use horizon_core::geometry::Vec3;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let horse = game.res.mob_types().get("minecraft:horse").unwrap().clone();
-            let villager = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            // A villager riding a horse, 30 degrees off it.
-            game.remote_entities.push(horizon_client::mobs::Mob::new(
-                42,
-                horse,
-                Vec3::new(3.0, 64.0, 5.0),
-                0.0,
-            ));
-            let mut rider =
-                horizon_client::mobs::Mob::new(43, villager, Vec3::new(3.0, 64.5, 5.0), 30.0);
-            rider.extra.mount = Some(42);
-            game.remote_entities.push(rider);
-            // Entity.teleportPassengers: the rider keeps its offset from the
-            // vehicle and turns by what the vehicle turned.
-            game.teleport_to_in_level(
-                Target::Mob(42),
-                [10.0, 70.0, -4.0],
-                Some([90.0, 0.0]),
-                [false; 3],
-                true,
-            );
-            let vehicle = game.remote_entities.iter().find(|m| m.id == 42).unwrap();
-            assert_eq!(vehicle.position, Vec3::new(10.0, 70.0, -4.0));
-            let rider = game.remote_entities.iter().find(|m| m.id == 43).unwrap();
-            assert_eq!(rider.position, Vec3::new(10.0, 70.5, -4.0));
-            assert_eq!(rider.yaw, 120.0, "the rider keeps its angle to the vehicle");
-            assert_eq!(
-                rider.extra.mount,
-                Some(42),
-                "a teleported vehicle keeps its riders"
-            );
-            // A relative yaw (`~90`) is the same turn: the transition carries the
-            // 90-degree delta and the rider adds it to its own angle.
-            game.teleport_to_in_level(
-                Target::Mob(42),
-                [10.0, 70.0, -4.0],
-                Some([180.0, 0.0]),
-                [false; 3],
-                true,
-            );
-            let rider = game.remote_entities.iter().find(|m| m.id == 43).unwrap();
-            assert_eq!(rider.yaw, 210.0, "the rider turns by the vehicle's turn");
-            // `facing` keeps the transition's rotation: the vehicle looks, the rider does not turn.
-            game.teleport_to_in_level(
-                Target::Mob(42),
-                [10.0, 70.0, -4.0],
-                Some([0.0, 0.0]),
-                [false; 3],
-                false,
-            );
-            let rider = game.remote_entities.iter().find(|m| m.id == 43).unwrap();
-            assert_eq!(
-                rider.yaw, 210.0,
-                "a vehicle turned by `facing` leaves its rider"
-            );
-            // Entity.teleport's stopRiding(): a target that is itself a passenger
-            // leaves its vehicle, or the next sync seats it where it was.
-            game.teleport_to_in_level(Target::Mob(43), [0.0, 64.0, 0.0], None, [false; 3], false);
-            let rider = game.remote_entities.iter().find(|m| m.id == 43).unwrap();
-            assert_eq!(rider.extra.mount, None, "the teleported rider dismounted");
-            assert_eq!(rider.position, Vec3::new(0.0, 64.0, 0.0));
-            // #9335 (2): a rider keeps its angle to the vehicle through an
-            // absolute turn, and a relative turn adds the delta: a villager 30
-            // degrees off a horse turning 0 -> 40 ends at 70.
-            let horse2 = game.res.mob_types().get("minecraft:horse").unwrap().clone();
-            let villager2 = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(horizon_client::mobs::Mob::new(
-                50,
-                horse2,
-                Vec3::new(10.0, 64.0, 10.0),
-                0.0,
-            ));
-            let mut rider2 =
-                horizon_client::mobs::Mob::new(51, villager2, Vec3::new(10.0, 64.5, 10.0), 30.0);
-            rider2.extra.mount = Some(50);
-            game.remote_entities.push(rider2);
-            // Absolute turn: vehicle 0 -> 40, rider keeps its 30-degree offset.
-            game.teleport_to_in_level(
-                Target::Mob(50),
-                [10.0, 64.0, 10.0],
-                Some([40.0, 0.0]),
-                [false; 3],
-                true,
-            );
-            let rider2 = game.remote_entities.iter().find(|m| m.id == 51).unwrap();
-            assert_eq!(
-                rider2.yaw, 70.0,
-                "absolute turn keeps the rider's angle to the vehicle"
-            );
-            // Relative turn (~10 on the vehicle): the transition carries the
-            // 10-degree delta and the rider adds it to its own angle (70 -> 80).
-            game.teleport_to_in_level(
-                Target::Mob(50),
-                [10.0, 64.0, 10.0],
-                Some([50.0, 0.0]),
-                [false; 3],
-                true,
-            );
-            let rider2 = game.remote_entities.iter().find(|m| m.id == 51).unwrap();
-            assert_eq!(
-                rider2.yaw, 80.0,
-                "relative turn shifts the rider by the delta"
-            );
-            // `facing` (turn_riders = false) leaves the rider's angle alone.
-            game.teleport_to_in_level(
-                Target::Mob(50),
-                [10.0, 64.0, 10.0],
-                Some([0.0, 0.0]),
-                [false; 3],
-                false,
-            );
-            let rider2 = game.remote_entities.iter().find(|m| m.id == 51).unwrap();
-            assert_eq!(
-                rider2.yaw, 80.0,
-                "a vehicle turned by `facing` leaves its rider"
-            );
-        });
-    }
-}
-
-#[cfg(test)]
 mod selector_bounds_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, load_resources};
-    use horizon_client::{entities::ArmorStand, mobs::Mob};
+    use horizon_client::entities::ArmorStand;
     use horizon_core::geometry::Vec3;
 
     #[test]
@@ -4547,10 +4317,8 @@ mod selector_bounds_tests {
         )
         .unwrap();
         game.build_registries();
-        let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        game.remote_entities
-            .push(Mob::new(30, kind, Vec3::new(10.5, 220.0, 10.5), 0.0));
-        let target = Target::Mob(30);
+        game.ecs = game.test_ecs_level();
+        let target = Target::Mob(game.ecs_spawn("minecraft:pig", [10.5, 220.0, 10.5], None).unwrap());
         let mut selector = Selector {
             kind: 'e',
             include_entities: true,
@@ -5433,19 +5201,20 @@ mod global_selector_order_tests {
                 assert_eq!(game.target_type(target), format!("minecraft:{kind}"));
                 assert_eq!(game.target_position(target), Some(*pos));
                 assert!(game.world.loaded(pos[0] as i32, pos[2] as i32));
-                let join = match target {
-                    Target::Mob(id) => game.remote_entities.iter().find(|m| m.id == id).unwrap().join_seq(),
-                    Target::Stand(id) => game
-                        .armor_stand_saved(id)
-                        .unwrap()
-                        .join_seq(),
+                // The ECS admits a mob in the order its network id is allocated.
+                let (joined, seq) = match target {
+                    Target::Mob(id) => (game.ecs.exists(id), u64::from(id)),
+                    Target::Stand(id) => {
+                        let join = game.armor_stand_saved(id).unwrap().join_seq();
+                        (join.is_joined(), join.get())
+                    }
                     _ => panic!("actual admitted family"),
                 };
                 assert!(
-                    join.is_joined() && join.get() > last_join,
+                    joined && seq > last_join,
                     "actual registered creation chronology {i}"
                 );
-                last_join = join.get();
+                last_join = seq;
                 targets.push(target);
                 assert!(game.run_command("scoreboard players set #r h268 91"));
                 assert!(game.run_command(

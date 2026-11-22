@@ -617,29 +617,31 @@ impl Game<'_> {
         }
         if viewer.here {
             let range = f64::from(10.min(viewer.view_chunks.max(0)) * 16);
-            for m in self
-                .remote_entities
-                .iter()
-                .filter(|m| m.species() == Species::Wither && m.alive() && !m.removed)
-            {
-                let (dx, dz) = (m.position.x - viewer.at[0], m.position.z - viewer.at[2]);
+            for id in self.ecs.species_ids("minecraft:wither") {
+                let (Some(at), true) = (self.ecs.position(id), self.ecs.alive(id)) else {
+                    continue;
+                };
+                let (dx, dz) = (at[0] - viewer.at[0], at[2] - viewer.at[2]);
                 if dx * dx + dz * dz > range * range {
                     continue;
                 }
-                let progress = if m.extra.counter > 0 {
-                    1.0 - m.extra.counter as f32 / horizon_client::mobs::wither::INVULNERABLE as f32
-                } else {
-                    (m.health / m.attrs.max_health).clamp(0.0, 1.0)
+                let counter = match self.ecs_mob_tree(id).map(Tag::Compound).as_ref().and_then(|t| t.get("Invul")) {
+                    Some(Tag::Int(v)) => *v,
+                    _ => 0,
                 };
-                let name = if let Some(text) = &m.custom_name_text {
-                    json_to_tag(&text.component())
-                } else if let Some(name) = &m.custom_name {
+                let progress = if counter > 0 {
+                    1.0 - counter as f32 / horizon_client::mobs::wither::INVULNERABLE as f32
+                } else {
+                    let max = self.ecs_living_max_health(id).unwrap_or(1.0);
+                    (self.ecs_living_health(id).unwrap_or(0.0) / max).clamp(0.0, 1.0)
+                };
+                let name = if let Some(name) = self.ecs.custom_name(id) {
                     Tag::String(name.as_str().into())
                 } else {
                     translate_tag("entity.minecraft.wither")
                 };
                 out.push(Offer {
-                    id: super::lan::entity_uuid(m.id),
+                    id: super::lan::entity_uuid(id),
                     name,
                     progress,
                     color: 5,

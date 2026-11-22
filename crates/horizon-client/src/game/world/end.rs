@@ -1145,12 +1145,7 @@ impl Game<'_> {
             .filter(|e| ticks(e.position))
             .map(|e| (e.id, e.position, 0.25, 0.25))
             .collect();
-        let mut mobs: Vec<(u32, Vec3, f32, f32)> = self
-            .remote_entities
-            .iter()
-            .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
-            .map(|m| (m.id, m.position, m.width(), m.height()))
-            .collect();
+        let mut mobs: Vec<(u32, Vec3, f32, f32)> = Vec::new();
         // The ECS creatures, items and carts that moved (`portal_entries`): the legacy lists above are empty while the ECS is active.
         if self.ecs.is_active() {
             let entries = self.ecs_with(|ecs, mw| ecs.portal_entries(mw));
@@ -1231,11 +1226,6 @@ impl Game<'_> {
             .ecs.item_views()
             .iter()
             .map(|e| (e.id, true, ticks(e.position)))
-            .chain(
-                self.remote_entities
-                    .iter()
-                    .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
-            )
             .collect();
         if self.ecs.is_active() {
             // Only the entities in a gateway have a state: the ECS rows are asked for those alone.

@@ -176,12 +176,8 @@ impl Game<'_> {
             return false;
         }
         // A painting nearer than the targeted block and mob breaks instead.
-        // Under the ECS, the creatures are found by `ecs_mob_hit` (their real boxes), so they keep their place before the paintings.
-        let mob_distance = if self.ecs.is_active() {
-            self.ecs_mob_hit().map(|m| m.1)
-        } else {
-            self.mob_hit().map(|m| m.1)
-        };
+        // The creatures are found by `ecs_mob_hit` (their real boxes), so they keep their place before the paintings.
+        let mob_distance = self.ecs_mob_hit().map(|m| m.1);
         if self.aimed_painting().is_some_and(|(_, d)| mob_distance.is_none_or(|md| d < md) && self.before_block(d)) && self.attack_painting() {
             return true;
         }
@@ -198,24 +194,13 @@ impl Game<'_> {
         {
             return true;
         }
-        if self.ecs.is_active() {
-            let Some((id, distance)) = self.ecs_mob_hit() else {
-                return false;
-            };
-            if !self.before_block(distance) || !self.held_range_allows(distance) {
-                return false;
-            }
-            self.attack_entity(id);
-            self.swing_arm();
-            return true;
-        }
-        let Some((index, distance, _)) = self.mob_hit() else {
+        let Some((id, distance)) = self.ecs_mob_hit() else {
             return false;
         };
         if !self.before_block(distance) || !self.held_range_allows(distance) {
             return false;
         }
-        self.attack_mob(index);
+        self.attack_mob(id);
         // Minecraft.startAttack swings after the attack.
         self.swing_arm();
         true
@@ -225,193 +210,9 @@ impl Game<'_> {
 impl Game<'_> {}
 
 impl Game<'_> {
-    /// `Player.attack` on a mob: the damage, knockback, sweep, particles and
-    /// sounds.
-    pub(super) fn attack_mob(&mut self, index: usize) {
-        let attack = self.attack_of(self.player.as_ref().map_or(0, |p| p.entity_id));
-        let target_kind = self.remote_entities[index].kind.id.clone();
-        let target_kind = format!("minecraft:{}", target_kind.trim_start_matches("minecraft:"));
-        let ((amount, scale, crit, magic), admitted) =
-            self.melee_damage_with_admission(&target_kind, true, Some(self.remote_entities[index].id));
-        // Player.onAttack: the hit starts the attack strength again, hurt or not.
-        self.attack_ticks = 0;
-        if !admitted {
-            // Player.attack skips the hurt and its whole tail when the hit has neither
-            // base nor enchantment damage (`baseDamage > 0.0F || magicBoost > 0.0F`):
-            // no hurt, no `causeExtraKnockback`, no `setLastHurtMob`, no exhaustion.
-            return;
-        }
-        let sweep = self.sweep_attack_position(scale, crit, &target_kind);
-        let (knockback, knockback_attack) = self.extra_knockback(&target_kind, scale);
-        let player = self.player.as_ref();
-        let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
-        if knockback_attack {
-            self.audio
-                .play("minecraft:entity.player.attack.knockback", from, 1.0, 1.0);
-        }
-        // LivingEntity.setLastHurtMob (tamed wolves join in).
-        self.combat.last_hurt_mob = Some((self.remote_entities[index].id, self.world.game_time));
-        let old_health = self.remote_entities[index].health;
-        let source = match from {
-            Some(f) => self.attack_source(f),
-            None => horizon_client::mobs::Damage::of(horizon_client::mobs::DamageKind::Generic),
-        };
-        let landed = self.hurt_by_player(index, amount, source);
-        if landed && old_health > 0.0 && !self.remote_entities[index].alive() {
-            self.native_kill_event(index);
-        }
-        if landed {
-            let victim = self.mob_entity(&self.remote_entities[index]);
-            self.player_hit(
-                &victim,
-                creatures::damage_type(source.kind, true),
-                None,
-                amount,
-            );
-        }
-        if let Some(p) = self.player.as_mut() {
-            if p.attack_log.len() >= 64 {
-                p.attack_log.remove(0);
-            }
-            p.attack_log.push(horizon_client::health::AttackRecord {
-                game_time: p.health.game_time(),
-                target: target_kind.clone(),
-                id: self.remote_entities[index].id,
-                killed: landed && !self.remote_entities[index].alive(),
-                amount,
-                scale,
-                crit,
-                landed,
-                dealt: old_health - self.remote_entities[index].health,
-            });
-        }
-        if landed {
-            if knockback > 0.0 {
-                let (xd, zd) = self.extra_knockback_direction();
-                if self.legacy_rules() {
-                    let m = &mut self.remote_entities[index];
-                    let v = [m.velocity.x, m.velocity.y, m.velocity.z];
-                    let [x, y, z] = horizon_client::legacy_combat::extra_knockback(
-                        v,
-                        f64::from(knockback),
-                        (xd, zd),
-                    );
-                    m.velocity = Vec3::new(x, y, z);
-                    m.needs_sync = true;
-                } else {
-                    let level = crate::game::entity::damage_level_of!(self, &attack);
-                    self.remote_entities[index].knockback_full(
-                        level,
-                        f64::from(knockback),
-                        xd,
-                        zd,
-                        &source,
-                        amount,
-                        true,
-                    );
-                }
-                self.stop_sprint_after_extra_knockback();
-            }
-            let mob = &self.remote_entities[index];
-            let actual = old_health - mob.health; // Player.damageStatsAndHearts
-            // Player.attack: crit emitter and damage indicator hearts.
-            let (feet, width, height) = (
-                [mob.position.x, mob.position.y, mob.position.z],
-                mob.kind.width,
-                mob.kind.height,
-            );
-            self.award_custom_stat("damage_dealt", (actual * 10.0).round() as i32);
-            if crit {
-                self.critical_hit(
-                    self.lan_acting,
-                    self.remote_entities[index].id as i32,
-                    feet,
-                    width,
-                    height,
-                    false,
-                );
-            }
-            // Player.attackVisualEffects: magicCrit when the enchantments added damage.
-            if magic {
-                self.critical_hit(
-                    self.lan_acting,
-                    self.remote_entities[index].id as i32,
-                    feet,
-                    width,
-                    height,
-                    true,
-                );
-            }
-            if actual > 2.0 {
-                let indicator = horizon_client::particles::ParticleOptions::simple(
-                    horizon_client::particles::ParticleType::DamageIndicator,
-                );
-                // The players a server serves are sent them too.
-                self.lan_send_particles(lan_particles::QueuedParticle {
-                    dimension: self.dim.id(),
-                    options: indicator,
-                    state: None,
-                    at: [feet[0], feet[1] + height * 0.5, feet[2]],
-                    spread: [0.1, 0.0, 0.1],
-                    speed: [0.2; 3],
-                    count: (actual * 0.5) as u32 as i32,
-                    randomization: 0,
-                });
-            }
-            self.remember_mob_player_credit(self.remote_entities[index].id);
-            let sound = if crit {
-                "minecraft:entity.player.attack.crit"
-            } else if scale > 0.9 {
-                "minecraft:entity.player.attack.strong"
-            } else {
-                "minecraft:entity.player.attack.weak"
-            };
-            // Player.playServerSideSound: at the player. A critical hit a mod
-            // let sweep has both sounds (attackVisualEffects).
-            if let Some(at) = sweep {
-                let target = (
-                    self.remote_entities[index].bounds(),
-                    mace::Spared::Mob(self.remote_entities[index].id),
-                );
-                self.sweep_attack(at, from, Some(target), scale);
-            }
-            if crit || sweep.is_none() {
-                self.audio.play(sound, from, 1.0, 1.0);
-            }
-            // The hurt or death sound the mob raised (getHurtSound / getDeathSound,
-            // its voice pitch from its own random).
-            let queued = std::mem::take(&mut self.remote_entities[index].outbox);
-            let mut infested = Vec::new();
-            for event in queued {
-                match event {
-                    horizon_client::mobs::MobEvent::Sound(s, at, volume, pitch) => {
-                        self.audio
-                            .play(&format!("minecraft:{s}"), Some(at), volume, pitch);
-                    }
-                    horizon_client::mobs::MobEvent::Infested { at, velocities } => {
-                        infested.push((at, velocities))
-                    }
-                    other => {
-                        // Left for the end of the tick.
-                        self.remote_entities[index].outbox.push(other);
-                    }
-                }
-            }
-            for (at, velocities) in infested {
-                self.spawn_infested(at, velocities);
-            }
-            self.weapon_hit(index);
-            // Player.attack: causeFoodExhaustion(0.1F) only when the hit hurt
-            // (inside `if (wasHurt)`), after damageStatsAndHearts.
-            if let Some(p) = self.player.as_mut()
-                && !self.creative
-            {
-                p.cause_food_exhaustion(0.1);
-            }
-        } else {
-            self.audio
-                .play("minecraft:entity.player.attack.nodamage", from, 1.0, 1.0);
-        }
+    /// `Player.attack` on the mob `id`: the ECS hit (`attack_entity`).
+    pub(super) fn attack_mob(&mut self, id: u32) {
+        self.attack_entity(id);
     }
     /// `Player.attack`'s damage against `target_kind` (with the attack
     /// strength and whether it is a critical hit): the weapon and effects

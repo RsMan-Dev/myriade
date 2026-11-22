@@ -491,7 +491,7 @@ fn an_aborted_spawn_is_in_no_tracking_pass() {
         let _rx = super::lan::world_spawn_sync_tests::host_for(game);
         let tracked = |game: &mut Game<'_>, id: u32| {
             let mut states = horizon_client::lan::entity::States::default();
-            game.lan_entities(&mut states, false, 0, None);
+            game.lan_entities(&mut states, false, 0);
             states.as_slice().iter().any(|e| e.id == id as i32)
         };
         let seal = game.transaction_open();

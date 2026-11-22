@@ -5,13 +5,12 @@
 //! return `None` for a stale handle or on a client.
 use super::{Game, commands::Target, mounts::steering_item};
 use horizon_client::{
-    lan::playerdata::ints_uuid,
     mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
 };
 use mod_api::{EntityRef, LeashHolder, LivingRef};
 
 impl Game<'_> {
-    /// The dismount search with a vehicle or passenger lent out of `self.remote_entities`.
+    /// The dismount search with a vehicle or passenger lent out of the mob list.
     pub(super) fn scoped_mob_dismount_location(
         &self,
         vehicle: Option<&Mob>,
@@ -208,6 +207,19 @@ impl Game<'_> {
             _ => false,
         }
     }
+    /// `native_player_controls` for the ECS mob `id`: the saddle is the mount's saddle slot.
+    /// A happy ghast's harness and its still timeout have no ECS reader yet (RESTE-SANS-ECS: never steered).
+    fn native_ecs_player_controls(&self, id: u32, rider: Target) -> bool {
+        let Some(species) = self.creature_species(id) else {
+            return false;
+        };
+        let saddled = self.ecs.mount_contents(id).is_some_and(|(saddle, _, _)| saddle.is_some());
+        match species {
+            Species::Pig | Species::Strider => saddled && self.native_player_steers(species, rider),
+            s if equine::is_equine(s) || nautilus::is_nautilus(s) => saddled,
+            _ => false,
+        }
+    }
     /// The first passenger, when it steers the entity (`Entity.getControllingPassenger`): a
     /// player in a boat, a player on a mount that is ready for one, or a mob on a mob with AI
     /// unless `#non_controlling_rider` names it. `None` when nothing steers it, or for a stale
@@ -221,18 +233,15 @@ impl Game<'_> {
         match vehicle {
             Target::Boat(_) if is_player => Some(LivingRef::new(first)),
             Target::Mob(id) => {
-                let mob = self.remote_entities.iter().find(|m| m.id == id)?;
                 if is_player {
                     return self
-                        .native_player_controls(mob, rider)
+                        .native_ecs_player_controls(id, rider)
                         .then(|| LivingRef::new(first));
                 }
-                let rider = self.remote_entities.iter().find(|m| m.id == first.id())?;
-                let tagged = self
-                    .res
-                    .mob_data()
-                    .entity_has("minecraft:non_controlling_rider", &rider.kind.id);
-                (!mob.no_ai && !tagged).then(|| LivingRef::new(first))
+                let kind = self.ecs.kind(first.id())?;
+                let tagged = self.res.mob_data().entity_has("minecraft:non_controlling_rider", kind);
+                let no_ai = self.ecs_flag(id, "NoAI").unwrap_or(false);
+                (!no_ai && !tagged).then(|| LivingRef::new(first))
             }
             _ => None,
         }
@@ -448,10 +457,7 @@ impl Game<'_> {
                     // rider keeps their view, whatever the vehicle's yaw.
                     Target::Boat(_) => {}
                     Target::Mob(id) => {
-                        if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                            mob.extra.flag = false;
-                            mob.extra.counter = 0;
-                        }
+                        // The mob's flag and counter (`extra`) have no ECS reader yet (RESTE-SANS-ECS: not reset).
                         self.mount.jump_ticks = 0;
                         self.mount.jump_scale = 0.0;
                     }

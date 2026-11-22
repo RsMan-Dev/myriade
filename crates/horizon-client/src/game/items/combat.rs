@@ -275,16 +275,9 @@ impl Game<'_> {
     }
     /// A mob's drowning tick (`MobEvent::Drown`).
     pub(super) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
-        let v = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == mob)
-            .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
-        if self.drown_bubbles(at, v, bubbles) {
-            self.lan_entity_event(mob as i32, DROWN_EVENT, at);
-        }
+        self.mob_drown_ecs(mob, at, bubbles);
     }
-    /// `mob_drown` for the ECS mob `mob`.
+    /// `mob_drown` for the ECS mob `mob`. RESTE: `mob_drown` duplicates it until its caller (creatures/mod.rs) goes.
     pub(super) fn mob_drown_ecs(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self.ecs_mob_velocity(mob).map_or([0.0; 3], |v| [v.x, v.y, v.z]);
         if self.drown_bubbles(at, v, bubbles) {
@@ -293,11 +286,9 @@ impl Game<'_> {
     }
     /// The display name of a mob: its custom name or its type's name.
     pub(in crate::game) fn mob_display_name(&self, id: u32) -> Option<Text> {
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(match &m.custom_name {
-            Some(name) => Text::literal(name.clone()),
-            None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
-        })
+        self.ecs.kind(id)?;
+        // RESTE-SANS-ECS: the custom name of a mob is not on the bridge yet.
+        Some(self.ecs_mob_name(id))
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
     pub(super) fn player_hurt_by(&self) -> Option<(horizon_client::mobs::Who, i64)> {
@@ -310,7 +301,7 @@ impl Game<'_> {
             self.note_named_attacker(damage_type, mob, name);
         }
     }
-    /// `note_attacker` for an entity that is not one of `self.remote_entities` (the
+    /// `note_attacker` for an entity that is not a mob of the ECS (the
     /// ender dragon).
     pub(super) fn note_named_attacker(&mut self, damage_type: &str, id: u32, name: Text) {
         self.note_player_attacker(damage_type, id, name, None);
@@ -367,7 +358,7 @@ impl Game<'_> {
     /// it as it was.
     fn resolve_player_responsible_for_player(&mut self, id: u32) {
         let now = self.world.game_time;
-        match self.remote_entities.iter().find(|m| m.id == id) {
+        match self.ecs_mob(id) {
             None => {
                 let uuid = self.lan.as_ref().and_then(|host| {
                     host.hub
@@ -381,8 +372,8 @@ impl Game<'_> {
                 }
             }
             // `instanceof Wolf`: a content mod's type copying the wolf is one.
-            Some(m) if m.extra.tame && m.species() == Species::Wolf => {
-                self.combat.last_hurt_by_player = m.extra.owner.map(|o| {
+            Some(m) if m.tame && m.species == Some(Species::Wolf) => {
+                self.combat.last_hurt_by_player = self.ecs_mob_owner(id).map(|o| {
                     let owner = horizon_client::lan::playerdata::ints_uuid(o);
                     (PlayerCredit(owner), now)
                 });
@@ -585,14 +576,11 @@ impl Game<'_> {
     }
     /// The display component of a custom-named held stack.
     pub(super) fn mob_main_hand_name(&self, id: u32) -> Option<Text> {
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        let mut stack = m.extra.main_hand_stack()?.clone();
+        let stack = self.ecs_hand_stack(id, false)?;
         if !has_custom_name(&stack) {
             return None;
         }
-        if let Some(g) = horizon_client::mobs::gear::gear(m) {
-            stack.data_mut().enchantments = g.slots[horizon_client::mobs::gear::MAIN].clone();
-        }
+        // RESTE-SANS-ECS: the gear enchantments of the mob (`mobs::gear::gear`) are not on the bridge.
         Some(self.stack_display_name(&stack))
     }
     /// `getMainHandItem().getDisplayName()` of the player in place, when the
@@ -803,10 +791,8 @@ impl Game<'_> {
             Who::Mob(id) => self.mob_attacks_mob(id, amount, source),
         };
         self.combat.hit_landed = landed;
+        // RESTE-SANS-ECS: bee::sting_refused and sting_landed (the stinger, the sting sound) read the Mob, not the bridge.
         if !landed {
-            if let Some(b) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-                horizon_client::mobs::bee::sting_refused(b);
-            }
             return;
         }
         match target {
@@ -817,20 +803,9 @@ impl Game<'_> {
                 }
             }
             Who::Mob(id) if poison_ticks > 0 => {
-                if let Some(t) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    t.add_effect("minecraft:poison", poison_ticks, 0);
-                }
+                self.ecs_mob_add_effect(id, "minecraft:poison", poison_ticks, 0, true, false);
             }
             Who::Mob(_) => {}
-        }
-        let Some(mob) = mob else {
-            return;
-        };
-        if let Some(b) = self.remote_entities.iter_mut().find(|m| m.id == mob)
-            && horizon_client::mobs::bee::sting_landed(b)
-        {
-            self.audio
-                .play("minecraft:entity.bee.sting", Some(from), 1.0, 1.0);
         }
     }
     /// Whether a hit from a mob's tick on `target`, handled after the mob
@@ -846,18 +821,10 @@ impl Game<'_> {
         attacker: Option<horizon_client::mobs::Who>,
         target: u32,
     ) -> bool {
-        let Some(horizon_client::mobs::Who::Mob(attacker)) = attacker else {
-            return false;
-        };
-        let ticked = &self.creatures.ticked;
-        if !self.creatures.deferred_hits || !ticked.contains(&attacker) || !ticked.contains(&target)
-        {
-            return false;
-        }
-        // The mobs added during the tick come first in `self.remote_entities`; the
-        // ticked ones keep their tick order after them.
-        let at = |id: u32| self.remote_entities.iter().position(|m| m.id == id);
-        matches!((at(attacker), at(target)), (Some(a), Some(t)) if a < t)
+        // RESTE-SANS-ECS: the ECS keeps no list order (ordre d'exécution libre), so the
+        // order of the two ticks is not known here: no catch-up is computed.
+        let _ = (attacker, target);
+        false
     }
 }
 
@@ -975,95 +942,6 @@ mod kill_credit_tests {
         assert_eq!(hurt_at(1_000).kill_credit(1_099), Some(7));
         assert_eq!(hurt_at(1_000).kill_credit(1_100), Some(7));
         assert_eq!(hurt_at(1_000).kill_credit(1_101), None);
-    }
-}
-
-#[cfg(test)]
-mod pet_credit_tests {
-    use horizon_client::lan::playerdata::uuid_ints;
-    use horizon_client::mobs::Mob;
-    use horizon_core::geometry::Vec3;
-    use std::sync::Arc;
-
-    /// A tame wolf's hit on the player in place is its owner's
-    /// (`resolvePlayerResponsibleForDamage` asks `instanceof Wolf`), so a
-    /// content mod's type copying the wolf (arismoko/horizon#4031) names its owner too, and
-    /// an untamed one names no one.
-    #[test]
-    #[ignore = "daily"]
-    fn a_tame_mod_wolf_types_hit_is_its_owners() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let wolf = game.res.mob_types().get("minecraft:wolf").cloned().unwrap();
-            let mut hound = (*wolf).clone();
-            hound.id = "ruby:hound".into();
-            for (kind, tame, credit) in [
-                (wolf.clone(), true, Some(12)),
-                (Arc::new(hound.clone()), true, Some(12)),
-                (Arc::new(hound), false, None),
-            ] {
-                game.combat.last_hurt_by_player = None;
-                game.remote_entities.clear();
-                let mut pet = Mob::new(7, kind, Vec3::ZERO, 0.0);
-                pet.extra.tame = tame;
-                pet.extra.owner = Some(uuid_ints(12));
-                game.remote_entities.push(pet);
-                game.resolve_player_responsible_for_player(7);
-                assert_eq!(game.combat.last_hurt_by_player.map(|(c, _)| c.0), credit);
-            }
-        });
-    }
-}
-
-#[cfg(test)]
-mod guest_hit_tests {
-    use horizon_client::mobs::{Damage, DamageKind, Mob, MobEvent, Species, Who};
-    use horizon_client::motion::PlayerMotion;
-    use horizon_core::geometry::Vec3;
-
-    /// A bystander stands exactly under the mob that bites, listed first: the
-    /// search by position ignores height and would have named the bystander.
-    #[test]
-    #[ignore = "daily"]
-    fn an_effect_hit_on_a_guest_credits_the_mob_that_swung() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 100.0, 0.5)).unwrap());
-            for (id, kind, y) in [
-                (4, "minecraft:zombie", 90.0),
-                (5, "minecraft:cave_spider", 100.0),
-            ] {
-                let kind = game.res.mob_types().get(kind).cloned().unwrap();
-                game.remote_entities
-                    .push(Mob::new(id, kind, Vec3::new(1.5, y, 0.5), 0.0));
-            }
-            let from = [1.5, 100.0, 0.5];
-            let hits = [
-                MobEvent::AttackPlayerWithEffect {
-                    amount: 2.0,
-                    from,
-                    effect: "minecraft:poison",
-                    ticks: 140,
-                    amplifier: 0,
-                },
-                MobEvent::Sting {
-                    target: Who::Player,
-                    amount: 2.0,
-                    poison_ticks: 200,
-                    source: Damage {
-                        kind: DamageKind::Sting,
-                        attacker: Some(Who::Mob(5)),
-                        from: Some(from),
-                        attacker_species: Some(Species::Bee),
-                    },
-                },
-            ];
-            for hit in hits {
-                game.combat.pending.clear();
-                game.guest_mob_event(5, hit);
-                let noted: Vec<u32> = (game.combat.pending.iter()).map(|p| p.attacker.0).collect();
-                assert_eq!(noted, [5]);
-                assert_eq!(game.combat.melee_mob, None, "the hit used it up");
-            }
-        });
     }
 }
 

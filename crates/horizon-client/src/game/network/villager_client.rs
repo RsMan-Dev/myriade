@@ -3,7 +3,7 @@ use horizon_client::mobs::{Mob, Species, villager::ResolvedProfessions};
 use horizon_protocol::entity_data::Value;
 
 /// [`server_meta_sync`] from the synced tables alone, so the tick's helper threads can build it
-/// (`lan/mob_states.rs`).
+/// (the ECS's mob states).
 pub(super) fn server_meta_sync(
     m: &Mob,
     sync: &horizon_client::lan::data::SyncData,

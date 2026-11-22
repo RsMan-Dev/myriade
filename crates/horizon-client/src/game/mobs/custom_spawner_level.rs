@@ -2,6 +2,7 @@
 //! forwarded to the game's own.
 use super::{Dim, Game, creatures::SpawnSite};
 use horizon_client::mobs::{Species, raider, spawn_rules};
+use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::random::{LegacyRandom, LevelRandom};
 use horizon_gameplay::custom_spawner::{CustomSpawnerLevel, SpawnerParts, SpawnerPlayer};
 use std::collections::HashSet;
@@ -10,7 +11,6 @@ impl CustomSpawnerLevel for Game<'_> {
     fn parts(&mut self) -> SpawnerParts<'_> {
         SpawnerParts {
             world: &mut self.world,
-            mobs: &mut self.remote_entities,
             facts: self.res.facts(),
         }
     }
@@ -39,6 +39,32 @@ impl CustomSpawnerLevel for Game<'_> {
     }
     fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
         Game::village_centers(self)
+    }
+    fn cats_near(&self, pos: [i32; 3], radius: f64) -> usize {
+        let [x, y, z] = pos.map(f64::from);
+        let area = Aabb::new(
+            Vec3::new(x - radius, y - 8.0, z - radius),
+            Vec3::new(x + 1.0 + radius, y + 9.0, z + 1.0 + radius),
+        );
+        self.ecs
+            .creatures_in(area)
+            .into_iter()
+            .filter(|&id| self.ecs.species(id) == Some("minecraft:cat") && self.ecs.alive(id))
+            .count()
+    }
+    /// Approximation: the claimed village points stand in for the beds.
+    fn village_beds_near(&self, pos: [i32; 3]) -> Vec<[i32; 3]> {
+        self.ecs
+            .village_points()
+            .into_iter()
+            .filter(|b| {
+                let d = |i: usize| i64::from(b[i] - pos[i]);
+                d(0).abs() <= 48 && d(2).abs() <= 48 && d(0).pow(2) + d(1).pow(2) + d(2).pow(2) <= 48 * 48
+            })
+            .collect()
+    }
+    fn mob_position(&self, id: u32) -> Option<[f64; 3]> {
+        self.ecs.position(id)
     }
     fn sky_darken(&self) -> i32 {
         Game::sky_darken(self)

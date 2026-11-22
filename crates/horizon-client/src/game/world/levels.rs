@@ -15,7 +15,7 @@
 use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, Game, Mob, commands,
+    Dim, Game, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
@@ -47,15 +47,14 @@ use std::{
 };
 
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
-pub(super) struct EntityCountView<'a> {
+pub(super) struct EntityCountView {
     pub(super) fixed: [(&'static str, usize); 17],
-    pub(super) mobs: &'a [Mob],
-    /// The entities the level's ECS world holds (`EcsLevel::count`), beside the remote list.
+    /// The entities the level's ECS world holds (`EcsLevel::count`).
     pub(super) ecs: usize,
 }
-impl EntityCountView<'_> {
+impl EntityCountView {
     pub(super) fn total(&self) -> usize {
-        self.fixed.iter().map(|(_, n)| n).sum::<usize>() + self.mobs.len() + self.ecs
+        self.fixed.iter().map(|(_, n)| n).sum::<usize>() + self.ecs
     }
     pub(super) fn registry_counts(&self, ecs_kinds: &[(&'static str, usize)]) -> Vec<(String, u32)> {
         let mut counts = std::collections::BTreeMap::<String, u32>::new();
@@ -66,9 +65,6 @@ impl EntityCountView<'_> {
             if n > 0 {
                 *counts.entry(id.to_owned()).or_default() += n as u32;
             }
-        }
-        for mob in self.mobs.iter().filter(|mob| !mob.removed) {
-            *counts.entry(mob.kind.id.clone()).or_default() += 1;
         }
         counts.into_iter().collect()
     }
@@ -101,7 +97,6 @@ macro_rules! entity_count_view {
                     $level.ecs.species_count("minecraft:ender_dragon"),
                 ),
             ],
-            mobs: &$level.remote_entities,
             ecs: $level.ecs.entity_count(),
         }
     };
@@ -134,7 +129,6 @@ pub(super) struct Parked {
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
-    pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
     persist: persist::EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -591,8 +585,7 @@ impl Levels {
     pub(super) fn parked_entity_count(&self, dim: Dim) -> Option<usize> {
         let l = self.parked.get(&dim)?;
         Some(
-            l.remote_entities.iter().filter(|m| !m.removed).count()
-                + l.ecs.entity_count()
+            l.ecs.entity_count()
                 + l.ecs.species_count("minecraft:falling_block")
                 + l.paintings.len()
                 + l.item_frames.len()
@@ -604,14 +597,9 @@ impl Levels {
         )
     }
 
-    /// The mobs of a parked level.
-    pub(super) fn parked_mobs(&self, dim: Dim) -> Option<&[Mob]> {
-        self.parked.get(&dim).map(|level| &*level.remote_entities)
-    }
-
     pub(super) fn parked_perf_views(
         &self,
-    ) -> impl Iterator<Item = (Dim, &World, EntityCountView<'_>, Vec<(&'static str, usize)>)> {
+    ) -> impl Iterator<Item = (Dim, &World, EntityCountView, Vec<(&'static str, usize)>)> {
         self.parked.iter().map(|(&dim, level)| {
             (
                 dim,
@@ -705,7 +693,6 @@ impl Game<'_> {
             jukebox_sounds: HashMap::new(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
-            remote_entities: Default::default(),
             persist: Default::default(),
             lectern_pulses: Vec::new(),
             lid_openers: HashMap::new(),
@@ -831,7 +818,6 @@ impl Game<'_> {
         swap(&mut self.portals.sections, &mut p.portal_sections);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.hoppers, &mut p.hoppers);
-        swap(&mut self.remote_entities, &mut p.remote_entities);
         swap(&mut self.ecs, &mut p.ecs);
         swap(&mut self.persist, &mut p.persist);
         swap(&mut self.lectern_pulses, &mut p.lectern_pulses);

@@ -36,8 +36,8 @@ impl Game<'_> {
             suggest_uuid: true,
         };
         let hits = [
-            self.mob_hit()
-                .map(|(index, distance, _)| hit(self.remote_entities[index].id, distance, true)),
+            self.ecs_mob_hit()
+                .map(|(id, distance)| hit(id, distance, true)),
             self.redirectable_hit()
                 .map(|(id, distance)| hit(id, distance, false)),
             self.dragon_hit().map(|(id, distance)| CrosshairEntityHit {
@@ -58,11 +58,7 @@ impl Game<'_> {
     /// framed item when it holds one) or end crystal.
     pub(super) fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = u32::try_from(id).ok()?;
-        let mob_kind = if self.ecs.is_active() {
-            self.ecs.kind(id).filter(|_| self.creature_species(id).is_some())
-        } else {
-            self.remote_entities.iter().find(|m| m.id == id).map(|m| &m.kind.id[..])
-        };
+        let mob_kind = self.ecs.kind(id).filter(|_| self.creature_species(id).is_some());
         let item = if let Some(kind) = mob_kind {
             // Mob.getPickResult: SpawnEggItem.byId.
             let egg = format!("{kind}_spawn_egg");

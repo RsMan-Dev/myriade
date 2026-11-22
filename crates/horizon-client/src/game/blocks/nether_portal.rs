@@ -662,19 +662,7 @@ impl Game<'_> {
         }
         self.portals.before = before;
         self.portals.entities.retain(|id, _| present.contains(id));
-        // SulfurCube.tickFuse runs before Entity.handlePortal. A cube removed
-        // there must neither decrement its cooldown nor travel before its blast.
-        let removed_before_portal: std::collections::HashSet<u32> = self
-            .remote_entities
-            .iter()
-            .filter(|_| !vehicles && !self.ecs.is_active())
-            .filter(|m| horizon_client::mobs::sulfur_cube::removes_before_portal_tick(m))
-            .map(|m| m.id)
-            .collect();
         for (id, allowed, delay) in ids {
-            if removed_before_portal.contains(&id) {
-                continue;
-            }
             let Some(state) = self.portals.entities.get_mut(&id) else {
                 continue;
             };
@@ -891,10 +879,7 @@ impl Game<'_> {
     /// `Entity.canUsePortal(false)` for a primed TNT: it carries no mob.
     pub(super) fn tnt_can_use_portal(&self, id: u32) -> bool {
         // Id 0: not tracked yet, nothing to key its portal state by.
-        if self.ecs.is_active() {
-            return id != 0 && self.ecs.riders_of(id).is_empty();
-        }
-        id != 0 && !self.remote_entities.iter().any(|m| m.extra.mount == Some(id))
+        id != 0 && self.ecs.riders_of(id).is_empty()
     }
     /// `canUsePortal(false)` of a boat or minecart: it is nobody's passenger;
     /// the mobs riding it, and on a server the players, cross with it.
@@ -1139,14 +1124,10 @@ impl Game<'_> {
     /// entity is saved and removed, and waits for its dimension to load.
     fn remove_portal_vehicle_tree(&mut self, root: u32) {
         let tree = self.passenger_tree(root);
-        if self.ecs.is_active() {
-            for id in tree.iter().copied() {
-                if let Some(e) = self.ecs.entity_of(id) {
-                    self.ecs.despawn(e);
-                }
+        for id in tree.iter().copied() {
+            if let Some(e) = self.ecs.entity_of(id) {
+                self.ecs.despawn(e);
             }
-        } else {
-            self.remote_entities.retain(|m| !tree.contains(&m.id));
         }
         self.persist.off_level.retain(|id, _| !tree.contains(id));
         self.take_passenger_entities(&tree, true);
@@ -1316,29 +1297,6 @@ impl Game<'_> {
                 return;
             }
             // The tree (passengers included) is read as for any vehicle; the despawn below removes it from the ECS.
-            let Some((mut tag, state)) = self.take_vehicle_tree_transfer(id) else {
-                return;
-            };
-            // Entity.removeAfterChangingDimensions drops the leash.
-            if let Tag::Compound(c) = &mut tag {
-                c.remove(&"leash".into());
-            }
-            self.remove_portal_vehicle_tree(id);
-            self.portals.arrivals.push(Arrival {
-                tnt_used_portal: false,
-                plan,
-                tag,
-                transferred: Some(TransferredArrivalState::VehicleTree(state)),
-            });
-            self.portals.dirty = true;
-        } else if !self.ecs.is_active()
-            && let Some(i) = self.remote_entities.iter().position(|m| m.id == id)
-        {
-            let m = &self.remote_entities[i];
-            let plan = self.entity_plan(entry, m.position, m.width(), m.height(), true);
-            if !self.may_travel_through(id, &plan) {
-                return;
-            }
             let Some((mut tag, state)) = self.take_vehicle_tree_transfer(id) else {
                 return;
             };
@@ -1564,6 +1522,7 @@ impl Game<'_> {}
 mod tests {
     use super::super::server_travel::TravelCause;
     use super::*;
+    use crate::game::ecs::test_support::place_test_mob;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
@@ -1587,18 +1546,17 @@ mod tests {
             );
             assert!(game.run_command(r#"summon minecraft:pig 0 64 0 {UUID:[I;0,0,0,175],Tags:["portal_root"],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,175],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,176]}]}]}"#));
             let root = game
-                .remote_entities
-                .iter()
-                .find(|m| {
-                    game.persist_raw(m.id).is_some_and(|t| {
+                .ecs
+                .species_ids("minecraft:pig")
+                .into_iter()
+                .find(|&m| {
+                    game.persist_raw(m).is_some_and(|t| {
                         horizon_client::entity_nbt::uuid(t) == Some([0, 0, 0, 175])
                     })
                 })
-                .unwrap()
-                .id;
+                .unwrap();
             let child = game.mob_passenger_ids(root)[0];
             let leaf = game.mob_passenger_ids(child)[0];
-            assert!(!game.remote_entities.iter().any(|m| m.id == child));
             game.tickets.add_portal((0, 0));
             game.update_chunk_tickets();
             assert!(game.entity_ticking_area()(0, 0));
@@ -1607,9 +1565,9 @@ mod tests {
             game.handle_entity_portals();
             assert_eq!(game.portals.entities[&leaf].cooldown, cooldown);
             game.send_through_portal(root, BlockPos::new(0, 64, 0));
-            assert!(game.mob_object(root).is_none());
-            assert!(game.mob_object(child).is_none());
-            assert!(game.mob_object(leaf).is_none());
+            assert!(game.ecs.entity_of(root).is_none());
+            assert!(game.ecs.entity_of(child).is_none());
+            assert!(game.ecs.entity_of(leaf).is_none());
             // Land the queued payload through the real arrival transform/adoption path.
             game.portals.arrivals[0].plan =
                 Plan::end_portal(Dim::Overworld, BlockPos::new(0, 64, 0), 0.9, 0.9);
@@ -1625,15 +1583,15 @@ mod tests {
             }
             game.resolve_arrivals();
             assert!(game.portals.arrivals.is_empty());
-            let new_root = game
-                .mob_objects()
-                .find(|m| m.extra.mount.is_none())
-                .unwrap()
-                .id;
+            let new_root = *game
+                .ecs
+                .species_ids("minecraft:pig")
+                .iter()
+                .find(|&&m| game.ecs_vehicle_of(m).is_none())
+                .unwrap();
             let new_child = game.mob_passenger_ids(new_root)[0];
             let new_leaf = game.mob_passenger_ids(new_child)[0];
-            assert!(!game.remote_entities.iter().any(|m| m.id == new_root));
-            assert!(game.remote_entities.iter().any(|m| m.id == new_child));
+            assert!(game.ecs.entity_of(new_child).is_some());
             assert!(game.mobs_below_off_level().contains(&new_child));
             assert!(game.mobs_below_off_level().contains(&new_leaf));
             assert_eq!(game.portals.entities[&new_root].cooldown, ENTITY_DELAY);
@@ -1744,13 +1702,8 @@ mod tests {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 101));
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 103));
-            let mob = |name: &str, id| {
-                let kind = game.res.mob_types().get(name).unwrap().clone();
-                horizon_client::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)
-            };
-            let (cow, pig) = (mob("minecraft:cow", 102), mob("minecraft:pig", 104));
-            game.remote_entities.push(cow);
-            game.remote_entities.push(pig);
+            let cow = place_test_mob(game, 102, "minecraft:cow", [0.0; 3]).unwrap();
+            place_test_mob(game, 104, "minecraft:pig", [0.0; 3]);
             assert_eq!(game.dimension_changing_delay(12), 10);
             let entry = BlockPos::new(0, 64, 0);
             // Boats and minecarts (`VehicleEntity`) are 10 whoever rides them;
@@ -1769,8 +1722,10 @@ mod tests {
                         g.vehicle = player.then_some(vehicle);
                         g.vehicle_order = 0;
                     });
-                    game.remote_entities[0].extra.mount = mob_order.map(|_| vehicle);
-                    game.remote_entities[0].extra.vehicle_order = mob_order.unwrap_or_default();
+                    game.ecs_dismount(cow);
+                    if mob_order.is_some() {
+                        game.ecs_mount(cow, vehicle);
+                    }
                     assert_eq!(
                         game.dimension_changing_delay(vehicle),
                         expected,
@@ -1915,13 +1870,7 @@ mod tests {
     #[ignore = "daily"]
     fn discarded_mob_and_tnt_do_not_travel() {
         with_gate_mode(true, |game, _, heard| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.remote_entities.push(horizon_client::mobs::Mob::new(
-                101,
-                kind,
-                Vec3::new(0.5, 64.0, 0.5),
-                0.0,
-            ));
+            place_test_mob(game, 101, "minecraft:cow", [0.5, 64.0, 0.5]);
             game.spawn_primed_tnt(BlockPos::new(2, 64, 0), false, None, None);
             let tnt = *game.ecs.species_ids("minecraft:tnt").last().unwrap();
             for id in [101, tnt] {
@@ -1937,24 +1886,19 @@ mod tests {
     #[ignore = "daily"]
     fn refused_mob_passenger_stays_behind() {
         with_gate(|game, spare, heard| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
             for id in [101, 102, 103] {
-                let mut mob = horizon_client::mobs::Mob::new(
-                    id,
-                    kind.clone(),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                );
-                if id != 101 {
-                    mob.extra.mount = Some(101);
-                }
-                game.remote_entities.push(mob);
+                place_test_mob(game, id, "minecraft:cow", [0.5, 64.0, 0.5]);
+            }
+            for rider in [102, 103] {
+                game.ecs_mount(rider, 101);
             }
             spare.store(102, Ordering::Relaxed);
             game.send_through_portal(101, BlockPos::new(0, 64, 0));
             assert_eq!(game.portals.arrivals.len(), 1);
-            assert_eq!(game.remote_entities.iter().map(|m| m.id).collect::<Vec<_>>(), [102]);
-            assert_eq!(game.remote_entities[0].extra.mount, None);
+            assert!(game.ecs.entity_of(101).is_none());
+            assert!(game.ecs.entity_of(103).is_none());
+            assert!(game.ecs.entity_of(102).is_some());
+            assert_eq!(game.ecs_vehicle_of(102), None);
             assert_eq!(
                 heard
                     .lock()
@@ -1972,18 +1916,11 @@ mod tests {
     fn passenger_callbacks_cannot_revisit_ancestors_or_discarded_siblings() {
         for attack in [1004, 1001, 1002] {
             with_gate(|game, spare, heard| {
-                let kind = game.res.mob_types().get("minecraft:camel").unwrap().clone();
                 for id in [101, 102, 103] {
-                    let mut mob = horizon_client::mobs::Mob::new(
-                        id,
-                        kind.clone(),
-                        Vec3::new(0.5, 64.0, 0.5),
-                        0.0,
-                    );
-                    if id != 101 {
-                        mob.extra.mount = Some(101);
-                    }
-                    game.remote_entities.push(mob);
+                    place_test_mob(game, id, "minecraft:camel", [0.5, 64.0, 0.5]);
+                }
+                for rider in [102, 103] {
+                    game.ecs_mount(rider, 101);
                 }
                 spare.store(attack, Ordering::Relaxed);
                 assert!(game.entity_may_travel(101, Dim::Nether, TravelCause::Teleport));
@@ -1997,8 +1934,7 @@ mod tests {
                     }
                 );
                 assert!(
-                    !(game.remote_entities[0].extra.mount == Some(102)
-                        && game.remote_entities[1].extra.mount == Some(101))
+                    !(game.ecs_vehicle_of(101) == Some(102) && game.ecs_vehicle_of(102) == Some(101))
                 );
             });
         }
@@ -2008,25 +1944,10 @@ mod tests {
     #[ignore = "daily"]
     fn mixed_passengers_follow_boarding_not_connection_order() {
         with_gate(|game, _, heard| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:happy_ghast")
-                .unwrap()
-                .clone();
             for id in [101, 102] {
-                let mut mob = horizon_client::mobs::Mob::new(
-                    id,
-                    kind.clone(),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                );
-                if id == 102 {
-                    mob.extra.mount = Some(101);
-                    mob.extra.vehicle_order = 20;
-                }
-                game.remote_entities.push(mob);
+                place_test_mob(game, id, "minecraft:happy_ghast", [0.5, 64.0, 0.5]);
             }
+            game.ecs_mount(102, 101);
             for (conn, order) in [(12, 30), (13, 10)] {
                 game.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
                     g.vehicle = Some(101);

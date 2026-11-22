@@ -169,12 +169,7 @@ impl Game<'_> {
     /// `ChestBlock.isChestBlockedAt`: a redstone conductor above the chest or
     /// a cat sitting on it.
     fn chest_blocked_at(&self, key: (i32, i32, i32)) -> bool {
-        self.conductor_above(key)
-            || if self.ecs.is_active() {
-                super::machines::ecs_cat_sitting_above(&self.ecs, key)
-            } else {
-                super::machines::cat_sitting_above(&self.remote_entities, key)
-            }
+        self.conductor_above(key) || super::machines::ecs_cat_sitting_above(&self.ecs, key)
     }
     /// `ChestBlock.getMenuProvider` (`combine(.., false)`) and
     /// `EnderChestBlock.useWithoutItem`: a blocked chest, or a double chest

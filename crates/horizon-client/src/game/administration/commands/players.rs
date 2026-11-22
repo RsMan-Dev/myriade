@@ -390,10 +390,10 @@ mod game_tests {
             // through `execute as` prints nothing here).
             assert!(game.run_command("summon pig 6.5 200 6.5 {NoAI:1b}"));
             let pig = game
-                .remote_entities
-                .iter()
-                .map(|m| m.id)
-                .next()
+                .ecs
+                .followed_ids()
+                .into_iter()
+                .find(|&id| game.ecs_mob_kind(id) == Some("minecraft:pig"))
                 .expect("the second pig");
             game.command_source = server.map(|s| crate::game::commands::execute::Source {
                 entity: Some(Target::Mob(pig)),

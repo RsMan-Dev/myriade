@@ -120,15 +120,12 @@ pub fn try_spawn<L: SiegeLevel + ?Sized>(l: &mut L) {
     let Some(at) = l.find_siege_spawn_pos(&centers, spot) else {
         return;
     };
-    let Some(id) = l.spawn_event_mob("minecraft:zombie", at, false, raider::Reason::Event) else {
+    if l.spawn_event_mob("minecraft:zombie", at, false, raider::Reason::Event).is_none() {
         return;
-    };
-    let p = l.parts();
-    let yaw = p.world.random.next_float() * 360.0;
-    if let Some(m) = p.mobs.iter_mut().find(|m| m.id == id) {
-        (m.yaw, m.previous_yaw, m.body_yaw, m.previous_body_yaw) = (yaw, yaw, yaw, yaw);
-        (m.head_yaw, m.previous_head_yaw) = (yaw, yaw);
     }
+    let p = l.parts();
+    // RESTE-SANS-ECS: the yaw draw is kept for the level random; no ECS yaw setter yet.
+    let _yaw = p.world.random.next_float() * 360.0;
 }
 
 /// `ServerLevel.isVillage`: within one section of a village.

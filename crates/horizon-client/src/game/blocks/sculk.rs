@@ -4,12 +4,11 @@
 //! (`SculkShriekerBlockEntity`, `SpawnUtil`), catalysts feeding the sculk
 //! spreader from deaths, and the darkness wardens and shriekers cast.
 use super::{Game, Result, commands::R};
-use horizon_client::join_seq::ListStamp;
 use horizon_client::{
     containers::BlockEntity,
     effects::{EffectInstance, PlayerEffects},
     fast_hash::{FxHashMap, FxHashSet},
-    mobs::{Mob, Species, Who, allay, warden},
+    mobs::{Species, Who, warden},
     particles::ParticleOptions,
     sculk::{self, Context, Info, SculkEntity, SculkKind, WardenSpawnTracker},
     text::Text,
@@ -100,8 +99,6 @@ pub(super) struct SculkState {
     /// The vehicle each rider had last tick and where it stood.
     mounts: FxHashMap<Who, (u32, [f64; 3])>,
     damaged: FxHashMap<u32, i64>,
-    /// Set while the mobs' events are posted (`tick_mob_sculk_events`).
-    mob_slots: Option<MobSlots>,
     last_health: Option<f32>,
     /// The darkness effect's blend factor, previous and current tick.
     pub darkness: (f32, f32),
@@ -109,31 +106,6 @@ pub(super) struct SculkState {
     pub actor: Option<Who>,
     ticks: u32,
     pub tracker_loaded: bool,
-    /// The wardens' and allays' slots in the mob list, and the list they were
-    /// read from: see `listener_slots`.
-    listeners: Vec<u32>,
-    listeners_of: Option<ListStamp>,
-}
-
-/// How far from a warden's or an allay's feet an event may be heard: their
-/// listeners reach 16 blocks from the eye's block (`warden::listen`,
-/// `allay::listen`), the eye stands under 3 blocks up, and flooring to blocks
-/// adds under 2. Past this they do nothing with it.
-const LISTENING_MOB_REACH: f64 = 24.0;
-
-fn dist_sqr_f(a: [f64; 3], b: [f64; 3]) -> f64 {
-    (0..3).map(|i| (a[i] - b[i]) * (a[i] - b[i])).sum()
-}
-
-/// Where each mob is in `Game::mobs` while the mobs' events are posted, for
-/// the thousands of lookups by id they make, and whether any mob listens.
-struct MobSlots {
-    /// The first slot of each id, as a scan would find.
-    by_id: FxHashMap<u32, usize>,
-    /// The wardens and allays (the mobs that listen): slot and id.
-    listeners: Vec<(usize, u32)>,
-    /// `Game::next_entity` when they were taken: unchanged, no mob joined.
-    next_entity: u32,
 }
 
 impl SculkState {
@@ -614,11 +586,7 @@ impl Game<'_> {
     }
     /// `GameEvent.Context.of(mob, state)`.
     pub(super) fn mob_context(&mut self, id: u32, state: Option<BlockStateId>) -> Context {
-        if self.ecs.is_active() {
-            return self.ecs_mob_context(id, state);
-        }
-        let mob = self.mob_slot(id).map(|i| &self.remote_entities[i]);
-        self.context_of_mob(mob, id, state)
+        self.ecs_mob_context(id, state)
     }
     /// `GameEvent.Context.of(mob, state)` for an ECS mob: its rider and its listening are read from P's components.
     fn ecs_mob_context(&self, id: u32, state: Option<BlockStateId>) -> Context {
@@ -636,38 +604,6 @@ impl Game<'_> {
             targetable: self.ecs_view(id).is_some(),
             living: true,
             player: self.ecs_has_rider(id),
-        }
-    }
-    /// The slot of the first mob with this id, from the slots taken for the
-    /// mobs' events while the mob is still there (mobs are only appended
-    /// meanwhile), else from the mob index (as a scan finds it). None on an
-    /// ECS level, which keeps no mob slots.
-    fn mob_slot(&mut self, id: u32) -> Option<usize> {
-        if self.ecs.is_active() {
-            return None;
-        }
-        if let Some(slots) = &self.sculk.mob_slots
-            && let Some(&i) = slots.by_id.get(&id)
-            && self.remote_entities.get(i).is_some_and(|m| m.id == id)
-        {
-            return Some(i);
-        }
-        self.remote_index.find(&self.remote_entities, id)
-    }
-    fn context_of_mob(&self, mob: Option<&Mob>, id: u32, state: Option<BlockStateId>) -> Context {
-        Context {
-            source: Some(Who::Mob(id).into()),
-            owner: None,
-            affected_state: state,
-            source_uuid: None,
-            owner_uuid: None,
-            dampening_state: self.state_dampens(state),
-            spectator: false,
-            stepping_carefully: false,
-            dampens: mob.is_some_and(|m| m.species() == Species::Warden),
-            targetable: mob.is_some_and(warden::can_be_targeted),
-            living: true,
-            player: mob.is_some_and(|m| m.rider.is_some()),
         }
     }
     pub(in crate::game) fn who_context(
@@ -783,82 +719,14 @@ impl Game<'_> {
         let at = block_of(pos);
         let radius = sculk::notification_radius(event).min(16);
         let near = self.sculk.index.within(at, radius);
-        if self.ecs.is_active() {
-            // The ECS listeners hear the vibration from P's ears: P ranges them by its index, so nothing here scans the mobs.
-            let ctx = ctx.unwrap_or_else(|| make_ctx(self));
-            let ctx = self.with_vibration_uuids(ctx);
-            for key in near {
-                self.sculk_listen(key, event, pos, &ctx);
-            }
-            self.ecs_post_vibration(pos, ctx.source.and_then(|s| s.actor()), ctx.owner, false);
-            self.ecs_allays_hear(event, pos);
-            return;
-        }
-        // The wardens and allays that may hear it, in the mobs' order, while
-        // the slots taken for the mobs' events hold; else every mob is asked.
-        let mobs = self.sculk.mob_slots.as_ref().and_then(|s| {
-            let mut near = Vec::new();
-            for &(i, id) in &s.listeners {
-                let mob = self.remote_entities.get(i)?;
-                if mob.id != id {
-                    return None;
-                }
-                // A mod's game-event listener may have moved it since the slots were taken.
-                let from = [mob.position.x, mob.position.y, mob.position.z];
-                let d = dist_sqr_f(from, pos);
-                if d.is_nan() || d <= LISTENING_MOB_REACH * LISTENING_MOB_REACH {
-                    near.push(i);
-                }
-            }
-            (s.next_entity == self.next_entity).then_some(near)
-        });
-        if near.is_empty() && mobs.as_ref().is_some_and(Vec::is_empty) {
-            return;
-        }
+        // The ECS listeners hear the vibration from P's ears: P ranges them by its index, so nothing here scans the mobs.
         let ctx = ctx.unwrap_or_else(|| make_ctx(self));
         let ctx = self.with_vibration_uuids(ctx);
         for key in near {
             self.sculk_listen(key, event, pos, &ctx);
         }
-        match mobs {
-            Some(mobs) => {
-                for i in mobs {
-                    self.mob_listen(i, event, pos, &ctx);
-                }
-            }
-            None => {
-                let stamp = self.remote_entities.stamp();
-                let slots = self.listener_slots(stamp);
-                for &i in &slots {
-                    if (i as usize) < self.remote_entities.len() {
-                        self.mob_listen(i as usize, event, pos, &ctx);
-                    }
-                }
-                self.sculk.listeners = slots;
-                self.sculk.listeners_of = Some(stamp);
-            }
-        }
-    }
-    /// The slots of the wardens and allays (the mobs that hear game events),
-    /// in list order, for an event posted outside the mobs' own events. A walk
-    /// over the list misses the cache once per mob, and a busy server posts
-    /// hundreds of such events a tick: one walk serves until the list is next
-    /// written to ([`ListStamp`]).
-    fn listener_slots(&mut self, stamp: ListStamp) -> Vec<u32> {
-        let mut slots = std::mem::take(&mut self.sculk.listeners);
-        // Taken: an event a listener posts while it hears this one finds none
-        // and walks the list itself.
-        if self.sculk.listeners_of.take() != Some(stamp) {
-            slots.clear();
-            slots.extend(
-                self.remote_entities
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
-                    .map(|(i, _)| i as u32),
-            );
-        }
-        slots
+        self.ecs_post_vibration(pos, ctx.source.and_then(|s| s.actor()), ctx.owner, false);
+        self.ecs_allays_hear(event, pos);
     }
     /// The context with the saved identities of its source and owner, as
     /// `VibrationInfo`'s constructor takes them from the entities when the
@@ -881,28 +749,6 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// The mob at `index` hears a game event, if it is a warden or an allay.
-    fn mob_listen(&mut self, index: usize, event: &'static str, pos: [f64; 3], ctx: &Context) {
-        if self.remote_entities[index].species() == Species::Warden && self.remote_entities[index].alive() {
-            self.warden_listen(index, event, pos, ctx);
-        }
-        if self.remote_entities[index].species() == Species::Allay && self.remote_entities[index].alive() {
-            self.allay_listen(index, event, pos, ctx);
-            // Allay.JukeboxListener, its own listener beside the vibrations'.
-            let playing = match event {
-                "minecraft:jukebox_play" => Some(true),
-                "minecraft:jukebox_stop_play" => Some(false),
-                _ => None,
-            };
-            let m = &mut self.remote_entities[index];
-            if let Some(playing) = playing
-                && allay::hears_jukebox(m, pos)
-            {
-                let at = pos.map(|v| v.floor() as i32);
-                allay::set_jukebox_playing(m, at, playing);
-            }
-        }
-    }
     /// A game event at a block (`Level.gameEvent(source, event, pos)`).
     pub(super) fn post_block_game_event(
         &mut self,
@@ -917,19 +763,8 @@ impl Game<'_> {
     /// `LivingEntity.actuallyHurt`'s damage vibration, heard as the hit lands;
     /// the end-of-tick scan then knows this damage.
     pub(super) fn mob_damage_event(&mut self, id: u32) {
-        if self.ecs.is_active() {
-            // The hit is asked of P this tick: its time is now.
-            self.sculk.damaged.insert(id, self.world.game_time);
-            self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
-            return;
-        }
-        if let Some(t) = self
-            .remote_index
-            .get(&self.remote_entities, id)
-            .and_then(|m| m.last_damage.map(|(_, t)| t))
-        {
-            self.sculk.damaged.insert(id, t);
-        }
+        // The hit is asked of P this tick: its time is now.
+        self.sculk.damaged.insert(id, self.world.game_time);
         self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
     }
     /// A game event of an entity at its position.
@@ -939,11 +774,7 @@ impl Game<'_> {
                 .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
-            Who::Mob(id) if self.ecs.is_active() => self.ecs_view(id).map(|v| v.position),
-            Who::Mob(id) => self.mob_slot(id).map(|i| {
-                let p = self.remote_entities[i].position;
-                [p.x, p.y, p.z]
-            }),
+            Who::Mob(id) => self.ecs_view(id).map(|v| v.position),
         };
         if let Some(at) = at {
             self.post_game_event_with(event, at, |g| g.who_context(Some(who), None));
@@ -1071,44 +902,6 @@ impl Game<'_> {
             .state(state)
             .and_then(|s| s.properties.get(key))
             .map(String::as_str)
-    }
-
-    /// `Warden.VibrationUser`: accept a vibration for the warden at `index`.
-    fn warden_listen(&mut self, index: usize, event: &'static str, pos: [f64; 3], ctx: &Context) {
-        let now = self.world.game_time;
-        let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.remote_entities[index].id);
-        let (occludes, world) = (&self.sculk.tables.occludes, &self.world);
-        let avoided = warden::listen(&mut self.remote_entities[index], now, event, pos, &ctx, |a, b| {
-            sculk::is_occluded(a, b, |p| {
-                let state = world.block(p.x, p.y, p.z);
-                occludes.get(state.0 as usize).copied().unwrap_or(false)
-            })
-        });
-        if avoided {
-            self.trigger_player("minecraft:avoid_vibration");
-        }
-    }
-
-    /// `VibrationSystem.Listener.handleGameEvent` for the allay at `index`
-    /// (`Allay.VibrationUser`).
-    fn allay_listen(&mut self, index: usize, event: &'static str, pos: [f64; 3], ctx: &Context) {
-        let now = self.world.game_time;
-        let (occludes, world) = (&self.sculk.tables.occludes, &self.world);
-        let dimension = self.dim.id();
-        allay::listen(
-            &mut self.remote_entities[index],
-            now,
-            event,
-            pos,
-            ctx,
-            dimension,
-            |a, b| {
-                sculk::is_occluded(a, b, |p| {
-                    let state = world.block(p.x, p.y, p.z);
-                    occludes.get(state.0 as usize).copied().unwrap_or(false)
-                })
-            },
-        );
     }
 
     // ---- ticking ----
@@ -1295,10 +1088,7 @@ impl Game<'_> {
         Ok(())
     }
     fn rides_player(&self, who: Option<Who>) -> bool {
-        match who {
-            Some(Who::Mob(id)) if self.ecs.is_active() => self.ecs_has_rider(id),
-            _ => matches!(who, Some(Who::Mob(id)) if self.remote_entities.iter().any(|m| m.id == id && m.rider.is_some())),
-        }
+        matches!(who, Some(Who::Mob(id)) if self.ecs_has_rider(id))
     }
     /// `SculkSensorBlock.activate`.
     fn activate_sensor(
@@ -1341,17 +1131,8 @@ impl Game<'_> {
     /// `SculkSensorBlock.stepOn` and `SculkShriekerBlock.stepOn`: standing on
     /// them is heard (or seen) every tick.
     fn sculk_step_on(&mut self) {
+        // No mob is walked here: P emits no step vibration yet.
         self.sculk_step_on_player();
-        // On an ECS level no mob is walked here (P emits no step vibration yet).
-        let mut standing: Vec<(Who, [f64; 3])> = Vec::new();
-        if !self.ecs.is_active() {
-            for m in &self.remote_entities {
-                if m.alive() && m.on_ground {
-                    standing.push((Who::Mob(m.id), [m.position.x, m.position.y, m.position.z]));
-                }
-            }
-        }
-        self.sculk_stand_on(standing);
     }
     /// `stepOn` for the player in place: the host, or a guest swapped in
     /// (`guest_server_tick`), as a server has no player of its own.
@@ -1375,11 +1156,7 @@ impl Game<'_> {
                 continue;
             }
             let state = self.world.block(key.0, key.1, key.2);
-            let is_warden = match who {
-                Who::Mob(id) if self.ecs.is_active() => self.ecs_is_listener(id),
-                _ => matches!(who, Who::Mob(id)
-                    if self.remote_entities.iter().any(|m| m.id == id && m.species() == Species::Warden)),
-            };
+            let is_warden = matches!(who, Who::Mob(id) if self.ecs_is_listener(id));
             match self.kind_of_state(state.0) {
                 KIND_SENSOR | KIND_CALIBRATED => {
                     if is_warden || !self.res.behaviours().sculk_sensor_can_activate(state) {
@@ -1454,26 +1231,16 @@ impl Game<'_> {
     /// `WardenSpawnTracker.tryWarn` for the one player.
     fn try_to_warn(&mut self, key: (i32, i32, i32)) -> bool {
         let c = center(key);
-        let warden_nearby = if self.ecs.is_active() {
-            // The wardens within the reach of the 24-block box (its corner), from the index, then the box itself.
-            self.ecs.ids_near(c, 24.0 * 3f64.sqrt()).into_iter().any(|id| {
-                self.ecs_kind(id).as_deref() == Some("minecraft:warden")
-                    && self.ecs_mob_bounds(id).is_some_and(|b| {
-                        let centre = b.center();
-                        (centre.x - c[0]).abs() < 24.0
-                            && (centre.y - c[1]).abs() < 24.0
-                            && (centre.z - c[2]).abs() < 24.0
-                    })
-            })
-        } else {
-            self.remote_entities.iter().any(|m| {
-                m.species() == Species::Warden
-                    && m.alive()
-                    && (m.position.x - c[0]).abs() < 24.0
-                    && (m.position.y + f64::from(m.height()) / 2.0 - c[1]).abs() < 24.0
-                    && (m.position.z - c[2]).abs() < 24.0
-            })
-        };
+        // The wardens within the reach of the 24-block box (its corner), from the index, then the box itself.
+        let warden_nearby = self.ecs.ids_near(c, 24.0 * 3f64.sqrt()).into_iter().any(|id| {
+            self.ecs_kind(id).as_deref() == Some("minecraft:warden")
+                && self.ecs_mob_bounds(id).is_some_and(|b| {
+                    let centre = b.center();
+                    (centre.x - c[0]).abs() < 24.0
+                        && (centre.y - c[1]).abs() < 24.0
+                        && (centre.z - c[2]).abs() < 24.0
+                })
+        });
         // The only player is the one who set it off.
         let mut trackers = [self.sculk.tracker];
         let level = WardenSpawnTracker::try_warn(&mut trackers, warden_nearby);
@@ -1544,50 +1311,7 @@ impl Game<'_> {
         if warning < 4 {
             return false;
         }
-        if self.ecs.is_active() {
-            return self.ecs_try_summon_warden(key);
-        }
-        let Some(kind) = self.res.mob_types().get("minecraft:warden").cloned() else {
-            return false;
-        };
-        for _ in 0..20 {
-            let r = &mut self.world.random;
-            let dx = r.next_int_bound(11).unwrap_or(0) - 5;
-            let dz = r.next_int_bound(11).unwrap_or(0) - 5;
-            let Some(at) = self.spawn_position(key.0 + dx, key.1 + 6, key.2 + dz, 6) else {
-                continue;
-            };
-            let spot = [
-                f64::from(at.0) + 0.5,
-                f64::from(at.1),
-                f64::from(at.2) + 0.5,
-            ];
-            let yaw = mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0);
-            self.next_entity += 1;
-            let mut mob = Mob::new(
-                self.next_entity,
-                kind.clone(),
-                Vec3::new(spot[0], spot[1], spot[2]),
-                yaw,
-            );
-            // Warden.finalizeSpawn, then Mob.finalizeSpawn's draws from the
-            // level random: the follow range bonus and left-handedness.
-            let mut events = Vec::new();
-            warden::finalize(&mut mob, true, &mut events);
-            let _ = self.handle_mob_events(events);
-            let r = &mut self.world.random;
-            let bonus = r.triangle(0.0, 0.11485000000000001);
-            mob.attrs.follow_range += mob.kind.follow_range * bonus;
-            mob.update_max_visited_nodes();
-            let _left_handed = r.next_float() < 0.05;
-            if !self.warden_fits(&mob) {
-                continue;
-            }
-            self.remote_entities.push(mob);
-            self.native_mobs_joined(self.remote_entities.len() - 1, false);
-            return true;
-        }
-        false
+        self.ecs_try_summon_warden(key)
     }
     /// `try_summon_warden` on an ECS level: the same twenty spots, the first whose box is free gets a warden of P (its finalize is P's).
     fn ecs_try_summon_warden(&mut self, key: (i32, i32, i32)) -> bool {
@@ -1632,19 +1356,6 @@ impl Game<'_> {
             above = current;
         }
         None
-    }
-    /// `Warden.checkSpawnObstruction`: no liquid in its box, no living entity
-    /// in the way (`isUnobstructed`), and no block collision.
-    fn warden_fits(&self, mob: &Mob) -> bool {
-        let bounds = mob.bounds();
-        if self
-            .remote_entities
-            .iter()
-            .any(|m| !m.removed && m.alive() && m.bounds().intersects(bounds))
-        {
-            return false;
-        }
-        self.warden_box_clear(bounds)
     }
     /// The space of an ECS warden's box: the same checks as `warden_fits`, with the ECS entities in the box in place of the mobs.
     fn ecs_warden_fits(&self, bounds: Aabb) -> bool {
@@ -1945,7 +1656,6 @@ impl Game<'_> {
     /// changed this tick.
     fn tick_entity_events(&mut self) {
         self.tick_player_sculk_events();
-        self.tick_mob_sculk_events();
         if !self.sculk.falling_items.is_empty() {
             let present: HashSet<u32> = self.ecs.item_views().iter().map(|item| item.id).collect();
             self.sculk.falling_items.retain(|id| present.contains(id));
@@ -2095,144 +1805,15 @@ impl Game<'_> {
         }))
     }
 
-    fn tick_mob_sculk_events(&mut self) {
-        if self.ecs.is_active() {
-            // On an ECS level no mob is walked here (P emits no step vibration yet).
-            return;
-        }
-        let snapshot: Vec<(
-            u32,
-            [f64; 3],
-            bool,
-            bool,
-            Species,
-            Option<i64>,
-            Option<u32>,
-            u32,
-            bool,
-        )> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.alive())
-            .map(|m| {
-                (
-                    m.id,
-                    [m.position.x, m.position.y, m.position.z],
-                    m.on_ground,
-                    m.fluids.in_water,
-                    m.species(),
-                    m.last_damage.map(|(_, t)| t),
-                    m.extra.mount,
-                    m.age,
-                    m.species() == Species::Bat && horizon_client::mobs::bat::resting(m),
-                )
-            })
-            .collect();
-        let mut by_id = FxHashMap::default();
-        for (i, m) in self.remote_entities.iter().enumerate() {
-            by_id.entry(m.id).or_insert(i);
-        }
-        let listeners = self
-            .remote_entities
-            .iter()
-            .enumerate()
-            .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
-            .map(|(i, m)| (i, m.id))
-            .collect();
-        self.sculk.mob_slots = Some(MobSlots {
-            by_id,
-            listeners,
-            next_entity: self.next_entity,
-        });
-        // Steps, landings, splashes, flaps and stepping on redstone ore come
-        // from the mob's own tick (Entity.move, LivingEntity.aiStep's
-        // applyEffectsFromBlocks), which ServerLevel.tick runs only in
-        // entity-ticking chunks: for the mobs `tick_creature_entities` ticked,
-        // and those standing in that area (the sculk fixture posts before the
-        // mobs tick). Damage and mounting are raised by `hurt` and
-        // `startRiding`, ticking or not.
-        let ticking = self.entity_ticking_area();
-        for (id, at, on_ground, in_water, species, damaged, vehicle, age, resting) in snapshot {
-            let ticked = self.creatures.ticked.contains(&id)
-                || ticking(at[0].floor() as i32, at[2].floor() as i32);
-            if on_ground && ticked {
-                self.step_on_redstone_ore(at, false, false);
-            }
-            // A mob first seen already riding raised its event when it spawned.
-            let seen = self.sculk.steps.contains_key(&Who::Mob(id));
-            self.mount_events(Who::Mob(id), vehicle, seen);
-            let emits = !matches!(species, Species::Shulker);
-            if emits && !ticked {
-                // Where it is now, without a move: a mob put elsewhere while
-                // it did not tick (a command) walked nowhere.
-                let entry = self.sculk.steps.entry(Who::Mob(id)).or_insert(Steps {
-                    move_dist: 0.0,
-                    next_step: 1.0,
-                    last: at,
-                    on_ground,
-                    in_water,
-                });
-                entry.last = at;
-                entry.on_ground = on_ground;
-                entry.in_water = in_water;
-            } else if emits {
-                let warden = species == Species::Warden;
-                self.entity_motion_events(
-                    Who::Mob(id),
-                    at,
-                    on_ground,
-                    in_water,
-                    false,
-                    false,
-                    warden,
-                );
-                // Entity.processFlappingMovement: what flaps this move flaps
-                // over air only (the mob's own `MobEvent::GameEvent` is not
-                // read here).
-                if flaps(species, resting, on_ground, age) {
-                    let below = self.world.block(
-                        at[0].floor() as i32,
-                        (at[1] - 1.0e-5).floor() as i32,
-                        at[2].floor() as i32,
-                    );
-                    if self.res.facts().is_air(below) {
-                        self.post_entity_event("minecraft:flap", Who::Mob(id));
-                    }
-                }
-            }
-            if let Some(t) = damaged
-                && self.sculk.damaged.get(&id) != Some(&t)
-            {
-                self.sculk.damaged.insert(id, t);
-                self.post_entity_event("minecraft:entity_damage", Who::Mob(id));
-            }
-        }
-        self.sculk.mob_slots = None;
-        let alive: FxHashSet<u32> = self.remote_entities.iter().map(|m| m.id).collect();
-        self.sculk.damaged.retain(|id, _| alive.contains(id));
-        self.sculk.steps.retain(|who, _| match who {
-            Who::Player => true,
-            Who::Mob(id) => alive.contains(id),
-        });
-        self.sculk.mounts.retain(|who, _| match who {
-            Who::Player => true,
-            Who::Mob(id) => alive.contains(id),
-        });
-    }
     /// Where the vehicle `id` stands: a mob, boat, minecart or cushion.
     fn vehicle_position(&mut self, id: u32) -> Option<[f64; 3]> {
-        if self.ecs.is_active()
-            && let Some(p) = self.ecs_view(id).map(|v| v.position)
-        {
+        if let Some(p) = self.ecs_view(id).map(|v| v.position) {
             return Some(p);
         }
-        let p = if let Some(i) = self.mob_slot(id) {
-            self.remote_entities[i].position
-        } else if let Some(p) = self.ecs.position(id) {
+        if let Some(p) = self.ecs.position(id) {
             return Some(p);
-        } else {
-            self.cushion_saved(id)?.position
-        };
+        }
+        let p = self.cushion_saved(id)?.position;
         Some([p.x, p.y, p.z])
     }
     /// `Entity.startRiding` and `removeVehicle`: `entity_mount` at the new
@@ -2307,15 +1888,10 @@ impl Game<'_> {
     fn main_support(&mut self, who: Who) -> Option<BlockPos> {
         match who {
             Who::Player => self.player.as_ref()?.ground.supporting_block,
-            Who::Mob(id) if self.ecs.is_active() => {
+            Who::Mob(id) => {
                 let p = self.ecs_view(id)?.position;
                 let bounds = self.ecs_mob_bounds(id)?;
                 self.supporting_block(Vec3::new(p[0], p[1], p[2]), bounds)
-            }
-            Who::Mob(id) => {
-                let slot = self.mob_slot(id)?;
-                let mob = &self.remote_entities[slot];
-                self.supporting_block(mob.position, mob.bounds())
             }
         }
     }

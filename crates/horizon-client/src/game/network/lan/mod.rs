@@ -6,7 +6,6 @@ mod event_timings;
 #[cfg(test)]
 mod level_event_targets;
 mod mob_metadata;
-mod mob_states;
 mod raw_inbox;
 mod residency;
 pub(super) mod sync;
@@ -33,7 +32,7 @@ use horizon_client::{
         hub::{HostEvent, Hub, HubConfig, TickCtx, stuck_meta},
         playerdata,
     },
-    mobs::{Mob, Species, Who, leash::Holder},
+    mobs::{Mob, Species, Who},
     text::Text,
     world::World,
 };
@@ -64,9 +63,6 @@ pub(super) struct LanHost {
     pub menus: HashMap<u32, super::lan_menus::GuestMenus>,
     /// Blocks broken this tick (their sound is a level event for the guests).
     pub broken: Vec<[f64; 3]>,
-    /// Hurt time, death and swing time (while swinging) of the mobs guests
-    /// see; the players' hurt time by entity id.
-    mob_state: HashMap<super::Dim, HashMap<u32, (i32, bool, Option<i32>)>>,
     /// Each placed guest's pose as the mods last heard it
     /// (`native_entity_pose_change`), by connection.
     pub poses: HashMap<u32, horizon_client::pose::Pose>,
@@ -102,8 +98,6 @@ pub(super) struct LanHost {
     /// The entity id counter when this tick's states were taken for guests
     /// (`lan_note_joined`), None when no guest tracked them.
     pub(super) states_next_entity: Option<u32>,
-    /// Last tick's states of the idle mobs and items (game/network/lan_idle.rs).
-    pub(super) idle_states: super::lan_idle::IdleStates,
 }
 
 impl Game<'_> {
@@ -328,7 +322,7 @@ pub(super) fn mob_effect_meta(m: &Mob, hub: &Hub) -> Vec<(u8, i32, Value)> {
 }
 
 /// [`mob_meta`] from the synced tables alone, so the tick's helper threads can build it
-/// (`mob_states.rs`). `effects` is [`mob_effect_meta`]: the hub's particles need the hub, so the
+/// (the ECS's mob states). `effects` is [`mob_effect_meta`]: the hub's particles need the hub, so the
 /// server thread makes them.
 pub(super) fn mob_meta_sync(
     m: &Mob,
@@ -1031,20 +1025,6 @@ pub(super) fn mob_freeze_meta(
     }
 }
 
-/// The equipment a mob shows (ClientboundSetEquipmentPacket slots: main hand,
-/// off hand, feet, legs, chest, head, body, saddle).
-fn mob_equipment(
-    m: &Mob,
-    hub: &mut Hub,
-    out: &mut Vec<(u8, Option<horizon_protocol::item::Stack>)>,
-) {
-    for (slot, stack) in m.equipment_stacks().into_iter().enumerate() {
-        if stack.is_some() {
-            out.push((slot as u8, hub.stack(&stack)));
-        }
-    }
-}
-
 /// With the game mode forced, the guests online take the default mode
 /// (setting a mode does nothing when it is already theirs). A world open to
 /// LAN is an integrated server, which leaves out the players who have game
@@ -1190,7 +1170,6 @@ impl Game<'_> {
             play: HashMap::new(),
             menus: HashMap::new(),
             broken: Vec::new(),
-            mob_state: HashMap::new(),
             poses: HashMap::new(),
             mob_players: Default::default(),
             owner: None,
@@ -1204,7 +1183,6 @@ impl Game<'_> {
             sleep_ignored: Default::default(),
             states: Default::default(),
             states_next_entity: None,
-            idle_states: Default::default(),
         });
         self.audio.capture = Some(Vec::new());
         Ok(())
@@ -1696,86 +1674,12 @@ impl Game<'_> {
         }
     }
 
-    /// The entities guests track: mobs, items and the rest (game/network/lan_entities.rs).
-    /// Only the entities whose id is above `after` (0: all of them). With
-    /// `kept`, idle mobs and items no client can pair with are described bare
-    /// (game/network/lan_idle.rs).
-    pub(super) fn lan_entities(
-        &mut self,
-        out: &mut States,
-        drain_minecart_steps: bool,
-        after: u32,
-        mut kept: Option<&mut super::lan_idle::IdlePass<'_>>,
-    ) {
+    /// The entities guests track: items and the rest (game/network/lan_entities.rs).
+    /// Only the entities whose id is above `after` (0: all of them).
+    pub(super) fn lan_entities(&mut self, out: &mut States, drain_minecart_steps: bool, after: u32) {
         out.clear();
-        let mut states = mob_states::Later::new(self.world.game_time);
         if mod_api::__private::listened(mod_api::HookId::EffectParticleModification) {
             self.lan_effect_particles();
-        }
-        // ChunkMap.tick sends the changes of an entity outside the
-        // entity-ticking range only when it changed section or needs sync.
-        let levels = self.tickets.levels();
-        let idle_at = |p: horizon_core::geometry::Vec3| {
-            !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
-        };
-        for (index, m) in (self.remote_entities.iter().enumerate()).filter(|(_, m)| !m.removed && m.id > after)
-        {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            let (mob_players, hub) = (&host.mob_players, &host.hub);
-            // The lead's holder: the player the mob sees, another mob or a
-            // fence knot (game/network/lan_entities.rs).
-            let player_entity = || {
-                (mob_players.get(&m.id))
-                    .and_then(|conn| hub.guest(*conn))
-                    .map(|g| g.entity_id)
-            };
-            let leash = m.extra.leash.and_then(|h| match h {
-                Holder::Player => match m.extra.leash_player {
-                    Some(u) => hub
-                        .guests
-                        .iter()
-                        .find(|g| playerdata::uuid_ints(g.uuid) == u)
-                        .map(|g| g.entity_id),
-                    None => player_entity(),
-                },
-                Holder::Mob(id) | Holder::Boat(id) => Some(id as i32),
-                Holder::Knot(p) => self.ecs_knot_id(p).map(|id| id as i32),
-            });
-            let idle = idle_at(m.position);
-            let place = super::lan_idle::Place {
-                position: [m.position.x, m.position.y, m.position.z],
-                rotation: (m.yaw, m.head_pitch, m.head_yaw),
-                on_ground: m.on_ground,
-                velocity: [m.velocity.x, m.velocity.y, m.velocity.z],
-            };
-            let kind = m.kind.id.as_str();
-            let bare = idle
-                && (kept.as_deref_mut()).is_some_and(|k| k.bare(hub, m.id as i32, kind, &place))
-                && !m.needs_sync;
-            let slot = out.as_slice().len();
-            let e = out.add(m.id as i32, entity_uuid(m.id), kind);
-            e.position = place.position;
-            (e.yaw, e.pitch, e.head_yaw) = place.rotation;
-            e.on_ground = place.on_ground;
-            e.velocity = place.velocity;
-            e.needs_sync = m.needs_sync;
-            e.sync_position = m.sync_position;
-            e.stepped = true;
-            (e.idle, e.bare) = (idle, bare);
-            e.leash = leash;
-            if bare {
-                continue;
-            }
-            states.state(self, (slot, index), m, player_entity(), hub, e);
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            mob_equipment(m, &mut host.hub, &mut e.equipment);
-        }
-        if let Some(host) = self.lan.as_ref() {
-            states.fill(self, &self.remote_entities, host.hub.sync_data(), out);
         }
         self.lan_object_states(out, drain_minecart_steps, after);
     }
@@ -2475,7 +2379,7 @@ impl Game<'_> {
             self.lan_assign_ids();
             if self.next_entity != next {
                 let mut states = States::default();
-                self.lan_entities(&mut states, false, next, None);
+                self.lan_entities(&mut states, false, next);
                 self.lan_entity_uuids(&mut states);
                 host.hub.note_joined(states.as_slice());
             }
@@ -2559,31 +2463,13 @@ impl Game<'_> {
                     return;
                 };
                 host.hub.riding = riding;
-                // Idle states are kept only when the players' moves are in:
-                // the clients that could pair are known. The range scale is
-                // the one the tracker gets below.
-                let mut idle_states = std::mem::take(&mut host.idle_states);
-                let mut kept = if self.level_pass.packets_drained {
-                    let percent = if host.hub.config.integrated {
-                        (self.settings.entity_distance * 100.0).round() as i32
-                    } else {
-                        host.hub.entity_range_percent
-                    };
-                    idle_states.pass(&host.hub, percent)
-                } else {
-                    None
-                };
                 horizon_client::spans::time("lan_entity_states", || {
-                    self.lan_entities(&mut states, true, 0, kept.as_mut());
-                    if let Some(kept) = kept {
-                        kept.finish();
-                    }
+                    self.lan_entities(&mut states, true, 0);
                     self.lan_entity_uuids(&mut states);
                 });
                 let Some(host) = self.lan.as_mut() else {
                     return;
                 };
-                host.idle_states = idle_states;
                 host.states_next_entity = Some(self.next_entity);
             } else {
                 let Some(host) = self.lan.as_mut() else {
@@ -2596,7 +2482,6 @@ impl Game<'_> {
             }
             // Persist is swapped per level, so parked dimensions retain their marks.
             self.spend_forced_meta();
-            self.lan_syncs_looked();
 
             // The step command reaches clients before the events its tick
             // generated, as ServerTickRateManager.updateStepTicks does.
@@ -2894,7 +2779,7 @@ impl Game<'_> {
         let mut theirs = States::default();
         let entities = if elsewhere {
             // A dedicated server has no host player.
-            self.lan_entities(&mut theirs, false, 0, None);
+            self.lan_entities(&mut theirs, false, 0);
             self.lan_entity_uuids(&mut theirs);
             theirs.as_slice()
         } else {
@@ -2975,21 +2860,6 @@ impl Game<'_> {
         // The guests' hurt and death animations do not depend on the audio capture: a hosted world queues them whenever it is open.
         if self.audio.capture.is_some() || self.lan.is_some() {
             self.lan_entity_events.push((id, event));
-        }
-        // Events 53 and 54: honey crumbs while sliding, and the landing burst
-        // (`HoneyBlock.showSlideParticles` / `showJumpParticles`), drawn by the
-        // client that runs the world.
-        if false
-            && horizon_client::landing::honey_particle_count(event).is_some()
-        {
-        }
-        // Event 2: a mob's spear hit felt; the same window hears its own mob's hit.
-        if event == 2 && false {
-            self.remote_kinetic_hit(id);
-        }
-        // Fox.handleEntityEvent 45: the same window draws the eating crumbs.
-        if event == 45 && false {
-            self.fox_eat_particles(id as u32);
         }
     }
     /// `ServerPlayer.onEquippedItemBroken` for the acting player (the guest whose turn it
@@ -3104,56 +2974,8 @@ impl Game<'_> {
             return;
         };
         if host.hub.guests.is_empty() {
-            host.mob_state.clear();
             return;
         }
-        // Hurt and death animations of mobs.
-        let mut seen = HashMap::new();
-        for m in &self.remote_entities {
-            let dead = !m.alive();
-            let old = host
-                .mob_state
-                .get(&self.dim)
-                .and_then(|s| s.get(&m.id))
-                .copied();
-            let at = [m.position.x, m.position.y, m.position.z];
-            // LivingEntity.hurtServer: a hurt that restarted the hurt time.
-            if m.hurt_time > old.map_or(0, |o| o.0)
-                && !dead
-                && let Some((source, _)) = m.last_damage
-            {
-                use horizon_client::mobs::Who;
-                let kind = super::creatures::source_damage_type(source);
-                // The player a mob sees is the guest acting.
-                let cause = source.attacker.and_then(|who| match who {
-                    Who::Player => host
-                        .mob_players
-                        .get(&m.id)
-                        .and_then(|conn| host.hub.guest(*conn))
-                        .map(|g| g.entity_id),
-                    Who::Mob(id) => Some(id as i32),
-                });
-                // A projectile is the direct entity of its hit: not tracked here.
-                let direct = cause.filter(|_| super::combat::melee(source.kind));
-                host.hub.damage_event(m.id as i32, kind, cause, direct, at);
-            }
-            if dead && !old.is_some_and(|o| o.1) {
-                host.hub.entity_event(m.id as i32, 3);
-            }
-            // LivingEntity.swing on a server (a melee hit, a thrown potion):
-            // ClientboundSwingAnimationPacket for the players around. A swing
-            // started since the last flush, or restarted (its time went back).
-            let swing = m.ai.swinging.then_some(m.ai.swing_time);
-            if let Some(time) = swing
-                && !dead
-                && old.and_then(|o| o.2).is_none_or(|before| time < before)
-            {
-                host.hub
-                    .swing(m.id as i32, i32::from(m.swing_is_off_hand()), at, None);
-            }
-            seen.insert(m.id, (m.hurt_time, dead, swing));
-        }
-        host.mob_state.insert(self.dim, seen);
         // Level.broadcastEntityEvent(player, 2) of a spear's stab.
         for attacker in kinetic_hits {
             if let Some(g) = attacker.and_then(|conn| host.hub.guest(conn)) {

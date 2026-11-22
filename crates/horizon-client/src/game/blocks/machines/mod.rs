@@ -262,9 +262,7 @@ pub(super) struct Containers<'a> {
     registry: &'static horizon_world::registry::BlockRegistry,
     /// Brewing recipes, for what a brewing stand accepts (not needed for signals).
     brewing: Option<&'a horizon_client::brewing::Brewing>,
-    /// The level's mobs, for the cat half of `ChestBlock.isChestBlockedAt`.
-    mobs: &'a [Mob],
-    /// The ECS level when it runs: its cats are read from the index, not from `mobs`.
+    /// The ECS level: its cats, for the cat half of `ChestBlock.isChestBlockedAt`.
     ecs: Option<&'a crate::ecs_bridge::level::EcsLevel>,
 }
 impl Containers<'_> {
@@ -350,10 +348,7 @@ impl Containers<'_> {
                 self.behaviours.facts(above).flags
                     & horizon_world::level::data::state_flags::CONDUCTOR
                     != 0
-                    || match self.ecs {
-                        Some(ecs) if ecs.is_active() => ecs_cat_sitting_above(ecs, p),
-                        _ => cat_sitting_above(self.mobs, p),
-                    }
+                    || self.ecs.is_some_and(|ecs| ecs_cat_sitting_above(ecs, p))
             };
             if blocked_chests && is_blocked(pos) {
                 return None;
@@ -740,8 +735,7 @@ pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) 
         items: level.items,
         registry: level.registry,
         brewing: None,
-        mobs: level.entities().mobs,
-        ecs: None,
+        ecs: Some(&*level.ecs),
     };
     let view = c
         .view((pos.x, pos.y, pos.z), true)
@@ -758,8 +752,7 @@ pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) 
         items: level.items,
         registry: level.registry,
         brewing: None,
-        mobs: level.entities().mobs,
-        ecs: None,
+        ecs: Some(&*level.ecs),
     };
     view.map_or(0, |v| c.signal(&v))
 }
@@ -813,7 +806,6 @@ impl Game<'_> {
             items: self.items(),
             registry: self.pack.assets.registry,
             brewing: Some(&self.stations().brewing),
-            mobs: if self.ecs.is_active() { &[] } else { &self.remote_entities },
             ecs: Some(&self.ecs),
         }
     }
@@ -2312,7 +2304,6 @@ mod capacity_tests {
             world.block_entities.insert((x, 64, 0), entity);
         }
         let c = Containers {
-            mobs: &[],
             world: &world,
             behaviours: &behaviours,
             items: &items,

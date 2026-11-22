@@ -1509,14 +1509,7 @@ impl Game<'_> {
     ) -> crate::Result<()> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let against = self.world.block(pos[0], pos[1] - 1, pos[2]);
-        let kind = if self.ecs.is_active() {
-            self.ecs.kind(mob).map(str::to_owned)
-        } else {
-            self.remote_entities
-                .iter()
-                .find(|m| m.id == mob)
-                .map(|m| m.kind.id.clone())
-        };
+        let kind = self.ecs.kind(mob).map(str::to_owned);
         if self.place_canceled(mob, at, state, against, None) {
             return Ok(());
         }
@@ -1657,34 +1650,6 @@ impl Game<'_> {
         self.native_mob_split(m.id, &kind, size, size / 2, &mut count, &mut cancel);
         if cancel { 0 } else { count.min(64) }
     }
-    /// `AnimalTameEvent` for the mob at `index`, whose taming roll by the
-    /// player `tamer` (`tamer_entity_id`) succeeded: true when a mod cancels
-    /// it, and the taming fails.
-    pub(super) fn animal_tame_cancelled(
-        &mut self,
-        index: usize,
-        tamer: u128,
-        tamer_entity_id: i32,
-    ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::AnimalTame) {
-            return false;
-        }
-        let m = &self.remote_entities[index];
-        let (entity, kind) = (m.id, mob_kind(m));
-        let mut cancel = false;
-        self.native_animal_tame(tamer, tamer_entity_id, entity, &kind, &mut cancel);
-        cancel
-    }
-    /// `entity_tame` for the pet at `index`, just tamed by its owner.
-    pub(super) fn pet_tamed(&mut self, index: usize) {
-        let m = &self.remote_entities[index];
-        let (entity, kind) = (m.id, mob_kind(m));
-        let owner = m
-            .extra
-            .owner
-            .map(horizon_client::lan::playerdata::ints_uuid);
-        self.native_entity_tame(entity, &kind, owner);
-    }
     /// The acting player as the hook points name one: the guest whose turn
     /// it is, else the host.
     pub(super) fn native_acting_id(&mut self) -> u128 {
@@ -1764,31 +1729,6 @@ impl Game<'_> {
         for (_, player, name, _) in players {
             self.native_player_logged_out(player, &name);
         }
-    }
-    /// The mobs from index `from` on are new in the world.
-    pub(super) fn native_mobs_joined(&mut self, from: usize, natural: bool) {
-        // A mod can keep a mob out; it is then taken out and not told of.
-        self.native_joins_flush(false, 0);
-        for i in from..self.remote_entities.len() {
-            let m = &self.remote_entities[i];
-            let (kind, pos) = (mob_kind(m), [m.position.x, m.position.y, m.position.z]);
-            self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
-        }
-    }
-    /// The acting player's blow killed mob `index`.
-    pub(super) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (
-            self.remote_entities[index].id,
-            mob_kind(&self.remote_entities[index]),
-        );
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, entity, &kind);
-    }
-    /// The acting player's hit landed on mob `index`, holding `stack`.
-    pub(super) fn native_hurt_enemy_event(&mut self, stack: &ItemStack, index: usize) {
-        let mob = &self.remote_entities[index];
-        let kind = ["minecraft:", mob.kind.id.trim_start_matches("minecraft:")].concat();
-        self.native_hurt_enemy(stack, mob.id, &kind);
     }
     /// `Inventory.tick` for the acting player: each carried stack goes through
     /// `native_inventory_tick`.

@@ -38,7 +38,6 @@ impl Game<'_> {
         self.block_ticks = Ticks::new(0);
         self.tick_chunks.clear();
         self.sync_tick_chunks();
-        self.remote_entities.clear();
         for e in self.hot_ecs_entities() {
             self.ecs.despawn(e);
         }

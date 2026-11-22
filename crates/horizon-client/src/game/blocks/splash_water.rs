@@ -7,7 +7,7 @@
 use super::Game;
 use horizon_client::{
     items::ItemStack,
-    mobs::{Damage, Species, Who},
+    mobs::Who,
 };
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3},
@@ -138,7 +138,7 @@ impl Game<'_> {
     /// (`Enderman.hurtServer`); one in `#extinguishes_entities` puts out
     /// those that burn; one in `#rehydrates_axolotls` refills the air of
     /// the axolotls in the box.
-    pub(super) fn affect_entities_around(&mut self, stack: &ItemStack, at: Vec3, by_player: bool) {
+    pub(super) fn affect_entities_around(&mut self, stack: &ItemStack, at: Vec3, _by_player: bool) {
         let hurts = self.potion_in_tag(stack, "minecraft:hurts_water_sensitive_entities");
         let extinguishes = self.potion_in_tag(stack, "minecraft:extinguishes_entities");
         // The potion's box is 0.25 wide and high.
@@ -152,45 +152,7 @@ impl Game<'_> {
             dx * dx + dy * dy + dz * dz < 16.0
         };
         if hurts || extinguishes {
-            let source =
-                Damage::indirect_magic(by_player.then_some(Who::Player), [at.x, at.y, at.z]);
-            if self.ecs.is_active() {
-                self.splash_mobs_ecs(reach, at, hurts, extinguishes);
-            } else {
-                for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
-                    // WATER_SENSITIVE_OR_ON_FIRE.
-                    let sensitive = m.kind.flags.water_sensitive;
-                    if !(sensitive || m.is_on_fire())
-                        || !reach.intersects(m.bounds())
-                        || !near(m.position)
-                    {
-                        continue;
-                    }
-                    if hurts && sensitive {
-                        let invulnerable = m.invulnerable_flag;
-                        m.damage(
-                            crate::game::entity::damage_level_of!(self, scoped),
-                            1.0,
-                            source,
-                        );
-                        // `Enderman.hurtServer` for a thrown potion: the hit is
-                        // `Enderman.hurtWithCleanWater`, then
-                        // `Enderman.repeatedlyTryToTeleport`, which does nothing
-                        // while it rides or once it is dead (`teleport` needs
-                        // `isAlive`) and which the AI step runs.
-                        if m.species() == Species::Enderman
-                            && !invulnerable
-                            && m.alive()
-                            && !m.extra.passenger
-                        {
-                            m.extra.counter2 = 64;
-                        }
-                    }
-                    if extinguishes && m.is_on_fire() && m.alive() {
-                        m.extinguish_fire();
-                    }
-                }
-            }
+            self.splash_mobs_ecs(reach, at, hurts, extinguishes);
         }
         if extinguishes {
             self.for_each_player(|g| g.extinguish_player_in_splash(reach, at));
@@ -216,33 +178,13 @@ impl Game<'_> {
                 [at.x - 0.125 - 4.0, at.y - 2.0, at.z - 0.125 - 4.0],
                 [at.x + 0.125 + 4.0, at.y + 0.25 + 2.0, at.z + 0.125 + 4.0],
             );
-            if self.ecs.is_active() {
-                for id in self.ecs_entities_meeting(Aabb::new(
-                    Vec3::new(lo[0], lo[1], lo[2]),
-                    Vec3::new(hi[0], hi[1], hi[2]),
-                )) {
-                    if self.ecs.kind(id) == Some("minecraft:axolotl") && self.mob_exists(id) {
-                        let air = self.ecs.air(id);
-                        self.ecs.set_air(id, (air + 1800).min(horizon_client::mobs::axolotl::MAX_AIR));
-                    }
-                }
-            }
-            for m in self
-                .remote_entities
-                .iter_mut()
-                .filter(|m| !self.ecs.is_active() && m.species() == Species::Axolotl && !m.removed)
-            {
-                let (w, h, _) = m.dims();
-                let half = w / 2.0;
-                let (x, y, z) = (m.position.x, m.position.y, m.position.z);
-                if x - half < hi[0]
-                    && x + half > lo[0]
-                    && y < hi[1]
-                    && y + h > lo[1]
-                    && z - half < hi[2]
-                    && z + half > lo[2]
-                {
-                    m.air = (m.air + 1800).min(horizon_client::mobs::axolotl::MAX_AIR);
+            for id in self.ecs_entities_meeting(Aabb::new(
+                Vec3::new(lo[0], lo[1], lo[2]),
+                Vec3::new(hi[0], hi[1], hi[2]),
+            )) {
+                if self.ecs.kind(id) == Some("minecraft:axolotl") && self.mob_exists(id) {
+                    let air = self.ecs.air(id);
+                    self.ecs.set_air(id, (air + 1800).min(horizon_client::mobs::axolotl::MAX_AIR));
                 }
             }
         }

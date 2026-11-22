@@ -1,39 +1,14 @@
 //! Copper golems on the game side: what their brain (`mobs::transport_items`)
-//! does to chests (opener counts, the lid block events, slots), the openers
-//! recheck, turning into statues, and the hand-over, waxing, scraping and
-//! shearing interactions.
+//! does to chests (opener counts, the lid block events, slots), and the
+//! statue spawn from an axe. The antenna, the carried item, the waxing and the
+//! statue's turning have no ECS hook yet (RESTE-SANS-ECS).
 use super::Game;
-use super::level_sounds::LevelSound;
-use horizon_client::{
-    containers::BlockEntity,
-    items::ItemStack,
-    mobs::{
-        Mob, Species,
-        transport_items::{held, set_held},
-    },
-};
-use horizon_core::random::RandomSource;
-use horizon_world::chunk::BlockState;
-use mod_api::SoundSource;
-
-use horizon_core::nbt::{Compound, Tag};
+use horizon_client::items::ItemStack;
 
 impl Game<'_> {
-    /// `OfferFlowerGoal.stop` (`MobEvent::Gift`): the item on the target's
-    /// empty antenna, as a guaranteed drop.
-    pub(super) fn receive_gift(&mut self, target: u32, item: &'static str) {
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == target)
-            && m.saddle_item().is_none()
-        {
-            m.set_saddle(Some(ItemStack::new(item, 1)));
-            // OfferFlowerGoal.stop: Mob.setGuaranteedDrop(antenna).
-            horizon_client::mobs::finalize::set_drop_chance(
-                m,
-                horizon_items::equipment::SADDLE,
-                2.0,
-            );
-        }
-    }
+    /// `OfferFlowerGoal.stop` (`MobEvent::Gift`). RESTE-SANS-ECS: the antenna
+    /// has no ECS setter yet.
+    pub(super) fn receive_gift(&mut self, _target: u32, _item: &'static str) {}
     /// A copper golem opened or closed a chest half: the counter changes, the
     /// first opener posts CONTAINER_OPEN and the last closer CONTAINER_CLOSE
     /// (`ContainerOpenersCounter.incrementOpeners` / `decrementOpeners`), and
@@ -81,152 +56,14 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    /// `CopperGolem.turnToStatue`, which its weathering asked for.
-    pub(super) fn golem_become_statue(&mut self, id: u32) {
-        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
-            return;
-        };
-        self.with_entity_held_out(id, |game| {
-            let mut m = game.remote_entities[i].clone();
-            game.golem_turn_to_statue(&mut m);
-            if !game
-                .persist
-                .removals
-                .contains(&super::commands::Target::Mob(id))
-                && let Some(i) = game.remote_entities.iter().position(|x| x.id == id)
-            {
-                game.remote_entities.update(i, |owner| {
-                    horizon_client::join_seq::store_back(owner, m);
-                });
-            }
-        });
-    }
-    fn golem_turn_to_statue(&mut self, m: &mut Mob) {
-        let pos = [
-            m.position.x.floor() as i32,
-            m.position.y.floor() as i32,
-            m.position.z.floor() as i32,
-        ];
-        // The pose comes from the golem's own random (`this.random.nextInt(0, 4)`).
-        let pose = ["standing", "sitting", "running", "star"]
-            [m.random.next_int_bound(4).unwrap_or(0) as usize];
-        // Direction.fromYRot.
-        let facing = ["south", "west", "north", "east"]
-            [((f64::from(m.yaw) / 90.0 + 0.5).floor() as i32 & 3) as usize];
-        let state = BlockState {
-            name: "minecraft:oxidized_copper_golem_statue".into(),
-            properties: [
-                ("facing".to_string(), facing.to_string()),
-                ("copper_golem_pose".to_string(), pose.to_string()),
-                ("waterlogged".to_string(), "false".to_string()),
-            ]
-            .into(),
-        };
-        let registry = self.pack.assets.registry;
-        let Some(id) = registry.id(&state) else {
-            return;
-        };
-        if self.level_set(pos, id).is_err() {
-            return;
-        }
-        // `createStatue`: the golem's custom name goes into the statue's components.
-        let mut components = Compound::new();
-        if let Some(name) = self.golem_name_tag(m) {
-            components.insert("minecraft:custom_name".into(), name);
-        }
-        self.world.block_entities.insert(
-            (pos[0], pos[1], pos[2]),
-            BlockEntity::CopperGolemStatue(components),
-        );
-        self.golem_drop_equipment(m);
-        m.extra.opened_chest = None;
-        if m.extra.leash.is_some() {
-            self.break_leash(m.id, true, false);
-            m.extra.leash = None;
-        }
-        m.removed = true;
-        self.audio.play(
-            "minecraft:entity.copper_golem_become_statue",
-            Some([m.position.x, m.position.y, m.position.z]),
-            1.0,
-            1.0,
-        );
-    }
-    /// The golem's `CustomName` as a component: the styled name it was loaded
-    /// or summoned with while it still matches the plain name, else the plain one.
-    fn golem_name_tag(&self, m: &Mob) -> Option<Tag> {
-        let plain = m.custom_name.as_ref()?;
-        let saved = self
-            .persist
-            .raw
-            .get(&m.id)
-            .and_then(|raw| raw.get("CustomName"))
-            .filter(|name| match name {
-                Tag::String(s) => s.to_string_lossy() == *plain,
-                Tag::Compound(_) => matches!(
-                    name.get("text"),
-                    Some(Tag::String(s)) if s.to_string_lossy() == *plain
-                ),
-                _ => false,
-            });
-        Some(
-            saved
-                .cloned()
-                .unwrap_or_else(|| Tag::String(plain.as_str().into())),
-        )
-    }
-    /// `Entity.setCustomName` of golem `id` with the component `name`: its plain
-    /// and styled forms, and the saved compound a later save writes it from.
-    fn name_golem(&mut self, id: u32, name: Tag) {
-        let plain = match &name {
-            Tag::String(s) => Some(s.to_string_lossy()),
-            Tag::Compound(_) => match name.get("text") {
-                Some(Tag::String(s)) => Some(s.to_string_lossy()),
-                _ => None,
-            },
-            _ => None,
-        };
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.custom_name = plain;
-            m.custom_name_text = Some(horizon_client::entity_nbt::name_text(&name));
-        }
-        if let Tag::Compound(raw) = self
-            .persist
-            .raw
-            .entry(id)
-            .or_insert_with(|| Tag::Compound(Default::default()))
-        {
-            raw.insert("CustomName".into(), name);
-        }
-    }
-    /// `Mob.dropPreservedEquipment`: the guaranteed drops in `EquipmentSlot`
-    /// order, the carried stack (main hand) then the antenna flower (saddle),
-    /// taken off the golem.
-    pub(super) fn golem_preserved_equipment(m: &mut Mob) -> Vec<ItemStack> {
-        let mut stacks = Vec::new();
-        if let Some(stack) = held(m).cloned() {
-            set_held(m, None);
-            stacks.push(stack);
-        }
-        if let Some(antenna) = m.saddle_item() {
-            m.set_saddle(None);
-            stacks.push(antenna);
-        }
-        stacks
-    }
-    /// `golem_preserved_equipment`, each `spawnAtLocation` at the golem's feet
-    /// (a golem turning into a statue).
-    pub(super) fn golem_drop_equipment(&mut self, m: &mut Mob) {
-        let at = m.position;
-        for stack in Self::golem_preserved_equipment(m) {
-            self.spawn_at_location(at, 0.0, stack);
-        }
-    }
+    /// `CopperGolem.turnToStatue`, which its weathering asked for. RESTE-SANS-ECS:
+    /// the statue, its drops and the leash break have no ECS hook yet.
+    pub(super) fn golem_become_statue(&mut self, _id: u32) {}
     // ---- interactions -----------------------------------------------------
     /// `WeatheringCopperGolemStatueBlock.useItemOn`: an axe on an unoxidized
     /// statue turns it back into a golem (`CopperGolemStatueBlockEntity.removeStatue`),
     /// wearing the axe. Weathered statues are scraped by the axe's own
-    /// transform instead.
+    /// transform instead. RESTE-SANS-ECS: the statue's custom name is not carried over.
     pub(super) fn use_golem_statue(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
         if !held.is_some_and(|s| s.item.ends_with("_axe")) {
             return false;
@@ -239,7 +76,7 @@ impl Game<'_> {
             return false;
         }
         // `Direction.toYRot` of the statue's facing.
-        let yaw = match state.properties.get("facing").map(String::as_str) {
+        let yaw: f32 = match state.properties.get("facing").map(String::as_str) {
             Some("west") => 90.0,
             Some("north") => 180.0,
             Some("east") => 270.0,
@@ -255,26 +92,17 @@ impl Game<'_> {
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        // `removeStatue`: the golem takes the custom name the statue keeps.
-        let name = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-            Some(BlockEntity::CopperGolemStatue(components)) => {
-                components.get(&"minecraft:custom_name".into()).cloned()
-            }
-            _ => None,
-        };
-        let Some(id) = self.spawn_mob_raw("minecraft:copper_golem", at, true) else {
+        if self
+            .ecs_spawn_mob(
+                "minecraft:copper_golem",
+                at,
+                true,
+                Some(yaw),
+                super::creatures::SpawnSite::Raw,
+            )
+            .is_none()
+        {
             return false;
-        };
-        if let Some(name) = name {
-            self.name_golem(id, name);
-        }
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.yaw = yaw;
-            m.previous_yaw = yaw;
-            m.body_yaw = yaw;
-            m.previous_body_yaw = yaw;
-            m.head_yaw = yaw;
-            m.previous_head_yaw = yaw;
         }
         self.damage_held(1);
         self.audio
@@ -291,112 +119,15 @@ impl Game<'_> {
         self.world.block_entities.remove(&(pos[0], pos[1], pos[2]));
         true
     }
-    /// `CopperGolem.mobInteract`; true when handled.
-    pub(super) fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
-        if self.remote_entities[index].species() != Species::CopperGolem || !self.remote_entities[index].alive() {
-            return false;
-        }
-        let at = {
-            let m = &self.remote_entities[index];
-            [m.position.x, m.position.y, m.position.z]
-        };
-        if item.is_empty() {
-            // Empty hand: the golem throws what it carries back.
-            let Some(h) = held(&self.remote_entities[index]).cloned() else {
-                return false;
-            };
-            set_held(&mut self.remote_entities[index], None);
-            // BehaviorUtils.throwItem: from 0.3 below the golem's eyes towards
-            // the player's feet at 0.3 blocks a tick, default pickup delay.
-            let p = self.player.as_ref().map(|p| p.position);
-            let eye = self.remote_entities[index].eye_height();
-            let from = [at[0], at[1] + eye - f64::from(0.3f32), at[2]];
-            let v = p.map_or([0.0; 3], |p| {
-                let d = [p.x - at[0], p.y - at[1], p.z - at[2]];
-                let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
-                if len < 1.0e-5 {
-                    return [0.0; 3];
-                }
-                let k = f64::from(0.3f32);
-                [d[0] / len * k, d[1] / len * k, d[2] / len * k]
-            });
-            self.spawn_item(h, from, v, 10);
-            return true;
-        }
-        let name = item;
-        let is_axe = name.ends_with("_axe");
-        let waxed = self.remote_entities[index].extra.vector[0] as i64 == -2;
-        if name == "minecraft:shears" && self.golem_shearable(index) {
-            // CopperGolem.shear: the sound, the antenna slot emptied (an
-            // unequip) and the flower dropped 1.5 up.
-            // level.playSound(null, this, COPPER_GOLEM_SHEAR, PLAYERS, 1, 1).
-            let shear = LevelSound::new("minecraft:entity.copper_golem.shear", at, 1.0, 1.0)
-                .in_source(SoundSource::Players);
-            self.play_bound_sound(shear, self.remote_entities[index].id, None);
-            let antenna = self.remote_entities[index].saddle_item();
-            self.remote_entities[index].set_saddle(None);
-            let id = self.remote_entities[index].id;
-            self.mob_equip_event(id, at, false);
-            if let Some(a) = antenna {
-                let p = self.remote_entities[index].position;
-                self.spawn_at_location(p, 1.5, a);
-            }
-            // mobInteract: gameEvent(SHEAR, player) after the shear, before the
-            // tool's damage.
-            let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
-            self.post_game_event("minecraft:shear", at, ctx);
-            self.damage_held_tool();
-            return true;
-        }
-        let block = {
-            let p = self.remote_entities[index].position;
-            [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
-        };
-        if name == "minecraft:honeycomb" && !waxed {
-            self.remote_entities[index].extra.vector[0] = -2.0;
-            self.level_event_at(3003, block, 0);
-            self.audio
-                .play("minecraft:item.honeycomb.wax_on", Some(at), 1.0, 1.0);
-            self.consume_held();
-            return true;
-        }
-        if is_axe && waxed {
-            self.remote_entities[index].extra.vector[0] = -1.0;
-            // level.playSound(null, this, AXE_SCRAPE, getSoundSource(), 1, 1).
-            let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
-                .in_source(SoundSource::Neutral);
-            self.play_bound_sound(scrape, self.remote_entities[index].id, None);
-            self.level_event_at(3004, block, 0);
-            self.damage_held_tool();
-            return true;
-        }
-        if is_axe && self.remote_entities[index].extra.variant > 0 {
-            let m = &mut self.remote_entities[index];
-            m.extra.vector[0] = -1.0;
-            m.extra.variant = horizon_client::mobs::copper_golem::weather_previous(m.extra.variant);
-            let id = m.id;
-            self.persist.force_meta(id, 16);
-            let scrape = LevelSound::new("minecraft:item.axe.scrape", at, 1.0, 1.0)
-                .in_source(SoundSource::Neutral);
-            self.play_bound_sound(scrape, id, None);
-            self.level_event_at(3005, block, 0);
-            self.damage_held_tool();
-            return true;
-        }
+    /// `CopperGolem.mobInteract`; true when handled. RESTE-SANS-ECS: the held
+    /// item, the antenna shears, the waxing and the scraping have no ECS hook
+    /// yet, so no interaction is handled here.
+    pub(super) fn interact_copper_golem(&mut self, _id: u32, _item: &str) -> bool {
         false
     }
-    /// `readyForShearing`: the antenna holds a flower shears take.
-    pub(super) fn golem_shearable(&self, index: usize) -> bool {
-        self.remote_entities[index].saddle_item().is_some_and(|a| {
-            self.res
-                .items()
-                .item_tags
-                .get("minecraft:shearable_from_copper_golem")
-                .is_some_and(|t| t.contains(&*a.item))
-        })
+    /// `readyForShearing`: the antenna holds a flower shears take. RESTE-SANS-ECS:
+    /// the antenna is not in the ECS yet, so no golem is shearable.
+    pub(super) fn golem_shearable(&self, _id: u32) -> bool {
+        false
     }
 }
-
-#[cfg(test)]
-#[path = "tests/golem_gift_tests.rs"]
-mod golem_gift_tests;

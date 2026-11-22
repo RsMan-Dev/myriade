@@ -42,16 +42,12 @@ macro_rules! resident_owners {
     ($then:ident, $this:ident) => {
         $then! {
             ($this)
-            Mob => Mob: remote_entities,
         }
     };
 }
 pub(crate) use resident_owners;
 
 macro_rules! resident_visible {
-    (Mob, $entity:expr) => {
-        !$entity.removed
-    };
     ($kind:ident, $entity:expr) => {
         true
     };
@@ -59,24 +55,6 @@ macro_rules! resident_visible {
 pub(crate) use resident_visible;
 
 macro_rules! bind_resident_list {
-    (Mob, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency_with_subtype(
-            $journal,
-            $owner,
-            |entity| (entity.id, entity.join_seq()),
-            |entity| {
-                if matches!(
-                    entity.species(),
-                    horizon_client::mobs::Species::Villager
-                        | horizon_client::mobs::Species::WanderingTrader
-                ) {
-                    horizon_client::join_seq::residency::EntitySubtype::Merchant
-                } else {
-                    horizon_client::join_seq::residency::EntitySubtype::Ordinary
-                }
-            },
-        )
-    };
     ($kind:ident, $list:expr, $journal:expr, $owner:expr) => {
         $list.bind_residency($journal, $owner, |entity| (entity.id, entity.join_seq()))
     };
@@ -124,7 +102,7 @@ macro_rules! define_resident_access {
             use $crate::game::entity_residency::SlotAccess;
             match at.owner.kind {
                 $(Kind::$kind => $crate::game::entity_residency::resident_lifetime_slot!($kind, $this$(.$field)+, at.join, visit),)*
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud | Kind::Cushion | Kind::Spawner | Kind::Stand | Kind::Dragon | Kind::DragonPart => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Mob | Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud | Kind::Cushion | Kind::Spawner | Kind::Stand | Kind::Dragon | Kind::DragonPart => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -137,7 +115,7 @@ macro_rules! define_resident_access {
                     Some(SourceEntity { id, value: (Target::$target(id), visible) })
                 })*
                 Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud => None,
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Cushion | Kind::Spawner | Kind::Stand | Kind::Dragon | Kind::DragonPart => None,
+                Kind::Mob | Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Cushion | Kind::Spawner | Kind::Stand | Kind::Dragon | Kind::DragonPart => None,
             };
             source
         }

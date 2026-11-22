@@ -463,7 +463,6 @@ impl GameLevel<'_> {
             )
             .map(boxed)
             .chain(self.ecs.cart_bounds_in(zone))
-            .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
             .chain(self.ecs.species_bounds(crate::game::armor_stands::TYPE_ID))
             .chain(self.ecs.boat_bounds_in(zone))
             .chain(self.ecs.species_bounds("minecraft:end_crystal"))
@@ -897,9 +896,6 @@ struct Game<'a> {
     spawn_wait: Vec<(i32, i32)>,
     /// The dimension's ECS world (`ecs_bridge::EcsLevel`); inert on a client.
     ecs: horizon_client::ecs_bridge::EcsLevel,
-    remote_entities: horizon_client::join_seq::JoinList<Mob>,
-    /// `remote_entities` by network id, for the packets that name one (`game/mobs/mob_index.rs`).
-    remote_index: mob_index::MobIndex,
     creatures: creatures::Creatures,
     sculk: sculk::SculkState,
     raiding: raids::Raiding,
@@ -1142,9 +1138,6 @@ struct Game<'a> {
     water_plane_memo: std::cell::Cell<Option<f32>>,
     /// The camera's block and the second `water_plane` last scanned at.
     water_plane_scan: std::cell::Cell<Option<([i32; 3], i64)>>,
-    /// What the boats' and minecarts' ticks know about the mobs: their box reach
-    /// (`vehicle_mob_reach`) and a grid of their boxes (`mobs_meeting`).
-    vehicle_mobs: boat_passengers::VehicleMobs,
     persist: persist::EntityMemory,
     /// Missing profession IDs already reported for this world session.
     missing_professions: HashSet<String>,
@@ -2999,14 +2992,8 @@ impl Game<'_> {
             };
             (id as i32, horizon_client::command::args::normalize(k))
         } else {
-            let Some(index) = self.mob_interaction_target(target) else {
-                return false;
-            };
-            let mob = &self.remote_entities[index];
-            if mob.removed || !mob.alive() {
-                return false;
-            }
-            (mob.id as i32, horizon_client::command::args::normalize(&mob.kind.id))
+            // RESTE-SANS-ECS: no legacy mob list; `mob_interaction_target` is always None.
+            return false;
         };
         let Some(stack) = self.held().filter(|stack| stack.count > 0).cloned() else {
             return false;
@@ -3548,29 +3535,9 @@ impl Game<'_> {
     /// [`Game::mob_hit`] out to `reach` instead of the entity interaction range
     /// (`ProjectileUtil.getHitResultOnViewVector` with another range).
     pub(super) fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
-        let (eye, dir) = self.aim()?;
-        let mut best: Option<(usize, f64, [f64; 3])> = None;
-        for (i, m) in self.remote_entities.iter().enumerate() {
-            // ProjectileUtil.getEntityHitResult: the mob the player rides
-            // shares its root vehicle and is never the hit, nor is the
-            // camera entity the pick starts from. EntitySelector.CAN_BE_PICKED
-            // is isPickable — `!isRemoved`, not alive: a health-0 fake player
-            // still answers a click.
-            if m.removed || Some(m.id) == self.riding {
-                continue;
-            }
-            if let Some(t) = ray_box(eye, dir, reach, m.bounds())
-                && best.is_none_or(|b| t < b.1)
-            {
-                let point = Vec3::new(
-                    eye[0] + dir[0] * t,
-                    eye[1] + dir[1] * t,
-                    eye[2] + dir[2] * t,
-                );
-                best = Some((i, t, interact_location(point, m.position)));
-            }
-        }
-        best
+        // RESTE-SANS-ECS: the mobs are picked by `ecs_mob_hit`; no legacy list to ray-test.
+        let _ = reach;
+        None
     }
     /// `Player.isSweepAttack` with the player's speed as it is, then
     /// `native_sweep_attack`, on either side: whether the hit on `target` sweeps.
@@ -3877,7 +3844,6 @@ impl Game<'_> {
     /// opened must not inherit them, nor save them as its own.
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
-        self.remote_entities.clear();
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();
@@ -4684,32 +4650,18 @@ impl Game<'_> {
         // Creative players skip the monster check (`!this.isCreative()`).
         if problem.is_none()
             && !self.creative
-            && if self.ecs.is_active() {
-                self.ecs.ids_near([position.x, position.y, position.z], 13.0).into_iter().any(|id| {
-                    self.creature_species(id).is_some_and(|s| {
-                        horizon_client::mobs::ai::is_monster(s)
-                            && (s != horizon_client::mobs::Species::ZombifiedPiglin
-                                || (self.ecs.is_angry(id) && self.ecs.ai_target(id).is_some()))
-                    }) && self.ecs.alive(id)
-                        && self.ecs.position(id).is_some_and(|p| {
-                            (p[0] - position.x).abs() < 8.0
-                                && (p[1] - position.y).abs() < 5.0
-                                && (p[2] - position.z).abs() < 8.0
-                        })
-                })
-            } else {
-                self.remote_entities.iter().any(|m| {
-                // `Monster.class` entities that `isPreventingPlayerRest`: a
-                // zombified piglin only while it is angry.
-                horizon_client::mobs::ai::is_monster(m.species())
-                    && (m.species() != horizon_client::mobs::Species::ZombifiedPiglin
-                        || (m.extra.anger > 0 && m.ai.target.is_some()))
-                    && m.alive()
-                    && (m.position.x - position.x).abs() < 8.0
-                    && (m.position.y - position.y).abs() < 5.0
-                    && (m.position.z - position.z).abs() < 8.0
-                })
-            }
+            && self.ecs.ids_near([position.x, position.y, position.z], 13.0).into_iter().any(|id| {
+                self.creature_species(id).is_some_and(|s| {
+                    horizon_client::mobs::ai::is_monster(s)
+                        && (s != horizon_client::mobs::Species::ZombifiedPiglin
+                            || (self.ecs.is_angry(id) && self.ecs.ai_target(id).is_some()))
+                }) && self.ecs.alive(id)
+                    && self.ecs.position(id).is_some_and(|p| {
+                        (p[0] - position.x).abs() < 8.0
+                            && (p[1] - position.y).abs() < 5.0
+                            && (p[2] - position.z).abs() < 8.0
+                    })
+            })
         {
             problem = Some("not_safe");
         }
@@ -5324,8 +5276,6 @@ impl<'a> Game<'a> {
             player_spawn: None,
             spawn_wait: Vec::new(),
             ecs: horizon_client::ecs_bridge::EcsLevel::inert(),
-            remote_entities: Default::default(),
-            remote_index: Default::default(),
             creatures: Default::default(),
             sculk: Default::default(),
             raiding: Default::default(),
@@ -5450,7 +5400,6 @@ impl<'a> Game<'a> {
             sky_darken_memo: Default::default(),
             water_plane_memo: Default::default(),
             water_plane_scan: Default::default(),
-            vehicle_mobs: Default::default(),
             persist: Default::default(),
             missing_professions: Default::default(),
             entity_attachments: Default::default(),

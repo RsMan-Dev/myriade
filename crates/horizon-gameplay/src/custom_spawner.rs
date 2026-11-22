@@ -3,8 +3,7 @@
 //! code is compiled here over this trait, which the game implements once.
 use horizon_client::{
     blocks::BlockFacts,
-    join_seq::JoinList,
-    mobs::{Mob, Species, raider, spawn_rules},
+    mobs::{Species, raider, spawn_rules},
     world::World,
 };
 use horizon_core::geometry::Vec3;
@@ -13,7 +12,6 @@ use std::collections::HashSet;
 /// The level's data as a custom spawner reads it: borrows only.
 pub struct SpawnerParts<'a> {
     pub world: &'a mut World,
-    pub mobs: &'a mut JoinList<Mob>,
     pub facts: &'a BlockFacts,
 }
 
@@ -36,6 +34,12 @@ pub trait CustomSpawnerLevel {
     fn players(&self) -> Vec<SpawnerPlayer>;
     /// The sections that are village centres (`PoiManager`'s distance tracker).
     fn village_centers(&self) -> HashSet<(i32, i32, i32)>;
+    /// The cats in `AABB(pos).inflate(radius, 8, radius)`.
+    fn cats_near(&self, pos: [i32; 3], radius: f64) -> usize;
+    /// The claimed village beds (`PoiManager` HOME) within 48 blocks of `pos`.
+    fn village_beds_near(&self, pos: [i32; 3]) -> Vec<[i32; 3]>;
+    /// Where mob `id` stands, None when it is not in the level.
+    fn mob_position(&self, id: u32) -> Option<[f64; 3]>;
     /// `Level.getSkyDarken`.
     fn sky_darken(&self) -> i32;
     /// `Heightmap.Types.WORLD_SURFACE` at a column.

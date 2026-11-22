@@ -232,11 +232,7 @@ impl Game<'_> {
 
     /// A velocity added to a creature (the `MobEvent::Push` arm, as `Game.mobs` still holds it).
     fn add_mob_velocity(&mut self, id: u32, v: Vec3) {
-        if self.ecs.is_active() {
-            self.ecs.push(id, [v.x, v.y, v.z]);
-        } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.velocity = m.velocity.add_vector(v);
-        }
+        self.ecs.push(id, [v.x, v.y, v.z]);
     }
 
     /// `ThrownEnderpearl`: 5% endermite where the player stood (when monsters spawn), the teleport, 5 damage. The ECS

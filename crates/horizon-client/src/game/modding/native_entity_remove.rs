@@ -146,22 +146,15 @@ impl Game<'_> {
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind
     /// Charged's burst).
     pub(in crate::game) fn mob_removal_effects(&mut self, id: u32) {
-        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
-            return;
-        };
-        if !self.remote_entities[i].extra.effects.is_empty() {
-            let m = &self.remote_entities[i];
-            let names: Vec<&'static str> = m
-                .extra
-                .effects
-                .iter()
-                .map(|e| e.id.trim_start_matches("minecraft:"))
-                .collect();
-            let (bounds, mut random) = (m.bounds(), m.random.clone());
-            self.effects_on_death(&names, bounds, false, Some(id), Some(&mut random));
-            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                m.random = random;
-            }
+        let names: Vec<&'static str> = self
+            .ecs
+            .effects(id)
+            .iter()
+            .map(|e| e.id.trim_start_matches("minecraft:"))
+            .collect();
+        // The mob's random is not read back from the ECS (RESTE-SANS-ECS): none is passed.
+        if let (false, Some(bounds)) = (names.is_empty(), self.ecs.bounds(id)) {
+            self.effects_on_death(&names, bounds, false, Some(id), None);
         }
     }
     /// `AbstractMinecartContainer.remove` and `AbstractChestBoat.remove`: a

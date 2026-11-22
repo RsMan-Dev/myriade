@@ -479,7 +479,6 @@ impl Game<'_> {
         let attacker = match causing {
             Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
             Some(Target::Mob(m_id)) if self.ecs.is_active() => self.fixed_kind(m_id),
-            Some(Target::Mob(m_id)) => self.remote_entities.iter().find(|m| m.id == m_id).map(|m| m.kind.id.clone()),
             Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
             _ => None,
         };

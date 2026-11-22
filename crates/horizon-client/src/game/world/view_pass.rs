@@ -101,9 +101,8 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_mut() {
             host.hub.riding = riding;
         }
-        self.lan_entities(&mut states, true, 0, None);
+        self.lan_entities(&mut states, true, 0);
         self.lan_entity_uuids(&mut states);
-        self.lan_syncs_looked();
         states
     }
 }

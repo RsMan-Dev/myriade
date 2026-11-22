@@ -717,15 +717,7 @@ impl Game<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        if self.ecs.is_active() {
-                            self.ecs_next_float(id)?
-                        } else {
-                            self.remote_entities
-                                .iter_mut()
-                                .find(|m| m.id == id)?
-                                .random
-                                .next_float()
-                        }
+                        self.ecs_next_float(id)?
                     }
                     None => self.world.random.next_float(),
                 };
@@ -791,12 +783,8 @@ impl Game<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        if self.ecs.is_active() {
-                            let p = self.ecs_vec3(id)?;
-                            horizon_core::geometry::Vec3::new(p[0], p[1], p[2])
-                        } else {
-                            self.remote_entities.iter().find(|m| m.id == id).map(|m| m.position)?
-                        }
+                        let p = self.ecs_vec3(id)?;
+                        horizon_core::geometry::Vec3::new(p[0], p[1], p[2])
                     }
                     None => self.player.as_ref()?.position,
                 };

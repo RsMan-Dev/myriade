@@ -248,7 +248,7 @@ impl Game<'_> {
         }
     }
 
-    fn active_perf_view(&self) -> super::super::levels::EntityCountView<'_> {
+    fn active_perf_view(&self) -> super::super::levels::EntityCountView {
         super::super::levels::entity_count_view!(self)
     }
 
@@ -281,7 +281,7 @@ impl Game<'_> {
     pub(in crate::game) fn level_counts(&self) -> Vec<LevelCounts> {
         let level = |dim: Dim,
                      world: &horizon_client::world::World,
-                     view: super::super::levels::EntityCountView<'_>,
+                     view: super::super::levels::EntityCountView,
                      ecs_kinds: &[(&'static str, usize)]| {
             let mut block_entities = BTreeMap::<String, u32>::new();
             for entity in world.block_entities.values() {

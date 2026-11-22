@@ -227,13 +227,7 @@ impl Game<'_> {
             p.pose == horizon_client::pose::Pose::Swimming,
         );
         let climbing = p.last_climbable.is_some() && d.y > 0.0;
-        let riding = self.riding.map(|id| {
-            self.remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .map(|m| m.species())
-                .ok_or(())
-        });
+        let riding = self.riding.map(|id| self.creature_species(id).ok_or(()));
         match riding {
             Some(Ok(sp)) => {
                 use horizon_client::mobs::Species;
@@ -443,9 +437,10 @@ mod tests {
             );
             game.spawn_phantoms();
             assert!(
-                game.remote_entities
-                    .iter()
-                    .all(|mob| (mob.position.x - 1000.0).abs() > 20.0)
+                game.ecs
+                    .followed_ids()
+                    .into_iter()
+                    .all(|id| game.ecs.position(id).is_none_or(|p| (p[0] - 1000.0).abs() > 20.0))
             );
             let with_fake = game.world.random.next_int();
             game.world.random = horizon_core::random::LevelRandom::for_level(

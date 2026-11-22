@@ -16,18 +16,14 @@ impl Game<'_> {
     /// belong to the call site, not to the event's name.
     pub(super) fn play_mob_bound_sound(
         &mut self,
-        index: usize,
+        id: u32,
         event: &str,
         source: usize,
         volume: f32,
         pitch: f32,
         except_actor: bool,
     ) {
-        let mob = &self.remote_entities[index];
-        let (id, position) = (mob.id, [mob.position.x, mob.position.y, mob.position.z]);
-        let except = except_actor.then(|| self.native_acting_entity());
-        self.audio
-            .play_bound(event, source, volume, pitch, id, position, except);
+        self.ecs_mob_sound(id, event, source, volume, pitch, except_actor);
     }
 
     fn sound_player_id(&self) -> u32 {
@@ -76,9 +72,6 @@ impl Game<'_> {
         if let Some(p) = self.ecs.position(id) {
             return Some(p);
         }
-        self.remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .map(|m| [m.position.x, m.position.y, m.position.z])
+        None
     }
 }

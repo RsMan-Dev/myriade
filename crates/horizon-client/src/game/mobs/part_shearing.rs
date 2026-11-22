@@ -3,35 +3,14 @@
 //! shears it (`EntityPart::on_sheared`) in place of the species' own shearing.
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::Game;
-use mod_api::client::first_person::Hand;
-use horizon_client::{
-    items::ItemStack,
-    mobs::{Species, Who},
-};
-use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_client::{items::ItemStack, mobs::Who};
 use mod_api::{
     PlayerRef,
     content::crash::{ModCall, enter_native_mod},
 };
 
 impl Game<'_> {
-    /// `IShearable.isShearable` as live mob `index`'s entity parts answer it: the answering part's
-    /// position in dispatch order and its answer, the first part to answer winning; none when no
-    /// part answers. A type with no part costs one table lookup. Server-side.
-    pub(super) fn part_shearable(
-        &self,
-        index: usize,
-        player: Option<PlayerRef>,
-        shears: &ItemStack,
-    ) -> Option<(usize, bool)> {
-        if !self.remote_entities[index].alive() {
-            return None;
-        }
-        let mob = &self.remote_entities[index];
-        self.part_shearable_of(mob.id, &mob.kind.id, player, shears)
-    }
-
-    /// `part_shearable` for the creature `id` of type `kind`, wherever it lives (`remote_entities` or the ECS level): the parts are read
+    /// `part_shearable` for the creature `id` of type `kind` on the ECS level: the parts are read
     /// from the mod table at the shearing, nothing is kept or polled.
     pub(in crate::game) fn part_shearable_of(
         &self,
@@ -63,40 +42,6 @@ impl Game<'_> {
         })
     }
 
-    /// `IShearable.onSheared` on mob `index`'s entity part `part` (as [`Self::part_shearable`]
-    /// named it), then `spawnShearedDrop` for each drop it returns: one block above where the mob
-    /// stands afterwards, nudged by the mob's own random as `Sheep.shear` nudges its wool.
-    pub(super) fn part_shear(
-        &mut self,
-        index: usize,
-        part: usize,
-        player: Option<PlayerRef>,
-        shears: &ItemStack,
-    ) {
-        let (id, at) = (self.remote_entities[index].id, self.remote_entities[index].position);
-        let kind = self.remote_entities[index].kind.id.clone();
-        let drops = self.part_drops(id, &kind, part, player, shears);
-        // The part may have moved or removed the mob: its drops fall where it is now.
-        let index = self.remote_entities.iter().position(|m| m.id == id && !m.removed);
-        let at = index.map_or(at, |i| self.remote_entities[i].position);
-        for drop in drops {
-            let Ok(stack) = drop.try_into_engine(self.items()) else {
-                continue;
-            };
-            let dropped = self.spawn_item_own_id(stack, [at.x, at.y + 1.0, at.z], 10);
-            let Some(i) = index else { continue };
-            let r = &mut self.remote_entities[i].random;
-            let push = [
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-                f64::from(r.next_float() * 0.05),
-                f64::from((r.next_float() - r.next_float()) * 0.1),
-            ];
-            if let Some(id) = dropped {
-                self.ecs.add_item_velocity(id, Vec3::new(push[0], push[1], push[2]));
-            }
-        }
-    }
-
     /// `IShearable.onSheared` of part `part` of the creature `id` (type `kind`): what the part returns, empty when it is gone.
     fn part_drops(
         &mut self,
@@ -123,7 +68,7 @@ impl Game<'_> {
     }
 
     /// `part_shear` for an ECS creature: the drops of part `part` fall where the creature stands afterwards, one block above (the level's
-    /// own throw, as `EcsWorld::shear` drops its loot). Does not touch `remote_entities`.
+    /// own throw, as `EcsWorld::shear` drops its loot). Does not touch the host's mob list; the mob's random nudge is not kept (RESTE-SANS-ECS).
     pub(in crate::game) fn part_shear_ecs(
         &mut self,
         id: u32,
@@ -172,60 +117,6 @@ impl Game<'_> {
         }
         let (part, _) = part?;
         self.part_shear_ecs(uid, kind, part, player, &shears);
-        let ctx = self.who_context(Some(Who::Player), None);
-        self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
-        self.damage_held_tool();
-        self.swing_arm();
-        Some(true)
-    }
-
-    /// Shears in the acting player's hand on mob `index` (`ShearsItem.interactLivingEntity`):
-    /// the entity parts' answer, else the species' own (`Sheep`, `MushroomCow`, `SnowGolem`,
-    /// `Bogged`), and a shearable mob fires `player_shear_entity`. `Some(consumed)` ends the
-    /// interaction: a part's refusal (false), the hook's cancel or a part's shearing (true);
-    /// none leaves the shearing to the species' own interaction.
-    pub(super) fn player_shear(&mut self, index_slot: &mut usize) -> Option<bool> {
-        let mut index = *index_slot;
-        let shears = self.held().cloned()?;
-        let player = self.native_acting_player();
-        let part = self.part_shearable(index, player, &shears);
-        if part.is_some_and(|(_, shearable)| !shearable) {
-            return Some(false);
-        }
-        let mob = &self.remote_entities[index];
-        let (id, at) = (mob.id, mob.position);
-        let shearable = part.is_some()
-            || match mob.species() {
-                Species::Sheep => !mob.extra.sheared && !mob.is_baby(),
-                Species::Mooshroom => !mob.is_baby(),
-                Species::SnowGolem | Species::Bogged => mob.alive() && !mob.extra.sheared,
-                _ => false,
-            };
-        if shearable
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            let mut cancel = false;
-            let off_hand = self.hand == Hand::Off;
-            self.native_player_shear_entity(uuid, &name, id as i32, off_hand, &mut cancel);
-            if cancel {
-                return Some(true);
-            }
-            // The hook had `&mut self`: find the mob again by id; a mob a mod
-            // removed, or shears it swapped, ends the interaction.
-            let Some(now) = self.remote_entities.iter().position(|m| m.id == id && !m.removed) else {
-                return Some(true);
-            };
-            index = now;
-            *index_slot = now;
-            let same = self
-                .held()
-                .is_some_and(|h| h.item == shears.item && h.count == shears.count);
-            if !same {
-                return Some(true);
-            }
-        }
-        let (part, _) = part?;
-        self.part_shear(index, part, player, &shears);
         let ctx = self.who_context(Some(Who::Player), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
         self.damage_held_tool();

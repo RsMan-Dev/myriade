@@ -3,9 +3,8 @@
 //! or `ShoulderEntityRight`, and flies off again when the player is hurt,
 //! falls, swims, flies or sleeps (`ServerPlayer.handleShoulderEntities`).
 use super::Game;
-use horizon_client::mobs::Species;
 use horizon_core::nbt::Tag;
-use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_core::random::RandomSource;
 
 const KEYS: [&str; 2] = ["ShoulderEntityLeft", "ShoulderEntityRight"];
 
@@ -35,23 +34,7 @@ impl Game<'_> {
     /// `ServerPlayer.setEntityOnShoulder` for a parrot that touched its
     /// owner: stored in the first free slot, the parrot gone from the world.
     pub(in crate::game) fn parrot_to_shoulder(&mut self, mob: u32) {
-        if self.ecs.is_active() {
-            return self.ecs_parrot_to_shoulder(mob);
-        }
-        let Some(i) = self
-            .remote_entities
-            .iter()
-            .position(|m| m.id == mob && m.alive() && !m.removed && m.species() == Species::Parrot)
-        else {
-            return;
-        };
-        // The acting player must be the saved owner (`getOwner`).
-        if !horizon_client::mobs::tame::owned_by(self.remote_entities[i].extra.owner, self.acting_uuid()) {
-            return;
-        }
-        if self.put_on_shoulder(|g| g.mob_tree_nbt(i)) {
-            self.remote_entities[i].removed = true;
-        }
+        self.ecs_parrot_to_shoulder(mob);
     }
 
     /// The player's half of `setEntityOnShoulder`: the parrot's compound goes in the first free slot when the player may carry it.
@@ -135,14 +118,15 @@ impl Game<'_> {
         if !parrot {
             return;
         }
-        let area = p.bounds().inflate(Vec3::new(20.0, 20.0, 20.0));
         let at = [p.position.x, p.position.y, p.position.z];
         let alive = !p.health.dead_or_dying();
+        // RESTE-SANS-ECS: the `silent` flag of the mobs near the parrot (no ECS read); taken as not silent.
         let nearby: Vec<_> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.alive() && !m.removed && m.bounds().intersects(area))
-            .map(|m| (m.kind.id.as_str(), m.silent))
+            .ecs
+            .ids_near(at, 20.0)
+            .into_iter()
+            .filter(|&id| self.ecs.alive(id))
+            .filter_map(|id| self.ecs.kind(id).map(|kind| (kind, false)))
             .collect();
         let peaceful = self.session.difficulty == 0;
         let maps = self.world_tables.as_ref().map_or_else(

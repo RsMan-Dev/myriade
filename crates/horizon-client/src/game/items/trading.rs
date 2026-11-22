@@ -196,169 +196,6 @@ impl Game<'_> {
         self.register_exploration_maps(made);
         offers
     }
-    /// `AbstractVillager.getOffers`: generated on first use.
-    pub(super) fn ensure_offers(&mut self, index: usize) {
-        let species = self.remote_entities[index].species();
-        if species == Species::Villager
-            && self
-                .stations()
-                .professions
-                .state_index(&self.remote_entities[index].extra.profession)
-                .is_none()
-        {
-            return;
-        }
-        let unset = self.remote_entities[index]
-            .extra
-            .trade
-            .as_ref()
-            .is_none_or(|t| t.unset);
-        if unset {
-            let m = &self.remote_entities[index];
-            let variant = format!(
-                "minecraft:{}",
-                VILLAGER_TYPES[m.extra.variant as usize % VILLAGER_TYPES.len()]
-            );
-            let origin = [m.position.x, m.position.y, m.position.z];
-            let offers = if species == Species::WanderingTrader {
-                let mut v = Vec::new();
-                for set in ["buying", "uncommon", "common"] {
-                    v.extend(self.offers_from_set(
-                        &format!("minecraft:wandering_trader/{set}"),
-                        &variant,
-                        origin,
-                    ));
-                }
-                v
-            } else {
-                let profession = m.extra.profession.id();
-                let level = m.extra.villager_level.max(1);
-                let set = self.stations().trades.set_for(&profession, level);
-                if self.stations().trades.sets.contains_key(&set) {
-                    self.offers_from_set(&set, &variant, origin)
-                } else {
-                    Vec::new()
-                }
-            };
-            let trade = self.remote_entities[index].extra.trade.get_or_insert_default();
-            trade.offers = offers;
-            trade.unset = false;
-        }
-    }
-    /// `Villager.mobInteract` / `WanderingTrader.mobInteract`: shake the
-    /// head without offers, else open the trading screen.
-    pub(super) fn interact_trader(
-        &mut self,
-        index: usize,
-        item: &str,
-    ) -> horizon_client::Result<bool> {
-        let m = &self.remote_entities[index];
-        let species = m.species();
-        if !matches!(species, Species::Villager | Species::WanderingTrader)
-            || !m.alive()
-            || item == "minecraft:villager_spawn_egg"
-            || self.station.is_some()
-            || m.extra.flag2
-            || (species == Species::Villager && villager::sleeping(m))
-        {
-            return Ok(false);
-        }
-        if m.is_baby() {
-            // A baby villager shakes its head; a baby wandering trader does
-            // nothing of its own.
-            if species == Species::WanderingTrader {
-                return Ok(false);
-            }
-            let mut events = Vec::new();
-            villager::set_unhappy(&mut self.remote_entities[index], &mut events);
-            self.handle_mob_events(events)?;
-            return Ok(true);
-        }
-        let unresolved = species == Species::Villager
-            && self
-                .stations()
-                .professions
-                .state_index(&m.extra.profession)
-                .is_none();
-        self.award_custom_stat("talked_to_villager", 1);
-        if unresolved {
-            let mut events = Vec::new();
-            villager::set_unhappy(&mut self.remote_entities[index], &mut events);
-            self.handle_mob_events(events)?;
-            return Ok(true);
-        }
-        self.ensure_offers(index);
-        let m = &self.remote_entities[index];
-        let trade = m.extra.trade.as_deref().cloned().unwrap_or_default();
-        if trade.offers.is_empty() {
-            if species == Species::Villager {
-                let mut events = Vec::new();
-                villager::set_unhappy(&mut self.remote_entities[index], &mut events);
-                self.handle_mob_events(events)?;
-            }
-            return Ok(true);
-        }
-        let villager = species == Species::Villager;
-        let profession = if villager {
-            m.extra.profession.id()
-        } else {
-            "minecraft:wandering_trader".into()
-        };
-        let level = if villager {
-            m.extra.villager_level.max(1)
-        } else {
-            1
-        };
-        let mut session = merchant::Session::new(trade.offers, villager);
-        session.xp = trade.xp;
-        session.level = level;
-        session.profession = profession;
-        session.variant = format!(
-            "minecraft:{}",
-            VILLAGER_TYPES[m.extra.variant as usize % VILLAGER_TYPES.len()]
-        );
-        session.random.clone_from(&m.random);
-        session.origin = [m.position.x, m.position.y, m.position.z];
-        session.ambient_sound_time = m.ambient_timer;
-        let (id, name) = (
-            m.id,
-            m.custom_name.as_ref().map(|plain| {
-                m.custom_name_text
-                    .clone()
-                    .unwrap_or_else(|| Text::literal(plain))
-            }),
-        );
-        if villager {
-            let player = self.acting_player_uuid_id();
-            session.reputation = player.map_or(0, |p| self.ecs.villager_reputation_of(id, p));
-            session.hero = player.and_then(|p| self.ecs.player_hero(p));
-            for seq in merchant::Session::sequences_needed(
-                &self.stations().trades,
-                &session.profession,
-                level,
-            ) {
-                let r = self.rand_sequences.lend(&seq, self.level.seed);
-                session.sequences.insert(seq, r);
-            }
-        }
-        // startTrading: updateSpecialPrices, then the screen opens.
-        session.update_special_prices();
-        // The mob owns the live offers even while a menu is open.
-        {
-            let trade = self.remote_entities[index].extra.trade.get_or_insert_default();
-            trade.offers = session.offers.clone();
-        }
-        // setTradingPlayer: a wandering trader stands still while trading, a
-        // villager's brain follows and looks at the player
-        // (LookAndFollowTradingPlayerSink).
-        self.remote_entities[index].extra.flag2 = true;
-        self.open_merchant_state(MerchantState {
-            session: Box::new(session),
-            mob: Some(id),
-            name,
-        });
-        Ok(true)
-    }
     /// `ensure_offers` for the ECS trader `id`: P's `trade_offers::ensure_offers` decides and draws the offers.
     pub(super) fn ensure_offers_ecs(&mut self, id: u32) {
         self.ecs.ensure_offers(id);
@@ -406,9 +243,7 @@ impl Game<'_> {
     }
     /// Apply the villager AI's request to generate its offers.
     pub(super) fn merchant_offers_generated(&mut self, mob: u32) {
-        if let Some(i) = self.remote_entities.iter().position(|m| m.id == mob) {
-            self.ensure_offers(i);
-        }
+        self.ensure_offers_ecs(mob);
     }
     /// `Villager.updateSpecialPrices` after restock: the live offers, result
     /// slot and offer packet all change before the trading player's next click.
@@ -450,23 +285,15 @@ impl Game<'_> {
             self.rand_sequences.give_back(id, r);
         }
         let Some(id) = state.mob else { return };
-        let professions = self.stations().professions.clone();
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return;
-        };
-        m.extra.flag2 = false;
-        if session.villager && professions.state_index(&m.extra.profession).is_none() {
+        if !self.ecs.is_active() || self.ecs.entity_of(id).is_none() {
             return;
         }
         if session.villager {
-            m.extra.villager_level = session.level.max(1);
+            self.ecs.set_trade_level(id, session.level.max(1));
         }
-        m.extra.flag2 = false;
-        *m.random = session.random.clone();
-        m.ambient_timer = session.ambient_sound_time;
-        let trade = m.extra.trade.get_or_insert_default();
-        trade.xp = session.xp;
-        trade.offers = session.offers.clone();
+        self.ecs.set_trade_random(id, session.random.clone());
+        self.ecs.set_ambient_timer(id, session.ambient_sound_time);
+        self.ecs.trade_store(id, session.offers.clone(), session.xp);
     }
     fn open_merchant_state(&mut self, state: MerchantState) {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
@@ -476,14 +303,19 @@ impl Game<'_> {
     }
     /// The trading mob's random before a menu click (it ticks meanwhile).
     pub(super) fn merchant_sync_in(&self, session: &mut merchant::Session, mob: Option<u32>) {
-        if let Some(m) = mob.and_then(|id| self.remote_entities.iter().find(|m| m.id == id)) {
-            session.random.clone_from(&m.random);
-            session.ambient_sound_time = m.ambient_timer;
-            session.origin = [m.position.x, m.position.y, m.position.z];
-            if let Some(trade) = m.extra.trade.as_deref() {
-                session.offers = trade.offers.clone();
-                session.xp = trade.xp;
-            }
+        let Some(id) = mob else { return };
+        if let Some(r) = self.ecs.trade_random(id) {
+            session.random = r;
+        }
+        if let Some(t) = self.ecs.ambient_timer(id) {
+            session.ambient_sound_time = t;
+        }
+        if let Some(p) = self.ecs_vec3(id) {
+            session.origin = p;
+        }
+        if let Some(s) = self.ecs.merchant_session(id) {
+            session.offers = s.offers;
+            session.xp = s.xp;
         }
     }
     /// After a menu click: the session back to the station, its random to
@@ -494,22 +326,6 @@ impl Game<'_> {
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
             .and_then(|m| m.mob);
-        if mob
-            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
-            .is_some_and(|m| {
-                m.species() == Species::Villager
-                    && self
-                        .stations()
-                        .professions
-                        .state_index(&m.extra.profession)
-                        .is_none()
-            })
-        {
-            if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-                m.session = session;
-            }
-            return;
-        }
         let (mut session, traded) = self.merchant_apply(session, mob);
         self.merchant_traded(mob, &mut session.offers, &traded);
         if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
@@ -527,11 +343,11 @@ impl Game<'_> {
         let events = std::mem::take(&mut session.events);
         let mut traded = Vec::new();
         let (villager, origin) = (session.villager, session.origin);
-        if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-            *m.random = session.random.clone();
-            m.ambient_timer = session.ambient_sound_time;
+        if let Some(id) = mob {
+            self.ecs.set_trade_random(id, session.random.clone());
+            self.ecs.set_ambient_timer(id, session.ambient_sound_time);
             if villager {
-                m.extra.villager_level = session.level.max(1);
+                self.ecs.set_trade_level(id, session.level.max(1));
             }
         }
         for e in events {
@@ -541,8 +357,8 @@ impl Game<'_> {
                     self.add_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32)
                 }
                 merchant::Event::LevelUp(_) => {
-                    if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-                        m.add_effect("minecraft:regeneration", 200, 0);
+                    if let Some(id) = mob {
+                        self.ecs_mob_add_effect(id, "minecraft:regeneration", 200, 0, true, false);
                     }
                 }
                 merchant::Event::TradeUpdated(yes, pitch) => {
@@ -569,10 +385,8 @@ impl Game<'_> {
         }
         // Offer hooks above may edit the live session. Publish that final state
         // so the next click, AI restock and save all see the same offers.
-        if let Some(m) = mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-            let trade = m.extra.trade.get_or_insert_default();
-            trade.offers = session.offers.clone();
-            trade.xp = session.xp;
+        if let Some(id) = mob {
+            self.ecs.trade_store(id, session.offers.clone(), session.xp);
         }
         (session, traded)
     }
@@ -592,10 +406,8 @@ impl Game<'_> {
                 continue;
             };
             self.award_custom_stat("traded_with_villager", 1);
-            let merchant = mob.and_then(|id| self.remote_entities.iter().find(|m| m.id == id));
-            let kind = merchant.map(super::native_hooks::mob_kind);
-            let villager = merchant.map(|m| self.mob_entity(m));
-            if let Some(villager) = villager {
+            let kind = mob.and_then(|id| self.ecs.kind(id)).map(str::to_owned);
+            if let Some(villager) = mob.and_then(|id| self.ecs_host_view(id)) {
                 self.trigger_trade(&villager, &offer.result);
             }
             // TradeWithVillagerEvent: on the server, in the player's turn.

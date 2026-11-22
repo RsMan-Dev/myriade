@@ -272,14 +272,6 @@ enum PreparedVehiclePassenger {
     Saved(Tag),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MobObject {
-    Resident(usize),
-    OffLevel(u32),
-}
-
-impl Game<'_> {}
-
 impl EntityMemory {
     pub(super) fn force_meta(&mut self, id: u32, index: u8) {
         self.forced_meta.entry(id).or_default()[usize::from(index) / 64] |= 1 << (index % 64);
@@ -1113,8 +1105,8 @@ impl Game<'_> {
         with_raw(tag, None) // Entity.saveWithoutId's flags, as booleans.
     }
     /// The root of a stack of riders (`Entity.getRootVehicle`).
-    fn mob_root(&self, mut object: MobObject) -> MobObject {
-        for _ in 0..self.remote_entities.len() + self.persist.off_level.len() {
+    fn mob_root(&self, mut object: u32) -> u32 {
+        for _ in 0..self.persist.off_level.len() {
             let Some(vehicle) = self.mob_at(object).extra.mount else {
                 break;
             };
@@ -1211,14 +1203,10 @@ impl Game<'_> {
                 gone.push(id);
             }
         }
-        if self.ecs.is_active() {
-            for &g in &gone {
-                if let Some(e) = self.ecs.entity_of(g) {
-                    self.ecs.despawn(e);
-                }
+        for &g in &gone {
+            if let Some(e) = self.ecs.entity_of(g) {
+                self.ecs.despawn(e);
             }
-        } else {
-            self.remote_entities.retain(|m| !gone.contains(&m.id));
         }
         self.persist.off_level.retain(|id, _| !gone.contains(id));
         for &id in &gone {
@@ -1314,9 +1302,6 @@ impl Game<'_> {
         self.riding = Some(id);
     }
     /// A mob's entity tag with the mobs riding it under `Passengers`.
-    pub(super) fn mob_tree_nbt(&mut self, i: usize) -> Tag {
-        self.mob_object_tree_nbt(MobObject::Resident(i))
-    }
     /// Forget an entity that left the world (its UUID and loaded compound).
     pub(super) fn forget_entity(&mut self, id: u32) {
         self.persist.uuids.remove(&id);
@@ -1384,7 +1369,7 @@ impl Game<'_> {
                 .and_then(|e| self.ecs.entity_nbt(e))
                 .is_some_and(|c| entity_nbt::flag(&Tag::Compound(c), "Silent"));
         }
-        self.remote_entities.iter().find(|m| m.id == id).map_or_else(
+        self.mob_object(id).map_or_else(
             || {
                 self.persist
                     .raw
@@ -1434,8 +1419,8 @@ impl Game<'_> {
         } else {
             None
         };
-        let legacy: &[Mob] = if self.ecs.is_active() { &[] } else { &self.remote_entities };
-        entity_nbt::who_by_uuid(&self.persist.uuids, legacy, player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
+        // Legacy mobs are no longer resident: the ECS answers for every mob.
+        entity_nbt::who_by_uuid(&self.persist.uuids, &[], player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
     }
     /// The mob that was loaded or saved with a UUID.
     pub(super) fn mob_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
@@ -1679,28 +1664,6 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-    /// `Entity::save_nbt` for a mob: a rider is saved inside its root vehicle,
-    /// in the root's chunk; a boat's or cart's passengers inside the vehicle.
-    pub(super) fn save_mob(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        // The ECS world saves its entities by chunk (`entity_chunks`): no legacy mob is saved then.
-        if self.ecs.is_active() {
-            return None;
-        }
-        let m = &self.remote_entities[i];
-        // `Entity.shouldBeSaved`: a passenger saves only under its root, even
-        // when that root is a boat or cart retained off-level and never saved.
-        let saves = self.mob_root(MobObject::Resident(i)) == MobObject::Resident(i)
-            && m.extra
-                .mount
-                .is_none_or(|v| !self.is_boat(v) && self.ecs.cart_kind(v).is_none())
-            && keys.contains(&chunk_of(m.position))
-            && !m.removed;
-        saves.then(|| (chunk_of(self.remote_entities[i].position), self.mob_tree_nbt(i)))
-    }
     /// The UUID a save writes for a reference to `who`, as `mob_to_nbt`'s
     /// `angry_at` does: the bridge's `who_uuid` over `EntityMemory::uuid_of`,
     /// which answers the UUID the entity was loaded or saved with. A mob the

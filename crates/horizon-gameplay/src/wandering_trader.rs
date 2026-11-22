@@ -2,7 +2,7 @@
 use crate::custom_spawner::CustomSpawnerLevel;
 use horizon_client::{
     blocks::BlockFacts,
-    mobs::{Species, leash::Holder, spawn_rules, trader},
+    mobs::{Species, spawn_rules},
     world::World,
 };
 use horizon_core::{geometry::Vec3, nbt::Tag, random::RandomSource};
@@ -160,19 +160,17 @@ pub fn spawn(l: &mut impl TraderLevel) -> bool {
     for _ in 0..2 {
         l.spawn_trader_llama(id, 4);
     }
-    if let Some(m) = l.parts().mobs.iter_mut().find(|m| m.id == id) {
-        trader::start_visit(m, reference);
-    }
+    // RESTE-SANS-ECS: the visit state (`trader::start_visit`) has no ECS setter yet.
     true
 }
 
 /// `tryToSpawnLlamaFor`: a trader llama near the trader, on its lead.
 pub fn spawn_llama(l: &mut impl TraderLevel, trader: u32, radius: i32) {
-    let Some(at) = l.parts().mobs.iter().find(|m| m.id == trader).map(|m| {
+    let Some(at) = l.mob_position(trader).map(|p| {
         [
-            m.position.x.floor() as i32,
-            m.position.y.floor() as i32,
-            m.position.z.floor() as i32,
+            p[0].floor() as i32,
+            p[1].floor() as i32,
+            p[2].floor() as i32,
         ]
     }) else {
         return;
@@ -185,17 +183,13 @@ pub fn spawn_llama(l: &mut impl TraderLevel, trader: u32, radius: i32) {
         f64::from(pos[1]),
         f64::from(pos[2]) + 0.5,
     ];
-    if let Some(id) = l.spawn_mob(
+    // RESTE-SANS-ECS: EntitySpawnReason.EVENT's age 0 and the lead on the trader have no ECS setter yet.
+    let _ = l.spawn_mob(
         "minecraft:trader_llama",
         spot,
         false,
         spawn_rules::Reason::Event,
-    ) && let Some(m) = l.parts().mobs.iter_mut().find(|m| m.id == id)
-    {
-        // EntitySpawnReason.EVENT: grown up.
-        m.extra.age = 0;
-        m.extra.leash = Some(Holder::Mob(trader));
-    }
+    );
 }
 
 /// `findSpawnPositionNear`: ten tries at a column near the reference

@@ -2115,16 +2115,6 @@ fn visible_aim_point(
         .unwrap_or(centre)
 }
 
-/// The first target `(id, removed, bounds)` whose box meets the swept box,
-/// skipping removed ones and the vehicle the player rides.
-fn first_spin_target(
-    swept: Aabb,
-    riding: Option<u32>,
-    mut targets: impl Iterator<Item = (u32, bool, Aabb)>,
-) -> Option<usize> {
-    targets.position(|(id, removed, b)| !removed && Some(id) != riding && b.intersects(swept))
-}
-
 #[cfg(test)]
 mod hotbar_tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -3294,10 +3284,6 @@ mod crack_feedback_tests;
 #[path = "tests/menu_still_valid_tests.rs"]
 mod menu_still_valid_tests;
 
-
-#[cfg(test)]
-#[path = "tests/spin_target_tests.rs"]
-mod spin_target_tests;
 
 #[cfg(test)]
 #[path = "tests/spawn_protection_tests.rs"]

@@ -158,7 +158,6 @@ mod tests {
         use horizon_client::containers::{ModBlockEntity, ModBlockEntityFields};
         use horizon_client::entities::ArmorStand;
         use horizon_client::fast_hash::FxHashMap;
-        use horizon_client::mobs::Mob;
         use horizon_core::geometry::{Direction, Vec3};
         use mod_api::{
             BlockUpdateFlags, ENERGY, ENTITY_ENERGY, ENTITY_FLUIDS, Holder, move_energy,
@@ -200,8 +199,7 @@ mod tests {
             for id in [13, 14] {
                 crate::game::ecs::test_support::place_test_stand(game, id, &ArmorStand::new(id, Vec3::ZERO, 0.0));
             }
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.remote_entities.push(Mob::new(15, pig, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 15, "minecraft:pig", [0.0, 0.0, 0.0]);
             let (stand, other, pig) = (
                 game.entity(13).unwrap(),
                 game.entity(14).unwrap(),

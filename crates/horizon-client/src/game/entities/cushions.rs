@@ -507,31 +507,6 @@ impl Game<'_> {
         true
     }
 
-    /// `Entity.positionRider` for the mobs (and other players) sitting on a
-    /// cushion: its passenger attachment `(0, 0.25, 0)`, less the rider's own
-    /// vehicle attachment. A server sends no position for a passenger, so
-    /// every client seats it here.
-    pub(super) fn seat_cushion_mobs(&mut self, riding: &super::passengers::Riders) {
-        for c in self.cushion_list() {
-            let Some(js) = riding.get(&c.id) else {
-                continue;
-            };
-            for &j in js {
-                let m = &mut self.remote_entities[j];
-                // Cushion's box is 1 wide.
-                let offset = horizon_client::mobs::riders::vehicle_attachment(m, 1.0);
-                let at = Vec3::new(c.position.x, c.position.y + 0.25 - offset, c.position.z);
-                m.position = at;
-                m.previous = at;
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-            }
-        }
-    }
-
     /// `Player.rideTick` on a cushion: hold the seat, and get up on sneak.
     pub(super) fn tick_cushion_riding(&mut self, keys: Keys) -> bool {
         let Some(c) = self.riding.and_then(|id| self.cushion_saved(id)) else {

@@ -22,29 +22,10 @@ impl Game<'_> {
             .and_then(|i| i.death_protection.clone())
             .unwrap_or_default()
     }
-    /// What each armed mob's hands carry as `minecraft:death_protection`, for
-    /// `Mob::use_death_protection` (the mob has no item data of its own): any
-    /// item with the component counts, not only the totem.
-    pub(super) fn sync_mob_death_protection(&mut self) {
-        let items = self.res.items();
-        let of = |id: Option<&str>, stack: Option<&ItemStack>| {
-            let item = stack.map(|s| &*s.item).or(id)?;
-            items.get(item).and_then(|info| info.death_protection.clone())
-        };
-        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
-            if m.extra.main_hand_id().is_none() && m.extra.off_hand_id().is_none() {
-                m.extra.hand_protection = None;
-                continue;
-            }
-            m.extra.hand_protection = Some(horizon_client::mobs::HandProtection {
-                main: of(m.extra.main_hand_id(), m.extra.main_hand_stack()),
-                off: of(
-                    m.extra.off_hand_id(),
-                    m.extra.slot_stack(horizon_items::equipment::OFFHAND),
-                ),
-            });
-        }
-    }
+    /// No cache of the mobs' hands: the ECS reads their held items when they
+    /// are hurt. RESTE-SANS-ECS: the death protection of a mob (`checkTotemDeathProtection`)
+    /// has no ECS rule yet; the call in game.rs:3650 goes with it.
+    pub(super) fn sync_mob_death_protection(&mut self) {}
     /// Whether either hand holds a death-protection item, for the next hurt:
     /// the window's player once a tick, a server's player for each of its
     /// turns.

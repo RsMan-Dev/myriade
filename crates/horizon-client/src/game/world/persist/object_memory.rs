@@ -2,41 +2,28 @@
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn mob_at(&self, object: MobObject) -> &Mob {
-        match object {
-            MobObject::Resident(index) => &self.remote_entities[index],
-            MobObject::OffLevel(id) => self.persist.off_level[&id]
-                .as_mob()
-                .expect("mob object slot"),
-        }
+    pub(super) fn mob_at(&self, object: u32) -> &Mob {
+        self.persist.off_level[&object]
+            .as_mob()
+            .expect("mob object slot")
     }
 
-    pub(super) fn mob_at_mut(&mut self, object: MobObject) -> &mut Mob {
-        match object {
-            MobObject::Resident(index) => &mut self.remote_entities[index],
-            MobObject::OffLevel(id) => self
-                .persist
-                .off_level
-                .get_mut(&id)
-                .and_then(OffLevel::as_mob_mut)
-                .expect("mob object slot"),
-        }
+    pub(super) fn mob_at_mut(&mut self, object: u32) -> &mut Mob {
+        self.persist
+            .off_level
+            .get_mut(&object)
+            .and_then(OffLevel::as_mob_mut)
+            .expect("mob object slot")
     }
 
     /// Internal object lookup, including a passenger refused level residency.
     /// This is deliberately separate from `level_entity` and native handle queries.
     pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
-        self.remote_entities
-            .iter()
-            .find(|mob| mob.id == id)
-            .or_else(|| self.persist.off_level.get(&id).and_then(OffLevel::as_mob))
+        self.persist.off_level.get(&id).and_then(OffLevel::as_mob)
     }
 
     /// Mutate an extant mob object without making it resident.
     pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
-        if let Some(index) = self.remote_entities.iter().position(|mob| mob.id == id) {
-            return Some(&mut self.remote_entities[index]);
-        }
         self.persist
             .off_level
             .get_mut(&id)
@@ -53,13 +40,10 @@ impl Game<'_> {
         self.persist.off_level.get(&id).and_then(OffLevel::as_boat)
     }
 
-    /// Internal topology only: resident objects followed by retained passengers. The ECS's residents are not `Mob` values, so
-    /// under the ECS only the retained ones come here; their readers go by id. The client's residents are `remote_entities`.
+    /// Internal topology only: the retained passengers. The ECS's residents are not `Mob` values;
+    /// their readers go by id.
     pub(in crate::game) fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
-        let residents: &[Mob] = if self.ecs.is_active() { &[] } else { &self.remote_entities };
-        residents
-            .iter()
-            .chain(self.persist.off_level.values().filter_map(OffLevel::as_mob))
+        self.persist.off_level.values().filter_map(OffLevel::as_mob)
     }
 
     /// Loads the saved projectile `tag` in the ECS level and gives it its id, which keeps its portal cooldown, its transferred state
@@ -370,12 +354,12 @@ impl Game<'_> {
             self.died.insert(id);
         }
         self.remember(id, uuid, tag);
-        if refused {
-            self.persist.off_level.insert(id, OffLevel::Mob(m));
-        } else {
+        // RESTE-SANS-ECS: a non-refused legacy load is kept off the level, since the
+        // resident list is gone; the ECS loads these entities itself.
+        if !refused {
             self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
-            self.remote_entities.push(m);
         }
+        self.persist.off_level.insert(id, OffLevel::Mob(m));
         if !refused && restore_target {
             self.native_restore_loaded_target(id, anger_uuid);
         }
@@ -388,26 +372,19 @@ impl Game<'_> {
     /// `Entity.shouldBeSaved`: the mobs riding entity `id` under `tag`'s
     /// `Passengers`, after the passengers it kept from loading. Discarded
     /// passengers cannot save even before their list entry is swept.
-    pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<MobObject> {
-        let mut riders: Vec<(i64, u32, MobObject)> = self
-            .remote_entities
+    pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<u32> {
+        let mut riders: Vec<(i64, u32, u32)> = self
+            .persist
+            .off_level
             .iter()
-            .enumerate()
-            .filter(|(_, mob)| mob.extra.mount == Some(id) && !mob.removed)
-            .map(|(index, mob)| (mob.extra.vehicle_order, mob.id, MobObject::Resident(index)))
-            .chain(
-                self.persist
-                    .off_level
-                    .iter()
-                    .filter_map(|(&object_id, object)| {
-                        let mob = object.as_mob()?;
-                        (mob.extra.mount == Some(id) && !mob.removed).then_some((
-                            mob.extra.vehicle_order,
-                            mob.id,
-                            MobObject::OffLevel(object_id),
-                        ))
-                    }),
-            )
+            .filter_map(|(&object_id, object)| {
+                let mob = object.as_mob()?;
+                (mob.extra.mount == Some(id) && !mob.removed).then_some((
+                    mob.extra.vehicle_order,
+                    mob.id,
+                    object_id,
+                ))
+            })
             .collect();
         riders.sort_by_key(|&(order, id, _)| (order, id));
         if let Some(driver) = self.mob_object(id).and_then(|mob| mob.extra.rider)
@@ -614,37 +591,29 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn mob_object_slot(&self, id: u32) -> Option<MobObject> {
-        self.remote_entities
+    pub(super) fn mob_object_slot(&self, id: u32) -> Option<u32> {
+        self.persist
+            .off_level
+            .get(&id)
+            .and_then(OffLevel::as_mob)
+            .map(|_| id)
+    }
+
+    pub(super) fn mob_object_slots(&self) -> impl Iterator<Item = u32> + '_ {
+        self.persist
+            .off_level
             .iter()
-            .position(|mob| mob.id == id)
-            .map(MobObject::Resident)
-            .or_else(|| {
-                self.persist
-                    .off_level
-                    .get(&id)
-                    .and_then(OffLevel::as_mob)
-                    .map(|_| MobObject::OffLevel(id))
-            })
+            .filter_map(|(&id, object)| object.as_mob().map(|_| id))
     }
 
-    pub(super) fn mob_object_slots(&self) -> impl Iterator<Item = MobObject> + '_ {
-        (0..self.remote_entities.len()).map(MobObject::Resident).chain(
-            self.persist
-                .off_level
-                .iter()
-                .filter_map(|(&id, object)| object.as_mob().map(|_| MobObject::OffLevel(id))),
-        )
-    }
-
-    pub(super) fn mob_object_tree_nbt(&mut self, object: MobObject) -> Tag {
+    pub(super) fn mob_object_tree_nbt(&mut self, object: u32) -> Tag {
         let id = self.mob_at(object).id;
         let mut tag = self.mob_object_nbt(object);
         self.put_mob_passengers(&mut tag, id);
         tag
     }
 
-    pub(super) fn mob_object_nbt(&mut self, object: MobObject) -> Tag {
+    pub(super) fn mob_object_nbt(&mut self, object: u32) -> Tag {
         let id = self.mob_at(object).id;
         let uuid = self.uuid_for(id);
         // A warden's anger names each suspect by UUID. A mob that has never been
@@ -702,14 +671,14 @@ impl Game<'_> {
         // target still in the world gets it now, so `uuid_of` can name it.
         if let Some(horizon_client::mobs::Who::Mob(target)) = self.mob_at(object).extra.angry_at
             && target != 0
-            && self.remote_entities.iter().any(|m| m.id == target)
+            && self.ecs.exists(target)
         {
             self.uuid_for(target);
         }
         // The mob that last hurt it, still resident, gets its UUID now, as the
         // anger target does, so `put_last_hurt_by_mob` can name it.
         if let Some(horizon_client::mobs::Who::Mob(attacker)) = self.mob_at(object).ai.last_hurt_by
-            && self.remote_entities.iter().any(|m| m.id == attacker)
+            && self.ecs.exists(attacker)
         {
             self.uuid_for(attacker);
         }

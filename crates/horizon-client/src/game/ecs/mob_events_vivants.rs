@@ -1,4 +1,4 @@
-//! The `MobEvent`s the ECS emits that touch a creature, applied on the ECS through the bridge (never the client's `remote_entities`):
+//! The `MobEvent`s the ECS emits that touch a creature, applied on the ECS through the bridge:
 //! `EntityEvent` (the ravager's roar), `Push` on a creature, `SetTarget` (the mods' `living_change_target`, the guest binding) and
 //! `ParrotToShoulder`. The others the ECS emits (`Darkness`, `Experience`, `ChestOpen`, `ChestSlot`) touch the world and the players only.
 use crate::game::Game;

@@ -12,13 +12,12 @@
 //!
 use super::{
     Game,
-    entity::{Entity, EntityHandle, with_entity, with_entity_mut},
+    entity::{Entity, with_entity, with_entity_mut},
     move_gate::MoveWho,
 };
 use horizon_client::collisions::{
     EntityCollisions, SceneCollisions, no_collision_empty, with_piston_noclip,
 };
-use horizon_client::mobs::Species;
 use horizon_client::motion::MotionWorld;
 use horizon_core::geometry::{Aabb, Axis, Direction, ShapeOp, Vec3, border::BorderGeometry};
 use horizon_core::position::BlockPos;
@@ -380,7 +379,6 @@ impl Game<'_> {
     /// Whether a pushed body is a shulker, which a shulker's lid leaves out.
     fn pushed_shulker(&self, target: MoveWho) -> bool {
         match target {
-            MoveWho::Entity(EntityHandle::Mob(i)) => self.remote_entities[i].species() == Species::Shulker,
             MoveWho::Ecs(id) => self.ecs_kind(id).as_deref() == Some("minecraft:shulker"),
             _ => false,
         }
@@ -878,36 +876,7 @@ impl Game<'_> {
         });
         self.set_pushed_on_ground(target, limited, resolved);
 
-        // shortcut: unoccupied server mobs only, expand when controller/passenger authority is bound.
-        let mob = if let MoveWho::Entity(EntityHandle::Mob(i)) = target {
-            let m = &self.remote_entities[i];
-            (true
-
-                && !m.extra.passenger
-                && m.extra.mount.is_none()
-                && m.rider.is_none()
-                && m.extra.rider.is_none()
-                && self.riding != Some(m.id)
-                && self.lan.as_ref().is_none_or(|host| {
-                    !host
-                        .hub
-                        .guests
-                        .iter()
-                        .any(|g| host.hub.here(g) && g.vehicle == Some(m.id))
-                }))
-            .then_some(i)
-        } else {
-            None
-        };
-        // Entity.move updates ground before its tiny-collision return.
-        if let Some(i) = mob
-            && self.remote_entities[i].no_ai
-        {
-            self.remote_entities[i].on_ground = limited.y < 0.0 && limited.y != resolved.y;
-        }
-        if mob.is_none() {
-            self.restitute_piston(target, limited, resolved);
-        }
+        self.restitute_piston(target, limited, resolved);
         let moved = resolved.length_squared() > 1.0e-7
             || limited.length_squared() - resolved.length_squared() < 1.0e-7;
         if moved {
@@ -915,31 +884,6 @@ impl Game<'_> {
         } else {
             // A move the collisions cut to nothing still ends in the check.
             self.release_after_block_move(target);
-        }
-        // Restitution reads the new landing block even when the push was blocked.
-        if let Some(i) = mob {
-            let mut mobs = self.remote_entities.lift();
-            let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
-            // Restitution may call a block Part. Return both loans, including
-            // their progressed state, before propagating a callback panic.
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let world = self.mob_world_base(&[]);
-                let mut level = horizon_client::health::DamageLevel::lent(
-                    &self.world,
-                    self.pack.assets.registry,
-                    &mut lent,
-                    Some(world_items!(self)),
-                    Some(&self.pack.block_registries),
-                    &self.damage_hooks,
-                );
-                mobs[i].restitute_movement(&world, &mut level, limited, resolved);
-            }));
-            lent.give_back(&mut self.world);
-            self.remote_entities
-                .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-            if let Err(payload) = result {
-                std::panic::resume_unwind(payload);
-            }
         }
         let after = if moved {
             before.move_by(resolved)
@@ -1023,7 +967,6 @@ impl Game<'_> {
                 let host = self.lan.as_mut()?;
                 limit(&mut host.hub.guests.motion_mut(conn)?.piston)
             }
-            MoveWho::Entity(EntityHandle::Mob(i)) => limit(&mut self.remote_entities[i].piston),
             _ => limit(accumulators.entry(target).or_default()),
         }
     }

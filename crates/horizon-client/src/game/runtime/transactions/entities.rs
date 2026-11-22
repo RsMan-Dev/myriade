@@ -38,8 +38,6 @@ pub(super) struct EntityJournal {
     arrivals: HashSet<u32>,
     /// The removals asked for, in order: each runs at the root commit.
     removals: Vec<Removal>,
-    /// Each mob's `removed` flag before the transaction first removed it.
-    mob_removed: HashMap<u32, bool>,
     /// The join and leave announcements held for the root commit, in order.
     announcements: Vec<Announcement>,
     /// Each raw record a spawn wrote over in `persist.anon` (by kind and position: an end
@@ -146,9 +144,6 @@ impl EntityJournal {
     pub(super) fn merge(&mut self, child: Self) {
         self.arrivals.extend(child.arrivals);
         self.removals.extend(child.removals);
-        for (id, was) in child.mob_removed {
-            self.mob_removed.entry(id).or_insert(was);
-        }
         for kept in child.anon {
             self.keep_anon(kept);
         }
@@ -279,13 +274,8 @@ impl Game<'_> {
             return false;
         };
         match target {
-            Target::Mob(id) => {
-                for mob in self.remote_entities.iter_mut().filter(|m| m.id == id) {
-                    level.lifetimes.mob_removed.entry(id).or_insert(mob.removed);
-                    mob.removed = true;
-                }
-                level.lifetimes.removals.push(Removal::Mob { id, killed });
-            }
+            // The ECS mob stays readable until the root commit removes it (RESTE-SANS-ECS: no mark is kept).
+            Target::Mob(id) => level.lifetimes.removals.push(Removal::Mob { id, killed }),
             _ => level.lifetimes.removals.push(Removal::Other(entity)),
         }
         true
@@ -412,11 +402,6 @@ impl Game<'_> {
     /// Undoes `journal`'s entity changes, after the rest of its transaction rolled back: the
     /// removed mobs back, the entities it added out. Its arrivals come back.
     pub(super) fn roll_back_entity_journal(&mut self, journal: EntityJournal) -> HashSet<u32> {
-        for (id, was) in journal.mob_removed {
-            for mob in self.remote_entities.iter_mut().filter(|m| m.id == id) {
-                mob.removed = was;
-            }
-        }
         self.potions.thrown.truncate(journal.potions);
         // One load when nothing joined anywhere since the transaction opened.
         if JoinSeq::latest() >= journal.mark {

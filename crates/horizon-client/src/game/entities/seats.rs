@@ -147,32 +147,6 @@ impl Game<'_> {
         Some(at)
     }
 
-    /// `Entity.positionRider` for the mobs riding such a vehicle: its passenger attachment less the
-    /// rider's own vehicle attachment. A server sends no position for a passenger, so every client seats
-    /// it here.
-    pub(super) fn seat_static_mobs(&mut self, riding: &super::passengers::Riders) {
-        for (&vehicle, js) in riding {
-            let Some(seat) = self.seat(vehicle) else {
-                continue;
-            };
-            for &j in js {
-                let m = &mut self.remote_entities[j];
-                let offset = horizon_client::mobs::riders::vehicle_attachment(m, seat.width);
-                let at = Vec3::new(
-                    seat.position.x,
-                    seat.position.y + seat.height - offset,
-                    seat.position.z,
-                );
-                m.position = at;
-                m.previous = at;
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-            }
-        }
-    }
 }
 
 #[cfg(test)]

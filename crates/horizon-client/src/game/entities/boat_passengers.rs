@@ -4,150 +4,26 @@
 //! it picks up (the end of `AbstractBoat.tick`), where they sit
 //! (`positionRider`, `clampRotation`) and how they get out.
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
-use super::{Game, boats::Boat, lan_mobs::guest_bounds};
-use horizon_client::{
-    fast_hash::FxHashMap,
-    join_seq::ListStamp,
-    mobs::{BoxReach, Mob, Species, seen_grid::SeenGrid},
-};
+use super::{Game, lan_mobs::guest_bounds};
 use horizon_core::geometry::{Aabb, Vec3};
-use std::cell::{Cell, RefCell};
 
 /// `Entity.boardingCooldown` once a mob leaves its boat.
 pub(super) const BOARDING_COOLDOWN: i32 = 60;
 
-/// How many box queries the walk over every mob answers, once a write to the mob list has
-/// made the grid stale, before a new grid is built: about what building one costs (with
-/// 25,000 mobs, six to eight walks). It doubles with each grid of a stretch, so vehicles
-/// that each write a mob (a boat pushing the pig beside it) never pay more for grids than
-/// for their walks.
-const WALKS_BEFORE_GRID: u32 = 8;
-
-/// What a stretch of vehicle ticks knows about the mobs, so a boat or a minecart reads the
-/// mobs near it and not every mob of the level ([`Game::mobs_meeting`]).
-#[derive(Default)]
-pub(in crate::game) struct VehicleMobs {
-    /// The mobs' [`BoxReach`] with the mob count it was worked out for; None outside a stretch.
-    reach: Cell<Option<(usize, BoxReach)>>,
-    grid: RefCell<MobGrid>,
-    /// The last query's candidates, kept for their allocation.
-    near: Cell<Vec<u32>>,
-    /// Each ridden vehicle's mobs by slot, for the mob list as it stood ([`Game::vehicle_riders`]).
-    riders: RefCell<Option<(ListStamp, FxHashMap<u32, Vec<usize>>)>>,
-}
-#[derive(Default)]
-struct MobGrid {
-    /// The mobs' boxes by column and the list they were read from: they hold until that
-    /// list's next write ([`ListStamp`]), which every push, pick-up, death and join is.
-    built: Option<(ListStamp, SeenGrid)>,
-    /// The queries walked since the grid went stale, and how many are before the next grid.
-    walked: u32,
-    patience: u32,
-}
-
-/// `isPushable`, as `pushableBy` and `canVehicleCollide` ask it:
-/// `Mob::pushable` plus the shulkers it leaves out (they take no push, but
-/// count).
-fn pushable(m: &Mob) -> bool {
-    !m.removed && (m.pushable() || m.species() == Species::Shulker && m.alive())
-}
 impl Game<'_> {
-    /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
-    pub(super) fn vehicle_mob_reach(&self) -> Option<BoxReach> {
-        let (count, reach) = self.vehicle_mobs.reach.get()?;
-        if count == self.remote_entities.len() {
-            return Some(reach);
-        }
-        let reach = BoxReach::of(&self.remote_entities);
-        self.vehicle_mobs.reach.set(Some((self.remote_entities.len(), reach)));
-        Some(reach)
+    /// `isPushable` of the followed mob `id`, as `pushableBy` and `canVehicleCollide` ask it:
+    /// what `ecs.pushable` allows, plus the living shulkers, which take no push but count.
+    fn mob_pushable(&self, id: u32) -> bool {
+        self.ecs.pushable(id) || self.ecs.kind(id) == Some("minecraft:shulker") && self.mob_alive(id)
     }
-    /// The slots, ascending, of the mobs whose vehicle is `id`, whatever their state. While
-    /// vehicles tick, one walk over the mobs answers for every vehicle until the mob list is
-    /// next written: each boat asks for its passengers and each cart on rails whether it is
-    /// ridden, and each one walked every mob of the level.
-    fn vehicle_riders(&self, id: u32) -> Vec<usize> {
-        let rides = |v: u32| move |&j: &usize| self.remote_entities[j].extra.mount == Some(v);
-        if !self.vehicle_mobs_indexed() {
-            return (0..self.remote_entities.len()).filter(rides(id)).collect();
-        }
-        let stamp = self.remote_entities.stamp();
-        let mut riders = self.vehicle_mobs.riders.borrow_mut();
-        if riders.as_ref().is_none_or(|(s, _)| *s != stamp) {
-            let mut by_vehicle = FxHashMap::<u32, Vec<usize>>::default();
-            for (j, m) in self.remote_entities.iter().enumerate() {
-                if let Some(v) = m.extra.mount {
-                    by_vehicle.entry(v).or_default().push(j);
-                }
-            }
-            *riders = Some((stamp, by_vehicle));
-        }
-        let of = riders
-            .as_ref()
-            .and_then(|(_, by_vehicle)| by_vehicle.get(&id));
-        of.cloned().unwrap_or_default()
-    }
-    /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
-    /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
-    /// for the carts' `CartIndex`).
-    fn vehicle_mobs_indexed(&self) -> bool {
-        self.vehicle_mobs.reach.get().is_some() && mod_api::__private::mods().is_empty()
-    }
-    /// The slots, ascending, of the mobs whose box may meet `area` into `out` (a superset: the
-    /// caller still tests each box), from a grid of the mobs' boxes that the first query of a
-    /// stretch of vehicle ticks builds. False: walk them all. That is outside a stretch or with
-    /// native mods loaded ([`Self::vehicle_mobs_indexed`]), when the grid cannot say, and for
-    /// a while after a write to the mob list ([`MobGrid`]).
-    fn vehicle_mobs_near(&self, area: Aabb, out: &mut Vec<u32>) -> bool {
-        if !self.vehicle_mobs_indexed() {
-            return false;
-        }
-        let stamp = self.remote_entities.stamp();
-        let mut grid = self.vehicle_mobs.grid.borrow_mut();
-        if grid.built.as_ref().is_none_or(|(s, _)| *s != stamp) {
-            if grid.walked < grid.patience {
-                grid.walked += 1;
-                return false;
-            }
-            grid.built = Some((stamp, SeenGrid::new(self.remote_entities.iter().map(Mob::bounds))));
-            grid.walked = 0;
-            grid.patience = (grid.patience * 2).max(WALKS_BEFORE_GRID);
-        }
-        let built = grid.built.as_ref();
-        built.is_some_and(|(_, cells)| cells.candidates(area, out))
-    }
-    /// A vehicle's box query: `each` gets every mob whose box meets `area`, in slot order,
-    /// with its slot and its box. While vehicles tick it reads the mobs near the area
-    /// ([`Self::vehicle_mobs_near`]) or, walking them all, tests each position against the
-    /// [`BoxReach`] before working the box out. The mobs and their order are those of a walk
-    /// that tests every box.
-    pub(in crate::game) fn mobs_meeting(
-        &self,
-        area: Aabb,
-        mut each: impl FnMut(usize, &Mob, Aabb),
-    ) {
-        let mut near = self.vehicle_mobs.near.take();
-        if self.vehicle_mobs_near(area, &mut near) {
-            for &j in &near {
-                let m = &self.remote_entities[j as usize];
-                let b = m.bounds();
-                if b.intersects(area) {
-                    each(j as usize, m, b);
-                }
-            }
-        } else {
-            let reach = self.vehicle_mob_reach();
-            for (j, m) in self.remote_entities.iter().enumerate() {
-                if reach.is_some_and(|r| !r.may_meet(m, area)) {
-                    continue;
-                }
-                let b = m.bounds();
-                if b.intersects(area) {
-                    each(j, m, b);
-                }
+    /// A vehicle's box query: `each` gets every followed mob whose box meets `area`, with its
+    /// id and its box.
+    pub(in crate::game) fn mobs_meeting(&self, area: Aabb, mut each: impl FnMut(u32, Aabb)) {
+        for id in self.ecs_entities_meeting(area) {
+            if let Some(b) = self.mob_box(id) {
+                each(id, b);
             }
         }
-        self.vehicle_mobs.near.set(near);
     }
     /// The players in boat `id`: the window's player (or the server player
     /// acting as it) and the server's other players.
@@ -163,18 +39,13 @@ impl Game<'_> {
     }
     /// The mobs in boat `id`, in their seat order after the players
     /// (`Entity.addPassenger` puts a player first).
-    pub(super) fn boat_mobs(&self, id: u32) -> Vec<usize> {
-        let mut riders = self.vehicle_riders(id);
-        riders.retain(|&j| !self.remote_entities[j].removed && self.remote_entities[j].alive());
-        riders
+    pub(super) fn boat_mobs(&self, id: u32) -> Vec<u32> {
+        self.ecs.riders_of(id).into_iter().filter(|&m| self.mob_alive(m)).collect()
     }
     /// `getPassengers().size()` of boat `id`.
+    /// `getPassengers().size()` of boat `id`.
     pub(super) fn boat_passengers(&self, id: u32) -> usize {
-        self.boat_players(id)
-            + self
-                .mob_objects()
-                .filter(|m| m.extra.mount == Some(id) && !m.removed)
-                .count()
+        self.boat_players(id) + self.ecs.riders_of(id).into_iter().filter(|&m| self.mob_exists(m)).count()
     }
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not
     /// under water.
@@ -193,19 +64,16 @@ impl Game<'_> {
         };
         self.ecs.boat_seat(id, 0, count).unwrap_or(Vec3::ZERO)
     }
-    /// `getRootVehicle` of mob `j`: the mob or boat at the bottom of what it
+    /// `getRootVehicle` of the followed mob `id`: the mob or boat at the bottom of what it
     /// rides, None when it rides nothing.
-    pub(super) fn mob_root_vehicle(&self, mut j: usize) -> Option<u32> {
+    pub(super) fn mob_root_vehicle(&self, mut id: u32) -> Option<u32> {
         let mut root = None;
         for _ in 0..8 {
-            let Some(v) = self.remote_entities[j].extra.mount else {
+            let Some(v) = self.ecs.vehicle_of(id) else {
                 break;
             };
             root = Some(v);
-            match self.remote_entities.iter().position(|m| m.id == v) {
-                Some(k) => j = k,
-                None => break,
-            }
+            id = v;
         }
         root
     }
@@ -239,8 +107,8 @@ impl Game<'_> {
     /// shulkers and pushable mobs and players, but not its own passengers.
     pub(super) fn boat_obstacles(&self, id: u32, area: Aabb) -> Vec<Aabb> {
         let mut out = Vec::new();
-        self.mobs_meeting(area, |j, m, b| {
-            if pushable(m) && (m.extra.mount.is_none() || self.mob_root_vehicle(j) != Some(id)) {
+        self.mobs_meeting(area, |j, b| {
+            if self.mob_pushable(j) && self.mob_root_vehicle(j) != Some(id) {
                 out.push(b);
             }
         });

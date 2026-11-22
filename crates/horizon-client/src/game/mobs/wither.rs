@@ -2,7 +2,7 @@
 //! its boss bar, and its skulls hitting and exploding.
 use super::Game;
 use horizon_client::block_pattern::{BlockPattern, PatternMatch, WITHER_FULL};
-use horizon_client::{items::ItemStack, mobs::Species};
+use horizon_client::items::ItemStack;
 use horizon_core::{geometry::Direction, position::BlockPos};
 
 impl Game<'_> {
@@ -14,9 +14,7 @@ impl Game<'_> {
     }
     /// `getKillCredit` naming a wither that is still in the level.
     fn is_wither(&self, id: u32) -> bool {
-        self.remote_entities
-            .iter()
-            .any(|o| o.id == id && o.alive() && o.species() == Species::Wither)
+        self.ecs.species(id) == Some("minecraft:wither") && self.ecs.alive(id)
     }
     fn create_wither_rose_at(&mut self, position: [f64; 3], wither: Option<u32>) {
         let Some(wither) = wither else {
@@ -109,9 +107,12 @@ impl Game<'_> {
             90.0
         };
         let id = self.create_triggered("minecraft:wither", at, yaw);
-        if let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-            m.persistent = true;
-            horizon_client::mobs::wither::make_invulnerable(m);
+        // WitherBoss.makeInvulnerable: a third of its health. RESTE-SANS-ECS: the
+        // charging counter and the persistence flag have no ECS write yet.
+        if let Some(id) = id {
+            if let Some(max) = self.ecs.max_health(id) {
+                self.ecs.set_health(id, max / 3.0);
+            }
         }
         // SUMMONED_ENTITY for each player within 50 blocks of the wither's box.
         self.trigger_summoned(id, 50.0);

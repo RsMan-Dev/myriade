@@ -2,7 +2,7 @@
 //! in a village with enough occupied beds or inside a swamp hut.
 use crate::custom_spawner::{CustomSpawnerLevel, section, sections_to_village};
 use horizon_client::chunk_map::ChunkMap;
-use horizon_client::mobs::{Mob, Species, spawn_rules};
+use horizon_client::mobs::{Species, spawn_rules};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
 pub const TICK_DELAY: i32 = 1200;
@@ -50,13 +50,13 @@ impl CatSpawner {
             return;
         }
         if sections_to_village(&l.village_centers(), section(pos)) <= 2 {
-            if village_takes_cat(l.parts().mobs, pos) {
+            if village_takes_cat(&*l, pos) {
                 l.spawn_cat(pos, false);
             }
         } else {
             let hut = l.structure_tag("minecraft:cats_spawn_in");
             if l.structures_at(pos).iter().any(|s| hut.contains(s))
-                && hut_takes_cat(l.parts().mobs, pos)
+                && hut_takes_cat(&*l, pos)
             {
                 l.spawn_cat(pos, true);
             }
@@ -72,25 +72,21 @@ pub fn spawn_cat(l: &mut impl CustomSpawnerLevel, pos: [i32; 3], persistent: boo
         f64::from(pos[1]),
         f64::from(pos[2]) + 0.5,
     ];
-    let Some(id) = l.spawn_mob_facing(
+    if l.spawn_mob_facing(
         "minecraft:cat",
         at,
         persistent,
         spawn_rules::Reason::Natural,
         0.0,
-    ) else {
+    )
+    .is_none()
+    {
         return;
-    };
+    }
     // `Cat.finalizeSpawn` asks `#cats_spawn_as_black` about the entity's
     // own block position, which is still the origin here: `snapTo` runs
     // after it. So the hut the cat spawns in does not make it black.
-    let black = l.structure_tag("minecraft:cats_spawn_as_black");
-    let at_origin = l.structures_at([0, 0, 0]);
-    if at_origin.iter().any(|s| black.contains(s))
-        && let Some(m) = l.parts().mobs.iter_mut().find(|m| m.id == id)
-    {
-        m.extra.variant = 10;
-    }
+    // RESTE-SANS-ECS: the black variant (`#cats_spawn_as_black`) has no ECS setter yet.
 }
 
 /// `getRandomPlayer` plus two offsets of 8 to 31 blocks, if `hasChunksAt(pos +- 10)`.
@@ -122,39 +118,14 @@ pub fn candidate(
 }
 
 /// `spawnInVillage`: more than four occupied beds within 48 blocks and fewer than five cats around.
-pub fn village_takes_cat(mobs: &[Mob], pos: [i32; 3]) -> bool {
+pub fn village_takes_cat(l: &impl CustomSpawnerLevel, pos: [i32; 3]) -> bool {
     // PoiManager.getCountInRange(HOME, IS_OCCUPIED): beds villagers have claimed.
-    let mut beds: Vec<[i32; 3]> = mobs
-        .iter()
-        .filter(|m| m.species() == Species::Villager && m.alive())
-        .filter_map(|m| m.extra.bed)
-        .filter(|b| {
-            let d = |i: usize| i64::from(b[i] - pos[i]);
-            d(0).abs() <= 48
-                && d(2).abs() <= 48
-                && d(0).pow(2) + d(1).pow(2) + d(2).pow(2) <= 48 * 48
-        })
-        .collect();
-    beds.sort_unstable();
-    beds.dedup();
-    beds.len() > 4 && cats_near(mobs, pos, 48.0) < 5
+    l.village_beds_near(pos).len() > 4 && l.cats_near(pos, 48.0) < 5
 }
 
 /// `spawnInHut`: no cat within 16 blocks.
-pub fn hut_takes_cat(mobs: &[Mob], pos: [i32; 3]) -> bool {
-    cats_near(mobs, pos, 16.0) == 0
-}
-
-/// Cats in `AABB(pos).inflate(radius, 8, radius)`.
-pub fn cats_near(mobs: &[Mob], pos: [i32; 3], radius: f64) -> usize {
-    let [x, y, z] = pos.map(f64::from);
-    let min = Vec3::new(x - radius, y - 8.0, z - radius);
-    let max = Vec3::new(x + 1.0 + radius, y + 9.0, z + 1.0 + radius);
-    mobs.iter()
-        .filter(|m| {
-            m.species() == Species::Cat && m.alive() && m.bounds().intersects_corners(min, max)
-        })
-        .count()
+pub fn hut_takes_cat(l: &impl CustomSpawnerLevel, pos: [i32; 3]) -> bool {
+    l.cats_near(pos, 16.0) == 0
 }
 
 #[cfg(test)]

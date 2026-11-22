@@ -596,12 +596,6 @@ impl Game<'_> {
                         input_sneak: g.input & 32 != 0,
                         ..Default::default()
                     })
-                    .or_else(|| {
-                        self.remote_entities
-                            .iter()
-                            .find(|m| m.id == id)
-                            .map(|m| self.mob_entity(m))
-                    })
                     .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
             }
         });
@@ -695,9 +689,6 @@ impl Game<'_> {
         {
             return Some("minecraft:player".into());
         }
-        if let Some(m) = self.remote_entities.iter().find(|m| m.id == id) {
-            return Some(m.kind.id.clone());
-        }
         if let Some(kind) = self.ecs_kind(id) {
             return Some(kind);
         }
@@ -756,12 +747,6 @@ impl Game<'_> {
                 sneaking: g.sneaking,
                 input_sneak: g.input & 32 != 0,
                 ..Default::default()
-            })
-            .or_else(|| {
-                self.remote_entities
-                    .iter()
-                    .find(|m| m.id == id)
-                    .map(|m| self.mob_entity(m))
             })
             .or_else(|| self.ecs_view(id).map(|_| self.ecs_predicate_view(id)))
     }

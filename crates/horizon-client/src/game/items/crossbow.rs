@@ -140,13 +140,12 @@ impl Game<'_> {
         if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
             return;
         }
-        let Some(shooter) = self.remote_entities.iter().find(|m| m.id == mob) else {
+        let Some(kind) = self.ecs_mob_kind(mob) else {
             return;
         };
-        let kind = shooter.kind.id.clone();
-        let vanilla = Self::mob_vanilla_ammo(&shooter.extra, weapon, world_items!(self));
+        let vanilla = Self::mob_vanilla_ammo(self.ecs_hand_stack(mob, true), self.ecs_hand_stack(mob, false), weapon, world_items!(self));
         let mut projectile = Some(vanilla.clone());
-        self.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
+        self.native_living_get_projectile(None, "", Some(mob), kind, weapon, &mut projectile);
         let Some(ammo) =
             projectile.filter(|ammo| *ammo != vanilla && is_arrow(world_items!(self), ammo))
         else {
@@ -157,18 +156,16 @@ impl Game<'_> {
     /// `Monster.getProjectile`: the projectile `weapon` supports in the off
     /// hand, then the main hand (`getHeldProjectile`), else a new arrow.
     fn mob_vanilla_ammo(
-        extra: &horizon_client::mobs::Extra,
+        off: Option<ItemStack>,
+        main: Option<ItemStack>,
         weapon: &ItemStack,
         items: &Items,
     ) -> ItemStack {
         let supported = |s: &ItemStack| {
             is_arrow(items, s) || &*weapon.item == CROSSBOW && &*s.item == FIREWORK_ROCKET
         };
-        extra
-            .slot_stack(horizon_items::equipment::OFFHAND)
-            .cloned()
-            .into_iter()
-            .chain(extra.main_hand_stack().cloned())
+        off.into_iter()
+            .chain(main)
             .find(supported)
             .unwrap_or_else(|| ItemStack::new(ARROW, 1))
     }
@@ -193,23 +190,20 @@ impl Game<'_> {
     /// replaced ammunition is what the crossbow holds; none leaves it uncharged
     /// and returns false (`tryLoadProjectiles`).
     pub(super) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
-        let Some(shooter) = self.remote_entities.iter().find(|m| m.id == mob) else {
+        let Some(kind) = self.ecs_mob_kind(mob) else {
             return false;
         };
-        let kind = shooter.kind.id.clone();
         let mut projectile = Some(Self::mob_vanilla_ammo(
-            &shooter.extra,
+            self.ecs_hand_stack(mob, true),
+            self.ecs_hand_stack(mob, false),
             weapon,
             world_items!(self),
         ));
-        self.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
+        self.native_living_get_projectile(None, "", Some(mob), kind, weapon, &mut projectile);
         // A crossbow takes arrows and firework rockets only.
         let projectile = projectile
             .filter(|ammo| is_arrow(world_items!(self), ammo) || &*ammo.item == FIREWORK_ROCKET);
-        let Some(shooter) = self.remote_entities.iter_mut().find(|m| m.id == mob) else {
-            return false;
-        };
-        let Some(mut crossbow) = shooter.extra.main_hand_stack().cloned() else {
+        let Some(mut crossbow) = self.ecs_hand_stack(mob, false) else {
             return false;
         };
         let loaded = projectile.is_some();
@@ -218,8 +212,18 @@ impl Game<'_> {
             .map(|ammo| horizon_client::arrows::drawn_ammo(ammo, false))
             .collect();
         crossbow.tidy();
-        shooter.extra.set_main_hand_stack(Some(crossbow));
+        self.ecs_set_main_hand(mob, crossbow);
         loaded
+    }
+    /// The main hand of the ECS mob `mob` becomes `stack`, as `setMainHand` of a held item in place.
+    fn ecs_set_main_hand(&mut self, mob: u32, stack: ItemStack) {
+        let Some(e) = self.ecs.entity_of(mob) else {
+            return;
+        };
+        if let Some(w) = self.ecs.world_mut() {
+            horizon_ecs_proto::goals::set_main_hand(w, e, Some(stack.clone()));
+        }
+        self.ecs.put_equipment_slot(mob, 0, Some(stack));
     }
     /// `CrossbowItem.use`: shoot when charged, else start charging.
     pub(super) fn use_crossbow(&mut self, stack: &ItemStack) -> bool {

@@ -4,8 +4,9 @@
 use super::{Game, Screen};
 use horizon_client::{
     items::ItemStack,
-    mobs::{Mob, Species, equine, llama, nautilus},
+    mobs::{Species, equine, llama, nautilus},
 };
+use horizon_core::nbt::Tag;
 
 /// Menu slot ids: the saddle, the body armour and the chest from 710.
 pub(in crate::game) const SADDLE: usize = 700;
@@ -15,18 +16,6 @@ pub(in crate::game) const CHEST: usize = 710;
 const CHEST_SIZE: usize = 15;
 const COLUMNS: usize = 5;
 
-/// `AbstractHorse.getInventoryColumns`: five for a donkey's or mule's chest,
-/// a llama's strength for its chest, else none.
-pub(in crate::game) fn mount_columns(m: &Mob) -> usize {
-    let species = m.species();
-    if llama::is_llama(species) {
-        llama::inventory_columns(m).clamp(0, 5) as usize
-    } else if m.extra.chested && matches!(species, Species::Donkey | Species::Mule) {
-        COLUMNS
-    } else {
-        0
-    }
-}
 /// Whether the mount has a horse inventory (`AbstractHorse`, `AbstractNautilus`).
 pub(in crate::game) fn has_mount_menu(species: Species) -> bool {
     equine::is_equine(species) || llama::is_llama(species) || nautilus::is_nautilus(species)
@@ -85,27 +74,25 @@ impl Game<'_> {
     pub(in crate::game) fn mount_active(&self) -> bool {
         self.screen == Screen::Inventory && self.mount_menu.open.is_some()
     }
-    fn mount_mob_index(&self, id: u32) -> Option<usize> {
-        self.remote_entities.iter().position(|m| m.id == id)
-    }
     /// `AbstractHorse.openCustomInventoryScreen` for a tamed adult mount.
-    pub(in crate::game) fn open_mount_menu(&mut self, index: usize) {
-        let m = &self.remote_entities[index];
-        let species = m.species();
+    pub(in crate::game) fn open_mount_menu(&mut self, id: u32) {
+        let Some(species) = self.creature_species(id) else {
+            return;
+        };
         if !has_mount_menu(species) {
             return;
         }
-        let mut items = m.extra.items.clone();
+        let Some((saddle, body, mut items)) = self.mount_contents_of(id) else {
+            return;
+        };
         items.resize(CHEST_SIZE, None);
         let show_armor = shows_body(species);
         self.mount_menu.open = Some(Open {
-            mob: m.id,
+            mob: id,
             species,
-            columns: mount_columns(m),
-            saddle: m.saddle_item(),
-            armor: show_armor
-                .then(|| m.equipment_stacks()[6].clone())
-                .flatten(),
+            columns: self.mount_columns_of(id).unwrap_or(0),
+            saddle,
+            armor: body.flatten().filter(|_| show_armor),
             items,
             show_saddle: shows_saddle(species),
             show_armor,
@@ -125,21 +112,25 @@ impl Game<'_> {
         let Some(id) = self.riding else {
             return false;
         };
-        let Some(index) = self.mount_mob_index(id) else {
+        let Some(species) = self.creature_species(id) else {
             return false;
         };
-        let m = &self.remote_entities[index];
-        if !has_mount_menu(m.species()) || !m.extra.tame || !m.alive() {
+        if !has_mount_menu(species) || !self.mount_tamed(id) || !self.ecs.alive(id) {
             return false;
         }
-        self.open_mount_menu(index);
+        self.open_mount_menu(id);
         true
+    }
+    /// The mount `id` is tamed: an `Owner`, or the `Tame` flag of a horse tamed without one.
+    fn mount_tamed(&self, id: u32) -> bool {
+        self.ecs_mob_tree(id).is_some_and(|t| {
+            let t = Tag::Compound(t);
+            t.get("Owner").is_some() || matches!(t.get("Tame"), Some(Tag::Byte(v)) if *v != 0)
+        })
     }
     /// Riding a mount that has a horse inventory (`HasCustomInventoryScreen`).
     pub(in crate::game) fn riding_mount_with_menu(&self) -> bool {
-        self.riding
-            .and_then(|id| self.mount_mob_index(id))
-            .is_some_and(|i| has_mount_menu(self.remote_entities[i].species()))
+        self.riding.and_then(|id| self.creature_species(id)).is_some_and(has_mount_menu)
     }
     /// A server closed its window: the screen's copy goes.
     pub(in crate::game) fn mount_menu_reset(&mut self) {
@@ -148,8 +139,7 @@ impl Game<'_> {
     /// The entity type of the open mount menu's mount (`minecraft:horse`).
     pub(in crate::game) fn mount_menu_entity(&self) -> Option<String> {
         let open = self.mount_menu.open.as_ref()?;
-        let m = self.remote_entities.iter().find(|m| m.id == open.mob)?;
-        Some(m.kind.id.to_string())
+        self.mount_kind_of(open.mob)
     }
     /// The chest columns of the open mount menu.
     pub(in crate::game) fn mount_menu_columns(&self) -> Option<usize> {
@@ -165,13 +155,7 @@ impl Game<'_> {
             return;
         };
         let mob = open.mob;
-        let mount = self
-            .mount_mob_index(mob)
-            .map(|i| (self.remote_entities[i].alive(), self.remote_entities[i].bounds()));
-        let valid = match mount {
-            Some((true, bounds)) => self.within_entity_interaction_range(&bounds, 4.0),
-            _ => false,
-        };
+        let valid = self.ecs.alive(mob) && self.ecs.bounds(mob).is_some_and(|b| self.within_entity_interaction_range(&b, 4.0));
         if !valid {
             self.close_container();
         }
@@ -186,91 +170,57 @@ impl Game<'_> {
         let Some(open) = self.mount_menu.open.as_ref() else {
             return;
         };
-        let Some(index) = self.mount_mob_index(open.mob) else {
-            return;
-        };
-        let (saddle, armor) = (open.saddle.clone(), open.armor.clone());
+        let (mob, saddle, armor) = (open.mob, open.saddle.clone(), open.armor.clone());
         let body = open.show_armor.then_some(armor);
         let items = open.items.clone();
-        self.mount_store(index, saddle, body, items);
+        self.mount_store(mob, saddle, body, items);
     }
-    /// The slots of mount `index` as its menu shows them: the saddle, the
-    /// body item (None when the slot isn't active), the chest.
-    pub(in crate::game) fn mount_contents(
-        &self,
-        index: usize,
-    ) -> (
-        Option<ItemStack>,
-        Option<Option<ItemStack>>,
-        Vec<Option<ItemStack>>,
-    ) {
-        let m = &self.remote_entities[index];
-        let species = m.species();
-        let body = shows_body(species).then(|| m.equipment_stacks()[6].clone());
-        let mut items = m.extra.items.clone();
-        items.resize(mount_columns(m) * 3, None);
-        (m.saddle_item(), body, items)
-    }
-    /// The menu's slots back on mount `index` (`body` None: not its slot),
-    /// with the equip sound of what was put on (`Equippable.equipSound`).
+    /// The menu's slots back on mount `id` (`body` None: not its slot), with the equip sound of what was put on
+    /// (`Equippable.equipSound`) and the equip event.
     pub(in crate::game) fn mount_store(
         &mut self,
-        index: usize,
+        id: u32,
         saddle: Option<ItemStack>,
         body: Option<Option<ItemStack>>,
-        items: Vec<Option<ItemStack>>,
+        mut items: Vec<Option<ItemStack>>,
     ) {
-        let m = &self.remote_entities[index];
-        let at = m.center();
-        let saddle_put_on = saddle.is_some() && !m.extra.saddled();
+        let (Some(bounds), Some(pos), Some((saddled, body_now, _))) =
+            (self.ecs.bounds(id), self.ecs.position(id), self.mount_contents_of(id))
+        else {
+            return;
+        };
+        let at = bounds.center();
+        let at = [at.x, at.y, at.z];
+        let body_id = body_now.flatten();
+        let saddle_put_on = saddle.is_some() && saddled.is_none();
         let put_on = if saddle_put_on {
             saddle.as_ref()
         } else {
-            body.as_ref()
-                .and_then(Option::as_ref)
-                .filter(|_| m.extra.body_id().is_none())
+            body.as_ref().and_then(Option::as_ref).filter(|_| body_id.is_none())
         };
-        let sound = if saddle_put_on && nautilus::is_nautilus(m.species()) {
-            // AbstractNautilus.getEquipSound: its own saddle sounds.
-            Some(format!("minecraft:{}", nautilus::saddle_sound(m)))
-        } else {
-            put_on.map(|s| {
-                horizon_client::item_sync::equip_sound(s, self.res.items())
-                    .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
-            })
-        };
+        let sound = put_on.map(|s| {
+            horizon_client::item_sync::equip_sound(s, self.res.items())
+                .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
+        });
         let slot = if saddle_put_on { "saddle" } else { "body" };
         let sound = match (sound, put_on) {
             (Some(sound), Some(stack)) => self.mod_equip_sound(stack, slot, Some(sound)),
             (sound, _) => sound,
         };
-        let m = &mut self.remote_entities[index];
-        let id = m.id;
-        let pos = m.position;
-        let saddle_off = m.extra.saddled() && saddle.is_none();
-        let body_off = body
-            .as_ref()
-            .is_some_and(|b| b.is_none() && m.extra.body_id().is_some());
-        let body_on = body
-            .as_ref()
-            .is_some_and(|b| b.is_some() && m.extra.body_id().is_none());
-        m.set_saddle(saddle);
-        if let Some(body) = body {
-            m.extra.set_body_stack(body);
-        }
-        let mut items = items;
-        let keep = m.extra.items.len().max(CHEST_SIZE);
-        items.resize(keep, None);
-        m.extra.items = items;
+        let saddle_off = saddled.is_some() && saddle.is_none();
+        let body_off = body.as_ref().is_some_and(|b| b.is_none() && body_id.is_some());
+        let body_on = body.as_ref().is_some_and(|b| b.is_some() && body_id.is_none());
+        items.resize(CHEST_SIZE, None);
+        self.ecs.mount_store(id, saddle, body, items);
         let (x, z) = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
         self.world.modified.insert((x, z));
         if let Some(sound) = sound {
             self.audio.play(&sound, Some(at), 1.0, 1.0);
         }
         if saddle_put_on || body_on {
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
+            self.mob_equip_event(id, pos, true);
         } else if saddle_off || body_off {
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], false);
+            self.mob_equip_event(id, pos, false);
         }
     }
     pub(in crate::game) fn mount_slots(&self) -> Option<Vec<usize>> {

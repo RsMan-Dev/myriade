@@ -4,20 +4,15 @@
 //! needs the game itself: the particles, the player UUIDs, the merchant menu, the
 //! sleep hooks and the wake-up inside a mob pass.
 use super::Game;
-#[cfg(test)]
-use horizon_client::mobs::{Mob, villager, villager_brain};
-#[cfg(test)]
-use horizon_core::geometry::Vec3;
 
 impl Game<'_> {
     /// `Level.broadcastEntityEvent` of an event whose `handleEntityEvent`
     /// draws particles about the mob (villager 12, 13 and 14, taming 6 and 7,
     /// love 18): the guests get the byte.
     pub(super) fn mob_event_particles(&mut self, id: u32, event: i8) {
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
+        let Some(at) = self.ecs.position(id) else {
             return;
         };
-        let at = [m.position.x, m.position.y, m.position.z];
         self.lan_entity_event(id as i32, event, at);
     }
     /// The UUID of a player by connection (None for the host).

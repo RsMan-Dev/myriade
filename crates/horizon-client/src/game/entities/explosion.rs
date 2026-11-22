@@ -4,7 +4,7 @@
 //! merged drops and TNT chain priming, and optional fire.
 use super::{
     Game,
-    entity::{Blast, Entity, EntityHandle, with_entity, with_entity_mut},
+    entity::{Blast, Entity, with_entity, with_entity_mut},
 };
 use horizon_client::health::DamageLevel;
 use horizon_client::{
@@ -1098,80 +1098,6 @@ impl Game<'_> {
                 let amount = damage(dist, exposure);
                 match handle {
                     _ if !hurts => {}
-                    EntityHandle::Mob(i) => {
-                        let hurtable = teams_allow(self, self.mob_team(self.remote_entities[i].id));
-                        let m = &mut self.remote_entities[i];
-                        // The exploding mob is the damage source's entity, so
-                        // victims it kills drop its charged-creeper loot
-                        // (`Creeper.killedEntity`).
-                        let source = horizon_client::mobs::Damage {
-                            kind,
-                            // A projectile's owner (`getIndirectSourceEntity`),
-                            // else the exploding mob itself.
-                            attacker: self
-                                .combat
-                                .explicit_explosion_cause
-                                .as_ref()
-                                .and_then(|c| c.as_ref())
-                                .filter(|c| c.player)
-                                .map(|_| Who::Player)
-                                .or_else(|| {
-                                    let player = self.combat.blast_owner_player
-                                        && self.combat.explicit_explosion_cause.is_none();
-                                    player.then_some(Who::Player)
-                                })
-                                .or_else(|| {
-                                    attacker
-                                        .as_ref()
-                                        .map(|&(id, _)| id)
-                                        .filter(|&o| o != m.id)
-                                        .filter(|_| {
-                                            self.combat
-                                                .explicit_explosion_cause
-                                                .as_ref()
-                                                .is_none_or(|c| {
-                                                    c.as_ref().is_some_and(|c| c.species.is_some())
-                                                })
-                                        })
-                                        .map(horizon_client::mobs::Who::Mob)
-                                }),
-                            from: Some(center),
-                            attacker_species: cause,
-                        };
-                        // `EXPLOSION_KNOCKBACK_RESISTANCE`, not `KNOCKBACK_RESISTANCE`:
-                        // its base is 0 for every mob type, so iron golems and
-                        // ravagers are pushed.
-                        let victim = m.id;
-                        let hurt = hurt_mob(
-                            crate::game::entity::damage_level_of!(self, scoped),
-                            m,
-                            hurtable,
-                            cause,
-                            (amount, source),
-                        );
-                        if hurt {
-                            if source.attacker == Some(Who::Player) {
-                                let guest = self.combat.blast_guest;
-                                if let Some(player) = self.player_id_by_connection(guest) {
-                                    self.ecs.record_credit(
-                                        victim,
-                                        Some(horizon_ecs_proto::targeting::Who::Player(player)),
-                                    );
-                                }
-                                if let Some(host) = self.lan.as_mut() {
-                                    match guest {
-                                        Some(conn) => {
-                                            host.mob_players.insert(victim, conn);
-                                        }
-                                        None => {
-                                            host.mob_players.remove(&victim);
-                                        }
-                                    }
-                                }
-                            }
-                            self.resolve_player_responsible(victim, source);
-                        }
-                    }
                     // `hurtServer` does nothing to the rest.
                     _ => {}
                 }

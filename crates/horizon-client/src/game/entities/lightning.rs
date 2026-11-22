@@ -157,7 +157,7 @@ impl Game<'_> {
         }
         let sees_sky = |g: &Self, p: [i32; 3]| g.world.light(p[0], p[1], p[2]) >> 4 == 15;
         let floor = |p: [f64; 3]| [p[0].floor() as i32, p[1].floor() as i32, p[2].floor() as i32];
-        let living: Vec<[i32; 3]> = if self.ecs.is_active() {
+        let living: Vec<[i32; 3]> = {
             // The living creatures of the column (box queried on the spatial index; y is free there).
             let (lo, hi) = (f64::from(top.y - 4), f64::from(top.y) + 4096.0);
             let area = horizon_core::geometry::Aabb::new(
@@ -169,12 +169,6 @@ impl Game<'_> {
                 .into_iter()
                 .filter(|&id| self.ecs.alive(id))
                 .filter_map(|id| self.ecs.position(id).map(floor))
-                .collect()
-        } else {
-            self.remote_entities
-                .iter()
-                .filter(|m| m.alive())
-                .map(|m| floor([m.position.x, m.position.y, m.position.z]))
                 .collect()
         };
         let mut candidates: Vec<[i32; 3]> = living

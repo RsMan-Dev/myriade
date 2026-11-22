@@ -2,11 +2,8 @@
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
 use super::Game;
-use super::level_sounds::LevelSound;
-use horizon_client::mobs::{MobEvent, happy_ghast};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::registry::BlockStateId;
-use mod_api::SoundSource;
 
 impl Game<'_> {
     /// Client `EntityGetter.getEntityCollisions` for the player: the
@@ -18,18 +15,8 @@ impl Game<'_> {
             return Vec::new();
         };
         let sweep = Aabb::new(p.position.subtract(Vec3::new(3.0, 1.0, 3.0)), p.position.add_vector(Vec3::new(3.0, 4.0, 3.0)));
-        let solid = self.ecs.solid_boxes(sweep, Some(p.position.y), self.riding);
-        self.remote_entities
-            .iter()
-            .filter(|m| {
-                (m.species() == horizon_client::mobs::Species::HappyGhast
-                    && Some(m.id) != self.riding
-                    && happy_ghast::collides_with_player(m, p.position.y))
-                    || (m.species() == horizon_client::mobs::Species::Shulker && m.alive())
-            })
-            .map(|m| m.bounds())
-            .chain(solid)
-            .collect()
+        // RESTE-SANS-ECS: the solid happy ghasts and living shulkers are assumed to come from `solid_boxes` (to check in horizon-ecs-proto).
+        self.ecs.solid_boxes(sweep, Some(p.position.y), self.riding)
     }
     /// `EntityGetter.getEntityCollisions` for a mover that is neither a player nor a
     /// happy ghast (a dropped item, an armor stand, primed TNT, a falling block): the
@@ -50,127 +37,18 @@ impl Game<'_> {
         }
         out
     }
-    /// `HappyGhast.mobInteract`. Returns whether the click was used.
-    pub(super) fn interact_happy_ghast(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.remote_entities[index];
-        if !m.alive() || Some(m.id) == self.riding {
-            return false;
-        }
-        if m.is_baby() {
-            // Animal.mobInteract: food grows it up.
-            return false;
-        }
-        let at = m.center();
-        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
-        let harnessed = m.extra.body_id().is_some();
-        // Equippable.equipOnInteract: a harness goes on a bare adult.
-        if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {
-            let held = self.inventory[self.selected].clone().map(|mut stack| {
-                stack.count = 1;
-                stack
-            });
-            self.remote_entities[index].extra.set_body_stack(held);
-            self.audio
-                .play("minecraft:entity.happy_ghast.equip", Some(at), 1.0, 1.0);
-            self.consume_held();
-            let id = self.remote_entities[index].id;
-            let pos = self.remote_entities[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
-            return true;
-        }
-        // Equippable.canBeSheared: shears take the harness off again.
-        if item == "minecraft:shears"
-            && harnessed
-            && !sneaking
-            && let Some(harness) = self.remote_entities[index].take_body_equipment()
-        {
-            self.audio
-                .play("minecraft:entity.happy_ghast.unequip", Some(at), 1.0, 1.0);
-            self.spawn_item(harness, at, [0.0, 0.2, 0.0], 10);
-            self.damage_held_tool();
-            let id = self.remote_entities[index].id;
-            let pos = self.remote_entities[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], false);
-            return true;
-        }
-        if harnessed && !sneaking {
-            // doPlayerRide: `player.startRiding(this)`, which keeps the
-            // rider's view (`ServerPlayer.startRiding`'s `Relative.ROTATION`).
-            let id = self.remote_entities[index].id;
-            if !self.native_may_board(id) {
-                return true;
-            }
-            self.break_leash(id, true, false);
-            let was_empty = self.remote_entities[index].rider.is_none();
-            // addPassenger: the rider is not standing on top, so no still
-            // timeout.
-            self.remote_entities[index].extra.counter = 0;
-            self.mount.reset_jump();
-            if was_empty {
-                let down = happy_ghast::goggles(true, &self.remote_entities[index]);
-                let _ = self.handle_mob_events(vec![down]);
-            }
-            self.start_riding(id);
-            return true;
-        }
-        false
-    }
-    /// Getting off lands on top of it.
-    pub(super) fn dismount_happy_ghast(&mut self, id: u32) {
-        // removePassenger: held still for half a second, and with no one
-        // aboard the ghast forgets its home.
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.extra.counter = 10;
-            m.ai.clear_home();
-        }
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
-            return;
-        };
-        let top = super::mounts::on_top(m);
-        let up: MobEvent = happy_ghast::goggles(false, m);
-        if let Some(p) = self.player.as_mut() {
-            p.position = top;
-            p.velocity = Vec3::ZERO;
-        }
-        let _ = self.handle_mob_events(vec![up]);
-    }
-    /// `DriedGhastBlock.spawnGhastling`: a ghastling facing the way the block did.
-    pub(super) fn spawn_ghastling(&mut self, pos: [i32; 3], state: BlockStateId) {
+    /// `DriedGhastBlock.spawnGhastling`: a ghastling where the block was. RESTE-SANS-ECS: its baby age and
+    /// facing yaw are not set (no ECS setter), so it hatches as an adult facing the default way.
+    pub(super) fn spawn_ghastling(&mut self, pos: [i32; 3], _state: BlockStateId) {
         let at = [
             f64::from(pos[0]) + 0.5,
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        let facing = self
-            .pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("facing").cloned());
-        let yaw = match facing.as_deref() {
-            Some("north") => 180.0,
-            Some("east") => 270.0,
-            Some("west") => 90.0,
-            _ => 0.0,
-        };
-        if let Some(id) = self.spawn_mob_raw("minecraft:happy_ghast", at, true)
-            && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
-        {
-            // DriedGhastBlock.spawnGhastling sets the baby age before
-            // addFreshEntity, so ageBoundaryReached runs the ghastling setup
-            // (`babyGhastSetup`) while the mob is still being hatched: its
-            // goals, navigation and brain are a ghastling's before its first
-            // tick, not an adult's until the next aiStep.
-            horizon_client::mobs::finalize::set_age(m, -24000, None);
-            m.yaw = yaw;
-            m.body_yaw = yaw;
-            m.head_yaw = yaw;
-            // DriedGhastBlock.spawnGhastling: level.playSound(null, ghastling,
-            // GHASTLING_SPAWN, BLOCKS, 1, 1).
-            let (id, at) = (m.id, [m.position.x, m.position.y, m.position.z]);
-            let sound = LevelSound::new("minecraft:entity.ghastling.spawn", at, 1.0, 1.0)
-                .in_source(SoundSource::Blocks);
-            self.play_bound_sound(sound, id, None);
+        if self.spawn_mob_raw("minecraft:happy_ghast", at, true).is_some() {
+            // DriedGhastBlock.spawnGhastling: level.playSound(null, ghastling, GHASTLING_SPAWN, BLOCKS, 1, 1).
+            self.audio
+                .play("minecraft:entity.ghastling.spawn", Some(at), 1.0, 1.0);
         }
     }
 }

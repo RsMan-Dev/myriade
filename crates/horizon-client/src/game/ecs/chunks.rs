@@ -56,14 +56,14 @@ impl Game<'_> {
         saved
     }
 
-    /// A mob of the level that is not removed: in the ECS world when it runs, else in the legacy list.
+    /// A mob of the level that is not removed: in the ECS world.
     pub(in crate::game) fn mob_present(&self, id: u32) -> bool {
-        if self.ecs.is_active() { self.ecs.exists(id) } else { self.remote_entities.iter().any(|m| m.id == id && !m.removed) }
+        self.ecs.exists(id)
     }
 
     /// A mob of the level, removed or not (the ECS world drops a removed entity at once).
     pub(in crate::game) fn mob_known(&self, id: u32) -> bool {
-        if self.ecs.is_active() { self.ecs.exists(id) } else { self.remote_entities.iter().any(|m| m.id == id) }
+        self.ecs.exists(id)
     }
 
     /// The UUID-named entity of the ECS world that holds `uuid`, as a mob. None without an ECS world.

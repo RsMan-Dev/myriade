@@ -1,62 +1,41 @@
 //! Lot 13 (colle) : les frontières réseau d'interaction (attaque, usage, marchand, monture, véhicule) lisent et agissent sur l'ECS
-//! par id. Ce qui est dans `Game.ecs` passe par `EcsLevel` ; le reste (`remote_entities`, rôle Client) garde le code d'origine.
+//! par id. Ce qui est dans `Game.ecs` passe par `EcsLevel`.
 //! Imports à ajouter au fichier d'accueil : `horizon_core::geometry::{Aabb, Vec3}`, `horizon_client::items::ItemStack`, `horizon_client::mobs::equine`, `horizon_ecs_proto::bridge::host::HurtSource`, `horizon_protocol::packets::play::{self, Clientbound as C}`.
 use super::super::Game;
-use horizon_client::{items::ItemStack, mobs::{equine, Who}};
+use horizon_client::{items::ItemStack, mobs::Who};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_ecs_proto::bridge::host::HurtSource;
 use horizon_protocol::packets::play::{self, Clientbound as C};
 
 impl Game<'_> {
-    /// The box of followed entity `id` (`EcsLevel::bounds`), or the client's `remote_entities` box.
+    /// The box of followed entity `id` (`EcsLevel::bounds`).
     pub(in crate::game) fn mob_box(&self, id: u32) -> Option<Aabb> {
-        if self.ecs.is_active() {
-            return self.ecs.bounds(id);
-        }
-        self.remote_entities.iter().find(|m| m.id == id).map(|m| m.bounds())
+        self.ecs.bounds(id)
     }
 
-    /// The alive mob `id` (`EcsLevel::alive`), or the client's `remote_entities` mob.
+    /// The alive mob `id` (`EcsLevel::alive`).
     pub(in crate::game) fn mob_alive(&self, id: u32) -> bool {
-        if self.ecs.is_active() {
-            return self.ecs.alive(id);
-        }
-        self.remote_entities.iter().any(|m| m.id == id && m.alive() && !m.removed)
+        self.ecs.alive(id)
     }
 
     /// Whether mob `id` is in the level at all (alive or not).
     pub(in crate::game) fn mob_exists(&self, id: u32) -> bool {
-        if self.ecs.is_active() {
-            return self.ecs.exists(id);
-        }
-        self.remote_entities.iter().any(|m| m.id == id)
+        self.ecs.exists(id)
     }
 
     /// A villager without a profession: its trade screen is opaque to the guest (`Villager` and `profession.index()` None).
     pub(in crate::game) fn trader_opaque(&self, id: u32) -> bool {
-        if self.ecs.is_active() {
-            return self.ecs.trader_opaque(id);
-        }
-        self.remote_entities.iter().find(|m| m.id == id).is_some_and(|m| {
-            m.species() == horizon_client::mobs::Species::Villager && m.extra.profession.index().is_none()
-        })
+        self.ecs.trader_opaque(id)
     }
 
     /// Columns of the mount `id`'s inventory (`mobs::mount_inventory::mount_columns`).
     pub(in crate::game) fn mount_columns_of(&self, id: u32) -> Option<usize> {
-        if self.ecs.is_active() {
-            return self.ecs.mount_columns(id);
-        }
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(crate::game::mount_inventory::mount_columns(m))
+        self.ecs.mount_columns(id)
     }
 
     /// The kind id of the mount `id`, as its menu names it (`minecraft:` ids as the mob has them).
     pub(in crate::game) fn mount_kind_of(&self, id: u32) -> Option<String> {
-        if self.ecs.is_active() {
-            return self.ecs.kind(id).map(str::to_owned);
-        }
-        self.remote_entities.iter().find(|m| m.id == id).map(|m| m.kind.id.to_string())
+        self.ecs.kind(id).map(str::to_owned)
     }
 
     /// The slots of mount `id` as its menu shows them (`mount_contents`).
@@ -64,11 +43,7 @@ impl Game<'_> {
         &self,
         id: u32,
     ) -> Option<(Option<ItemStack>, Option<Option<ItemStack>>, Vec<Option<ItemStack>>)> {
-        if self.ecs.is_active() {
-            return self.ecs.mount_contents(id);
-        }
-        let index = self.remote_entities.iter().position(|m| m.id == id)?;
-        Some(self.mount_contents(index))
+        self.ecs.mount_contents(id)
     }
 
     /// Writes the slots of mount `id` back (`mount_store`).
@@ -79,30 +54,17 @@ impl Game<'_> {
         body: Option<Option<ItemStack>>,
         items: Vec<Option<ItemStack>>,
     ) {
-        if self.ecs.is_active() {
-            self.ecs.mount_store(id, saddle, body, items);
-        } else if let Some(index) = self.remote_entities.iter().position(|m| m.id == id) {
-            self.mount_store(index, saddle, body, items);
-        }
+        self.ecs.mount_store(id, saddle, body, items);
     }
 
     /// The mount `id` is steered by its rider's client (`equine::moved_by_client`).
     pub(in crate::game) fn mount_moved_by_client(&self, id: u32) -> bool {
-        if self.ecs.is_active() {
-            return self.ecs.moved_by_client(id);
-        }
-        self.remote_entities.iter().any(|m| m.id == id && equine::moved_by_client(m))
+        self.ecs.moved_by_client(id)
     }
 
     /// The point a steered mount was last seen at (`vehicle_good` of a rider's tick).
     pub(in crate::game) fn mount_steered_at(&self, id: u32) -> Option<Vec3> {
-        if self.ecs.is_active() {
-            return self.ecs.position(id).filter(|_| self.ecs.moved_by_client(id)).map(|p| Vec3::new(p[0], p[1], p[2]));
-        }
-        self.remote_entities
-            .iter()
-            .find(|m| m.id == id && equine::moved_by_client(m))
-            .map(|m| m.position)
+        self.ecs.position(id).filter(|_| self.ecs.moved_by_client(id)).map(|p| Vec3::new(p[0], p[1], p[2]))
     }
 
     /// The corners of the box of `id` as `look_at_entity` takes them.

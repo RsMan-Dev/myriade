@@ -102,11 +102,7 @@ impl Game<'_> {
         ];
         let id = self.create_triggered(kind, at, 0.0);
         // CarvedPumpkinBlock.trySpawnGolem: setPlayerCreated(true) on the iron golem.
-        if kind == "minecraft:iron_golem"
-            && let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id))
-        {
-            m.extra.player_created = true;
-        }
+        // RESTE-SANS-ECS: `setPlayerCreated(true)` on the iron golem has no ECS write.
         self.trigger_summoned(id, 5.0);
         self.update_pattern_blocks(&blocks)
     }
@@ -115,26 +111,21 @@ impl Game<'_> {
     /// (`CarvedPumpkinBlock.spawnGolemInWorld`), 50 for the wither
     /// (`WitherSkullBlock.checkSpawn`).
     pub(super) fn trigger_summoned(&mut self, id: Option<u32>, reach: f64) {
-        let Some(built) = id
-            .and_then(|id| self.remote_entities.iter().find(|m| m.id == id))
-            .cloned()
-        else {
+        let Some(bounds) = id.and_then(|id| self.ecs.bounds(id)) else {
             return;
         };
         let me = self.player_entity_for("minecraft:summoned_entity");
-        let half = f64::from(built.width()) / 2.0;
-        let height = f64::from(built.height());
         let [x, y, z] = me.position;
-        let p = built.position;
+        let (lo, hi) = (bounds.min_position(), bounds.max_position());
         // The player's box is 0.6 wide and 1.8 tall.
-        let near = x + 0.3 >= p.x - half - reach
-            && x - 0.3 <= p.x + half + reach
-            && y + 1.8 >= p.y - reach
-            && y <= p.y + height + reach
-            && z + 0.3 >= p.z - half - reach
-            && z - 0.3 <= p.z + half + reach;
-        if near {
-            let view = self.mob_entity(&built);
+        let near = x + 0.3 >= lo.x - reach
+            && x - 0.3 <= hi.x + reach
+            && y + 1.8 >= lo.y - reach
+            && y <= hi.y + reach
+            && z + 0.3 >= lo.z - reach
+            && z - 0.3 <= hi.z + reach;
+        if let Some(id) = id.filter(|_| near) {
+            let view = self.ecs_predicate_view(id);
             self.trigger_entity("minecraft:summoned_entity", "entity", &view);
         }
     }
@@ -175,23 +166,7 @@ impl Game<'_> {
     /// `EntityType.create(level, TRIGGERED)` and `snapTo`: a built golem or
     /// wither has no spawn finalization and draws nothing from the level.
     pub(super) fn create_triggered(&mut self, kind: &str, at: [f64; 3], yaw: f32) -> Option<u32> {
-        let t = self.res.mob_types().get(kind).cloned()?;
-        self.next_entity += 1;
-        let mut mob = horizon_client::mobs::Mob::new(
-            self.next_entity,
-            t,
-            horizon_core::geometry::Vec3::new(at[0], at[1], at[2]),
-            yaw,
-        );
-        mob.head_yaw = yaw;
-        mob.body_yaw = yaw;
-        mob.previous_yaw = yaw;
-        mob.previous_body_yaw = yaw;
-        mob.previous_head_yaw = yaw;
-        let id = mob.id;
-        self.remote_entities.push(mob);
-        self.native_mobs_joined(self.remote_entities.len() - 1, false);
-        Some(id)
+        self.ecs_spawn_mob(kind, at, false, Some(yaw), super::creatures::SpawnSite::Raw)
     }
     /// `CarvedPumpkinBlock.clearPatternBlocks`: every cell of the match
     /// becomes air (flags 2) with its destroy event (2001).
@@ -246,15 +221,7 @@ impl Game<'_> {
             .state(pumpkin)
             .and_then(|s| s.properties.get("facing").cloned())
             .unwrap_or_else(|| "north".into());
-        // getWeatherStateFromPattern: waxed blocks weather like their unwaxed form.
-        let base = self
-            .golem_block(copper_at)
-            .trim_start_matches("minecraft:")
-            .trim_start_matches("waxed_");
-        let weather = ["exposed", "weathered", "oxidized"]
-            .iter()
-            .position(|w| base.starts_with(w))
-            .map_or(0, |i| i as u8 + 1);
+        // RESTE-SANS-ECS: `getWeatherStateFromPattern` (the golem's weathering) has no ECS write.
         let cells = m.front_cells();
         self.clear_pattern_blocks(&cells)?;
         let at = [
@@ -285,9 +252,8 @@ impl Game<'_> {
                     .insert((copper_at[0], copper_at[1], copper_at[2]), entity);
             }
         }
-        if let Some(m) = id.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-            m.extra.variant = weather;
-            let p = [m.position.x, m.position.y, m.position.z];
+        // RESTE-SANS-ECS: the weathering variant (`weather`) has no ECS write.
+        if let Some(p) = id.and_then(|id| self.ecs.position(id)) {
             self.audio
                 .play("minecraft:entity.copper_golem.spawn", Some(p), 1.0, 1.0);
         }

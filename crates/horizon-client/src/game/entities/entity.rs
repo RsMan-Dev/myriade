@@ -323,7 +323,6 @@ macro_rules! entity_lists {
     ($then:ident, $($args:tt)*) => {
         $crate::game::entity::$then! {
             ($($args)*)
-            Mob(Mob) mobs: remote_entities,
             General(GeneralRow) general: resident_entities.general.rows,
         }
     };
@@ -887,7 +886,9 @@ impl Entity for Mob {
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        game.save_mob(index, keys)
+        // Mobs are saved by the ECS by chunk; no kind walks the mob list any more.
+        let _ = (game, index, keys);
+        None
     }
     fn load_nbt(
         game: &mut Game<'_>,

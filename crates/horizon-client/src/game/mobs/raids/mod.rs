@@ -3,16 +3,15 @@
 //! `horizon_client::patrol` and `horizon_client::raid`; this is the game's
 //! side of them.
 use super::{Dim, Game};
-use horizon_client::mobs::villager as mobs_villager;
 use horizon_client::{
     effects::{EffectInstance, OmenTick},
-    mobs::{Mob, Species, raider, spawn_rules},
+    mobs::{Species, raider, spawn_rules},
     patrol::GameplayAttributes,
     raid::{self, Action, BarName, RaidLevel, RaidPlayer, RaiderInfo, RaiderType, Raids, Spawn},
     random_source,
 };
 use horizon_core::nbt::Tag;
-use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_core::geometry::Vec3;
 use horizon_gameplay::village_siege::{SiegeLevel, VillageSiege};
 use std::collections::{HashMap, HashSet};
 
@@ -31,13 +30,6 @@ pub(super) struct Raiding {
     /// (their ids and positions in the file).
     unseeded: Option<Vec<(i32, usize)>>,
     attributes: Option<std::sync::Arc<GameplayAttributes>>,
-}
-
-/// A level's living raid members, in mob-list order.
-pub(super) fn members(mobs: &[Mob], id: i32) -> impl Iterator<Item = &Mob> {
-    mobs.iter().filter(move |m| {
-        m.alive() && !m.removed && raider::state(m).is_some_and(|s| s.raid_id == Some(id))
-    })
 }
 
 impl Raiding {
@@ -128,24 +120,7 @@ impl Game<'_> {
     }
     /// Every claimed village point of interest (job sites, beds, bells).
     fn village_pois(&self) -> Vec<[i32; 3]> {
-        if self.ecs.is_active() {
-            return self.ecs.village_points();
-        }
-        let mut out: Vec<[i32; 3]> = Vec::new();
-        for m in &self.remote_entities {
-            if m.species() != Species::Villager || !m.alive() {
-                continue;
-            }
-            for p in [m.extra.home, m.extra.bed, m.extra.meeting]
-                .into_iter()
-                .flatten()
-            {
-                if !out.contains(&p) {
-                    out.push(p);
-                }
-            }
-        }
-        out
+        self.ecs.village_points()
     }
     pub(super) fn difficulty_id(&self) -> i32 {
         use horizon_world::food::Difficulty;
@@ -418,14 +393,9 @@ impl Game<'_> {
             horizon_core::java_number::float_to_string(r.total_health)
         )
     }
-    /// A raid's members (`groupRaiderMap`): the living raiders it counts.
-    pub(super) fn raid_members(&self, id: i32) -> impl Iterator<Item = &Mob> {
-        members(&self.remote_entities, id)
-    }
     /// `getHealthOfLivingRaiders`, leaving out one raider.
     fn remaining_raider_health(&self, id: i32, except: Option<u32>) -> f32 {
-        let ecs: f32 = self.ecs.raiders_of(id).iter().filter(|m| Some(m.id) != except).map(|m| m.health).sum();
-        ecs + self.raid_members(id).filter(|m| Some(m.id) != except).fold(0.0, |a, m| a + m.health)
+        self.ecs.raiders_of(id).iter().filter(|m| Some(m.id) != except).map(|m| m.health).sum()
     }
     /// The members of every raid, for `Raids.tick`.
     fn raider_infos(&self) -> HashMap<i32, Vec<RaiderInfo>> {
@@ -451,27 +421,6 @@ impl Game<'_> {
             if !infos.is_empty() {
                 out.insert(id, infos);
             }
-        }
-        for m in &self.remote_entities {
-            if !m.alive() || m.removed {
-                continue;
-            }
-            let Some(s) = raider::state(m) else { continue };
-            let Some(id) = s.raid_id else { continue };
-            let position = block_of(m.position);
-            out.entry(id).or_default().push(RaiderInfo {
-                id: m.id,
-                wave: s.wave,
-                health: m.health,
-                position,
-                tick_count: m.age as i32,
-                no_action_time: m.ai.no_action_time,
-                ticks_outside: s.ticks_outside_raid,
-                removed: false,
-                other_dimension: false,
-                in_level: true,
-                patrol_leader: s.patrol_leader,
-            });
         }
         out
     }
@@ -754,54 +703,9 @@ impl Game<'_> {
     /// What `getRaidAt` tells each villager where it stands (its brain's
     /// `SetRaidStatus`, `ResetRaidStatus`, `ReactToBell` and raid packages
     /// read it).
-    fn sync_villager_raids(&mut self, infos: &HashMap<i32, Vec<RaiderInfo>>) {
-        let raids = &self.raiding.raids;
-        let mut ongoing = Vec::new();
-        for m in &mut self.remote_entities {
-            if m.species() != Species::Villager {
-                continue;
-            }
-            let at = block_of(m.position);
-            let (status, wave) = match raids.nearby(at) {
-                Some((id, r)) => {
-                    let alive = infos.get(&id).map_or(0, Vec::len);
-                    let wave = r.has_first_wave_spawned() && !r.is_between_waves(alive);
-                    let status = if r.is_victory() {
-                        mobs_villager::RAID_VICTORY
-                    } else if r.is_loss() {
-                        mobs_villager::RAID_LOSS
-                    } else if wave {
-                        mobs_villager::RAID
-                    } else {
-                        mobs_villager::PRE_RAID
-                    };
-                    (status, wave)
-                }
-                None => (mobs_villager::RAID_NONE, false),
-            };
-            let ext = mobs_villager::ext_mut(m);
-            ext.raid = status;
-            ext.raid_wave = wave;
-            if !m.no_ai && matches!(status, mobs_villager::PRE_RAID | mobs_villager::RAID) {
-                ongoing.push(m.id);
-            }
-        }
-        // Villager.customServerAiStep: a 1 in 100 chance each tick, in an
-        // ongoing raid, of entity event 42 (`handleEntityEvent` splashes).
-        for id in ongoing {
-            if self.world.random.next_int_bound(100) == Ok(0) {
-                self.mob_raid_splash(id);
-            }
-        }
-    }
-    /// Entity event 42 for villager `id`: the guests get the byte.
-    fn mob_raid_splash(&mut self, id: u32) {
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
-            return;
-        };
-        let at = [m.position.x, m.position.y, m.position.z];
-        self.lan_entity_event(id as i32, 42, at);
-    }
+    /// RESTE-SANS-ECS: the villagers' raid status and the splash (entity event
+    /// 42) have no ECS hook yet.
+    fn sync_villager_raids(&mut self, _infos: &HashMap<i32, Vec<RaiderInfo>>) {}
 
     /// The raid bars a player `uuid` is in (`Raid.getPlayers`): red, notched
     /// in tens. The set is the one `updatePlayers` cached on the last 20-tick
@@ -856,30 +760,7 @@ impl Game<'_> {
     /// Sections holding a claimed village point of interest (a job site,
     /// bed or bell a villager has taken): `PoiManager.isVillageCenter`.
     pub(super) fn village_centers(&self) -> HashSet<(i32, i32, i32)> {
-        let mut out = HashSet::new();
-        if self.ecs.is_active() {
-            out.extend(self.ecs.village_sections().into_iter().map(|[x, y, z]| (x, y, z)));
-            return out;
-        }
-        let world = self.mob_world_base(&[]);
-        for m in &self.remote_entities {
-            if m.species() != Species::Villager || !m.alive() {
-                continue;
-            }
-            // A remembered HOME is no longer an occupied village POI once its
-            // loaded bed head disappears. An unavailable chunk remains unknown.
-            let bed = m.extra.bed.filter(|&[x, y, z]| {
-                !self.world.loaded(x, z)
-                    || horizon_client::mobs::villager_brain::poi_at(&world, x, y, z)
-                        == Some(horizon_world::poi::PoiIdentity::Vanilla(
-                            horizon_world::poi::PoiType::Home,
-                        ))
-            });
-            for p in [m.extra.home, bed, m.extra.meeting].into_iter().flatten() {
-                out.insert(section(p));
-            }
-        }
-        out
+        self.ecs.village_sections().into_iter().map(|[x, y, z]| (x, y, z)).collect()
     }
     /// `ServerLevel.isVillage`: within one section of a village.
     fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
@@ -958,55 +839,10 @@ impl Game<'_> {
             // Observe the production answer; never substitute a corrected POI test here.
             state["village"] = json!(Self::is_village(&self.village_centers(), r.center));
             if op["members"].as_bool() == Some(true) {
-                state["member_present"] = json!(self.raid_members(id).next().is_some());
+                state["member_present"] = json!(!self.ecs.raiders_of(id).is_empty());
             }
         }
-        let observe = |m: &Mob| -> horizon_client::Result<serde_json::Value> {
-            let uuid = self
-                .persist
-                .uuids
-                .get(&m.id)
-                .copied()
-                .ok_or("raid observation: actor UUID is not registered")?;
-            let tag = horizon_client::entity_nbt::mob_to_nbt(
-                m,
-                uuid,
-                self.persist.raw.get(&m.id),
-                Some(self.pack.assets.registry),
-                |other| self.persist.uuid_of(other),
-            );
-            Ok(json!({"uuid":uuid,"type":m.kind.id,"health":m.health,
-                "pos":[m.position.x,m.position.y,m.position.z],"noai":m.no_ai,
-                "home":m.extra.bed.map(|p| p.to_vec()).unwrap_or_default(),
-                "raid_id":raider::state(m).and_then(|s|s.raid_id).unwrap_or(-1),
-                "nbt":horizon_client::snbt::to_snbt(&tag)}))
-        };
-        let actors = self
-            .raid_members(id)
-            .map(observe)
-            .collect::<horizon_client::Result<Vec<_>>>()?;
-        let mut villagers = Vec::new();
-        for uuid in op["villagers"]
-            .as_array()
-            .ok_or("raid observation: missing villagers")?
-        {
-            let uuid = u128::from_str_radix(
-                &uuid
-                    .as_str()
-                    .ok_or("raid observation: invalid UUID")?
-                    .replace('-', ""),
-                16,
-            )?;
-            let Some(super::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
-                return Err("raid observation: villager UUID missing/wrong type".into());
-            };
-            let m = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id && m.species() == Species::Villager)
-                .ok_or("raid observation: actor is not a villager")?;
-            villagers.push(observe(m)?);
-        }
+        // RESTE-SANS-ECS: the actors' and the villagers' NBT observations read Mob data.
         let pos: [i32; 3] =
             std::array::from_fn(|i| op["poi"][i].as_i64().unwrap_or(i64::MIN) as i32);
         let loaded = self.world.loaded(pos[0], pos[2]);
@@ -1022,7 +858,7 @@ impl Game<'_> {
             json!({"label":op["label"],"id":id,"loaded":loaded,
             "live_poi":live_poi,"claimed_pois":self.village_pois(),
             "raid_nbt":horizon_client::snbt::to_snbt(&self.raiding.raids.to_nbt()),
-            "actors":actors,"villagers":villagers})
+            "actors":[],"villagers":[]})
         );
         Ok(state)
     }

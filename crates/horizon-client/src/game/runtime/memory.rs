@@ -32,10 +32,6 @@ fn vec_bytes<T>(v: &Vec<T>) -> usize {
     v.capacity() * size_of::<T>()
 }
 
-fn string_bytes(s: &Option<String>) -> usize {
-    s.as_ref().map_or(0, String::capacity)
-}
-
 /// The columns of `worlds`, each section counted once however many columns
 /// (or worlds) share it.
 fn census<'a>(worlds: impl IntoIterator<Item = &'a World>) -> ColumnCensus {
@@ -454,19 +450,8 @@ impl Game<'_> {
             size_of::<super::boats::Boat>(),
         ];
         let mut by_type: BTreeMap<String, (usize, usize)> = BTreeMap::new();
-        let mut level = |mobs: &[horizon_client::mobs::Mob], loose: [usize; 4]| {
-            for m in mobs.iter().filter(|m| !m.removed) {
-                let bytes = size_of::<horizon_client::mobs::Mob>()
-                    + size_of_val(&*m.ai)
-                    + vec_bytes(&m.outbox)
-                    + string_bytes(&m.custom_name)
-                    + string_bytes(&m.standing_on)
-                    + string_bytes(&m.skin)
-                    + string_bytes(&m.cape);
-                let row = by_type.entry(m.kind.id.clone()).or_default();
-                row.0 += 1;
-                row.1 += bytes;
-            }
+        // The ECS mobs have no byte reader yet (RESTE-SANS-ECS): their bytes are not counted.
+        let mut level = |loose: [usize; 4]| {
             let loose = super::dedicated::report::LOOSE_ENTITIES
                 .into_iter()
                 .zip(loose)
@@ -478,7 +463,6 @@ impl Game<'_> {
             }
         };
         level(
-            &self.remote_entities,
             [
                 self.ecs.item_ids().len(),
                 self.ecs.species_count("minecraft:experience_orb"),
@@ -487,10 +471,7 @@ impl Game<'_> {
             ],
         );
         for dim in self.levels.parked_dims() {
-            if let Some(mobs) = self.levels.parked_mobs(dim) {
-                let loose = self.levels.parked_entity_counts(dim).unwrap_or_default();
-                level(mobs, loose);
-            }
+            level(self.levels.parked_entity_counts(dim).unwrap_or_default());
         }
         for (id, n) in self.levels.parked_ecs_kinds() {
             by_type.entry(id.to_owned()).or_default().0 += n;

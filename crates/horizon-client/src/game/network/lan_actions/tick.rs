@@ -284,21 +284,10 @@ impl Game<'_> {
         }
         let swept = p.bounds();
         let riding = self.riding;
-        if self.ecs.is_active() {
-            let Some(id) = self.ecs_spin_target(swept, riding) else {
-                return;
-            };
-            self.attack_entity(id);
-        } else {
-            let Some(index) = first_spin_target(
-                swept,
-                riding,
-                self.remote_entities.iter().map(|m| (m.id, m.removed, m.bounds())),
-            ) else {
-                return;
-            };
-            self.attack_mob(index);
-        }
+        let Some(id) = self.ecs_spin_target(swept, riding) else {
+            return;
+        };
+        self.attack_entity(id);
         if let Some(p) = self.player.as_mut() {
             p.auto_spin_attack_ticks = 0;
             p.auto_spin_attack_dmg = 0.0;

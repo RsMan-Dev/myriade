@@ -46,7 +46,7 @@ impl Taken {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(in crate::game) enum Collector {
     Player,
-    /// A mob, or another player on a server (both kept as mobs here).
+    /// A mob, or another player on a server (both kept as mobs here), by its ECS id.
     Mob(u32),
     /// A mob that lives in the ECS, by its network id.
     Ecs(u32),
@@ -99,12 +99,8 @@ impl Game<'_> {
                 let p = self.player.as_ref()?;
                 (p.position, f64::from(p.dimensions.eye_height))
             }
-            Collector::Mob(id) => {
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                (m.position, m.eye_height())
-            }
             // The ECS holds the mob: its position, and its eye height from P's fluid parameters.
-            Collector::Ecs(id) => {
+            Collector::Mob(id) | Collector::Ecs(id) => {
                 let e = self.ecs.entity_of(id)?;
                 let p = self.ecs.position(id)?;
                 let eye = self.ecs.world()?.get::<horizon_ecs_proto::cow::FluidParams>(e)?.eye_height;

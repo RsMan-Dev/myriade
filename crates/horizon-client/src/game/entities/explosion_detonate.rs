@@ -102,14 +102,10 @@ impl Game<'_> {
         }
     }
 
-    /// The handle of the storaged entity `id` names, for the listed walk.
-    /// The kinds outside the storages (frames, paintings, cushions, crystals,
-    /// the dragon and its parts, hooks, players) answer None: their own
-    /// passes and the player walk read the list for them.
-    pub(in crate::game) fn blast_handle(&self, id: u32) -> Option<EntityHandle> {
-        if let Some(i) = self.remote_entities.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Mob(i));
-        }
+    /// The handle of the storaged entity `id` names, for the listed walk. No
+    /// storage holds mobs any more (the ECS hurts them in `explode_ecs`), so
+    /// every id answers None.
+    pub(in crate::game) fn blast_handle(&self, _id: u32) -> Option<EntityHandle> {
         None
     }
 }

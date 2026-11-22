@@ -579,7 +579,7 @@ impl Game<'_> {
         // The mob is looked up only when its own name has no team: the
         // owner's team is the fallback.
         self.team_with_owner(id, || {
-            self.remote_entities.iter().find(|m| m.id == id).and_then(tame_owner)
+            self.ecs_mob_owner(id)
         })
     }
     /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
@@ -590,7 +590,7 @@ impl Game<'_> {
         self.team_with_owner(m.id, || tame_owner(m))
     }
     /// `mob_team_of` while the mob tick has lent its mobs out of `Game`.
-    /// The active mob and the disjoint live loan replace `self.remote_entities` for
+    /// The active mob and the disjoint live loan stand in for the mobs of the level for
     /// resolving a tame owner's UUID; other live entities still use Game.
     pub(super) fn mob_team_scoped(
         &self,
@@ -630,10 +630,7 @@ impl Game<'_> {
             let Target::Mob(id) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
-            self.remote_entities
-                .iter()
-                .find(|mob| mob.id == id)
-                .and_then(tame_owner)
+            self.ecs_mob_owner(id)
         });
         let owner_name = if let Some(mob) = loaned(root) {
             self.scoreboard_name(mob.id, root)
@@ -668,11 +665,7 @@ impl Game<'_> {
             let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
-            self.remote_entities
-                .iter()
-                .find(|m| m.id == pet && m.extra.tame)?
-                .extra
-                .owner
+            self.ecs_mob_owner(pet)
         };
         let root = root_owner(owner, pet_owner);
         Some(match self.target_by_uuid(ints_uuid(root))? {
@@ -700,9 +693,10 @@ impl Game<'_> {
         }
         // One pass over the mobs, not one per mob.
         let tame_owners: HashMap<u32, [i32; 4]> = self
-            .remote_entities
-            .iter()
-            .filter_map(|m| Some((m.id, tame_owner(m)?)))
+            .ecs
+            .followed_ids()
+            .into_iter()
+            .filter_map(|id| Some((id, self.ecs_mob_owner(id)?)))
             .collect();
         // A mob is on a team through its own name (a holder of the team) or, tamed, through its
         // owner's. Its name is its UUID's text (or a remote player's name), so the holders that

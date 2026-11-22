@@ -1,6 +1,6 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
-use horizon_client::mobs::{self, Mob, Species, Who, ai::brain_target};
+use horizon_client::mobs::{self, Mob, Species, Who};
 use mod_api::{EntityRef, LivingRef, MobRef};
 
 /// What decides whether a player can be a mob's target.
@@ -44,10 +44,7 @@ impl Game<'_> {
             let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            self.remote_entities
-                .iter()
-                .find(|state| state.id == id)
-                .is_some_and(|state| self.native_mob_valid_target(state, kind))
+            self.native_ecs_valid_target(id, kind)
         });
         // Cancellation leaves the newly loaded mob's target unchanged.
         let _ = self.mob_set_target(mob, target);
@@ -113,22 +110,17 @@ impl Game<'_> {
         }
         match target {
             Target::Mob(id) => {
-                let Some(other) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
+                let Some(species) = self.creature_species(id) else {
                     return false;
                 };
-                let seen = [super::creatures::seen(
-                    other,
-                    self.level.player_uuid,
-                    self.items(),
-                )];
                 mob.valid_target(
-                    &self.mob_world_base(&seen),
+                    &self.mob_world_base(&[]),
                     &mobs::goals::TargetFacts::Mob {
                         id,
-                        species: other.species(),
-                        alive: other.alive(),
-                        invulnerable: other.invulnerable_flag,
-                        baby: other.is_baby(),
+                        species,
+                        alive: self.ecs.alive(id),
+                        invulnerable: self.ecs_flag(id, "Invulnerable").unwrap_or(false),
+                        baby: self.ecs.age(id).is_some_and(|age| age < 0),
                     },
                 )
             }
@@ -158,18 +150,37 @@ impl Game<'_> {
             _ => false,
         }
     }
+    /// `native_mob_valid_target` for the ECS mob `mob`: a target that is alive and not allied with it, or a player
+    /// or guest outside the game modes that cannot be attacked (creative, spectator).
+    pub(super) fn native_ecs_valid_target(&self, mob: u32, target: Target) -> bool {
+        match target {
+            Target::Mob(id) => {
+                id != mob
+                    && self.creature_species(id).is_some()
+                    && self.ecs.alive(id)
+                    && !horizon_client::scoreboard::teams_allied(self.mob_team(mob), self.mob_team(id))
+            }
+            Target::Player | Target::Guest(_) => {
+                self.native_player_facts(target).is_some_and(|f| f.alive && !f.invulnerable && !matches!(f.mode, 1 | 3))
+            }
+            _ => false,
+        }
+    }
     /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
     fn native_warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
         use horizon_core::geometry::Axis;
         let (bounds, team) = match target {
             Target::Mob(id) => {
-                let Some(other) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
-                    return false;
-                };
-                if !other.alive() || other.invulnerable_flag || other.species() == Species::Warden {
+                if !self.ecs.alive(id)
+                    || self.ecs_flag(id, "Invulnerable") == Some(true)
+                    || self.ecs.kind(id) == Some("minecraft:warden")
+                {
                     return false;
                 }
-                (other.bounds(), self.mob_team(id))
+                let Some(bounds) = self.ecs.bounds(id) else {
+                    return false;
+                };
+                (bounds, self.mob_team(id))
             }
             Target::Guest(conn) => {
                 let Some(g) = self.command_guest(conn) else {
@@ -224,8 +235,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(self.mob_portal_eligible(mob))
+        Some(self.ecs.can_use_portal(id))
     }
 
     /// `Mob.getTarget`. Brain-backed mobs read their attack memory; piglins
@@ -237,8 +247,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return self.native_dragon_target(mob.entity());
         };
-        let mob = self.remote_entities.iter().find(|m| m.id == id)?;
-        let target = brain_target(mob).unwrap_or(mob.ai.target)?;
+        let target = self.ecs.ai_target(id)?;
         let target_id = match target {
             Who::Mob(id) => id,
             Who::Player => {
@@ -248,7 +257,7 @@ impl Game<'_> {
             }
         };
         let entity = self.entity(target_id)?;
-        self.native_mob_valid_target(mob, self.native_entity_target(entity)?)
+        self.native_ecs_valid_target(id, self.native_entity_target(entity)?)
             .then(|| self.living(entity))?
     }
 
@@ -266,17 +275,14 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return self.native_dragon_set_target(mob.entity(), target);
         };
-        let Some(mob_state) = self.remote_entities.iter().find(|m| m.id == id) else {
-            return false;
-        };
-        if mob_state.refuses_set_target() {
+        if !self.ecs.exists(id) || self.ecs.has_brain(id) {
             return false;
         }
         if let Some(target) = target {
             let Some(target_kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            if !self.native_mob_valid_target(mob_state, target_kind) {
+            if !self.native_ecs_valid_target(id, target_kind) {
                 return false;
             }
         }
@@ -287,20 +293,19 @@ impl Game<'_> {
             let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            let Some(state) = self.remote_entities.iter().find(|m| m.id == id) else {
-                return false;
-            };
-            if !self.native_mob_valid_target(state, kind) {
+            if !self.native_ecs_valid_target(id, kind) {
                 return false;
             }
         }
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return false;
-        };
-        mob.set_target(who);
+        match who {
+            Some(who) => self.ecs_mob_target(id, who),
+            None => {
+                self.ecs_with(|ecs, mw| ecs.set_target(mw, id, None));
+            }
+        }
         true
     }
 
@@ -385,10 +390,7 @@ impl Game<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) else {
-            return false;
-        };
-        if !horizon_client::mobs::ai::writes_brain_target(m) {
+        if !self.ecs.exists(id) || !self.ecs.has_brain(id) {
             return false;
         }
         let Some(target) = self.native_mob_target_event(mob, target, true) else {
@@ -397,10 +399,13 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        self.remote_entities
-            .iter_mut()
-            .find(|m| m.id == id)
-            .is_some_and(|m| horizon_client::mobs::ai::set_brain_target(m, who))
+        match who {
+            Some(who) => self.ecs_mob_target(id, who),
+            None => {
+                self.ecs_with(|ecs, mw| ecs.set_target(mw, id, None));
+            }
+        }
+        true
     }
 
     /// The mob flag a handle names: a mob's, or the dragon's own.
@@ -500,16 +505,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        if self.ecs.is_active() {
-            return self.ecs_mod_live(id).and(self.ecs.no_action_time(id));
-        }
-        Some(
-            self.remote_entities
-                .iter()
-                .find(|m| m.id == id && !m.removed)?
-                .ai
-                .no_action_time,
-        )
+        self.ecs_mod_live(id).and(self.ecs.no_action_time(id))
     }
 
     /// `LivingEntity.setNoActionTime`: the count the mob's own tick carries

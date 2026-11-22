@@ -86,12 +86,8 @@ impl Game<'_> {
             state.session.reputation = self.player_id(uuid).map_or(0, |p| self.ecs.villager_reputation_of(id, p));
             state.session.update_special_prices();
         }
-        if self.ecs.is_active() {
-            if let Some(id) = state.mob {
-                self.ecs.set_trade_offers(id, state.session.offers.clone());
-            }
-        } else if let Some(mob) = state.mob.and_then(|id| self.remote_entities.iter_mut().find(|m| m.id == id)) {
-            mob.extra.trade.get_or_insert_default().offers = state.session.offers.clone();
+        if let Some(id) = state.mob {
+            self.ecs.set_trade_offers(id, state.session.offers.clone());
         }
         let title = self.merchant_display_name(&state);
         if !self.guest_may_open(conn, "minecraft:merchant", None) {

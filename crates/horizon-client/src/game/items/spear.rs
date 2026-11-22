@@ -24,7 +24,6 @@ pub(super) const OWN: i32 = i32::MIN;
 /// another player (its index in `stab_players`).
 #[derive(Clone, Copy)]
 enum Target {
-    Mob(usize),
     /// An ECS mob, by its network id.
     Ecs(u32),
     Player(usize),
@@ -53,14 +52,8 @@ impl Game<'_> {
     /// mount's move (`getKnownSpeed`: the vehicle's, or the move the driver's
     /// client sent for it), so a charge on horseback carries the horse's speed.
     pub(super) fn known_player_movement(&self) -> Vec3 {
-        if let Some(v) = self.riding.filter(|_| self.ecs.is_active()) {
+        if let Some(v) = self.riding {
             return self.mob_speed_ecs(v).scale(1.0 / 20.0);
-        }
-        if let Some(i) = self
-            .riding
-            .and_then(|v| self.remote_entities.iter().position(|m| m.id == v))
-        {
-            return self.mob_speed(i).scale(1.0 / 20.0);
         }
         if self.lan_acting.is_some() {
             return self.known_movement;
@@ -68,20 +61,6 @@ impl Game<'_> {
         self.player
             .as_ref()
             .map_or(Vec3::ZERO, |p| p.position.subtract(self.previous_position))
-    }
-
-    /// `Entity.getKnownSpeed` of the mob at `index`, per second: its root
-    /// vehicle's (`KineticWeapon.getMotion`).
-    fn mob_speed(&self, index: usize) -> Vec3 {
-        let mut mob = &self.remote_entities[index];
-        while let Some(vehicle) = mob
-            .extra
-            .mount
-            .and_then(|v| self.remote_entities.iter().find(|m| m.id == v))
-        {
-            mob = vehicle;
-        }
-        mob.position.subtract(mob.previous).scale(20.0)
     }
 
     /// `mob_speed` for the ECS mob `id`: the speed of its root vehicle, from its velocity component.
@@ -116,15 +95,6 @@ impl Game<'_> {
         .flatten()
     }
 
-    /// The boxes of the mobs a spear can hit: alive, and not the vehicle
-    /// ridden (`PiercingWeapon.canHitEntity`), with their index.
-    pub(super) fn hittable_mob_boxes(&self) -> Vec<(usize, Aabb)> {
-        (self.remote_entities.iter().enumerate())
-            .filter(|(_, m)| m.alive() && !m.removed && self.riding != Some(m.id))
-            .map(|(i, m)| (i, m.bounds()))
-            .collect()
-    }
-
     /// `ProjectileUtil.getHitEntitiesAlong` with the spear's `AttackRange`:
     /// the mobs and the other players along the view, nearest first.
     fn stab_targets(&self, eye: Vec3, look: Vec3, movement: Vec3) -> Vec<Target> {
@@ -136,23 +106,14 @@ impl Game<'_> {
         };
         let reach = (min, max, REACH.hitbox_margin);
         let clip = |from, to| self.clip_collider(from, to);
-        let mobs = self.remote_entities.len();
         let ids = self.ecs_stab_ids(eye, f64::from(reach.1));
-        let players = mobs + ids.len();
-        let mut boxes = self.hittable_mob_boxes();
-        boxes.extend(ids.iter().enumerate().filter_map(|(k, &id)| Some((mobs + k, self.mob_box(id)?))));
+        let players = ids.len();
+        let mut boxes: Vec<(usize, Aabb)> =
+            ids.iter().enumerate().filter_map(|(k, &id)| Some((k, self.mob_box(id)?))).collect();
         boxes.extend((self.stab_players.iter().enumerate()).map(|(k, p)| (players + k, p.bounds)));
         hits_in_reach(&boxes, eye, look, movement, reach, clip)
             .into_iter()
-            .map(|(i, _)| {
-                if i < mobs {
-                    Target::Mob(i)
-                } else if i < players {
-                    Target::Ecs(ids[i - mobs])
-                } else {
-                    Target::Player(i - players)
-                }
-            })
+            .map(|(i, _)| if i < players { Target::Ecs(ids[i]) } else { Target::Player(i - players) })
             .collect()
     }
 
@@ -195,7 +156,6 @@ impl Game<'_> {
         let mut on_players = Vec::new();
         for target in self.stab_targets(eye, look, movement) {
             let (entity, target_motion) = match target {
-                Target::Mob(i) => (self.remote_entities[i].id, self.mob_speed(i)),
                 Target::Ecs(id) => (id, self.mob_speed_ecs(id)),
                 Target::Player(k) => {
                     let p = &self.stab_players[k];
@@ -221,9 +181,6 @@ impl Game<'_> {
                 // The attack damage attribute's base value (1) and the speed.
                 let amount = 1.0 + (relative * f64::from(kinetic.damage_multiplier)).floor() as f32;
                 match target {
-                    Target::Mob(i) => {
-                        affected |= self.stab_mob(i, amount, damages, pushes, dismounts)
-                    }
                     Target::Ecs(id) => {
                         affected |= self.stab_mob_ecs(id, amount, damages, pushes, dismounts)
                     }
@@ -253,110 +210,6 @@ impl Game<'_> {
         self.kinetic_hit_feedback(who, kinetic, [feet.x, feet.y, feet.z]);
         let stabbed = self.stabbed.keys().filter(|(who, _)| *who == actor).count();
         self.trigger_spear_mobs(stabbed);
-    }
-
-    /// `Player.stabAttack` on the mob at `index`: whether it was affected.
-    fn stab_mob(
-        &mut self,
-        index: usize,
-        base_damage: f32,
-        deals_damage: bool,
-        deals_knockback: bool,
-        dismounts: bool,
-    ) -> bool {
-        let kind = format!(
-            "minecraft:{}",
-            self.remote_entities[index].kind.id.trim_start_matches("minecraft:")
-        );
-        let id = self.remote_entities[index].id;
-        let Some(p) = self.player.as_ref() else {
-            return false;
-        };
-        let attack = self.attack_of(p.entity_id);
-        let from = [p.position.x, p.position.y, p.position.z];
-        // The enchantments' share, scaled by the attack strength unless the
-        // weapon is in use.
-        let magic_boost = self.enchant_damage_bonus(&kind, Some(id));
-        let (base_damage, magic_boost) = if self.using.is_none() {
-            let scale = self.attack_strength_scale();
-            (
-                base_damage * (0.2 + scale * scale * 0.8),
-                magic_boost * scale,
-            )
-        } else {
-            (base_damage, magic_boost)
-        };
-        let total = if deals_damage {
-            base_damage + magic_boost
-        } else {
-            0.0
-        };
-        let old_health = self.remote_entities[index].health;
-        let hurt = deals_damage && self.hurt_by_player(index, total, Damage::spear(from));
-        if hurt && old_health > 0.0 && !self.remote_entities[index].alive() {
-            self.native_kill_event(index);
-        }
-        // causeExtraKnockback: a push of 0.4, then the weapon's Knockback.
-        if deals_knockback {
-            let (xd, zd) = self.extra_knockback_direction();
-            let source = Damage::spear(from);
-            let level = crate::game::entity::damage_level_of!(self, &attack);
-            self.remote_entities[index].knockback_full(level, 0.4, xd, zd, &source, total, false);
-            let (strength, _) = self.extra_knockback(&kind, 0.0);
-            if strength > 0.0 {
-                let level = crate::game::entity::damage_level_of!(self, &attack);
-                self.remote_entities[index].knockback_full(
-                    level,
-                    f64::from(strength),
-                    xd,
-                    zd,
-                    &source,
-                    total,
-                    true,
-                );
-            }
-            // ...and the attacker stops sprinting.
-            self.stop_sprint_after_extra_knockback();
-        }
-        let dismounted = dismounts && self.remote_entities[index].extra.mount.is_some();
-        if dismounted {
-            self.dismount_mob(id);
-        }
-        if !hurt && !deals_knockback && !dismounted {
-            return false;
-        }
-        let mob = &self.remote_entities[index];
-        let (feet, width, height) = (
-            [mob.position.x, mob.position.y, mob.position.z],
-            mob.kind.width,
-            mob.kind.height,
-        );
-        // attackVisualEffects: no attack sound, the enchantments' magic crit.
-        if magic_boost > 0.0 {
-            self.critical_hit(self.lan_acting, id as i32, feet, width, height, true);
-        }
-        self.combat.last_hurt_mob = Some((id, self.world.game_time));
-        // itemAttackInteraction: hurtEnemy (statistic, wear), and the
-        // post-attack enchantments when the target was hurt.
-        if let Some(stack) = self.held().cloned() {
-            self.award_stat("used", &stack.item, 1);
-            if hurt {
-                self.post_attack(index);
-            }
-            self.weapon_wear(&stack);
-        }
-        // damageStatsAndHearts.
-        let actual = old_health - self.remote_entities[index].health;
-        self.damage_stats_and_hearts(actual, feet, height);
-        if hurt {
-            self.remember_mob_player_credit(id);
-        }
-        if let Some(p) = self.player.as_mut()
-            && !self.creative
-        {
-            p.cause_food_exhaustion(0.1);
-        }
-        true
     }
 
     /// `Player.stabAttack` on the ECS mob `id`: the damage and the knock-back are asked of the bridge (its events come back next tick);
@@ -468,7 +321,6 @@ impl Game<'_> {
         let mut on_players = Vec::new();
         for target in self.stab_targets(eye, look, movement) {
             match target {
-                Target::Mob(i) => hit |= self.stab_mob(i, damage, true, true, false),
                 Target::Ecs(id) => hit |= self.stab_mob_ecs(id, damage, true, true, false),
                 Target::Player(k) => {
                     on_players.extend(self.queue_player_stab(k, damage, true, true, false))
@@ -518,20 +370,13 @@ impl Game<'_> {
     /// `LivingEntity.handleEntityEvent(2)` on a server's client: the
     /// player `id` (this one, or another) was hit by the spear it uses.
     pub(super) fn remote_kinetic_hit(&mut self, id: i32) {
-        let mob = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id as u32 && m.extra.using_item > 0);
-        let item = mob.and_then(|m| {
-            if m.extra.using_off_hand {
-                horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::OFFHAND)
-            } else {
-                horizon_client::mobs::finalize::item(m, horizon_client::mobs::finalize::MAINHAND)
-            }
-        });
-        let at = mob.map(|m| m.position);
-        if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at) {
-            self.kinetic_hit_feedback(id, &kinetic, [at.x, at.y, at.z]);
+        let mob = id as u32;
+        let item = self
+            .ecs_using(mob)
+            .and_then(|(off_hand, _)| self.ecs_hand_stack(mob, off_hand));
+        let at = self.ecs_vec3(mob);
+        if let (Some(kinetic), Some(at)) = (item.as_ref().and_then(|s| Kinetic::of(&s.item)), at) {
+            self.kinetic_hit_feedback(id, &kinetic, at);
         }
     }
 

@@ -65,13 +65,9 @@ impl Game<'_> {
     fn native_dragon_valid_target(&self, target: Target) -> bool {
         match target {
             // `Mob.asValidTarget`: alive and not invulnerable (the entity's `Invulnerable` tag).
-            Target::Mob(id) if self.ecs.is_active() => {
+            Target::Mob(id) => {
                 self.ecs.alive(id) && !self.ecs_flag(id, "Invulnerable").unwrap_or(false)
             }
-            Target::Mob(id) => self
-                .remote_entities
-                .iter()
-                .any(|m| m.id == id && !m.removed && m.alive() && !m.invulnerable_flag),
             Target::Player | Target::Guest(_) => self
                 .native_player_facts(target)
                 .is_some_and(|p| p.alive && !p.invulnerable && !matches!(p.mode, 1 | 3)),

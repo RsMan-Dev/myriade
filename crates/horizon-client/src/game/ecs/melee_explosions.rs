@@ -140,28 +140,19 @@ impl Game<'_> {
         })
     }
 
-    /// True when `id` is a creature (`live`: and alive): the ECS's, or the host's mobs outside the ECS.
+    /// True when `id` is a creature (`live`: and alive) in the ECS.
     pub(in crate::game) fn creature_is(&self, id: u32, live: bool) -> bool {
-        if !self.ecs.is_active() {
-            return self.remote_entities.iter().any(|m| m.id == id && (!live || m.alive()));
-        }
         self.ecs.exists(id) && self.ecs.kind(id).is_some() && (!live || self.ecs.alive(id))
     }
 
-    /// The species of the creature `id`: from its mob type on the ECS (kinds are already namespaced), else the host mob's.
+    /// The species of the creature `id`: from its mob type on the ECS (kinds are already namespaced).
     pub(in crate::game) fn creature_species(&self, id: u32) -> Option<Species> {
-        if !self.ecs.is_active() {
-            return self.remote_entities.iter().find(|m| m.id == id).map(|m| m.species());
-        }
         let kind = self.ecs.kind(id)?;
         self.res.mob_types().get(kind).map(|t| t.species)
     }
 
     /// `mob_display_name` for the creature `id`: the translated kind name on the ECS (custom names are not on the bridge yet).
     pub(in crate::game) fn blast_creature_name(&self, id: u32) -> Option<Text> {
-        if !self.ecs.is_active() {
-            return self.mob_display_name(id);
-        }
         let kind = self.ecs.kind(id)?;
         Some(Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]))
     }

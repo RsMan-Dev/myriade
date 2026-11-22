@@ -144,12 +144,7 @@ impl Game<'_> {
             Target::Mob(id) => {
                 // `saveWithoutId` writes the entity as saved, riders under
                 // `Passengers`: `/data get` reads the same tree persistence does (arismoko/horizon#1519).
-                let mut tag = if self.ecs.is_active() {
-                    Tag::Compound(self.ecs_mob_tree(id)?)
-                } else {
-                    let i = self.remote_entities.iter().position(|m| m.id == id)?;
-                    self.mob_tree_nbt(i)
-                };
+                let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
                 let session = self
                     .lan_trade_conn(id)
                     .and_then(|conn| self.lan_trade_session(conn))
@@ -256,7 +251,7 @@ impl Game<'_> {
             Target::Player | Target::Guest(_) => {
                 return Err(err("commands.data.entity.invalid", &[]));
             }
-            Target::General(id) | Target::Projectile(id) if self.ecs.is_active() => {
+            Target::General(id) | Target::Projectile(id) => {
                 let Tag::Compound(patch) = &tag else {
                     return Err(stale());
                 };
@@ -264,7 +259,7 @@ impl Game<'_> {
                     return Err(stale());
                 }
             }
-            Target::Mob(id) if self.ecs.is_active() => {
+            Target::Mob(id) => {
                 Self::normalize_loaded_mob_tags(&mut tag);
                 let uuid = self.uuid_for(id);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
@@ -276,122 +271,6 @@ impl Game<'_> {
                 };
                 if !self.ecs_merge_mob(id, patch) {
                     return Err(stale());
-                }
-            }
-            Target::Mob(id) => {
-                Self::normalize_loaded_mob_tags(&mut tag);
-                let uuid = self.uuid_for(id);
-                let kind = self
-                    .remote_entities
-                    .iter()
-                    .find(|m| m.id == id)
-                    .map(|m| m.kind.id.clone());
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
-                if let Some(k) = kind {
-                    set_key(&mut tag, "id", Tag::String(k.as_str().into()));
-                }
-                let mut new = entity_nbt::mob_from_nbt(
-                    &tag,
-                    self.res.mob_types(),
-                    id,
-                    Some(self.pack.assets.registry),
-                )
-                .ok_or_else(stale)?;
-                horizon_client::mobs::armor::prepare(&new, &self.motion.attributes);
-                self.resolve_loaded_profession(&mut new);
-                let unresolved = self
-                    .stations()
-                    .professions
-                    .state_index(&new.extra.profession)
-                    .is_none();
-                if let Some(slot) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    // LivingEntity.readAdditionalSaveData only replaces a decoded
-                    // Brain. Keep the Allay's modeled LIKED_PLAYER when the
-                    // required root memory map cannot load; valid empty maps clear it.
-                    let keep_liked_player = slot.species() == horizon_client::mobs::Species::Allay
-                        && !matches!(
-                            tag.get("Brain").and_then(|brain| brain.get("memories")),
-                            Some(Tag::Compound(_))
-                        );
-                    // Runtime identity and lifetime stay on the resident owner.
-                    new.join = slot.join;
-                    new.random = slot.random.clone();
-                    let old = horizon_client::join_seq::store_back(slot, new);
-                    // Entity.load does not replace the live passenger graph or
-                    // the runtime seating state, even for an off-level vehicle.
-                    slot.extra.mount = old.extra.mount;
-                    slot.extra.rider = old.extra.rider;
-                    slot.extra.passenger = old.extra.passenger;
-                    slot.extra.vehicle_order = old.extra.vehicle_order;
-                    slot.extra.seat = old.extra.seat;
-                    slot.extra.vehicle_body = old.extra.vehicle_body;
-                    slot.extra.boarding_cooldown = old.extra.boarding_cooldown;
-                    slot.rider = old.rider;
-                    // Runtime-only state (AI, animation) carries over.
-                    // Reset saved armadillo sensors from the resident random.
-                    if slot.species() == horizon_client::mobs::Species::Armadillo
-                        && tag.get("Brain").is_some()
-                    {
-                        horizon_client::mobs::armadillo::delay_sensors(slot);
-                    }
-                    // Entity.load keeps the unsaved Allay.jukeboxPos and
-                    // DATA_DANCING of the entity it loads into.
-                    if slot.species() == horizon_client::mobs::Species::Allay {
-                        slot.extra.flag = old.extra.flag;
-                        if let (Some(st), Some(was)) =
-                            (slot.extra.allay.as_mut(), old.extra.allay.as_ref())
-                        {
-                            st.jukebox = was.jukebox;
-                        }
-                    }
-                    if keep_liked_player {
-                        slot.extra.tame = old.extra.tame;
-                        slot.extra.owner = old.extra.owner;
-                        if let (Some(st), Some(was)) =
-                            (slot.extra.allay.as_mut(), old.extra.allay.as_ref())
-                        {
-                            st.liked_player_ttl = was.liked_player_ttl;
-                        }
-                    }
-                    // LivingEntity's damage cooldown and previous-hit amount
-                    // are runtime state. Entity's separate immunity window is
-                    // loaded from the saved `invulnerable_time` key above.
-                    slot.invulnerable = old.invulnerable;
-                    slot.last_hurt = old.last_hurt;
-                    // Entity.isInPowderSnow isn't saved data either: a skeleton in
-                    // powder snow stays afflicted through a merge.
-                    slot.in_powder_snow = old.in_powder_snow;
-                    // Entity.load updates saved data on the existing entity;
-                    // lastTradedPlayer is transient and survives a live NoAI edit.
-                    if slot.species() == horizon_client::mobs::Species::Villager {
-                        horizon_client::mobs::villager::ext_mut(slot).last_traded_player =
-                            horizon_client::mobs::villager::ext(&old)
-                                .and_then(|ext| ext.last_traded_player);
-                    }
-                    if slot.species() == horizon_client::mobs::Species::Shulker {
-                        horizon_client::mobs::shulker::keep_eased_peek(slot, &old);
-                    }
-                    slot.ai = old.ai;
-                    // Mob.readAdditionalSaveData updates persistent home fields,
-                    // while retaining the rest of the live AI/runtime state.
-                    entity_nbt::read_mob_home(slot, &tag);
-                    slot.extra.armor_attributes = old.extra.armor_attributes;
-                    // LivingEntity.lastEquipmentItems is runtime state Entity.load
-                    // keeps: the next tick swaps the archetype modifiers.
-                    slot.extra.adopted_body = old.extra.adopted_body;
-                    slot.age = old.age;
-                    slot.previous = slot.position;
-                    // Wolf.readAdditionalSaveData initializes persistent anger at
-                    // the live level clock, just as load_mob does on admission.
-                    if slot.species() == horizon_client::mobs::Species::Wolf {
-                        horizon_client::mobs::adopt_anger_end(slot, self.world.game_time);
-                    } else {
-                        // `readPersistentAngerSaveData` set the end time as written.
-                        slot.extra.anger_stamp = Some((slot.extra.anger, slot.age));
-                    }
-                }
-                if unresolved {
-                    self.close_opaque_merchant(id);
                 }
             }
             Target::Other(_) => return Err(stale()),
@@ -547,9 +426,7 @@ impl Game<'_> {
     /// Writes `t`'s `Tags`; false when its kind keeps no saved compound to
     /// write them to.
     pub(in crate::game) fn set_entity_tags(&mut self, t: Target, tags: &[String]) -> bool {
-        if let Target::Mob(id) = t
-            && self.ecs.is_active()
-        {
+        if let Target::Mob(id) = t {
             return self.ecs_set_mob_tags(id, tags);
         }
         let Some(raw) = self.raw_mut(t) else {
@@ -974,69 +851,15 @@ impl Game<'_> {
     /// Spawn an entity from its compound (`EntityType.loadEntityRecursive`);
     /// returns what was created.
     pub(in crate::game) fn spawn_entity_from_nbt(&mut self, tag: Tag) -> Option<Target> {
-        if self.ecs.is_active() {
-            let p = entity_nbt::position(&tag)?;
-            let Some(Tag::String(kind)) = tag.get("id") else { return None };
-            let kind = kind.to_string_lossy();
-            let Tag::Compound(c) = &tag else { return None };
-            // A species is made by the ECS's spawner; every other entity (boat, cart, TNT, arrow, stand, frame...) is what its compound loads.
-            if !self.res.mob_types().contains_key(&*kind) {
-                return self.ecs_load(c).map(Target::Mob);
-            }
-            return self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob);
+        let p = entity_nbt::position(&tag)?;
+        let Some(Tag::String(kind)) = tag.get("id") else { return None };
+        let kind = kind.to_string_lossy();
+        let Tag::Compound(c) = &tag else { return None };
+        // A species is made by the ECS's spawner; every other entity (boat, cart, TNT, arrow, stand, frame...) is what its compound loads.
+        if !self.res.mob_types().contains_key(&*kind) {
+            return self.ecs_load(c).map(Target::Mob);
         }
-        let key = {
-            let p = entity_nbt::position(&tag)?;
-            ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
-        };
-        // Only this stack spawns now: the entities of chunks that finished
-        // loading wait for the level's entity tick, as in vanilla
-        // (PersistentEntitySectionManager.processPendingLoads), and must not
-        // take the ids counted as this stack's.
-        let mut waiting = std::mem::take(&mut self.world.loaded_entities);
-        let before = self.next_entity;
-        let mut tag = tag;
-        crate::game::persist::mark_fresh(&mut tag);
-        self.world.queue_entity_nbt(key, vec![tag]);
-        self.spawn_loaded_entities();
-        waiting.append(&mut self.world.loaded_entities);
-        self.world.loaded_entities = waiting;
-        if self.next_entity == before {
-            return None;
-        }
-        // The root of the stack is the first entity spawned.
-        let id = before + 1;
-        if self.remote_entities.iter().any(|m| m.id == id) {
-            Some(Target::Mob(id))
-        } else if self.ecs.item(id).is_some() {
-            Some(Target::Item(id))
-        } else if self.armor_stand_list().iter().any(|a| a.id == id) {
-            Some(Target::Stand(id))
-        } else if self.ecs_frames().into_iter().any(|f| f.id == id) {
-            Some(Target::Frame(id))
-        } else if self.ecs_paintings().into_iter().any(|p| p.id == id) {
-            Some(Target::Painting(id))
-        } else if self.ecs.boat_status(id).is_some() {
-            Some(Target::Boat(id))
-        } else if self.ecs.cart_kind(id).is_some() {
-            Some(Target::Cart(id))
-        } else if self.ecs.species(id) == Some("minecraft:tnt") {
-            Some(Target::Tnt(id))
-        } else if self.ecs.kind(id) == Some("minecraft:end_crystal") {
-            Some(Target::Crystal(id))
-        } else if self.cushion_ids().contains(&id) {
-            Some(Target::Cushion(id))
-        } else if self.ecs.species(id) == Some("minecraft:falling_block") {
-            Some(Target::Falling(id))
-        } else if self.ecs.species(id) == Some("minecraft:firework_rocket") {
-            Some(Target::Rocket(id))
-        } else if self.ecs.species(id) == Some("minecraft:trident") {
-            Some(Target::Trident(id))
-        } else if self.ominous_ids().contains(&id) {
-            Some(Target::Spawner(id))
-        } else {
-            None
-        }
+        self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob)
     }
     /// The `summon <entity> <pos> <nbt>` form.
     pub(in crate::game) fn summon_with_nbt(
@@ -1075,12 +898,8 @@ impl Game<'_> {
         }) {
             return Err(err("commands.summon.failed.uuid", &[]));
         }
-        let from = self.remote_entities.len();
         let canceled = self.persist.joins_canceled;
         let target = self.spawn_entity_from_nbt(tag);
-        if !self.ecs.is_active() {
-            self.native_mobs_joined(from, false);
-        }
         // A mod kept the entity out: tryAddFreshEntityWithPassengers is false.
         if self.persist.joins_canceled != canceled
             && target.is_none_or(|t| self.target_position(t).is_none())
@@ -1215,98 +1034,25 @@ mod orb_uuid_tests;
 #[cfg(test)]
 mod wolf_live_anger_tests {
     use super::Target;
-    use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
+    use crate::game::ecs::test_support::ecs_game_with;
     use horizon_core::nbt::Tag;
 
     #[test]
-    #[ignore = "daily"]
-    fn live_wolf_anger_writes_use_the_level_clock_and_keep_bee_state() {
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::default(),
-        )
-        .unwrap();
-        game.build_registries();
-        game.world.game_time = 12_345;
+    fn a_merge_keeps_the_anger_end_time_as_written_for_bee_and_wolf() {
         // Bee's independently modeled end is the first control, before the Wolf regression.
-        for (kind, health, number) in [("bee", 10.0_f32, 1), ("wolf", 8.0, 2)] {
-            game.remote_entities.clear();
-            let tag = Tag::Compound(
-                [
-                    (
-                        "id".into(),
-                        Tag::String(format!("minecraft:{kind}").as_str().into()),
-                    ),
-                    ("UUID".into(), Tag::IntArray(vec![316, 1, 0, number])),
-                    (
-                        "Pos".into(),
-                        Tag::List(vec![
-                            Tag::Double(10.5_f64.to_bits()),
-                            Tag::Double(200.0_f64.to_bits()),
-                            Tag::Double(10.5_f64.to_bits()),
-                        ]),
-                    ),
-                    ("Health".into(), Tag::Float(health.to_bits())),
-                    ("NoAI".into(), Tag::Byte(1)),
-                    ("NoGravity".into(), Tag::Byte(1)),
-                    ("Silent".into(), Tag::Byte(1)),
-                    ("PersistenceRequired".into(), Tag::Byte(1)),
-                    ("anger_end_time".into(), Tag::Long(-1)),
-                ]
-                .into_iter()
-                .collect(),
-            );
-            let id = game.load_mob(tag, None).unwrap();
-            let i = game.remote_entities.iter().position(|m| m.id == id).unwrap();
-            game.remote_entities[i].invulnerable = 17;
-            game.remote_entities[i].last_hurt = 2.0;
-            game.remote_entities[i].age = 6;
-            game.remote_entities[i].in_powder_snow = true;
+        for kind in ["bee", "wolf"] {
+            let (mut game, id) = ecs_game_with(&format!("minecraft:{kind}"), [10.5, 200.0, 10.5]);
+            game.world.game_time = 12_345;
             for end in [12_395, 12_395, 12_420, -1] {
-                let mut tag = game.mob_tree_nbt(i);
+                let mut tag = Tag::Compound(game.ecs_mob_tree(id).unwrap());
                 let Tag::Compound(fields) = &mut tag else {
                     panic!("mob compound")
                 };
                 fields.insert("anger_end_time".into(), Tag::Long(end));
                 game.apply_entity_nbt(Target::Mob(id), tag).unwrap();
-                let saved = game.mob_tree_nbt(i);
-                assert_eq!(
-                    saved.get("anger_end_time"),
-                    Some(&Tag::Long(end)),
-                    "{kind} end={end}"
-                );
+                let saved = Tag::Compound(game.ecs_mob_tree(id).unwrap());
+                assert_eq!(saved.get("anger_end_time"), Some(&Tag::Long(end)), "{kind} end={end}");
                 assert_eq!(game.world.game_time, 12_345);
-                assert_eq!(game.persist.uuids.get(&id), Some(&[316, 1, 0, number]));
-                assert_eq!(game.remote_entities[i].health, health);
-                assert!(game.remote_entities[i].no_ai);
-                assert_eq!(
-                    (
-                        game.remote_entities[i].invulnerable,
-                        game.remote_entities[i].last_hurt,
-                        game.remote_entities[i].age
-                    ),
-                    (17, 2.0, 6)
-                );
-                assert!(game.remote_entities[i].in_powder_snow, "{kind} end={end}");
             }
         }
     }

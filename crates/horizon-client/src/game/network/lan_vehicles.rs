@@ -417,8 +417,7 @@ impl Game<'_> {
         // their rider (getControllingPassenger); a minecart that is elsewhere
         // on the client is put back.
         let boat = vehicle.filter(|&v| self.ecs.boat_status(v).is_some());
-        if self.ecs.is_active()
-            && boat.is_none()
+        if boat.is_none()
             && let Some(v) = vehicle
             && self.mount_moved_by_client(v)
         {
@@ -434,11 +433,6 @@ impl Game<'_> {
             }
             return;
         }
-        let mount = vehicle.and_then(|v| {
-            self.remote_entities
-                .iter()
-                .position(|m| m.id == v && equine::moved_by_client(m))
-        });
         // The vehicle's id, kind, position, rotation, motion, box, step height
         // and ground.
         let (id, old, yaw, velocity, bounds, step, on_ground) = if let Some(v) = boat {
@@ -452,18 +446,6 @@ impl Game<'_> {
                 Vec3::new(m.velocity[0], m.velocity[1], m.velocity[2]),
                 bounds,
                 0.0,
-                m.on_ground,
-            )
-        } else if let Some(i) = mount {
-            let m = &self.remote_entities[i];
-            let step = m.kind.step_height as f32;
-            (
-                m.id,
-                m.position,
-                m.yaw,
-                m.velocity,
-                m.bounds(),
-                step,
                 m.on_ground,
             )
         } else {
@@ -488,13 +470,6 @@ impl Game<'_> {
             back(self.lan.as_mut().unwrap(), old, yaw);
             return;
         }
-        // A living mount on a climbable has no fall, before its move: a move
-        // put back below keeps that.
-        if let Some(i) = mount
-            && self.remote_entities[i].on_climbable(&self.mob_world_base(&[]))
-        {
-            self.remote_entities[i].fall_distance = 0.0;
-        }
         // vehicle.move(PLAYER, target - lastGood) with the vehicle's
         // collisions: where it can't follow the client (a quarter block off,
         // the height aside), it moved wrongly. A Player-cause move through
@@ -507,11 +482,10 @@ impl Game<'_> {
         let wanted = target.subtract(good);
         // The vehicle's type name only if a listener asks for it (arismoko/horizon#2414: no
         // string on a move nobody listens to).
-        let kind = || match (boat, mount) {
-            (Some(v), _) => std::borrow::Cow::Borrowed(self.ecs.kind(v).unwrap_or("")),
-            (None, Some(i)) => std::borrow::Cow::Borrowed(&*self.remote_entities[i].kind.id),
-            // Unreachable: the vehicle was a boat or a mount, or it returned.
-            (None, None) => std::borrow::Cow::Borrowed(""),
+        let kind = || match boat {
+            Some(v) => std::borrow::Cow::Borrowed(self.ecs.kind(v).unwrap_or("")),
+            // Unreachable: the vehicle was a boat, or it returned.
+            None => std::borrow::Cow::Borrowed(""),
         };
         let mut gate = horizon_client::move_gate::armed_with(
             &self.loop_context,
@@ -541,10 +515,7 @@ impl Game<'_> {
         // Entity.move in `vehicle.move`, before the checks: a long move through
         // water or a reset block resets the fall, which a move put back keeps
         // (`absSnapTo` restores only the position).
-        if let Some(i) = mount {
-            self.remote_entities[i].fall_distance =
-                self.vehicle_fall_reset(self.remote_entities[i].fall_distance, old, resolved);
-        } else if let Some(v) = boat
+        if let Some(v) = boat
             && let Some(e) = self.ecs.entity_of(v)
         {
             let reset = self.vehicle_fall_reset(self.ecs.fall_distance(v), old, resolved);
@@ -560,12 +531,8 @@ impl Game<'_> {
         }
         // clientVehicleIsFloating: the move didn't go down a step, the vehicle hadn't come down onto
         // something on its last move (`verticalCollisionBelow` before this one), and nothing but air is
-        // around its box grown by 0.0625 and stretched 0.55 down (water holds a boat up). A flying or
-        // no-gravity mount, and a server that allows flight, never float.
-        let (gravity, no_gravity) = match mount {
-            Some(i) => (0.08, self.remote_entities[i].no_gravity),
-            None => (0.04, false),
-        };
+        // around its box grown by 0.0625 and stretched 0.55 down (water holds a boat up). A server that allows flight never floats.
+        let gravity = 0.04;
         let around = moved_box
             .inflate(Vec3::new(0.0625, 0.0625, 0.0625))
             .expand_towards(Vec3::new(0.0, -0.55, 0.0));
@@ -587,85 +554,9 @@ impl Game<'_> {
                 wanted.y < 0.0 && resolved.y != wanted.y,
             );
             g.vehicle_floating =
-                wanted.y >= -0.03125 && !rested && !allow_flight && !no_gravity && no_blocks;
+                wanted.y >= -0.03125 && !rested && !allow_flight && no_blocks;
             g.vehicle_gravity = gravity;
         });
-        if let Some(i) = mount {
-            let mut m = self.remote_entities[i].clone();
-            let mut events = Vec::new();
-            let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let w = self.mob_world_base(&[]);
-                // absSnapTo: where and how its rider's client turned it; the
-                // rider sits on it from its own ride tick.
-                let delta = target.subtract(m.position);
-                m.position = target;
-                m.yaw = p.yaw;
-                m.head_pitch = p.pitch;
-                // setOnGroundWithMovement and doCheckFallDamage with the client's
-                // ground and move: a landing hurts the horse and its riders.
-                let mut level = horizon_client::health::DamageLevel::lent(
-                    &self.world,
-                    self.pack.assets.registry,
-                    &mut lent,
-                    Some(self.items()),
-                    Some(&self.pack.block_registries),
-                    &self.damage_hooks,
-                );
-                m.client_moved_fall(&w, &mut level, delta, p.on_ground, &mut events);
-            }));
-            lent.give_back(&mut self.world);
-            if let Err(panic) = outcome {
-                std::panic::resume_unwind(panic);
-            }
-            self.remote_entities[i] = m;
-            // propagateFallToPassengers reaches the guests through `host`: it is out
-            // of `self.lan` while their packet is handled.
-            let falls: Vec<(u32, f64, f32)> = events
-                .iter()
-                .filter_map(|e| match *e {
-                    horizon_client::mobs::MobEvent::FallToPassengers {
-                        mob,
-                        distance,
-                        modifier,
-                    } => Some((mob, distance, modifier)),
-                    _ => None,
-                })
-                .collect();
-            // LivingEntity.checkFallDamage's landing crumbs go to every player
-            // (`sendParticles`), the guests too.
-            let (dust, events): (Vec<_>, Vec<_>) = events
-                .into_iter()
-                .partition(|e| matches!(e, horizon_client::mobs::MobEvent::LandingDust { .. }));
-            for e in dust {
-                if let horizon_client::mobs::MobEvent::LandingDust {
-                    state,
-                    at,
-                    count,
-                    speed,
-                } = e
-                {
-                    self.landing_dust(state, Vec3::new(at[0], at[1], at[2]), count, speed);
-                }
-            }
-            let _ = self.handle_mob_events(events);
-            for (mob, distance, modifier) in falls {
-                let riders: Vec<u32> = self
-                    .lan
-                    .as_ref()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .iter()
-                    .filter(|g| g.vehicle == Some(mob))
-                    .map(|g| g.conn)
-                    .collect();
-                for conn in riders {
-                    self.guest_hit_by(conn, |g| g.rider_fall_damage(distance, modifier));
-                }
-            }
-            return;
-        }
         let (Some(v), Some(e)) = (boat, boat.and_then(|v| self.ecs.entity_of(v))) else {
             return;
         };

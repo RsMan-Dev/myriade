@@ -121,9 +121,6 @@ pub(super) struct Level {
     /// Each mob's or armor stand's equipment before this transaction first
     /// wrote it (arismoko/horizon#932), told apart for the way back.
     equipment: HashMap<u32, KeptEquipment>,
-    /// Each chested mob's item list's length before `entity_slots` first grew it to its slots
-    /// in this transaction.
-    mob_lengths: HashMap<u32, usize>,
     /// Each item entity's stack before this transaction first wrote it.
     item_entities: HashMap<u32, ItemStack>,
     /// Each guest's menu storage before this transaction first wrote it, by connection.
@@ -209,17 +206,11 @@ struct KeptPlayerHealth {
     guest: Option<(u32, bool, u32)>,
 }
 
-enum KeptMobHealth {
-    Host {
-        absorption: f32,
-        health: f32,
-        needs_sync: bool,
-        death_time: i32,
-        death_canceled: bool,
-        processed: bool,
-    },
-    /// An ECS entity: its health and absorption, read and written through the bridge.
-    Ecs { absorption: f32, health: f32, processed: bool },
+/// A mob's health, absorption and death bookkeeping as a transaction first saw them, read and written through the bridge.
+struct KeptMobHealth {
+    absorption: f32,
+    health: f32,
+    processed: bool,
 }
 
 #[derive(Clone)]
@@ -237,7 +228,6 @@ struct KeptPlayer {
 /// (arismoko/horizon#932): the same eight slots, restored their own way.
 #[derive(Clone)]
 enum KeptEquipment {
-    Mob(Vec<Option<ItemStack>>),
     /// An ECS entity's slots, put back through the bridge.
     Ecs(Vec<Option<ItemStack>>),
     Stand(Vec<Option<ItemStack>>),
@@ -329,14 +319,6 @@ fn frame_token() -> u64 {
     static COUNT: AtomicU64 = AtomicU64::new(0);
     KEYS.get_or_init(std::hash::RandomState::new)
         .hash_one(COUNT.fetch_add(1, Ordering::Relaxed))
-}
-
-impl Level {
-    /// Keeps chested mob `id`'s item list's length, `len`, before `entity_slots` grows it, if
-    /// this transaction hasn't yet.
-    pub(super) fn keep_mob_length(&mut self, id: u32, len: usize) {
-        self.mob_lengths.entry(id).or_insert(len);
-    }
 }
 
 impl Game<'_> {
@@ -517,9 +499,6 @@ impl Game<'_> {
                 }
                 for (id, kept) in level.item_entities {
                     outer.item_entities.entry(id).or_insert(kept);
-                }
-                for (id, len) in level.mob_lengths {
-                    outer.mob_lengths.entry(id).or_insert(len);
                 }
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
@@ -827,18 +806,9 @@ impl Game<'_> {
             return;
         };
         if let (Some(health), Some(absorption)) = (self.ecs.health(id), self.ecs.absorption(id)) {
-            level.mob_health.entry(id).or_insert(KeptMobHealth::Ecs {
+            level.mob_health.entry(id).or_insert(KeptMobHealth {
                 health,
                 absorption,
-                processed: self.died.contains(&id),
-            });
-        } else if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) {
-            level.mob_health.entry(id).or_insert(KeptMobHealth::Host {
-                health: mob.health,
-                absorption: mob.absorption,
-                needs_sync: mob.needs_sync,
-                death_time: mob.death_time,
-                death_canceled: mob.death_canceled,
                 processed: self.died.contains(&id),
             });
         }
@@ -889,8 +859,6 @@ impl Game<'_> {
         }
         let kept = if let Some(slots) = self.ecs.equipment_slots(id) {
             KeptEquipment::Ecs(slots)
-        } else if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) {
-            KeptEquipment::Mob(mob.equipment_stacks().iter().cloned().collect())
         } else if let Some(stand) = stand {
             KeptEquipment::Stand(stand.equipment.iter().cloned().collect())
         } else {
@@ -1106,14 +1074,6 @@ impl Game<'_> {
                         self.ecs.put_equipment_slot(id, slot, stack);
                     }
                 }
-                KeptEquipment::Mob(stacks) => {
-                    let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id && !m.removed) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        mob.set_equipment_stack(slot, stack);
-                    }
-                }
                 // An armor stand keeps no live attribute map of its gear; the
                 // plain write puts its slots back as they were.
                 KeptEquipment::Stand(stacks) => {
@@ -1204,11 +1164,6 @@ impl Game<'_> {
                 }
             });
         }
-        for (id, len) in level.mob_lengths {
-            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                m.extra.items.truncate(len);
-            }
-        }
         for (id, kept) in level.item_entities {
             self.ecs.set_item_stack(id, kept);
         }
@@ -1243,25 +1198,9 @@ impl Game<'_> {
             self.world.modified.restore(chunk, mark);
         }
         for (id, kept) in level.mob_health {
-            let processed = match kept {
-                KeptMobHealth::Ecs { health, absorption, processed } => {
-                    self.ecs.set_health(id, health);
-                    self.ecs.set_absorption(id, absorption);
-                    processed
-                }
-                KeptMobHealth::Host { health, absorption, needs_sync, death_time, death_canceled, processed } => {
-                    let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-                        continue;
-                    };
-                    mob.health = health;
-                    mob.absorption = absorption;
-                    mob.needs_sync = needs_sync;
-                    mob.death_time = death_time;
-                    mob.death_canceled = death_canceled;
-                    processed
-                }
-            };
-            if processed {
+            self.ecs.set_health(id, kept.health);
+            self.ecs.set_absorption(id, kept.absorption);
+            if kept.processed {
                 self.died.insert(id);
             } else {
                 self.died.remove(&id);

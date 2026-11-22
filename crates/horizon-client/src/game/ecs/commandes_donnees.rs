@@ -67,13 +67,9 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_leash_uuid(&self, id: u32) -> Option<[i32; 4]> {
         int_array4(Tag::Compound(self.ecs_mob_tree(id)?).get("leash")?.get("UUID")?)
     }
-    /// `OwnableEntity.getOwner`'s UUID of the mob `id`: the ECS tree's `Owner` when the level runs, else the listed mob's owner.
+    /// `OwnableEntity.getOwner`'s UUID of the mob `id`: the ECS tree's `Owner`.
     pub(in crate::game) fn mob_owner_uuid(&self, id: u32) -> Option<[i32; 4]> {
-        if self.ecs.is_active() {
-            self.ecs_mob_owner(id)
-        } else {
-            self.remote_entities.iter().find(|m| m.id == id).and_then(|m| m.extra.owner)
-        }
+        self.ecs_mob_owner(id)
     }
     /// `Entity.setTags`: the `Tags` of the mob `id` in the ECS level, as the patch the save reads back.
     pub(in crate::game) fn ecs_set_mob_tags(&mut self, id: u32, tags: &[String]) -> bool {

@@ -1,6 +1,6 @@
 //! The native hook points of the ECS entities, by network id: the ECS side of the points of `shared.rs`, `living_death*.rs` and
 //! `living_conversion_*.rs`. Each is called by the bridge's event for its entity (death, conversion, target, spawn, tame, hit,
-//! kill); none is asked at each tick, and none scans the level. The index-based points stay on `remote_entities`.
+//! kill); none is asked at each tick, and none scans the level.
 use crate::game::Game;
 use crate::game::native_namespaced_id::namespaced;
 use bevy_ecs::entity::Entity;
@@ -12,13 +12,10 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_kind(&self, id: u32) -> Option<String> {
         self.ecs.kind(id).map(|kind| namespaced(kind))
     }
-    /// The stack in the main hand of the mob `id`: read from the ECS when it runs, else from the client's list.
+    /// The stack in the main hand of the mob `id`, read from the ECS.
     pub(in crate::game) fn mob_main_hand(&self, id: i32) -> Option<ItemStack> {
-        if self.ecs.is_active() {
-            let e = self.ecs.entity_of(u32::try_from(id).ok()?)?;
-            return goals::main_hand(self.ecs.world()?, e).cloned();
-        }
-        self.remote_entities.iter().find(|m| m.id as i32 == id)?.extra.main_hand_stack().cloned()
+        let e = self.ecs.entity_of(u32::try_from(id).ok()?)?;
+        goals::main_hand(self.ecs.world()?, e).cloned()
     }
     /// `native_mobs_joined` for the ECS entity `id` that has just spawned, told as new in this level.
     pub(in crate::game) fn native_ecs_joined(&mut self, id: u32, natural: bool) {

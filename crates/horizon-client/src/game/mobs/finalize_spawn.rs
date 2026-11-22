@@ -11,7 +11,7 @@
 
 use super::Game;
 use horizon_client::collisions::{SceneCollisions, no_collision_empty};
-use horizon_client::mobs::{Mob, Species, finalize, spawn_rules::Reason, spawning};
+use horizon_client::mobs::{Mob, finalize, spawn_rules::Reason, spawning};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_world::food::Difficulty;
 
@@ -70,19 +70,18 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
         };
         let grown = bounds.inflate(Vec3::new(1e-7, 1e-7, 1e-7));
         no_collision_empty(&mut scene, bounds)
-            && !self.game.remote_entities.iter().any(|m| {
-                m.species() == Species::Shulker && m.alive() && m.bounds().intersects(grown)
-            })
+            && !self
+                .game
+                .ecs
+                .species_bounds("minecraft:shulker")
+                .iter()
+                .any(|b| b.intersects(grown))
     }
     fn free_chicken(&self, bounds: Aabb) -> Option<u32> {
         self.game.finalize_free_chicken(bounds)
     }
-    fn ride_chicken(&mut self, chicken: u32, rider: u32) {
-        if let Some(c) = self.game.remote_entities.iter_mut().find(|m| m.id == chicken) {
-            c.extra.jockey = true;
-            c.extra.rider = Some(rider);
-        }
-    }
+    /// RESTE-SANS-ECS: the chicken's jockey flag and rider have no ECS write yet.
+    fn ride_chicken(&mut self, _chicken: u32, _rider: u32) {}
     fn game_time(&self) -> i64 {
         self.game.finalize_game_time()
     }
@@ -200,8 +199,14 @@ impl Game<'_> {
         let game = level.game;
         game.world.random = random;
         for m in created {
-            game.remote_entities.push(m);
-            game.native_mobs_joined(game.remote_entities.len() - 1, false);
+            // Created without `finalizeSpawn` and added to the level as they are.
+            game.ecs_spawn_mob(
+                &m.kind.id,
+                [m.position.x, m.position.y, m.position.z],
+                m.persistent,
+                Some(m.yaw),
+                super::creatures::SpawnSite::Raw,
+            );
         }
     }
 }

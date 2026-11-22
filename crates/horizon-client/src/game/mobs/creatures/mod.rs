@@ -254,18 +254,6 @@ impl Game<'_> {
         let id = u32::try_from(self.player.as_ref()?.entity_id).ok()?;
         Some((uuid, id))
     }
-    /// A sulfur cube's attribute map (`LivingEntity.attributes`), from its
-    /// type's defaults, before its first tick adopts the body's archetype
-    /// modifiers. A map already there (commands, armor) is kept.
-    fn init_sulfur_attribute_maps(&mut self) {
-        for m in &mut self.remote_entities {
-            if m.species() == horizon_client::mobs::Species::SulfurCube
-                && m.extra.armor_attributes.is_none()
-            {
-                m.extra.armor_attributes = self.motion.attributes.create(&m.kind.id).map(Box::new);
-            }
-        }
-    }
     pub(super) fn player_view(&self) -> Option<PlayerView> {
         if self.lan_acting_fake {
             return None;
@@ -344,11 +332,7 @@ impl Game<'_> {
         persistent: bool,
         site: SpawnSite,
     ) -> Option<u32> {
-        if self.ecs.is_active() {
-            return self.ecs_spawn_mob(kind, at, persistent, None, site);
-        }
-        let mob = self.create_mob_reason(kind, at, persistent, site, None)?;
-        self.insert_spawned_mob(mob)
+        self.ecs_spawn_mob(kind, at, persistent, None, site)
     }
     /// [`spawn_mob`](Self::spawn_mob) for a creation that snaps the mob to a
     /// yaw (`snapTo(pos, yaw, 0)`): the facing takes no draw from the level.
@@ -360,11 +344,7 @@ impl Game<'_> {
         site: SpawnSite,
         yaw: f32,
     ) -> Option<u32> {
-        if self.ecs.is_active() {
-            return self.ecs_spawn_mob(kind, at, persistent, Some(yaw), site);
-        }
-        let mob = self.create_mob_reason(kind, at, persistent, site, Some(yaw))?;
-        self.insert_spawned_mob(mob)
+        self.ecs_spawn_mob(kind, at, persistent, Some(yaw), site)
     }
     /// Create a mob of `kind` at a position without `finalizeSpawn`'s rolls,
     /// matching vanilla `EntityType.create(level, reason)`.
@@ -399,77 +379,6 @@ impl Game<'_> {
         // entity_join_level).
         self.spawn_mob(kind, at, false, site)
     }
-    fn create_mob_reason(
-        &mut self,
-        kind: &str,
-        at: [f64; 3],
-        persistent: bool,
-        site: SpawnSite,
-        fixed_yaw: Option<f32>,
-    ) -> Option<Mob> {
-        let kind = if kind.contains(':') {
-            kind.to_owned()
-        } else {
-            format!("minecraft:{kind}")
-        };
-        let t = self.res.mob_types().get(&kind).cloned()?;
-        self.next_entity += 1;
-        // Yaw belongs to the vanilla creation path, independently of whether
-        // the fork's SpawnSite allows finalizeSpawn (and its hook).
-        let yaw = match (fixed_yaw, site) {
-            (Some(yaw), _) => yaw,
-            (None, SpawnSite::Finalizing(SpawnReason::Command)) => 0.0,
-            (None, SpawnSite::Finalizing(SpawnReason::SpawnItemUse | SpawnReason::Dispenser)) => {
-                mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0)
-            }
-            _ => self.world.random.next_float() * 360.0,
-        };
-        // Entity.random first supplies the UUID, then LivingEntity's initial
-        // yaw; species constructor draws continue from that same stream.
-        let (own, uuid) = horizon_client::mobs::living_random();
-        self.persist.uuids.insert(self.next_entity, uuid);
-        let mut mob = Mob::with_random(
-            self.next_entity,
-            t,
-            Vec3::new(at[0], at[1], at[2]),
-            yaw,
-            own,
-        );
-        // `EntityType.create`: the mob is constructed before `finalizeSpawn`.
-        self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
-        mob.persistent = persistent;
-        match site {
-            SpawnSite::Raw => return Some(mob),
-            SpawnSite::Finalizing(reason) => match self.finalize_with(&mut mob, reason, None) {
-                Finalized::Cancelled => return self.discard_unjoined_mob(mob.id),
-                Finalized::Skipped => return Some(mob),
-                Finalized::Done => horizon_client::mobs::shulker::finalize_spawn(&mut mob),
-            },
-            // A plain spawn finalizes as a summoned one (vanilla's /summon
-            // and egg path): its few reason-gated arms behave the same.
-            SpawnSite::Plain => {
-                let difficulty =
-                    self.local_difficulty([mob.position.x, mob.position.y, mob.position.z]);
-                self.finalize_plain(
-                    &mut mob,
-                    &difficulty,
-                    horizon_client::mobs::spawn_rules::Reason::MobSummoned,
-                );
-                horizon_client::mobs::shulker::finalize_spawn(&mut mob);
-            }
-        }
-        Some(mob)
-    }
-
-    fn insert_spawned_mob(&mut self, mob: Mob) -> Option<u32> {
-        let id = mob.id;
-        self.remote_entities.push(mob);
-        self.native_mobs_joined(self.remote_entities.len() - 1, false);
-        if !self.remote_entities.iter().any(|m| m.id == id) {
-            return None;
-        }
-        Some(id)
-    }
     /// `Mob.burnUndead` for a mob in daylight with an item on its sun
     /// protection slot (the head, or the body for a zombie horse or
     /// nautilus): `hurtAndBreak(random.nextInt(2))` on a damageable item, and
@@ -477,33 +386,34 @@ impl Game<'_> {
     /// the break event.
     fn wear_sun_protection(&mut self, id: u32) {
         use horizon_core::equipment_slot::EquipmentSlot;
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
+        let Some(species) = self.creature_species(id) else {
             return;
         };
-        let slot = m.sun_protection_slot();
+        // `Mob.sunProtectionSlot`: zombie horses and zombie nautiluses wear it on the body.
+        let slot = if matches!(species, Species::ZombieHorse | Species::ZombieNautilus) {
+            EquipmentSlot::Body
+        } else {
+            EquipmentSlot::Head
+        };
         let body = slot == EquipmentSlot::Body;
-        let Some(stack) = m.item_by_slot(slot) else {
+        let Some(stack) = self.ecs.equipment_stack(id, slot as usize) else {
             return;
         };
         if !horizon_client::stations::is_damageable(self.res.items(), &stack) {
             return;
         }
-        let at = [m.position.x, m.position.y, m.position.z];
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
+        let Some(at) = self.ecs.position(id) else {
             return;
         };
-        let amount = m.random.next_int_bound(2).unwrap_or(0) as u32;
+        let amount = self.ecs.next_int_bound(id, 2).unwrap_or(0) as u32;
         if amount == 0 {
             return;
         }
         let (updated, broken) = self.damage_living_stack(&stack, amount, id);
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return;
-        };
-        if m.item_by_slot(slot).as_ref() != Some(&stack) {
+        if self.ecs.equipment_stack(id, slot as usize).as_ref() != Some(&stack) {
             return;
         }
-        m.set_equipment_stack(slot as usize, updated);
+        self.ecs.put_equipment_slot(id, slot as usize, updated);
         if broken.is_some() {
             // LivingEntity.entityEventForEquipmentBreak: head 49, body 65.
             self.lan_entity_event(id as i32, if body { 65 } else { 49 }, at);
@@ -519,23 +429,17 @@ impl Game<'_> {
         id: u32,
         slot: horizon_core::equipment_slot::EquipmentSlot,
     ) {
-        let Some(stack) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .and_then(|m| horizon_client::mobs::finalize::equipment_stack(m, slot))
-        else {
+        let Some(stack) = self.ecs.equipment_stack(id, slot as usize) else {
             return;
         };
         if !horizon_client::stations::is_damageable(self.res.items(), &stack) {
             return;
         }
         let (updated, broken) = self.damage_living_stack(&stack, 1, id);
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
+        let Some(at) = self.ecs.position(id) else {
             return;
         };
-        let at = [m.position.x, m.position.y, m.position.z];
-        m.set_equipment_stack(slot as usize, updated);
+        self.ecs.put_equipment_slot(id, slot as usize, updated);
         if broken.is_some() {
             let event = horizon_client::mobs::item_break::equipment_break_event(slot);
             self.lan_entity_event(id as i32, event, at);
@@ -555,10 +459,9 @@ impl Game<'_> {
         if damage <= 0.0 {
             return;
         }
-        let Some(m) = self.remote_entities.iter().find(|m| m.id == id) else {
+        let Some(at) = self.ecs.position(id) else {
             return;
         };
-        let at = [m.position.x, m.position.y, m.position.z];
         let amount = ((damage / 4.0) as u32).max(1);
         let name = source.damage_type;
         // A piece's maximum, or none when it may not lose durability at all.
@@ -579,12 +482,7 @@ impl Game<'_> {
             }
             Some(info.max_damage)
         }
-        let Some(body) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .and_then(|m| m.item_by_slot(EquipmentSlot::Body))
-        else {
+        let Some(body) = self.ecs.equipment_stack(id, EquipmentSlot::Body as usize) else {
             return;
         };
         if wearable(self, &body, name).is_none() {
@@ -595,12 +493,7 @@ impl Game<'_> {
         if mod_api::__private::listened(mod_api::HookId::ArmorHurt)
             && let Ok(body_snapshot) = body.try_into_api()
         {
-            let kind = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .map(super::native_hooks::mob_kind)
-                .unwrap_or_default();
+            let kind = self.ecs.kind(id).unwrap_or_default().to_owned();
             let mut entries = vec![mod_api::ArmorHurt {
                 slot: EquipmentSlot::Body,
                 stack: body_snapshot,
@@ -617,36 +510,21 @@ impl Game<'_> {
                 return;
             }
             // A mod may have swapped the piece: it is not worn by this hit.
-            if self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == id)
-                .and_then(|m| m.item_by_slot(EquipmentSlot::Body))
-                != Some(body.clone())
-            {
+            if self.ecs.equipment_stack(id, EquipmentSlot::Body as usize) != Some(body.clone()) {
                 return;
             }
         }
         let (updated, broken) = self.damage_living_stack(&body, amount, id);
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return;
-        };
-        if m.item_by_slot(EquipmentSlot::Body).as_ref() != Some(&body) {
+        if self.ecs.equipment_stack(id, EquipmentSlot::Body as usize).as_ref() != Some(&body) {
             return;
         }
-        m.set_equipment_stack(EquipmentSlot::Body as usize, updated);
+        self.ecs.put_equipment_slot(id, EquipmentSlot::Body as usize, updated);
         if broken.is_some() {
             // LivingEntity.onEquippedItemBroken through the level's broadcast.
             let event =
                 horizon_client::mobs::item_break::equipment_break_event(EquipmentSlot::Body);
             self.lan_entity_event(id as i32, event, at);
         }
-    }
-    /// Finalize a converted frog or witch before it joins the level.
-    fn finalize_converted(&mut self, mob: &mut Mob) {
-        // A mod that stops a conversion's finalization leaves the mob as converted.
-        self.finalize_with(mob, SpawnReason::Conversion, None);
-        mob.persistent = true;
     }
     /// `Mob.convertTo(type, ConversionParams.single(...))`: a new mob of
     /// `kind`, made without spawn finalization unless its conversion asks, takes
@@ -664,77 +542,10 @@ impl Game<'_> {
         pre_checked: bool,
         after: impl FnOnce(&mut Self, &mut Mob),
     ) -> Option<u32> {
-        // Tick conversions can have been removed from the tick list before
-        // their queued event is handled. Restore them until Post has returned.
-        match self.remote_entities.iter_mut().find(|m| m.id == from.id) {
-            Some(old) => old.removed = false,
-            None => {
-                let mut old = from.clone();
-                old.removed = false;
-                self.remote_entities.push(old);
-            }
-        }
-        let t = self.res.mob_types().get(kind).cloned()?;
-        let mut cancel = false;
-        let from_kind = (mod_api::__private::listened(mod_api::HookId::LivingConversionPre)
-            || mod_api::__private::listened(mod_api::HookId::LivingConversionPost))
-        .then(|| super::native_hooks::mob_kind(from));
-        if !pre_checked && let Some(from_kind) = &from_kind {
-            self.native_living_conversion_pre(from.id, from_kind, kind, &mut cancel);
-        }
-        if cancel {
-            return None;
-        }
-        let from = self.remote_entities.iter().find(|m| m.id == from.id)?.clone();
-        self.next_entity += 1;
-        let mut mob = Mob::new(self.next_entity, t, from.position, from.yaw);
-        horizon_client::mobs::conversion::single(&from, &mut mob, params);
-        self.transfer_conversion_identity(from.id, mob.id);
-        if matches!(from.species(), Species::Zombie | Species::Husk) {
-            let at = [from.position.x, from.position.y, from.position.z];
-            let special = self.local_difficulty(at).special();
-            horizon_client::mobs::finalize::zombie_attributes(
-                &mut mob,
-                special,
-                horizon_client::mobs::spawn_rules::Reason::Conversion,
-            );
-        }
-        match (from.species(), kind) {
-            (Species::Tadpole, "minecraft:frog") | (Species::Villager, "minecraft:witch") => {
-                self.finalize_converted(&mut mob);
-            }
-            (Species::Pig, "minecraft:zombified_piglin") => {
-                let old = self.remote_entities.iter_mut().find(|m| m.id == from.id)?;
-                horizon_client::mobs::conversion::pig_thunder_hit(old, &mut mob);
-            }
-            (Species::Hoglin, "minecraft:zoglin")
-            | (Species::Piglin | Species::PiglinBrute, "minecraft:zombified_piglin") => {
-                mob.add_effect("minecraft:nausea", 200, 0);
-            }
-            _ => {}
-        }
-        after(self, &mut mob);
-        let id = mob.id;
-        self.remote_entities.push(mob);
-        // ConversionType.SINGLE: `to.startRiding(vehicle, false, false)`.
-        self.seat_mob(id);
-        self.copy_conversion_attachments(from.id, id, kind);
-        self.native_mobs_joined(self.remote_entities.len() - 1, false);
-        let transformed = self.remote_entities.iter().find(|m| m.id == id)?;
-        let transformed_kind = from_kind.as_ref().map(|_| transformed.kind.id.clone());
-        // Only move passengers once the new mob's join has succeeded.
-        for rider in self.remote_entities.iter_mut() {
-            if rider.extra.mount == Some(from.id) {
-                rider.extra.mount = Some(id);
-            }
-        }
-        if let (Some(from_kind), Some(transformed_kind)) = (from_kind, transformed_kind) {
-            self.native_living_conversion_post(from.id, &from_kind, id, &transformed_kind);
-        }
-        if let Some(old) = self.remote_entities.iter_mut().find(|m| m.id == from.id) {
-            old.removed = true;
-        }
-        Some(id)
+        // RESTE-SANS-ECS: the host conversion built a `Mob` and joined it to the host list. The ECS converts
+        // through `HostEvent::ConversionAsk` (`ecs_conversion_asked`); the callers outside this lot still reach here.
+        let _ = (from, kind, params, pre_checked, after);
+        None
     }
     /// Default position for a summon command (3 blocks in front of the player).
     pub(super) fn default_summon_position(&self) -> Result<[f64; 3]> {
@@ -760,12 +571,9 @@ impl Game<'_> {
         let id = self
             .spawn_mob_spawned(kind, at, SpawnSite::Finalizing(SpawnReason::Command))
             .ok_or_else(|| format!("unknown or unsupported mob {kind}"))?;
-        if baby && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.extra.age = if m.species() == Species::Sniffer {
-                horizon_client::mobs::sniffer::BABY_START_AGE
-            } else {
-                -24000
-            };
+        if baby {
+            // A sniffer's start age (`BABY_START_AGE`) is not separated from the others' here.
+            self.ecs.set_baby(id, true);
         }
         Ok(id)
     }
@@ -775,72 +583,31 @@ impl Game<'_> {
         self.control_mobs_at(radius, center)
     }
     pub(super) fn control_mobs_at(&self, radius: f64, center: Vec3) -> serde_json::Value {
+        // RESTE-SANS-ECS: the goals, gear, pois, villager, raider, riding and body keys had no ECS read here.
+        let c = [center.x, center.y, center.z];
         let list: Vec<serde_json::Value> = self
-            .remote_entities
-            .iter()
-            .filter(|m| m.distance_sqr(center) <= radius * radius)
-            .map(|m| {
-                let mut state = serde_json::json!({
-                    "id": m.id,
-                    "kind": m.kind.id,
-                    "pos": [m.position.x, m.position.y, m.position.z],
-                    "health": m.health,
-                    "baby": m.is_baby(),
-                    "target": m.ai.target.map(|t| format!("{t:?}")),
-                    "goals": m.ai.goals.running_names(),
-                    "held": m.extra.main_hand_id(),
-                    "mount": m.extra.mount,
-                    "rider": m.extra.rider,
-                    // A player's input this tick, and whether it steers.
-                    "ridden": m.rider.map(|r| r.steer),
-                    "controlled": horizon_client::mobs::equine::controlled(m),
-                    "saddled": m.extra.saddled(),
-                    "enchants": horizon_client::mobs::gear::gear(m).map(|g| g.slots.iter().map(|s| s.iter().map(|(e, l)| format!("{e}:{l}")).collect::<Vec<_>>()).collect::<Vec<_>>()),
-                    "ints": m.extra.ints,
-                    "pois": [m.extra.home, m.extra.bed, m.extra.meeting],
-                    "profession": m.extra.profession.index(),
-                    "targets": m.ai.targets.running_names(),
-                    "path": m.ai.nav.path.as_ref().map(|p| p.nodes.len() - p.next.min(p.nodes.len())),
-                    "on_ground": m.on_ground,
-                    "variant": m.extra.variant,
-                    "color": m.extra.color,
-                    "sheared": m.extra.sheared,
-                    "burning": m.fire_ticks > 0,
-                    "size": m.extra.size,
-                    "leash": m.extra.leash.map(|h| format!("{h:?}")),
-                    "tame": m.extra.tame,
-                    "sitting": m.extra.sitting,
-                    "temper": if horizon_client::mobs::equine::is_equine(m.species()) {
-                        horizon_client::mobs::equine::temper(m)
-                    } else { i32::from(m.extra.variant3) },
-                    "chested": m.extra.chested,
-                });
-                // Set apart: one json! with every key goes past the default macro recursion
-                // limit, and horizon-client can't raise it (#8169).
-                state["head"] = m.extra.head_id().into();
-                state["body"] = m.extra.body_id().into();
-                state["warden"] = serde_json::json!(horizon_client::mobs::warden::describe(m));
-                state["villager"] = serde_json::json!(horizon_client::mobs::villager::ext(m).map(|e| serde_json::json!({
-                    "food_level": e.food_level,
-                    "inventory": e.inventory.iter().map(|s| format!("{}x{}", s.count, s.item)).collect::<Vec<_>>(),
-                    "gossips": e.gossips.len(),
-                    "last_slept": e.last_slept,
-                    "raid": e.raid,
-                })));
-                state["raider"] = serde_json::json!(horizon_client::mobs::raider::state(m).map(|s| serde_json::json!({
-                    "raid": s.raid_id,
-                    "wave": s.wave,
-                    "leader": s.patrol_leader,
-                    "patrolling": s.patrolling,
-                    "patrol_target": s.patrol_target,
-                    "vehicle": m.extra.mount,
-                })));
-                // Drawn seated (Entity.isPassenger).
-                state["passenger"] = m.extra.passenger.into();
-                state
+            .ecs
+            .ids_near(c, radius)
+            .into_iter()
+            .filter(|&id| self.ecs.is_mob(id))
+            .filter_map(|id| {
+                let pos = self.ecs.position(id)?;
+                let d2: f64 = (0..3).map(|i| (pos[i] - c[i]).powi(2)).sum();
+                (d2 <= radius * radius).then(|| {
+                    serde_json::json!({
+                        "id": id,
+                        "kind": self.ecs.kind(id),
+                        "pos": pos,
+                        "health": self.ecs.health(id),
+                        "baby": self.ecs.age(id).is_some_and(|a| a < 0),
+                        "target": self.ecs.ai_target(id).map(|t| format!("{t:?}")),
+                        "on_ground": self.ecs.motion(id).is_some_and(|m| m.on_ground),
+                    })
+                })
             })
             .collect();
-        serde_json::json!({ "count": self.remote_entities.len(), "near": list })
+        let count: usize = self.ecs.count_by_kind().iter().map(|(_, n)| n).sum();
+        serde_json::json!({ "count": count, "near": list })
     }
     /// Highest motion-blocking (no leaves) block + 1 (Heightmap MOTION_BLOCKING_NO_LEAVES).
     pub(super) fn motion_top(&self, x: i32, z: i32) -> i32 {
@@ -1038,9 +805,7 @@ impl Game<'_> {
                 pending.batches.pop_front();
             }
             if !pending.pushes.is_empty() {
-                for mob in &mut self.remote_entities {
-                    horizon_client::mobs::apply_mob_pushes(mob, &mut pending.pushes);
-                }
+                // RESTE-SANS-ECS: the pushes were applied to the host's mobs, and the ECS has no route for them yet.
                 // As in the producer's successful final sweep, removed targets
                 // have no remaining owner to receive a push.
                 pending.pushes = Default::default();
@@ -1068,44 +833,16 @@ impl Game<'_> {
         self.flush_lan_explosions();
         self.flush_wind_bursts()?;
         self.drain_entity_inside();
-        self.tick_sniffer_effects();
         self.sulfur_cube_pickups();
         self.sulfur_cube_power_priming(primable);
         laps.lap("creature_systems");
-        // Hurt and death sounds of damage dealt outside the mob ticks.
-        let mut queued = Vec::new();
-        for m in &mut self.remote_entities {
-            queued.append(&mut m.outbox);
-        }
-        self.handle_mob_events(queued)?;
+        // RESTE-SANS-ECS: the hurt and death sounds of damage dealt outside the mob ticks were queued in each mob's outbox.
         // The enderman teleports those hurts asked for (`Enderman.hurtServer`).
         self.settle_hurt_teleports()?;
         laps.lap("creature_outbox");
         // And for the sizes the ticks changed (a pose, a baby grown, a scale).
         self.native_mob_sizes();
         Ok(())
-    }
-    /// `AbstractCubeMob.remove`: split only as the dead body is removed.
-    fn split_dead_cube(&mut self, mut dying: Mob) {
-        if matches!(
-            dying.species(),
-            Species::Slime | Species::MagmaCube | Species::SulfurCube
-        ) && dying.extra.size > 1
-        {
-            // AbstractCubeMob.remove: convert without spawn finalization.
-            let drawn = horizon_client::mobs::cube::split_count(&mut dying);
-            if drawn > 0 {
-                let count = self.mob_split_count(&dying, drawn);
-                for i in 0..count {
-                    self.next_entity += 1;
-                    let mut child =
-                        Mob::new(self.next_entity, dying.kind.clone(), dying.position, 0.0);
-                    horizon_client::mobs::cube::split_child(&mut dying, &mut child, i);
-                    self.remote_entities.push(child);
-                    self.native_mobs_joined(self.remote_entities.len() - 1, false);
-                }
-            }
-        }
     }
     /// The damage source a mob died to (`die`'s), its direct entity included when the mob
     /// recorded one ([`Mob::last_direct`]).
@@ -1134,11 +871,7 @@ impl Game<'_> {
                 "minecraft:player_killed_entity",
                 "minecraft:kill_mob_near_sculk_catalyst",
             ])),
-            Some(Who::Mob(id)) => self
-                .remote_entities
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| self.mob_entity(o)),
+            Some(Who::Mob(id)) => self.ecs_host_view(id),
             None => None,
         };
         let projectile = match d.kind {
@@ -1296,97 +1029,20 @@ impl Game<'_> {
             }
         }
     }
-    /// Melee or ranged damage to another mob; whether the hit landed.
-    pub(in crate::game) fn mob_hits_mob(
-        &mut self,
-        target: u32,
-        amount: f32,
-        mut source: Damage,
-    ) -> bool {
-        if source.attacker_species.is_none()
-            && let Some(Who::Mob(id)) = source.attacker
-        {
-            source.attacker_species = self.remote_entities.iter().find(|m| m.id == id).map(|m| m.species());
-        }
-        let mut killed = false;
-        let mut hurt = false;
-        let mut infested = Vec::new();
-        let catch_up = self.catch_up_countdowns(source.attacker, target);
-        let aim = self.attacker_aim(source.attacker);
-        // So `living_knockback` sees who hit and what they hold.
-        let attack = self.attack_of_who(source.attacker);
-        if let Some(t) = self.remote_entities.iter_mut().find(|m| m.id == target) {
-            let previous_invulnerable = t.invulnerable;
-            let hit = t.damage_aimed(
-                crate::game::entity::damage_level_of!(self, &attack),
-                amount,
-                source,
-                aim,
-            );
-            hurt = hit;
-            if hit && catch_up && t.invulnerable > previous_invulnerable {
-                t.hurt_time = (t.hurt_time - 1).max(0);
-                t.invulnerable = (t.invulnerable - 1).max(0);
-            }
-            if hit {
-                killed = !t.alive();
-                // The hurt or death sound the mob raised.
-                let center = t.center();
-                for event in std::mem::take(&mut t.outbox) {
-                    match event {
-                        MobEvent::Sound(s, _, volume, pitch) => {
-                            self.audio.play(&full_id(s), Some(center), volume, pitch);
-                        }
-                        MobEvent::Infested { at, velocities } => infested.push((at, velocities)),
-                        other => {
-                            // Left for the end of the tick.
-                            t.outbox.push(other);
-                        }
-                    }
-                }
-            }
-        }
-        if hurt {
-            self.resolve_player_responsible(target, source);
-        }
-        for (at, velocities) in infested {
-            self.spawn_infested(at, velocities);
-        }
-        if hurt
-            && let Some(Who::Mob(attacker)) = source.attacker
-            && let Some(m) = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == attacker && m.species() == Species::Axolotl)
-        {
-            self.audio.play(
-                "minecraft:entity.axolotl.attack",
-                Some([m.position.x, m.position.y, m.position.z]),
-                1.0,
-                1.0,
-            );
-        }
-        if killed && let Some(Who::Mob(killer)) = source.attacker {
-            self.zombie_killed(killer, target);
-        }
-        hurt
-    }
-    /// `LivingEntity.resolvePlayerResponsibleForDamage` after `source` hurt a
-    /// mob: a tame wolf's hit is its owner's (`setLastHurtByPlayer(uuid, 100)`),
-    /// so the kill drops experience and player-only loot and the owner, when
-    /// in the world, gets the credit (`getKillCredit`); a tame wolf without an
-    /// owner clears it. A player's own hits are recorded where they land.
-    pub(super) fn resolve_player_responsible(&mut self, victim: u32, source: Damage) {
-        let Some(Who::Mob(attacker)) = source.attacker else {
-            return;
+    /// Melee or ranged damage to another mob; whether the hit landed (its health fell).
+    /// RESTE-SANS-ECS: the Mob's `damage_aimed` knockback and invulnerability catch-up, the axolotl attack sound, the infested spawns and the `zombie_killed` credit were host writes with no bridge setter.
+    pub(in crate::game) fn mob_hits_mob(&mut self, target: u32, amount: f32, source: Damage) -> bool {
+        let before = self.ecs.health(target);
+        let by = match source.attacker {
+            Some(Who::Mob(id)) => horizon_ecs_proto::bridge::host::HurtSource::Entity(id),
+            Some(Who::Player) => match self.player_id_by_connection(self.lan_acting) {
+                Some(p) => horizon_ecs_proto::bridge::host::HurtSource::Player(p),
+                None => horizon_ecs_proto::bridge::host::HurtSource::Generic,
+            },
+            _ => horizon_ecs_proto::bridge::host::HurtSource::Generic,
         };
-        let Some((true, _)) = self.ecs.tamable_values(attacker) else {
-            return;
-        };
-        let Some(by) = self.ecs.entity_of(attacker) else {
-            return;
-        };
-        self.ecs.record_credit(victim, Some(horizon_ecs_proto::targeting::Who::Entity(by)));
+        self.ecs_hurt(target, amount, by);
+        self.ecs.health(target) < before
     }
     /// The ECS id of the player on connection `conn`, for a mob's love cause or credit (None: no player).
     pub(in crate::game) fn player_id_by_connection(&self, conn: Option<u32>) -> Option<u32> {
@@ -1423,14 +1079,9 @@ impl Game<'_> {
     /// variant); the loot data of the game's resources decides, and without it
     /// the items' table engine (no entity) rolls it. Whether anything dropped.
     fn drop_gift_loot(&mut self, mob: u32, table: &'static str, at: [f64; 3]) -> bool {
-        use horizon_client::mobs::drops;
         use horizon_world::loot::EntityLootParams;
         let loot = self.server_loot.get();
-        let this = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == mob)
-            .map(|m| drops::loot_entity(m, None));
+        let this = self.ecs.loot_entity(mob);
         let stacks = match (loot, this) {
             (Some(loot), Some(this)) if loot.has_table(table) => {
                 let params = EntityLootParams {
@@ -1528,6 +1179,17 @@ impl Game<'_> {
         p.id = self.next_entity;
         self.spawn_mob_projectile(p);
     }
+    /// The centre of the creature `id` on the bridge (half its height up); None when it is gone.
+    pub(in crate::game) fn creature_center(&self, id: u32) -> Option<[f64; 3]> {
+        let (p, _, h) = self.ecs_body(id)?;
+        Some([p.x, p.y + f64::from(h) / 2.0, p.z])
+    }
+    /// `AbstractCubeMob.dealDamage`'s pitch: two draws from the cube's own random, in order.
+    pub(in crate::game) fn cube_attack_pitch(&mut self, id: u32) -> f32 {
+        let a = self.ecs.next_float(id).unwrap_or(0.0);
+        let b = self.ecs.next_float(id).unwrap_or(0.0);
+        (a - b) * 0.2 + 1.0
+    }
     /// `Entity.igniteForSeconds`: `seconds * 20` ticks of fire, scaled by the
     /// target's burning-time attribute.
     fn ignite_entity(&mut self, target: Who, seconds: i32) -> Result<()> {
@@ -1539,11 +1201,7 @@ impl Game<'_> {
                     p.ignite_for_ticks(seconds * 20)?;
                 }
             }
-            Who::Mob(id) => {
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    m.ignite_for_ticks(seconds * 20);
-                }
-            }
+            Who::Mob(id) => self.ecs.ignite(id, seconds * 20),
         }
         Ok(())
     }
@@ -1658,11 +1316,9 @@ impl Game<'_> {
                     self.audio.play(&name, Some(at), volume, pitch)
                 }
                 MobEvent::Hiss { mob } => {
-                    if let Some(m) = self.remote_entities.iter().find(|m| m.id == mob) {
-                        let at = m.center();
-                        let sound = horizon_client::mobs::finalize::variant_sound(m, "hiss")
-                            .unwrap_or("entity.cat.hiss");
-                        self.audio.play(&full_id(sound), Some(at), 1.0, 1.0);
+                    // RESTE-SANS-ECS: `variant_sound(m, "hiss")` takes the Mob's variant table; the cat's hiss is played here.
+                    if let Some(at) = self.creature_center(mob) {
+                        self.audio.play(&full_id("entity.cat.hiss"), Some(at), 1.0, 1.0);
                     }
                 }
                 MobEvent::BoundSound {
@@ -1700,9 +1356,7 @@ impl Game<'_> {
                 MobEvent::GameEvent {
                     event, at, source, ..
                 } if event == "minecraft:flap"
-                    && self.remote_entities.iter().any(|m| {
-                        m.id == source && matches!(m.species(), Species::Chicken | Species::Parrot)
-                    }) =>
+                    && matches!(self.creature_species(source), Some(Species::Chicken | Species::Parrot)) =>
                 {
                     let ctx = self.who_context(Some(Who::Mob(source)), None);
                     self.post_game_event(event, at, ctx);
@@ -1795,8 +1449,8 @@ impl Game<'_> {
                             }
                         }
                         Who::Mob(id) => {
-                            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                                m.velocity = v;
+                            if let Some(e) = self.ecs.entity_of(id) {
+                                self.ecs.set_velocity(e, v);
                             }
                         }
                     }
@@ -1810,8 +1464,8 @@ impl Game<'_> {
                             }
                         }
                         Who::Mob(id) => {
-                            if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                                m.velocity = m.velocity.add_vector(v);
+                            if let (Some(e), Some(old)) = (self.ecs.entity_of(id), self.ecs.velocity(id)) {
+                                self.ecs.set_velocity(e, old.add_vector(v));
                             }
                         }
                     }
@@ -1826,13 +1480,8 @@ impl Game<'_> {
                 } => match target {
                     // Ram knockback checks blocking independently of the hurt call.
                     Who::Player => self.mob_pushes_player(power, x, z, source, apply_blocking),
-                    Who::Mob(id) => {
-                        let attack = self.attack_of_who(source.attacker);
-                        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                            let level = crate::game::entity::damage_level_of!(self, &attack);
-                            m.knockback(level, power, x, z, &source, 0.0);
-                        }
-                    }
+                    // RESTE-SANS-ECS: the Mob's knockback hook (`damage_level_of`, `source`) has no bridge argument; the bridge's strength and direction apply.
+                    Who::Mob(id) => self.ecs.knockback(id, power, x, z),
                 },
                 MobEvent::LidPush {
                     shulker,
@@ -1849,12 +1498,8 @@ impl Game<'_> {
                         self.lid_push(lid, area, delta);
                     }
                 }
-                MobEvent::Wololo { mob } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        // DyeColor.RED.
-                        m.extra.color = 14;
-                    }
-                }
+                // RESTE-SANS-ECS: `Wololo` set the Mob's `extra.color` to DyeColor.RED (14); the bridge has no colour setter.
+                MobEvent::Wololo { .. } => {}
                 MobEvent::Fangs {
                     at,
                     yaw,
@@ -1894,14 +1539,12 @@ impl Game<'_> {
                     // The exploding mob causes the damage (Creeper.explodeCreeper).
                     let noted = self.combat.explosion_source.is_some();
                     let source_mob = self.combat.explosion_source.or_else(|| {
-                        self.remote_entities
-                            .iter()
-                            .filter(|m| {
-                                (m.position.x - at[0]).powi(2) + (m.position.z - at[2]).powi(2)
-                                    < 1.0
-                            })
-                            .map(|m| m.id)
-                            .next()
+                        self.ecs.ids_near(at, 2.0).into_iter().find(|&id| {
+                            self.ecs.is_mob(id)
+                                && self.ecs.position(id).is_some_and(|p| {
+                                    (p[0] - at[0]).powi(2) + (p[2] - at[2]).powi(2) < 1.0
+                                })
+                        })
                     });
                     self.combat.explosion_source = source_mob;
                     self.combat.explosion_source_named = noted;
@@ -1981,10 +1624,8 @@ impl Game<'_> {
                     // effect sits inside the branch where the hit landed, and
                     // `LivingEntity.addEffect` takes a mob as well as a player.
                     self.combat.hit_landed = self.mob_attacks_mob(target, amount, source);
-                    if self.combat.hit_landed
-                        && let Some(t) = self.remote_entities.iter_mut().find(|m| m.id == target)
-                    {
-                        t.add_effect(effect, ticks, amplifier);
+                    if self.combat.hit_landed {
+                        self.ecs_add_effect(target, effect, ticks, amplifier);
                     }
                 }
                 MobEvent::CubeHurtPlayer { cube, amount, from } => {
@@ -1998,17 +1639,11 @@ impl Game<'_> {
                         "minecraft:mob_attack",
                         Some(Some(cube)),
                         false,
-                    ) && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == cube)
-                    {
-                        let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-                        let at = m.center();
-                        if !m.silent {
-                            self.handle_mob_events(vec![MobEvent::Sound(
-                                "entity.slime.attack",
-                                at,
-                                1.0,
-                                pitch,
-                            )])?;
+                    ) {
+                        // RESTE-SANS-ECS: the cube's `silent` flag has no bridge getter, so its attack sound always plays.
+                        let pitch = self.cube_attack_pitch(cube);
+                        if let Some(at) = self.creature_center(cube) {
+                            self.handle_mob_events(vec![MobEvent::Sound("entity.slime.attack", at, 1.0, pitch)])?;
                         }
                     }
                 }
@@ -2022,18 +1657,11 @@ impl Game<'_> {
                     // two pitch draws, made even for a silent cube, whose
                     // Entity.playSound is then skipped) only follows a hit
                     // that landed.
-                    if self.mob_hits_mob(target, amount, source)
-                        && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == cube)
-                    {
-                        let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-                        let at = m.center();
-                        if !m.silent {
-                            self.handle_mob_events(vec![MobEvent::Sound(
-                                "entity.slime.attack",
-                                at,
-                                1.0,
-                                pitch,
-                            )])?;
+                    if self.mob_hits_mob(target, amount, source) {
+                        // RESTE-SANS-ECS: the cube's `silent` flag has no bridge getter, so its attack sound always plays.
+                        let pitch = self.cube_attack_pitch(cube);
+                        if let Some(at) = self.creature_center(cube) {
+                            self.handle_mob_events(vec![MobEvent::Sound("entity.slime.attack", at, 1.0, pitch)])?;
                         }
                         self.mob_post_attack(
                             target,
@@ -2068,10 +1696,13 @@ impl Game<'_> {
                             };
                             let hurt = self.mob_hits_mob(id, 10.0, source);
                             let resistance = self
-                                .remote_entities
-                                .iter()
-                                .find(|m| m.id == id)
-                                .map_or(0.0, super::lan_attributes::mob_knockback_resistance);
+                                .ecs
+                                .attribute(
+                                    id,
+                                    "minecraft:knockback_resistance",
+                                    horizon_world::attribute_map::ValueKind::Computed,
+                                )
+                                .unwrap_or(0.0);
                             (hurt, resistance)
                         }
                     };
@@ -2109,11 +1740,10 @@ impl Game<'_> {
                             Who::Player => self.player.as_mut().map_or(0.0, |p| {
                                 p.attribute("minecraft:knockback_resistance").unwrap_or(0.0)
                             }),
-                            Who::Mob(id) => {
-                                self.remote_entities.iter().find(|m| m.id == id).map_or(0.0, |m| {
-                                    super::lan_attributes::mob_knockback_resistance(m)
-                                })
-                            }
+                            Who::Mob(id) => self
+                                .ecs
+                                .attribute(id, "minecraft:knockback_resistance", horizon_world::attribute_map::ValueKind::Computed)
+                                .unwrap_or(0.0),
                         };
                         let up = f64::from(0.4f32) * (1.0 - resistance).max(0.0);
                         match target {
@@ -2123,8 +1753,8 @@ impl Game<'_> {
                                 }
                             }
                             Who::Mob(id) => {
-                                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                                    m.velocity.y += up;
+                                if let (Some(e), Some(v)) = (self.ecs.entity_of(id), self.ecs.velocity(id)) {
+                                    self.ecs.set_velocity(e, Vec3::new(v.x, v.y + up, v.z));
                                 }
                             }
                         }
@@ -2155,15 +1785,8 @@ impl Game<'_> {
                 MobEvent::ParrotToShoulder { mob } => self.parrot_to_shoulder(mob),
                 MobEvent::Infested { at, velocities } => self.spawn_infested(at, velocities),
                 MobEvent::Gift { target, item } => self.receive_gift(target, item),
-                MobEvent::HurtSelf { mob, kind, amount } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.damage(
-                            crate::game::entity::damage_level_of!(self, scoped),
-                            amount,
-                            horizon_client::mobs::Damage::of(kind),
-                        );
-                    }
-                }
+                // RESTE-SANS-ECS: `Mob.damage` of the `kind` (a damage-type name for the bridge) has no bridge mapping yet.
+                MobEvent::HurtSelf { .. } => {}
                 MobEvent::SetTarget { mob, target } => {
                     let player = self
                         .lan
@@ -2175,10 +1798,9 @@ impl Game<'_> {
                 MobEvent::PiglinAlertTarget(alert) => self.piglin_alert_target(alert),
                 MobEvent::HuntHoglin { mob, target, ticks } => {
                     let mut acquire = false;
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.extra.ints[0] = ticks;
-                        acquire = m.ai.target.is_none();
-                    }
+                    // RESTE-SANS-ECS: `extra.ints[0]` (the hoglin's attack timer) has no bridge setter.
+                    let _ = ticks;
+                    acquire = self.ecs.ai_target(mob).is_none();
                     if acquire {
                         let player = self
                             .lan
@@ -2227,11 +1849,10 @@ impl Game<'_> {
                         );
                     }
                 }
-                MobEvent::Spawn(mut m) => {
-                    self.next_entity += 1;
-                    m.id = self.next_entity;
-                    self.remote_entities.push(*m);
-                    self.native_mobs_joined(self.remote_entities.len() - 1, false);
+                // RESTE-SANS-ECS: the built Mob's own state (extra, ai, equipment) is not carried over; the ECS spawns the kind at its position.
+                MobEvent::Spawn(m) => {
+                    let at = [m.position.x, m.position.y, m.position.z];
+                    self.spawn_mob(&m.kind.id, at, false, SpawnSite::Raw);
                 }
                 MobEvent::SpawnKind { kind, at, setup } => {
                     if let Some(id) = self.spawn_mob(
@@ -2371,8 +1992,8 @@ impl Game<'_> {
                     {
                         let air = self.world.air;
                         self.level_set(pos, air)?;
-                    } else if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.extra.carried = None;
+                    } else {
+                        // RESTE-SANS-ECS: `extra.carried = None` (the enderman's block) has no bridge setter.
                     }
                 }
                 MobEvent::IfBroke {
@@ -2392,9 +2013,7 @@ impl Game<'_> {
                     });
                 }
                 MobEvent::Jump { mob } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.ai.jumping = true;
-                    }
+                    self.ecs.jump(mob);
                 }
                 MobEvent::BreakDoor { mob, pos } => {
                     if !self.mob_may_destroy(mob, pos) {
@@ -2402,12 +2021,7 @@ impl Game<'_> {
                     }
                     // BreakDoorGoal.tick: removeBlock, then level events 1021
                     // and 2001 with the state that is there now.
-                    let kind = self
-                        .remote_entities
-                        .iter()
-                        .find(|m| m.id == mob)
-                        .map(super::native_hooks::mob_kind)
-                        .unwrap_or_default();
+                    let kind = self.ecs.kind(mob).unwrap_or_default().to_owned();
                     let air = self.world.air;
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
                     self.with_level(|b, level, ticks| b.set_block(level, ticks, at, air, 3));
@@ -2450,11 +2064,7 @@ impl Game<'_> {
                             .clone();
                         let mut cancel = false;
                         if let Some(mob) = mob
-                            && let Some(kind) = self
-                                .remote_entities
-                                .iter()
-                                .find(|m| m.id == mob)
-                                .map(|m| m.kind.id.clone())
+                            && let Some(kind) = self.ecs.kind(mob).map(str::to_owned)
                         {
                             let from = self.world.block(pos[0], pos[1], pos[2]);
                             self.native_entity_change_block_pre(
@@ -2472,9 +2082,8 @@ impl Game<'_> {
                         if !cancel {
                             self.level_set_with_flags(pos, state, flags)?;
                             if let Some(mob) = mob
-                                && let Some(m) = self.remote_entities.iter().find(|m| m.id == mob)
+                                && let Some(kind) = self.ecs.kind(mob).map(str::to_owned)
                             {
-                                let kind = m.kind.id.clone();
                                 self.native_entity_change_block(mob, &kind, pos, &old_name, name);
                             }
                         }
@@ -2602,18 +2211,12 @@ impl Game<'_> {
                         .effects
                         .list
                         .retain(|e| e.id != "mining_fatigue");
-                    let source = self
-                        .remote_entities
-                        .iter()
-                        .find(|m| m.id == mob)
-                        .map(|m| self.mob_entity(m));
+                    let source = self.ecs_host_view(mob);
                     self.trigger_effects_changed_by(source);
                 }
                 MobEvent::DolphinTreasure { mob } => {
                     // ServerLevel.findNearestMapStructure(#dolphin_located, 50).
-                    let Some(at) = self.remote_entities.iter().find(|m| m.id == mob).map(|m| {
-                        [m.position.x, m.position.y, m.position.z].map(|v| v.floor() as i32)
-                    }) else {
+                    let Some(at) = self.ecs.position(mob).map(|p| p.map(|v| v.floor() as i32)) else {
                         continue;
                     };
                     let names = self.structure_tag("minecraft:dolphin_located");
@@ -2622,9 +2225,7 @@ impl Game<'_> {
                         .locator()
                         .filter(|_| !names.is_empty())
                         .and_then(|t| t.locate(&names, at, 50));
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.extra.home = found.as_ref().map(|(_, p)| *p);
-                    }
+                    // RESTE-SANS-ECS: `extra.home` (the dolphin's treasure) has no bridge setter.
                     // DolphinSwimToTreasureGoal.start: entity event 38 once it has a treasure.
                     if found.is_some() {
                         self.mob_event_particles(mob, 38);
@@ -2644,9 +2245,7 @@ impl Game<'_> {
                     ticks,
                     amplifier,
                 } => {
-                    if let Some(t) = self.remote_entities.iter_mut().find(|m| m.id == target) {
-                        t.add_effect(effect, ticks, amplifier);
-                    }
+                    self.ecs_add_effect(target, effect, ticks, amplifier);
                 }
                 MobEvent::Ignite(target, seconds) => self.ignite_entity(target, seconds)?,
                 MobEvent::ZombieIgnite(target, seconds) if self.combat.hit_landed => {
@@ -2654,14 +2253,12 @@ impl Game<'_> {
                 }
                 MobEvent::ZombieIgnite(..) => {}
                 MobEvent::LockGaze { mob, partner } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        horizon_client::mobs::animal_brain::lock_gaze(m, partner);
-                    }
+                    // RESTE-SANS-ECS: `animal_brain::lock_gaze` writes the Mob's brain, which has no bridge setter.
+                    let _ = (mob, partner);
                 }
                 MobEvent::Retreat { mob, from, at } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        horizon_client::mobs::piglin::receive_retreat(m, from, at);
-                    }
+                    // RESTE-SANS-ECS: `piglin::receive_retreat` writes the Mob's brain, which has no bridge setter.
+                    let _ = (mob, from, at);
                 }
                 // Dead producers only (old brains, frog, piglin): nothing to apply.
                 MobEvent::RemoveKilled { .. }
@@ -2688,9 +2285,8 @@ impl Game<'_> {
                     self.tick_break_leash(mob, drop, sound)
                 }
                 MobEvent::NotifyLeashHolder { holder } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == holder) {
-                        horizon_client::mobs::happy_ghast::notify_leash_holder(m);
-                    }
+                    // RESTE-SANS-ECS: `happy_ghast::notify_leash_holder` writes the Mob's state, which has no bridge setter.
+                    let _ = holder;
                 }
                 MobEvent::Vibration {
                     from,
@@ -2725,9 +2321,8 @@ impl Game<'_> {
                 }
                 MobEvent::ThrowGift { table, from, to } => self.throw_gift(&table, from, to),
                 MobEvent::PatrolTarget { mob, target } => {
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        horizon_client::mobs::raider::set_patrol_target(m, target);
-                    }
+                    // RESTE-SANS-ECS: `raider::set_patrol_target` writes the Mob's patrol target, which has no bridge setter.
+                    let _ = (mob, target);
                 }
                 MobEvent::RaiderTarget {
                     mob,
@@ -2740,8 +2335,8 @@ impl Game<'_> {
                         .and_then(|host| host.mob_players.get(&mob).copied())
                         .or(self.lan_acting);
                     self.set_event_ai_target(mob, Some(target), player);
-                    if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == mob) {
-                        m.ai.aggressive |= aggressive;
+                    if aggressive {
+                        self.ecs.set_aggressive(mob, true);
                     }
                 }
                 MobEvent::FallToPassengers {
@@ -2840,78 +2435,34 @@ impl Game<'_> {
                 f64::from(pos[1]),
                 f64::from(pos[2]) + 0.3,
             ];
-            if let Some(id) = self.spawn_mob_raw("minecraft:turtle", at, true)
-                && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
-            {
-                m.extra.age = -24000;
-                m.extra.home = Some(pos);
-                m.yaw = 0.0;
-                m.body_yaw = 0.0;
-                m.head_yaw = 0.0;
+            if let Some(id) = self.spawn_mob_raw("minecraft:turtle", at, true) {
+                // RESTE-SANS-ECS: `extra.home` (the nest) has no bridge setter.
+                self.ecs.set_baby(id, true);
+                if let Some(e) = self.ecs.entity_of(id) {
+                    let pitch = self.ecs.pitch(id).unwrap_or(0.0);
+                    self.ecs.set_rotation(e, 0.0, pitch);
+                }
+                self.ecs.set_head_yaw(id, 0.0);
             }
         }
     }
     fn apply_setup(&mut self, id: u32, setup: &SpawnSetup) {
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
+        let Some(e) = self.ecs.entity_of(id) else {
             return;
         };
         if setup.baby {
-            m.extra.age = -24000;
+            self.ecs.set_baby(id, true);
         }
         if setup.nausea {
-            m.add_effect("minecraft:nausea", 200, 0);
+            self.ecs_add_effect(id, "minecraft:nausea", 200, 0);
         }
-        if setup.size > 0 {
-            m.extra.size = setup.size;
-        }
-        m.yaw = setup.yaw;
-        m.body_yaw = setup.yaw;
-        m.head_yaw = setup.yaw;
-        m.velocity = Vec3::new(setup.velocity[0], setup.velocity[1], setup.velocity[2]);
+        // RESTE-SANS-ECS: size, variant, owner (counter2), home and life (egg_time) have no bridge setter.
+        let pitch = self.ecs.pitch(id).unwrap_or(0.0);
+        self.ecs.set_rotation(e, setup.yaw, pitch);
+        self.ecs.set_head_yaw(id, setup.yaw);
+        self.ecs.set_velocity(e, Vec3::new(setup.velocity[0], setup.velocity[1], setup.velocity[2]));
         if let Some(h) = setup.health {
-            m.health = h;
-        }
-        if let Some(v) = setup.variant {
-            m.extra.variant = v;
-        }
-        if let Some(owner) = setup.owner_mob {
-            m.extra.counter2 = owner as i32;
-        }
-        if let Some(home) = setup.home {
-            m.extra.home = Some(home);
-        }
-        if let Some(life) = setup.life {
-            m.extra.egg_time = life;
-        }
-    }
-    /// `Animal.finalizeSpawnChildFromBreeding`'s single experience orb, drawn
-    /// from the breeding parent after the rule check.
-    fn award_breeding_experience(&mut self, parent: u32, at: [f64; 3]) {
-        let mob_drops = self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::MOB_DROPS);
-        if let Some(amount) = self
-            .remote_entities
-            .iter_mut()
-            .find(|m| m.id == parent)
-            .and_then(|m| horizon_client::mobs::breeding_experience(m, mob_drops))
-        {
-            self.add_orb(at, amount);
-        }
-    }
-    fn breeding_orb(
-        &mut self,
-        parent: u32,
-        at: [f64; 3],
-        experience: horizon_client::mobs::BreedExperience,
-    ) {
-        match experience {
-            horizon_client::mobs::BreedExperience::Deferred => {
-                self.award_breeding_experience(parent, at)
-            }
-            horizon_client::mobs::BreedExperience::Drawn(Some(amount)) => self.add_orb(at, amount),
-            horizon_client::mobs::BreedExperience::Drawn(None) => {}
+            self.ecs.set_health(id, h);
         }
     }
     /// `ServerPlayer.tellNeutralMobsThatIDied`: the mobs within 32 blocks
@@ -2925,53 +2476,8 @@ impl Game<'_> {
         feet: [f64; 3],
         conn: Option<u32>,
     ) {
-        // A client of someone else's world has the server's mobs only to show.
-        if false
-            || !self
-                .session
-                .rules
-                .bool_at(horizon_client::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
-        {
-            return;
-        }
-        let block = feet.map(f64::floor);
-        let area = Aabb::new(
-            Vec3::new(block[0], block[1], block[2]),
-            Vec3::new(block[0] + 1.0, block[1] + 1.0, block[2] + 1.0),
-        )
-        .inflate(Vec3::new(32.0, 10.0, 32.0));
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        let ids: Vec<u32> = self
-            .remote_entities
-            .iter()
-            .filter(|m| {
-                host.mob_players.get(&m.id).copied() == conn
-                    && m.bounds().intersects(area)
-                    && horizon_client::mobs::ai::forgives_dead_player(m)
-            })
-            .map(|m| m.id)
-            .collect();
-        for id in ids {
-            let Some(epoch) = self.native_lifecycle.epoch() else {
-                if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    horizon_client::mobs::ai::forgive_dead_player(mob);
-                }
-                continue;
-            };
-            let mob_ref = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, id));
-            let change = self
-                .native_mob_target_event(mob_ref, None, false)
-                .and_then(|target| self.native_mob_bind_target(id, target))
-                .map_or(
-                    horizon_client::mobs::TargetChange::Keep,
-                    horizon_client::mobs::TargetChange::Set,
-                );
-            if let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                horizon_client::mobs::ai::forgive_dead_player_with_change(mob, change);
-            }
-        }
+        // RESTE-SANS-ECS: `NeutralMob.playerDied` (`forgives_dead_player` and its target change) reads and writes the Mob's anger state; the bridge has no forgiveness rule yet.
+        let _ = (feet, conn);
     }
     /// `MobEffectUtil.addEffectToPlayersAround` for an elder guardian:
     /// mining fatigue III for five minutes unless a stronger or longer one
@@ -3061,16 +2567,17 @@ impl Game<'_> {
             None => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
-                    self.remote_entities
-                        .iter()
-                        .filter(|m| m.alive())
-                        .min_by(|a, b| {
-                            let d = |m: &horizon_client::mobs::Mob| {
-                                (m.position.x - from[0]).powi(2) + (m.position.z - from[2]).powi(2)
-                            };
-                            d(a).total_cmp(&d(b))
+                    // The nearest living creature within 16 blocks (the ECS keeps no list of all mobs).
+                    let d = |id: u32| {
+                        self.ecs.position(id).map_or(f64::MAX, |p| {
+                            (p[0] - from[0]).powi(2) + (p[2] - from[2]).powi(2)
                         })
-                        .map(|m| m.id)
+                    };
+                    self.ecs
+                        .ids_near(from, 16.0)
+                        .into_iter()
+                        .filter(|&id| self.ecs.is_mob(id) && self.ecs.alive(id))
+                        .min_by(|&a, &b| d(a).total_cmp(&d(b)))
                 }),
         };
         // The causing entity for the death message.
@@ -3190,8 +2697,7 @@ impl Game<'_> {
         if outcome.hurt || outcome.sound {
             let source = attacker
                 .or(owner)
-                .and_then(|id| self.remote_index.get(&self.remote_entities, id))
-                .map(|m| self.mob_entity(m));
+                .and_then(|id| self.ecs_host_view(id));
             self.trigger_entity_hurt_player(&horizon_client::advancements::DamageView {
                 kind: damage_type.to_owned(),
                 // Arrows and the like name no direct entity here; a
@@ -3273,108 +2779,6 @@ impl Game<'_> {
         }
         self.combat.forget_noted(canceled);
     }
-    /// `BellBlock.onProjectileHit`: a projectile that strikes the bell proper
-    /// rings it, and a player's shot counts as the player's ring.
-    pub(super) fn bell_projectile_hit(
-        &mut self,
-        p: &ProjectileHitter,
-        pos: [i32; 3],
-        at: Vec3,
-        face: [i32; 3],
-    ) {
-        let Some(face) = Direction::ALL.into_iter().find(|d| d.normal() == face) else {
-            return;
-        };
-        let block = BlockPos::new(pos[0], pos[1], pos[2]);
-        let rang = self
-            .with_level(|b, level, ticks| b.bell_projectile_hit(level, ticks, block, face, at.y));
-        if rang {
-            let _ = self.process_level_events();
-            if p.owner == Some(Who::Player) {
-                self.award_custom_stat("bell_ring", 1);
-            }
-        }
-    }
-    /// `AmethystBlock.onProjectileHit`: a projectile that strikes an amethyst
-    /// block rings `block.amethyst_block.chime` there, pitched by the level random.
-    pub(super) fn amethyst_projectile_hit(&mut self, pos: [i32; 3]) {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        if &*self.res.facts().get(state).name != "minecraft:amethyst_block" {
-            return;
-        }
-        let pitch = 0.5 + self.world.random.next_float() * 1.2;
-        self.level_events
-            .push(horizon_world::level::LevelEvent::Sound {
-                pos: BlockPos::new(pos[0], pos[1], pos[2]),
-                sound: "minecraft:block.amethyst_block.chime".into(),
-                volume: 1.0,
-                pitch,
-            });
-        let _ = self.process_level_events();
-    }
-    /// What an arrow's tick asked for: its block and entity reactions.
-    pub(in crate::game) fn arrow_event(
-        &mut self,
-        at: Vec3,
-        event: horizon_client::arrows::ArrowEvent,
-    ) {
-        use horizon_client::arrows::{ArrowEvent, ArrowSound, BlockReaction};
-        match event {
-            // Arrow.tick: `broadcastEntityEvent(this, 0)`. The window and the
-            // guests burst the particles themselves (`remote_arrow_puff`).
-            ArrowEvent::PotionPuff { id, .. } => {
-                self.lan_entity_event(id as i32, 0, [at.x, at.y, at.z]);
-            }
-            // The local particle is the client's own: it is not sent.
-            ArrowEvent::Particle { .. } => {}
-            ArrowEvent::Sound {
-                sound,
-                volume,
-                pitch,
-            } => {
-                let name = match sound {
-                    ArrowSound::Splash => "minecraft:entity.generic.splash",
-                    ArrowSound::HitGround => "minecraft:entity.arrow.hit",
-                    ArrowSound::CrossbowHit => "minecraft:item.crossbow.hit",
-                    ArrowSound::Extinguish => "minecraft:entity.generic.extinguish_fire",
-                    ArrowSound::TridentHitGround => "minecraft:item.trident.hit_ground",
-                    ArrowSound::TridentHit => "minecraft:item.trident.hit",
-                };
-                // Each one is the projectile's own `Entity.playSound`, on `getSoundSource()`:
-                // NEUTRAL, which neither AbstractArrow nor ThrownTrident overrides. The
-                // name-based guess would put `entity.arrow.*` and `item.*` on PLAYERS.
-                self.audio
-                    .play_on(6, name, Some([at.x, at.y, at.z]), volume, pitch);
-            }
-            ArrowEvent::BubbleColumnParticles { pos } => self.bubble_column_particles(pos),
-            ArrowEvent::Block {
-                pos,
-                reaction,
-                owner,
-            } => match reaction {
-                BlockReaction::PrimeTnt => {
-                    // `TntBlock.onProjectileHit`: the arrow's owner lights it.
-                    if self.tnt_prime_allowed(pos) {
-                        self.spawn_primed_tnt(pos, false, owner, None);
-                        self.with_level(|b, level, ticks| b.remove_block(level, ticks, pos, false));
-                        let _ = self.process_level_events();
-                    }
-                }
-                BlockReaction::Light(lit) => {
-                    let _ = self.level_set([pos.x, pos.y, pos.z], lit);
-                }
-            },
-            ArrowEvent::SplashEvent => {
-                self.projectile_event("minecraft:splash", None, [at.x, at.y, at.z]);
-            }
-            // The ECS drops the pickup and shoots the event itself.
-            ArrowEvent::ShootEvent | ArrowEvent::Drop => {}
-        }
-    }
-    /// `Level.isRainingAt` for arrows.
-    pub(super) fn arrow_rain(&self) -> impl Fn(BlockPos) -> bool + '_ {
-        move |p: BlockPos| self.raining_at(p)
-    }
     /// The level as arrows see it.
     pub(super) fn arrow_scene<'s>(
         &'s self,
@@ -3402,1102 +2806,22 @@ impl Game<'_> {
             owners: self,
         }
     }
-    /// `AgeableMob.mobInteract`: whether a click with `item` on `m` gets to
-    /// the golden dandelion check (`canUseGoldenDandelion`, which a tadpole
-    /// calls with `isBaby` true). A panda that is scared or on its back and an
-    /// armadillo in its shell answer in their own `mobInteract` first.
-    pub(super) fn age_lock_takes(&self, m: &Mob, item: &str) -> bool {
-        let species = m.species();
-        let baby = if species == Species::Tadpole {
-            true
-        } else if horizon_client::mobs::finalize::ageable(species) {
-            m.is_baby()
-                && !(species == Species::Panda
-                    && (horizon_client::mobs::panda::scared(m)
-                        || horizon_client::mobs::panda::is_on_back(m)))
-                && !(species == Species::Armadillo && horizon_client::mobs::armadillo::scared(m))
-        } else {
-            false
-        };
-        let cannot = self
-            .res
-            .mob_data()
-            .entity_has("minecraft:cannot_be_age_locked", &m.kind.id);
-        horizon_client::mobs::ai::can_use_golden_dandelion(
-            item,
-            baby,
-            m.extra.age_lock_particle_timer,
-            cannot,
-        )
-    }
-    /// `AgeableMob.setAgeLocked`: a golden dandelion on mob `index` flips its
-    /// age lock (a tadpole's or an ageable mob's own `setAgeLockedData`) and is
-    /// used up; a locked mob stays (`setPersistenceRequired`), and the lock's
-    /// use or unuse sound plays at its block for everyone near.
-    pub(super) fn set_age_locked(&mut self, index: usize) {
-        let m = &mut self.remote_entities[index];
-        if m.species() == Species::Tadpole {
-            horizon_client::mobs::aquatic::set_age_locked_data(m);
-        } else {
-            horizon_client::mobs::ai::set_age_locked_data(m);
-        }
-        self.consume_held();
-        let m = &mut self.remote_entities[index];
-        let locked = m.extra.age_locked;
-        if locked {
-            m.persistent = true;
-        }
-        // Level.playSound(null, blockPosition, ..): the middle of the block.
-        let at = [
-            m.position.x.floor() + 0.5,
-            m.position.y.floor() + 0.5,
-            m.position.z.floor() + 0.5,
-        ];
-        let chunk = (
-            m.position.x.floor() as i32 >> 4,
-            m.position.z.floor() as i32 >> 4,
-        );
-        self.world.modified.insert(chunk);
-        let sound = if locked {
-            "minecraft:item.golden_dandelion.use"
-        } else {
-            "minecraft:item.golden_dandelion.unuse"
-        };
-        self.audio.play(sound, Some(at), 1.0, 1.0);
-    }
     /// The mob a normal interaction can reach: a packet's exact validated ID,
     /// or the crosshair's mob before its blocking shape.
     pub(in crate::game) fn mob_interaction_target(
         &self,
         target: Option<InteractTarget>,
     ) -> Option<usize> {
-        let (index, distance, _) = (match target {
-            // The id the packet named, under the filters the crosshair pick
-            // applies (`mob_hit`): a mob in its death animation is not clicked
-            // by either path, so naming one in a packet must not reach the
-            // feed, shear, leash or name paths either.
-            Some(t) => Self::named_entity(&self.remote_entities, t.id, |m| m.id)
-                .filter(|&i| {
-                    let m = &self.remote_entities[i];
-                    named_mob_pickable(m.alive(), m.id, self.riding, None)
-                })
-                .map(|i| (i, 0.0, [0.0; 3])),
-            None => self.mob_hit(),
-        })?;
-        // Only a client's own pick is stopped by a block: the range check passed.
-        if target.is_none()
-            && let Some(hit) = self.pick_unfiltered()
-            && let Some(eye) = self.eye_position()
-        {
-            let d = ((hit.point[0] - eye[0]).powi(2)
-                + (hit.point[1] - eye[1]).powi(2)
-                + (hit.point[2] - eye[2]).powi(2))
-            .sqrt();
-            if d < distance {
-                return None;
-            }
-        }
-        Some(index)
+        // RESTE-SANS-ECS: its only caller (game.rs, the non-ECS branch of its item use) still asks for a list index.
+        let _ = target;
+        None
     }
     /// Right click on a mob (Mob.interact / mobInteract), on the mob under the
     /// crosshair or on the one a guest's interact packet named: returns true
     /// when consumed.
     pub(super) fn interact_mob(&mut self, target: Option<InteractTarget>) -> Result<bool> {
         // The server's creatures live in the ECS: leads, mounts and P's modules and rules answer there (`ecs_interact`).
-        if self.ecs.is_active() {
-            return Ok(self.interact_mob_ecs(target));
-        }
-        let Some(mut index) = self.mob_interaction_target(target) else {
-            return Ok(false);
-        };
-        // CamelHusk.interact: any click on it keeps it (`setPersistenceRequired`).
-        horizon_client::mobs::camel::keep_on_interact(&mut self.remote_entities[index]);
-        // PlayerInteractTrigger: the name tag as it was before it named the mob.
-        let used = self.held().cloned();
-        if self.name_mob(index) {
-            if let Some(stack) = &used {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            return Ok(true);
-        }
-        // Shears ask the mob's entity parts first, then fire `player_shear_entity`.
-        if self.held_shears()
-            && let Some(consumed) = self.player_shear(&mut index)
-        {
-            return Ok(consumed);
-        }
-        if self.spawn_egg_offspring(index) {
-            self.swing_arm();
-            return Ok(true);
-        }
-        {
-            let item = self.held().map(|h| h.item.to_string()).unwrap_or_default();
-            let used = self.held().cloned();
-            if let Some(context) = self.interact_leash_with_item_context(index, &item) {
-                let used = match context {
-                    super::leads::LeashInteraction::WithItem => used,
-                    super::leads::LeashInteraction::WithoutItem => {
-                        Some(ItemStack::new("minecraft:air", 0))
-                    }
-                };
-                if let Some(stack) = &used {
-                    let target = self.mob_entity(&self.remote_entities[index]);
-                    self.trigger_item_entity(
-                        "minecraft:player_interacted_with_entity",
-                        stack,
-                        &target,
-                    );
-                }
-                self.swing_arm();
-                return Ok(true);
-            }
-        }
-        let held = self.held().cloned();
-        let item = held
-            .as_ref()
-            .map(|h| h.item.to_string())
-            .unwrap_or_default();
-        let shears = self.held_shears();
-        // Bucketable.bucketMobPickup: a water bucket scoops up a fish, a
-        // tadpole or an axolotl, with the data its bucket carries.
-        if item == "minecraft:water_bucket"
-            && self.remote_entities[index].alive()
-            && let Some((bucket, sound)) = bucketable(self.remote_entities[index].species())
-        {
-            let mut filled = ItemStack::new(bucket, 1);
-            filled.extra = Some(Box::new(horizon_client::entity_nbt::bucket_components(
-                &self.remote_entities[index],
-            )));
-            self.audio
-                .play(sound, Some(self.remote_entities[index].center()), 1.0, 1.0);
-            self.trigger_item("minecraft:filled_bucket", &filled);
-            // PlayerInteractTrigger: the water bucket as it was, and the mob picked up.
-            if let Some(stack) = &held {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            let species = bucket.trim_end_matches("_bucket").to_owned();
-            let id = self.remote_entities[index].id as i32;
-            // Leashable.dropLeash, then discard.
-            self.break_leash(id as u32, true, false);
-            self.remote_entities[index].removed = true;
-            if self.creative {
-                if let Some(rest) = self.add_stack_to_inventory(filled) {
-                    self.spawn_item(rest, self.eye_position().unwrap_or([0.0; 3]), [0.0; 3], 40);
-                }
-            } else {
-                *self.held_mut() = Some(filled);
-            }
-            if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-            {
-                self.native_player_bucket_entity(player, &name, id, &species);
-            }
-            self.swing_arm();
-            return Ok(true);
-        }
-        // AgeableMob.mobInteract: a golden dandelion on a baby freezes its
-        // growth, or lets it grow again.
-        if self.remote_entities[index].alive() && self.age_lock_takes(&self.remote_entities[index], &item) {
-            let entity_id = self.remote_entities[index].id;
-            self.set_age_locked(index);
-            if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-            {
-                self.native_player_toggle_entity_age_lock(
-                    player,
-                    &name,
-                    entity_id,
-                    self.remote_entities[index].extra.age_locked,
-                );
-            }
-            if let Some(stack) = &held {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            self.swing_arm();
-            return Ok(true);
-        }
-        // The hand's slot (Player.interactOn passes the hand).
-        let selected = self.held_slot();
-        if self.interact_zombie_villager(index, &item) {
-            return Ok(true);
-        }
-        if self.interact_trader(index, &item)? {
-            self.swing_arm();
-            return Ok(true);
-        }
-        if !self.remote_entities[index].kind.food.contains(&item)
-            && self.interact_sheep_dye(index, self.hand, false)
-        {
-            // PlayerInteractTrigger: the dye as it was before it coloured the sheep.
-            if let Some(stack) = &held {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            self.swing_arm();
-            return Ok(true);
-        }
-        if self.interact_allay(index, held.as_ref()) {
-            self.swing_arm();
-            return Ok(true);
-        }
-        if self.interact_sulfur_cube(index, &item) {
-            if let Some(stack) = &held {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            self.swing_arm();
-            return Ok(true);
-        }
-        if self.interact_armadillo(index, &item) {
-            if let Some(stack) = &held {
-                let target = self.mob_entity(&self.remote_entities[index]);
-                self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-            }
-            self.swing_arm();
-            return Ok(true);
-        }
-        if self.interact_copper_golem(index, &item) {
-            self.swing_arm();
-            return Ok(true);
-        }
-        if self.interact_shear_mob(index, shears) {
-            self.swing_arm();
-            return Ok(true);
-        }
-        if let Some(sheared) = self.shear_saddle(index, &item) {
-            if sheared {
-                self.swing_arm();
-            }
-            return Ok(sheared);
-        }
-        // AbstractHorse.mobInteract: feed, equip or ride.
-        if self.interact_mount(index, &item) {
-            self.swing_arm();
-            return Ok(true);
-        }
-        // Creeper.mobInteract: any item in #creeper_igniters, damaged when it
-        // is damageable and used up otherwise.
-        let creeper_igniter = self
-            .res
-            .items()
-            .item_tags
-            .get("minecraft:creeper_igniters")
-            .is_some_and(|t| t.contains(&*item));
-        let fish = self
-            .res
-            .items()
-            .item_tags
-            .get("minecraft:fishes")
-            .is_some_and(|t| t.contains(&*item));
-        let damageable = self
-            .res
-            .items()
-            .get(&item)
-            .is_some_and(|i| i.max_damage > 0);
-        // Wolf.mobInteract: the owner's #wolf_collar_dyes item only ever dyes the
-        // collar; one of the colour the collar already has does nothing.
-        let wolf_collar_dye = self
-            .res
-            .items()
-            .item_tags
-            .get("minecraft:wolf_collar_dyes")
-            .is_some_and(|t| t.contains(&*item));
-        let parrot_poisonous = self
-            .res
-            .items()
-            .item_tags
-            .get("minecraft:parrot_poisonous_food")
-            .is_some_and(|t| t.contains(&*item));
-        let player_at = self.eye_position();
-        let player_feet = self
-            .player
-            .as_ref()
-            .map(|p| [p.position.x, p.position.y, p.position.z]);
-        let acting = self.acting_player_uuid();
-        let (acting_id, acting_entity_id) = (self.native_acting_id(), self.own_entity_id());
-        let sneaking = self.player.as_ref().is_some_and(|p| p.shift_key_down);
-        let held_damage = held.as_ref().map_or(0, |h| h.damage as i32);
-        let held_extra = held.as_ref().and_then(|h| h.extra.clone());
-        let m = &mut self.remote_entities[index];
-        if !m.alive() {
-            return Ok(false);
-        }
-        let species = m.species();
-        let center = m.center();
-        // Wolf armor the owner takes off with shears or leaves a dropped stack of.
-        let mut armor_drop: Option<ItemStack> = None;
-        let mut equip_event: Option<bool> = None;
-        let mut consume = false;
-        let mut give: Option<&str> = None;
-        let mut sound: Option<(&str, f32, f32)> = None;
-        // Sounds played as vanilla plays them: (event, volume, pitch) at the feet.
-        let mut eat: Option<(&'static str, f32, f32)> = None;
-        let feet = [m.position.x, m.position.y, m.position.z];
-        let mut handled = true;
-        let mut ignited_creeper = false;
-        let mut clear_wolf_target = false;
-        let mut drops: Vec<(String, u32)> = Vec::new();
-        // The shearing table rolled, for the mods.
-        let mut drops_table = String::new();
-        let mob = (m.id, super::native_hooks::mob_kind(m));
-        // `Sheep.shear` adds a spread on top of the ItemEntity's own motion.
-        let mut wool = false;
-        let is_food = m.kind.food.contains(&item);
-        let baby_turtle = species == Species::Turtle && m.is_baby();
-        // MushroomCow.getEffectsFromItemStack: the item's block supplies them.
-        let flower = if species == Species::Mooshroom {
-            horizon_client::flowers::stew_effect(&item)
-        } else {
-            None
-        };
-        let mut give_stew: Option<Vec<(Arc<str>, i32)>> = None;
-        // `Some(true)` for the four spell particles, `Some(false)` for the two
-        // smoke puffs of a cow that already holds effects.
-        let mut stew_particles: Option<bool> = None;
-        // `Ocelot.mobInteract`: whether the fish won its trust.
-        let mut ocelot_trust: Option<bool> = None;
-        match species {
-            Species::Cow | Species::Mooshroom if item == "minecraft:bucket" && !m.is_baby() => {
-                give = Some("minecraft:milk_bucket");
-                consume = true;
-                sound = Some(("entity.cow.milk", 1.0, 1.0));
-            }
-            // Goat.mobInteract: a bucket on an adult gives milk.
-            Species::Goat if item == "minecraft:bucket" && !m.is_baby() => {
-                give = Some("minecraft:milk_bucket");
-                consume = true;
-                let milk = if m.extra.screaming {
-                    "entity.goat.screaming.milk"
-                } else {
-                    "entity.goat.milk"
-                };
-                sound = Some((milk, 1.0, 1.0));
-            }
-            // MushroomCow.mobInteract: a bowl gives back what a flower left as
-            // a suspicious stew, or plain stew when it holds no effects.
-            Species::Mooshroom if item == "minecraft:bowl" && !m.is_baby() => {
-                consume = true;
-                match m.extra.stew_effects.take() {
-                    Some(effects) => {
-                        give = Some("minecraft:suspicious_stew");
-                        give_stew = Some(effects);
-                        // `playSound(.., 1.0F, 1.0F)` at the feet.
-                        eat = Some(("entity.mooshroom.suspicious_milk", 1.0, 1.0));
-                    }
-                    None => {
-                        give = Some("minecraft:mushroom_stew");
-                        sound = Some(("entity.mooshroom.milk", 1.0, 1.0));
-                    }
-                }
-            }
-            Species::Mooshroom if shears && !m.is_baby() => {
-                let player = Some(self.native_acting_id());
-                self.shear_mooshroom(index, player, held.as_ref().expect("held shears"));
-                let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
-                self.post_game_event("minecraft:shear", feet, ctx);
-                self.damage_held_tool();
-            }
-            // MushroomCow.mobInteract: a brown adult takes the flower's effects
-            // unless it holds some already, when it only puffs smoke.
-            Species::Mooshroom if m.extra.variant == 1 && !m.is_baby() && flower.is_some() => {
-                if m.extra.stew_effects.is_some() {
-                    stew_particles = Some(false);
-                } else {
-                    let (effect, ticks) = flower.expect("the guard checked");
-                    m.extra.stew_effects = Some(vec![(Arc::from(effect), ticks)]);
-                    consume = true;
-                    eat = Some(("entity.mooshroom.eat", 2.0, 1.0));
-                    stew_particles = Some(true);
-                }
-            }
-            Species::Sheep if shears && !m.extra.sheared && !m.is_baby() => {
-                self.audio.play_bound(
-                    "minecraft:entity.sheep.shear",
-                    7,
-                    1.0,
-                    1.0,
-                    m.id,
-                    feet,
-                    None,
-                );
-                m.extra.sheared = true;
-                let color = horizon_client::mobs::DYE_NAMES[m.extra.color as usize & 15];
-                drops_table = format!("minecraft:shearing/sheep/{color}");
-                let stacks = world_items!(self).loot_table(
-                    &drops_table,
-                    false,
-                    None,
-                    &mut self.world.random,
-                );
-                drops.extend(stacks.into_iter().map(|s| (s.item.to_string(), s.count)));
-                wool = true;
-                let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
-                self.post_game_event("minecraft:shear", feet, ctx);
-                self.damage_held_tool();
-            }
-            // Entity.interact: shears take a tamed wolf's armor off for its owner.
-            Species::Wolf
-                if item == "minecraft:shears"
-                    && m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && m.extra.body_id().is_some()
-                    && !sneaking =>
-            {
-                armor_drop = m.equipment_stacks()[6].clone();
-                m.extra.set_body_stack(None);
-                eat = Some(("item.armor.unequip_wolf", 1.0, 1.0));
-                equip_event = Some(false);
-                self.damage_held_tool();
-            }
-            // Wolf.mobInteract: heal, dye the collar or sit/stand when tame;
-            // a bone tames a wild one a third of the time.
-            Species::Wolf if m.extra.tame && is_food && m.health < m.attrs.max_health => {
-                let heal = self
-                    .res
-                    .items()
-                    .get(&item)
-                    .and_then(|i| i.food.as_ref())
-                    .map_or(2.0, |f| f.0 as f32 * 2.0);
-                // TamableAnimal.feed(.., 2.0F, 2.0F): heals twice the nutrition,
-                // then playEatingSound, which wolves leave empty.
-                m.heal(&self.loop_context, heal);
-                consume = true;
-            }
-            // Wolf.mobInteract: the owner puts wolf armor on a tamed adult.
-            Species::Wolf
-                if item == "minecraft:wolf_armor"
-                    && m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && m.extra.body_id().is_none()
-                    && !m.is_baby() =>
-            {
-                let mut body = ItemStack::new(item.as_str(), 1);
-                body.damage = held_damage.max(0) as u32;
-                body.extra = held_extra;
-                m.extra.set_body_stack(Some(body));
-                consume = true;
-                eat = Some(("item.armor.equip_wolf", 1.0, 1.0));
-                equip_event = Some(true);
-            }
-            // Wolf.mobInteract: an armadillo scute repairs a sitting wolf's
-            // armor by an eighth of its durability.
-            Species::Wolf
-                if item == "minecraft:armadillo_scute"
-                    && m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && m.extra.sitting
-                    && m.extra.body_id().is_some()
-                    && m.extra.body_damage() > 0 =>
-            {
-                m.extra.set_body_damage(
-                    m.extra.body_damage()
-                        - (horizon_client::mobs::WOLF_ARMOR_DURABILITY as f32 * 0.125) as i32,
-                );
-                consume = true;
-                eat = Some(("item.wolf_armor.repair", 1.0, 1.0));
-            }
-            Species::Wolf
-                if m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && item.ends_with("_dye")
-                    && horizon_client::mobs::DYE_NAMES
-                        .iter()
-                        .position(|d| {
-                            item.trim_start_matches("minecraft:")
-                                .trim_end_matches("_dye")
-                                == *d
-                        })
-                        .is_some_and(|c| c as u8 != m.extra.color) =>
-            {
-                let name = item
-                    .trim_start_matches("minecraft:")
-                    .trim_end_matches("_dye");
-                if let Some(c) = horizon_client::mobs::DYE_NAMES
-                    .iter()
-                    .position(|d| *d == name)
-                {
-                    m.extra.color = c as u8;
-                }
-                consume = true;
-            }
-            // Wolf.mobInteract: Animal.mobInteract first breeds an adult or
-            // grows a baby with the food; only when it did not does the owner
-            // make the pet sit or stand.
-            Species::Wolf
-                if m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && !wolf_collar_dye
-                    && !(is_food && takes_food(m)) =>
-            {
-                m.extra.sitting = !m.extra.sitting;
-                m.ai.jumping = false;
-                m.nav_stop();
-                clear_wolf_target = true;
-                self.world.modified.insert((
-                    m.position.x.floor() as i32 >> 4,
-                    m.position.z.floor() as i32 >> 4,
-                ));
-            }
-            Species::Wolf
-                if !m.extra.tame
-                    && item == "minecraft:bone"
-                    && !horizon_client::mobs::tame::angry(m) =>
-            {
-                consume = true;
-                let rolled = m.random.next_int_bound(3).unwrap_or(1) == 0;
-                let tamed =
-                    rolled && !self.animal_tame_cancelled(index, acting_id, acting_entity_id);
-                let m = &mut self.remote_entities[index];
-                if tamed {
-                    horizon_client::mobs::tame::set_tame(m, true);
-                    m.extra.owner = Some(acting);
-                    m.persistent = true;
-                    m.nav_stop();
-                    clear_wolf_target = true;
-                    m.extra.sitting = true;
-                }
-                // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
-                self.mob_event_particles(self.remote_entities[index].id, if tamed { 7 } else { 6 });
-                if tamed {
-                    let view = self.mob_entity(&self.remote_entities[index]);
-                    self.trigger_entity("minecraft:tame_animal", "entity", &view);
-                    self.pet_tamed(index);
-                }
-                let m = &self.remote_entities[index];
-                self.world.modified.insert((
-                    m.position.x.floor() as i32 >> 4,
-                    m.position.z.floor() as i32 >> 4,
-                ));
-            }
-            // Cat.mobInteract: dye, heal or sit when tame; fish may tame a wild one.
-            Species::Cat
-                if m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && item.ends_with("_dye")
-                    && horizon_client::mobs::DYE_NAMES
-                        .iter()
-                        .position(|d| {
-                            item.trim_start_matches("minecraft:")
-                                .trim_end_matches("_dye")
-                                == *d
-                        })
-                        .is_some_and(|c| c as u8 != m.extra.color) =>
-            {
-                let name = item
-                    .trim_start_matches("minecraft:")
-                    .trim_end_matches("_dye");
-                if let Some(c) = horizon_client::mobs::DYE_NAMES
-                    .iter()
-                    .position(|d| *d == name)
-                {
-                    m.extra.color = c as u8;
-                }
-                m.persistent = true;
-                consume = true;
-            }
-            Species::Cat
-                if m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && is_food
-                    && m.health < m.attrs.max_health =>
-            {
-                let heal = self
-                    .res
-                    .items()
-                    .get(&item)
-                    .and_then(|i| i.food.as_ref())
-                    .map_or(1.0, |f| f.0 as f32);
-                // TamableAnimal.feed.
-                m.heal(&self.loop_context, heal);
-                consume = true;
-                eat = eating_sound(m, &mut self.world.random);
-            }
-            // Cat.mobInteract: Animal.mobInteract first breeds an adult or
-            // grows a baby with the food; only when it did not does the owner
-            // make the pet sit or stand.
-            Species::Cat
-                if m.extra.tame && m.extra.owner == Some(acting) && !(is_food && takes_food(m)) =>
-            {
-                m.extra.sitting = !m.extra.sitting;
-                self.world.modified.insert((
-                    m.position.x.floor() as i32 >> 4,
-                    m.position.z.floor() as i32 >> 4,
-                ));
-            }
-            // Parrot.mobInteract: the owner makes a tame parrot on the ground
-            // sit or stand (poisonous food is handled apart).
-            Species::Parrot
-                if m.extra.tame
-                    && m.extra.owner == Some(acting)
-                    && m.on_ground
-                    && !parrot_poisonous =>
-            {
-                m.extra.sitting = !m.extra.sitting;
-                self.world.modified.insert((
-                    m.position.x.floor() as i32 >> 4,
-                    m.position.z.floor() as i32 >> 4,
-                ));
-            }
-            Species::Cat if !m.extra.tame && is_food => {
-                consume = true;
-                m.persistent = true;
-                let rolled = m.random.next_int_bound(3).unwrap_or(1) == 0;
-                let tamed =
-                    rolled && !self.animal_tame_cancelled(index, acting_id, acting_entity_id);
-                let m = &mut self.remote_entities[index];
-                if tamed {
-                    m.extra.tame = true;
-                    m.extra.owner = Some(acting);
-                    m.extra.sitting = true;
-                }
-                eat = eating_sound(m, &mut self.world.random);
-                // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
-                self.mob_event_particles(self.remote_entities[index].id, if tamed { 7 } else { 6 });
-                if tamed {
-                    let view = self.mob_entity(&self.remote_entities[index]);
-                    self.trigger_entity("minecraft:tame_animal", "entity", &view);
-                    self.pet_tamed(index);
-                }
-                let m = &self.remote_entities[index];
-                self.world.modified.insert((
-                    m.position.x.floor() as i32 >> 4,
-                    m.position.z.floor() as i32 >> 4,
-                ));
-            }
-            // IronGolem.mobInteract: an iron ingot repairs 25 health.
-            Species::IronGolem
-                if item == "minecraft:iron_ingot" && m.health < m.attrs.max_health =>
-            {
-                m.heal(&self.loop_context, 25.0);
-                consume = true;
-                eat = Some(("entity.iron_golem.repair", 1.0, m.golem_repair_pitch()));
-            }
-            Species::Creeper if creeper_igniter => {
-                m.extra.flag = true;
-                ignited_creeper = true;
-                // FIRECHARGE_USE for a fire charge, else FLINTANDSTEEL_USE,
-                // at the creeper's feet with a pitch from its own random.
-                let event = if item == "minecraft:fire_charge" {
-                    "item.firecharge.use"
-                } else {
-                    "item.flintandsteel.use"
-                };
-                eat = Some((event, 1.0, m.random.next_float() * 0.4 + 0.8));
-                if damageable {
-                    self.damage_held_tool();
-                } else {
-                    consume = true;
-                }
-            }
-            // Parrot.mobInteract: #parrot_poisonous_food (a cookie) poisons the
-            // parrot for 45 s and then hurts it with a player attack of
-            // Float.MAX_VALUE, which an invulnerable one shrugs off.
-            Species::Parrot
-                if self
-                    .res
-                    .items()
-                    .item_tags
-                    .get("minecraft:parrot_poisonous_food")
-                    .is_some_and(|t| t.contains(&*item)) =>
-            {
-                consume = true;
-                m.add_effect("minecraft:poison", 900, 0);
-                let id = m.id;
-                let hurt = m.damage(
-                    crate::game::entity::damage_level_of!(self),
-                    f32::MAX,
-                    horizon_client::mobs::Damage::player(player_at.unwrap_or(center)),
-                );
-                // The feeder gets the kill, as for a normal player attack.
-                if hurt {
-                    self.remember_mob_player_credit(id);
-                }
-            }
-            // Parrot.mobInteract: parrot food may tame a wild one (one time in
-            // ten); a parrot never takes it as Animal food (isFood is false).
-            Species::Parrot if !m.extra.tame && is_food => {
-                consume = true;
-                if !m.silent {
-                    let pitch = 1.0 + (m.random.next_float() - m.random.next_float()) * 0.2;
-                    eat = Some(("entity.parrot.eat", 1.0, pitch));
-                }
-                let rolled = m.random.next_int_bound(10).unwrap_or(1) == 0;
-                let tamed =
-                    rolled && !self.animal_tame_cancelled(index, acting_id, acting_entity_id);
-                let m = &mut self.remote_entities[index];
-                if tamed {
-                    m.extra.tame = true;
-                    m.extra.owner = Some(acting);
-                }
-                // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
-                self.mob_event_particles(self.remote_entities[index].id, if tamed { 7 } else { 6 });
-                if tamed {
-                    let view = self.mob_entity(&self.remote_entities[index]);
-                    self.trigger_entity("minecraft:tame_animal", "entity", &view);
-                    self.pet_tamed(index);
-                }
-            }
-            // Dolphin.mobInteract: a fish makes a baby grow by a tenth and an
-            // adult remember it (`gotFish`), to swim to a treasure.
-            Species::Dolphin if fish => {
-                eat = Some(("entity.dolphin.eat", 1.0, 1.0));
-                if horizon_client::mobs::ai::can_age_up(m) {
-                    let secs = ((-m.extra.age / 20) as f32 * 0.1) as i32;
-                    horizon_client::mobs::ai::age_up(m, secs, true);
-                } else {
-                    m.extra.flag = true;
-                }
-                consume = true;
-            }
-            // Tadpole.feed: frog food ages it by a tenth of the time left to
-            // grow into a frog (it grows on its next tick once past 24000).
-            Species::Tadpole if is_food && !m.extra.age_locked => {
-                consume = true;
-                let left = 24_000 - m.extra.age;
-                m.extra.age += ((left / 20) as f32 * 0.1) as i32 * 20;
-            }
-            // Bee.mobInteract: a wither rose or an open eyeblossom is eaten for
-            // its `getBeeInteractionEffect` instead of breeding the bee.
-            Species::Bee
-                if is_food
-                    && matches!(
-                        &*item,
-                        "minecraft:wither_rose" | "minecraft:open_eyeblossom"
-                    ) =>
-            {
-                if &*item == "minecraft:wither_rose" {
-                    m.add_effect("minecraft:wither", 40, 0);
-                } else {
-                    m.add_effect("minecraft:poison", 25, 0);
-                }
-                consume = true;
-            }
-            // Ocelot.mobInteract: raw fish from a hand within 3 blocks, while it comes for the
-            // food (`temptGoal.isRunning`), is used up; one time in three it trusts the player
-            // (entity event 41, hearts), otherwise smoke (event 40). Anything else is
-            // `Animal.mobInteract`.
-            Species::Ocelot
-                if is_food
-                    && !m.extra.trusting
-                    && m.ai.goals.is_running("OcelotTemptGoal")
-                    && player_feet.is_some_and(|p| {
-                        let d = [
-                            p[0] - m.position.x,
-                            p[1] - m.position.y,
-                            p[2] - m.position.z,
-                        ];
-                        d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 9.0
-                    }) =>
-            {
-                consume = true;
-                let trusts = m.random.next_int_bound(3).unwrap_or(1) == 0;
-                if trusts {
-                    m.extra.trusting = true;
-                }
-                ocelot_trust = Some(trusts);
-            }
-            // HappyGhast.canFallInLove: never, so only a ghastling takes food.
-            _ if is_food
-                && m.kind.flags.animal
-                && species != Species::Parrot
-                && (species != Species::HappyGhast || m.is_baby()) =>
-            {
-                // Animal.mobInteract: breed adults, speed up babies, then
-                // playEatingSound (silent unless the species overrides it).
-                match feed_animal(m, &mut self.world.random, Some(acting)) {
-                    Some(sound) => {
-                        consume = true;
-                        eat = sound;
-                        // Axolotl.usePlayerItem: a tropical fish bucket is
-                        // emptied into a water bucket in its place.
-                        if species == Species::Axolotl && &*item == "minecraft:tropical_fish_bucket"
-                        {
-                            give = Some("minecraft:water_bucket");
-                        }
-                        // Animal.setInLove: entity event 18 (a baby that
-                        // only grew is not in love).
-                        if self.remote_entities[index].extra.in_love > 0 {
-                            let id = self.remote_entities[index].id;
-                            self.ecs.set_love_cause(id, self.player_id_by_connection(self.lan_acting));
-                            let kind = self.remote_entities[index].kind.id.clone();
-                            self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
-                            self.mob_event_particles(id, 18);
-                        }
-                    }
-                    // Animal.mobInteract still consumes the client click when
-                    // an adult cannot breed, without swinging or taking food.
-                    None => return Ok(true),
-                }
-            }
-            _ => handled = false,
-        }
-        if !handled {
-            return Ok(false);
-        }
-        if clear_wolf_target {
-            self.set_event_ai_target(mob.0, None, self.lan_acting);
-        }
-        if ignited_creeper {
-            self.native_creeper_ignite(
-                self.remote_entities[index].id,
-                horizon_client::lan::playerdata::ints_uuid(acting),
-                &item,
-            );
-        }
-        if let Some(trusts) = ocelot_trust {
-            // `spawnTrustingParticles` on the clients: entity event 41 (hearts) or 40 (smoke).
-            self.mob_event_particles(self.remote_entities[index].id, if trusts { 41 } else { 40 });
-        }
-        if let Some(fresh) = stew_particles {
-            // `SpellParticleOption.create(EFFECT, -1, 1)` is the plain white
-            // effect particle; the smoke is the already-fed answer.
-            let ty = if fresh {
-                ParticleType::Effect
-            } else {
-                ParticleType::Smoke
-            };
-            let options = ParticleOptions::simple(ty);
-            let at = [feet[0], feet[1] + 0.5, feet[2]];
-            let (spread, count) = ([0.5, 0.0, 0.5], if fresh { 4 } else { 2 });
-            // shortcut: scalar speed models DEFAULT randomization; 26.3 sends
-            // ALTERNATIVE_WITH_SPEED with a per-axis maximum speed.
-            self.lan_send_particles(super::lan_particles::QueuedParticle {
-                dimension: self.dim.id(),
-                options,
-                state: None,
-                at,
-                spread,
-                speed: [0.2; 3],
-                count: count as i32,
-                randomization: 0,
-            });
-        }
-        // PlayerInteractTrigger: the item used on the mob, once the interaction took.
-        if let Some(stack) = &held {
-            let target = self.mob_entity(&self.remote_entities[index]);
-            self.trigger_item_entity("minecraft:player_interacted_with_entity", stack, &target);
-        }
-        // Turtle.ageBoundaryReached: food that finishes a baby's growth.
-        if baby_turtle && !self.remote_entities[index].is_baby() {
-            self.handle_mob_events(vec![MobEvent::GiftLoot {
-                mob: self.remote_entities[index].id,
-                table: "minecraft:gameplay/turtle_grow",
-                at: feet,
-            }])?;
-        }
-        self.swing_arm();
-        match sound {
-            // Sheep.shear: level.playSound(null, this, SHEEP_SHEAR, PLAYERS, 1, 1).
-            // DyeItem.interactLivingEntity: level.playSound(player, sheep,
-            // DYE_USE, PLAYERS, 1, 1), whose player is left out because their
-            // client played it; Horizon's own client plays it from the packet,
-            // so every player gets it.
-            Some((s @ ("entity.sheep.shear" | "item.dye.use"), volume, pitch)) => {
-                let name = full_id(s);
-                let id = self.remote_entities[index].id;
-                let sound =
-                    LevelSound::new(&name, feet, volume, pitch).in_source(SoundSource::Players);
-                self.play_bound_sound(sound, id, None);
-            }
-            Some((s, volume, pitch)) => {
-                self.audio.play(&full_id(s), Some(feet), volume, pitch);
-            }
-            None => {}
-        }
-        if let Some((s, volume, pitch)) = eat {
-            let name = full_id(s);
-            if eating_sound_is_bound(species) {
-                let id = self.remote_entities[index].id;
-                let sound =
-                    LevelSound::new(&name, feet, volume, pitch).in_source(SoundSource::Neutral);
-                self.play_bound_sound(sound, id, None);
-            } else {
-                self.audio.play(&name, Some(feet), volume, pitch);
-            }
-        }
-        if consume
-            && !self.creative
-            && let Some(stack) = self.stack_in_mut(selected).as_mut()
-        {
-            stack.count -= 1;
-            if stack.count == 0 {
-                *self.stack_in_mut(selected) = None;
-            }
-        }
-        if let Some(g) = give {
-            let mut stack = ItemStack {
-                item: g.into(),
-                count: 1,
-                damage: 0,
-                extra: None,
-            };
-            if let Some(effects) = give_stew {
-                stack.data_mut().stew_effects = effects;
-            }
-            if self.stack_in(selected).is_none() {
-                *self.stack_in_mut(selected) = Some(stack);
-            } else if let Some(rest) = self.add_stack_to_inventory(stack) {
-                let at = self.eye_position().unwrap_or(center);
-                self.spawn_item(rest, at, [0.0, 0.0, 0.0], 40);
-            }
-        }
-        if let Some(stack) = armor_drop {
-            // Mob.shearItem: PLAYER_SHEARED_EQUIPMENT with the armor and the wolf.
-            let target = self.mob_entity(&self.remote_entities[index]);
-            self.trigger_item_entity("minecraft:player_sheared_equipment", &stack, &target);
-            self.spawn_item(stack, [center[0], center[1] + 0.5, center[2]], [0.0; 3], 10);
-        }
-        if let Some(equip) = equip_event {
-            let id = self.remote_entities[index].id;
-            let pos = self.remote_entities[index].position;
-            self.mob_equip_event(id, [pos.x, pos.y, pos.z], equip);
-        }
-        let mut drops: Vec<ItemStack> = drops
-            .into_iter()
-            .map(|(item, count)| ItemStack::new(&item, count))
-            .collect();
-        if !drops.is_empty() {
-            let player = Some(self.native_acting_id());
-            self.native_use_drops(
-                &drops_table,
-                feet,
-                None,
-                Some((mob.0, &mob.1)),
-                player,
-                held.as_ref(),
-                &mut drops,
-            );
-        }
-        for stack in drops {
-            for _ in 0..stack.count {
-                // `spawnAtLocation(stack, 1.0)`: an ItemEntity a block above
-                // the feet that starts with the constructor's own motion, and
-                // `setDefaultPickUpDelay`. Sheep.shear adds its spread on top;
-                // MushroomCow.shear builds the entity by hand instead, so its
-                // mushrooms keep the constructor's motion and no pickup delay.
-                let mut spread = [0.0; 3];
-                if wool {
-                    spread[0] = (self.world.random.next_float() - self.world.random.next_float())
-                        as f64
-                        * 0.1;
-                    spread[1] = self.world.random.next_float() as f64 * 0.05;
-                    spread[2] = (self.world.random.next_float() - self.world.random.next_float())
-                        as f64
-                        * 0.1;
-                }
-                let dropped = self.spawn_item_own_id(
-                    ItemStack {
-                        count: 1,
-                        ..stack.clone()
-                    },
-                    [feet[0], feet[1] + 1.0, feet[2]],
-                    if wool { 10 } else { 0 },
-                );
-                if let Some(id) = dropped {
-                    self.ecs.add_item_velocity(id, Vec3::new(spread[0], spread[1], spread[2]));
-                }
-            }
-        }
-        Ok(true)
-    }
-    /// `SnowGolem.mobInteract` and `Bogged.mobInteract` with shears: the
-    /// pumpkin or the mushrooms come off (the shearing loot table), the shear
-    /// game event is posted and the tool takes one damage.
-    fn interact_shear_mob(&mut self, index: usize, shears: bool) -> bool {
-        let m = &self.remote_entities[index];
-        if !shears || !m.alive() || m.extra.sheared {
-            return false;
-        }
-        let (sound, table, height) = match m.species() {
-            Species::SnowGolem => (
-                "minecraft:entity.snow_golem.shear",
-                "minecraft:shearing/snow_golem",
-                m.eye_height(),
-            ),
-            Species::Bogged => (
-                "minecraft:entity.bogged.shear",
-                "minecraft:shearing/bogged",
-                f64::from(m.height()),
-            ),
-            _ => return false,
-        };
-        let at = m.position;
-        let mob = (m.id, super::native_hooks::mob_kind(m));
-        let tool = self.held().cloned();
-        // shear: level.playSound(null, this, sound, PLAYERS, 1, 1).
-        let shear =
-            LevelSound::new(sound, [at.x, at.y, at.z], 1.0, 1.0).in_source(SoundSource::Players);
-        self.play_bound_sound(shear, mob.0, None);
-        self.remote_entities[index].extra.sheared = true;
-        let mut stacks = self.sequence_loot(table, table, tool.as_ref());
-        let origin = [at.x, at.y, at.z];
-        let player = Some(self.native_acting_id());
-        self.native_use_drops(
-            table,
-            origin,
-            None,
-            Some((mob.0, &mob.1)),
-            player,
-            tool.as_ref(),
-            &mut stacks,
-        );
-        for stack in stacks {
-            self.spawn_at_location(at, height, stack);
-        }
-        let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
-        self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
-        self.damage_held_tool();
-        true
-    }
-    /// `Armadillo.mobInteract`: a brush brushes a scute off an adult
-    /// (`brushOffScute`) and loses 16 durability.
-    fn interact_armadillo(&mut self, index: usize, item: &str) -> bool {
-        let m = &self.remote_entities[index];
-        if item != "minecraft:brush"
-            || m.species() != Species::Armadillo
-            || !m.alive()
-            || m.is_baby()
-        {
-            return false;
-        }
-        let (id, at) = (m.id, m.position);
-        let feet = [at.x, at.y, at.z];
-        let tool = self.held().cloned();
-        let table = "minecraft:brush/armadillo";
-        let mut stacks = self.sequence_loot(table, table, tool.as_ref());
-        let kind = super::native_hooks::mob_kind(&self.remote_entities[index]);
-        let player = Some(self.native_acting_id());
-        self.native_use_drops(
-            table,
-            feet,
-            None,
-            Some((id, &kind)),
-            player,
-            tool.as_ref(),
-            &mut stacks,
-        );
-        for d in stacks {
-            self.spawn_at_location(at, 0.0, d);
-        }
-        self.audio
-            .play("minecraft:entity.armadillo.brush", Some(feet), 1.0, 1.0);
-        let ctx = self.who_context(Some(Who::Mob(id)), None);
-        self.post_game_event("minecraft:entity_interact", feet, ctx);
-        // ItemStack.hurtAndBreak(16).
-        if !self.creative
-            && let Some(stack) = tool
-        {
-            let max = self
-                .res
-                .items()
-                .get(&stack.item)
-                .map_or(0, |i| i.max_damage);
-            if max > 0 {
-                self.damage_held(16);
-            }
-        }
-        true
+        Ok(self.interact_mob_ecs(target))
     }
     /// `ItemStack.hurtAndBreak(1, ...)` on the held tool: Unbreaking, break sound and stat.
     pub(super) fn damage_held_tool(&mut self) {
@@ -4566,85 +2890,6 @@ impl Game<'_> {
             self.native_player_egg_throw(player, &name);
         }
         Ok(true)
-    }
-    /// `Mob.checkAndHandleImportantInteractions` with a spawn egg of mob
-    /// `index`'s own kind (`SpawnEggItem.spawnOffspringFromSpawnEgg`): a baby
-    /// at the mob's feet, taking the parent's variant as `getBreedOffspring`
-    /// does, and one egg used. False (PASS) when the mob has no baby form.
-    fn spawn_egg_offspring(&mut self, index: usize) -> bool {
-        let Some(stack) = self.held().cloned() else {
-            return false;
-        };
-        let parent = &self.remote_entities[index];
-        if !parent.alive()
-            || !horizon_client::mobs::finalize::spawn_egg_is_for(&stack.item, &parent.kind.id)
-            || !horizon_client::mobs::species::can_be_a_baby(parent.species())
-            // WanderingTrader.getBreedOffspring returns null: no offspring, the
-            // click carries on to trading.
-            || parent.species() == Species::WanderingTrader
-        {
-            return false;
-        }
-        let (kind, at) = (
-            parent.kind.id.clone(),
-            [parent.position.x, parent.position.y, parent.position.z],
-        );
-        let (species, variant, color) =
-            (parent.species(), parent.extra.variant, parent.extra.color);
-        // `MushroomCow.getBreedOffspring(level, this)`: the egg's mate is the
-        // parent itself, so the colour always rolls `nextInt(1024) == 0` to
-        // flip, and every other roll spends the coin flip that can only pick
-        // that same colour again. Both come from the parent's own random.
-        let variant = if species == Species::Mooshroom {
-            let random = &mut self.remote_entities[index].random;
-            if random.next_int_bound(1024).unwrap_or(1) == 0 {
-                if variant == 1 { 0 } else { 1 }
-            } else {
-                let _ = random.next_boolean();
-                variant
-            }
-        } else {
-            variant
-        };
-        let target = self.mob_entity(&self.remote_entities[index]);
-        // SpawnEggItem.spawnOffspringFromSpawnEgg: `type.create(level, SPAWN_ITEM_USE)`
-        // creates the baby without finalizeSpawn, and `snapTo(pos, 0, 0)` faces
-        // it south without a level-random draw.
-        let Some(child) = self.create_mob_reason(&kind, at, false, SpawnSite::Raw, Some(0.0))
-        else {
-            return false;
-        };
-        let Some(id) = self.insert_spawned_mob(child) else {
-            return false;
-        };
-        if let Some(child) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            horizon_client::mobs::finalize::spawn_egg_offspring(child, species, variant, color);
-        }
-        // SpawnEggItem.spawnOffspringFromSpawnEgg: applyComponentsFromItemStack
-        // (the egg's name, custom data and variants), no entity data.
-        if let Some(child) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            horizon_client::entity_nbt::apply_item_components(child, &stack);
-        }
-        self.apply_spawn_egg_entity_data(id, &stack, false);
-        if species == Species::Piglin {
-            self.native_mobs_joined(self.remote_entities.len() - 1, false);
-        }
-        // `Mob.checkAndHandleImportantInteractions` then calls
-        // `onOffspringSpawnedFromEgg`: `Fox`'s makes the baby trust the player
-        // who used the egg (a fox egg used on a block trusts nobody).
-        if species == Species::Fox {
-            let spawner = self.acting_player_uuid();
-            if let Some(child) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                horizon_client::mobs::fox::add_trusted_entity(child, spawner);
-            }
-        }
-        self.trigger_item_entity("minecraft:player_interacted_with_entity", &stack, &target);
-        self.consume_held();
-        // `Mob.interact`: the egg's `SUCCESS_SERVER` consumes the click, so the
-        // interaction posts `ENTITY_INTERACT` with the player, at the mob.
-        let ctx = self.who_context(Some(Who::Player), None);
-        self.post_game_event("minecraft:entity_interact", at, ctx);
-        true
     }
     /// `SpawnEggItem.use`: the SOURCE_ONLY ray must hit a liquid block.
     pub(super) fn spawn_egg_fluid_hit(&self) -> Option<super::Hit> {
@@ -4732,9 +2977,7 @@ impl Game<'_> {
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            horizon_client::entity_nbt::apply_item_components(m, stack);
-        }
+        // RESTE-SANS-ECS: `entity_nbt::apply_item_components` writes the `Mob` fields, no bridge setter (`PostSpawnProcessor`).
         self.apply_spawn_egg_entity_data(id, stack, true);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);
         self.award_stat("used", &stack.item, 1);
@@ -4745,9 +2988,7 @@ impl Game<'_> {
     /// `MobBucketItem.spawn`: the bucket's components, then
     /// `EntityType.createDefaultStackConfig`.
     pub(in crate::game) fn apply_bucket_stack_config(&mut self, id: u32, stack: &ItemStack) {
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            horizon_client::entity_nbt::apply_item_components(m, stack);
-        }
+        // RESTE-SANS-ECS: `entity_nbt::apply_item_components` writes the `Mob` fields, no bridge setter (`Bucketable`).
         self.apply_spawn_egg_entity_data(id, stack, true);
     }
     /// `EntityType.createDefaultStackConfig` on the mob an egg or a bucket
@@ -4765,10 +3006,9 @@ impl Game<'_> {
         entity_data: bool,
     ) {
         use horizon_core::nbt::Tag;
-        let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {
+        let Some(kind) = self.ecs.kind(id) else {
             return;
         };
-        let kind = self.remote_entities[i].kind.id.clone();
         let op = self.acting_player_is_op();
         let name = stack.data().and_then(|d| d.custom_name.clone());
         let custom = stack
@@ -4780,7 +3020,10 @@ impl Game<'_> {
         if name.is_none() && custom.is_none() && data.is_none() {
             return;
         }
-        let mut own = self.mob_tree_nbt(i);
+        let Some(own) = self.ecs_mob_tree(id) else {
+            return;
+        };
+        let mut own = Tag::Compound(own);
         if let Tag::Compound(map) = &mut own {
             if let Some(name) = name {
                 map.insert("CustomName".into(), name);
@@ -4795,30 +3038,6 @@ impl Game<'_> {
         };
         // Nothing to report: the mob's own compound always loads back.
         let _ = self.apply_entity_nbt(super::commands::Target::Mob(id), tag);
-    }
-    /// A beam target's centre (half its height), interpolated.
-    fn beam_target(&self, who: Option<Who>, alpha: f64) -> Option<glam::DVec3> {
-        match who? {
-            Who::Player => {
-                let p = self.player.as_ref()?;
-                let (a, b) = (self.previous_position, p.position);
-                Some(glam::DVec3::new(
-                    a.x + (b.x - a.x) * alpha,
-                    a.y + (b.y - a.y) * alpha + f64::from(p.dimensions.height) * 0.5,
-                    a.z + (b.z - a.z) * alpha,
-                ))
-            }
-            Who::Mob(id) => {
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                Some(glam::DVec3::new(
-                    m.previous.x + (m.position.x - m.previous.x) * alpha,
-                    m.previous.y
-                        + (m.position.y - m.previous.y) * alpha
-                        + f64::from(m.height()) * 0.5,
-                    m.previous.z + (m.position.z - m.previous.z) * alpha,
-                ))
-            }
-        }
     }
 }
 /// `Bucketable.getBucketItemStack` and `getPickupSound` of a mob that a water
