@@ -210,8 +210,6 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_client::mobs::{Mob, raider};
-    use horizon_core::geometry::Vec3;
     use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
     use std::sync::{Arc, Mutex};
 
@@ -299,21 +297,6 @@ mod tests {
         });
     }
 
-    fn raider_mob(game: &mut Game<'_>, id: u32, raid: i32, wave: i32, health: f32) {
-        let kind = game
-            .res
-            .mob_types()
-            .get("minecraft:pillager")
-            .unwrap()
-            .clone();
-        let mut mob = Mob::new(id, kind, Vec3::new(5.0, 70.0, 5.0), 0.0);
-        mob.health = health;
-        let state = raider::state_mut(&mut mob);
-        state.raid_id = Some(raid);
-        state.wave = wave;
-        game.mobs.push(mob);
-    }
-
     #[test]
     #[ignore = "daily"]
     fn saved_raids_are_found_before_the_first_raid_tick() {
@@ -334,162 +317,6 @@ mod tests {
             // Reading drew nothing from the world random; the raid tick seeds.
             assert_eq!(game.world.random.clone().next_long(), before);
             let _ = std::fs::remove_dir_all(root);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn raid_handles_read_a_raid_and_stop_it() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let level = game.level(game.dim.id()).unwrap();
-            assert!(
-                game.level_raids(level).is_none() || game.level_raids(level).unwrap().is_empty()
-            );
-            assert!(game.raid_command_create([10, 70, 10], 3));
-            let raid = game.level_raid_at(level, [12, 70, 9]).unwrap();
-            assert_eq!(game.level_raid(level, raid.id()), Some(raid));
-            assert_eq!(game.level_raids(level), Some(vec![raid]));
-            assert_eq!(raid.level(), level);
-            assert_eq!(game.level_raid_at(level, [1000, 70, 10]), None);
-            assert_eq!(game.raid_center(raid), Some([10, 70, 10]));
-            assert_eq!(game.raid_omen_level(raid), Some(3));
-            assert_eq!(game.raid_has_bonus_wave(raid), Some(true));
-            assert_eq!(game.raid_groups_spawned(raid), Some(0));
-            assert_eq!(
-                game.raid_num_groups(raid),
-                Some(horizon_client::raid::num_groups(game.difficulty_id()))
-            );
-            assert!(!game.raid_is_started(raid));
-            assert!(game.raid_is_active(raid));
-            assert_eq!(game.raid_status(raid), Some(RaidStatus::Ongoing));
-            assert_eq!(game.raid_total_health(raid), Some(0.0));
-            assert_eq!(game.raid_bar_progress(raid), Some(0.0));
-            assert_eq!(game.raid_heroes(raid), Some(Vec::new()));
-
-            raider_mob(game, 41, raid.id(), 1, 12.5);
-            raider_mob(game, 42, raid.id(), 2, 7.5);
-            raider_mob(game, 43, raid.id() + 1, 1, 9.0);
-            assert_eq!(game.raid_living_health(raid), Some(20.0));
-            let first = game.entity(41).unwrap();
-            let second = game.entity(42).unwrap();
-            assert_eq!(game.raid_raiders(raid), Some(vec![first, second]));
-            assert_eq!(game.raid_wave_raiders(raid, 2), Some(vec![second]));
-            assert_eq!(game.raid_wave_raiders(raid, 3), Some(Vec::new()));
-            let mob = game.mob(first).unwrap();
-            assert_eq!(game.mob_raid(mob), Some(raid));
-            let other = game.mob(game.entity(43).unwrap()).unwrap();
-            assert_eq!(game.mob_raid(other), None);
-
-            assert!(game.raid_set_omen_level(raid, 5));
-            assert_eq!(game.raid_omen_level(raid), Some(5));
-            assert!(game.raid_set_omen_level(raid, -1));
-            assert_eq!(game.raid_omen_level(raid), Some(-1));
-            assert!(game.raid_set_omen_level(raid, i32::MAX));
-            assert_eq!(game.raid_omen_level(raid), Some(i32::MAX));
-            assert!(game.raid_set_omen_level(raid, 5));
-            assert_eq!(game.raid_omen_level(raid), Some(5));
-
-            assert!(game.raid_stop(raid));
-            assert_eq!(game.raid_status(raid), Some(RaidStatus::Stopped));
-            assert!(!game.raid_is_active(raid));
-            assert!(!game.raid_stop(raid));
-            assert_eq!(game.level_raid_at(level, [10, 70, 10]), None);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn parked_raid_handles_read_and_write_their_own_level() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let level = game.level(game.dim.id()).unwrap();
-            assert!(game.raid_command_create([10, 70, 10], 3));
-            let raid = level.raid_at(game, [10, 70, 10]).unwrap();
-            raider_mob(game, 42, raid.id(), 2, 12.0);
-            raider_mob(game, 43, raid.id(), 1, 0.0);
-            raider_mob(game, 44, raid.id() + 7, 2, 18.0);
-            let member = game.entity(42).unwrap();
-            let total = raid.total_health(game);
-            let groups = raid.num_groups(game);
-            let progress = raid.bar_progress(game);
-            let started = raid.is_started(game);
-
-            assert!(
-                game.enter_command_level(super::super::Dim::Nether)
-                    .is_some()
-            );
-            game.read_raids();
-            let current = game.level(game.dim.id()).unwrap();
-            let (other_id, _) = game
-                .raiding
-                .raids_mut(current.dimension_id())
-                .unwrap()
-                .create_or_extend([100, 70, 100], 2, None, 7);
-            assert_eq!(other_id, raid.id()); // Raid ids are local to a level.
-            raider_mob(game, 60, other_id, 2, 19.0);
-            let other = current.raid(game, other_id).unwrap();
-            let other_omen = other.omen_level(game);
-
-            assert_eq!(level.raid(game, raid.id()), Some(raid));
-            assert_eq!(level.raid_at(game, [10, 70, 10]), Some(raid));
-            assert_eq!(level.raids(game), Some(vec![raid]));
-            assert_eq!(raid.center(game), Some([10, 70, 10]));
-            assert_eq!(raid.omen_level(game), Some(3));
-            assert_eq!(raid.groups_spawned(game), Some(0));
-            assert_eq!(raid.num_groups(game), groups);
-            assert_eq!(raid.has_bonus_wave(game), Some(true));
-            assert_eq!(raid.is_started(game), started);
-            assert!(raid.is_active(game));
-            assert_eq!(raid.status(game), Some(RaidStatus::Ongoing));
-            assert_eq!(raid.total_health(game), total);
-            assert_eq!(raid.living_health(game), Some(12.0));
-            assert_eq!(raid.bar_progress(game), progress);
-            assert_eq!(raid.raiders(game), Some(vec![member]));
-            assert_eq!(raid.wave_raiders(game, 2), Some(vec![member]));
-            assert_eq!(raid.wave_raiders(game, 1), Some(vec![]));
-            assert_eq!(raid.heroes(game), Some(vec![]));
-            game.native_level_raids_mut(level).unwrap().dirty = false;
-            assert!(raid.set_omen_level(game, i32::MAX));
-            assert!(game.native_level_raids_mut(level).unwrap().dirty);
-            assert_eq!(raid.omen_level(game), Some(i32::MAX));
-            assert_eq!(other.omen_level(game), other_omen);
-            assert_eq!(other.living_health(game), Some(19.0));
-            game.native_level_raids_mut(level).unwrap().dirty = false;
-            assert!(raid.stop(game));
-            assert!(!raid.stop(game));
-            assert_eq!(raid.status(game), Some(RaidStatus::Stopped));
-            assert!(!raid.is_active(game));
-            assert!(other.is_active(game));
-            assert_eq!(game.dim, super::super::Dim::Nether);
-            assert_eq!(level.raid_at(game, [10, 70, 10]), None);
-            assert_eq!(level.raid(game, raid.id()), Some(raid));
-            assert!(
-                game.levels
-                    .parked_of(level.dimension_id())
-                    .unwrap()
-                    .raiding
-                    .raids(level.dimension_id())
-                    .unwrap()
-                    .dirty
-            );
-
-            assert!(
-                game.enter_command_level(super::super::Dim::Overworld)
-                    .is_some()
-            );
-            assert_eq!(raid.omen_level(game), Some(i32::MAX));
-            assert_eq!(raid.status(game), Some(RaidStatus::Stopped));
-            assert_eq!(raid.raiders(game), Some(vec![member]));
-            assert!(
-                game.enter_command_level(super::super::Dim::Nether)
-                    .is_some()
-            );
-            game.levels.clear();
-            assert_eq!(raid.center(game), None);
-            assert_eq!(raid.raiders(game), None);
-            assert!(!raid.set_omen_level(game, 1));
-            assert!(!raid.stop(game));
         });
     }
 

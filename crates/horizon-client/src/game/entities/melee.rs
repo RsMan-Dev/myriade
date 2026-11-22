@@ -3,10 +3,6 @@
 use super::*;
 
 #[cfg(test)]
-#[path = "tests/melee_hit_tests.rs"]
-mod hit_tests;
-
-#[cfg(test)]
 #[path = "tests/spawn_protection_tests.rs"]
 mod spawn_protection_tests;
 

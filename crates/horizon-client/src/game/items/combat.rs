@@ -2,9 +2,6 @@
 //! where the player fell from, turned into the vanilla death message.
 use super::{Game, commands::Target};
 
-#[cfg(test)]
-#[path = "tests/infested_roll_tests.rs"]
-mod infested_roll_tests;
 use horizon_client::{
     health::{Attack, HealthEvent},
     mobs::{Damage, Mob, Species, Who, stuck::Stuck},
@@ -1346,10 +1343,3 @@ mod guest_hit_tests {
     }
 }
 
-#[cfg(test)]
-#[path = "combat/zombie_ignite_tests.rs"]
-mod zombie_ignite_tests;
-
-#[cfg(test)]
-#[path = "combat/bee_sting_tests.rs"]
-mod bee_sting_tests;

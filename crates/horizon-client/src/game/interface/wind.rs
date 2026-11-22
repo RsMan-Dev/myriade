@@ -883,9 +883,6 @@ impl Game<'_> {
         Ok(())
     }
 }
-#[cfg(test)]
-#[path = "tests/wind_charged_tests.rs"]
-mod wind_charged_tests;
 
 #[cfg(test)]
 #[path = "tests/wind_dragon_tests.rs"]

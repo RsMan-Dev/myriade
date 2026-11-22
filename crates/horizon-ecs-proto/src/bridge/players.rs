@@ -28,6 +28,17 @@ pub fn set_player(world: &mut World, p: Player, state: PlayerFact) {
     if world.resource::<PlayerFacts>().0.get(&p.id) != Some(&state) {
         world.resource_mut::<PlayerFacts>().0.insert(p.id, state);
     }
+    // The host owns the player's health: the copy the creatures read (`PlayerState.alive`) follows its `alive`, so the blows counted
+    // here (`PlayerState::hurt`) never make a living player dead to them, nor a dead one alive.
+    let want = if state.alive { 20.0 } else { 0.0 };
+    if world.get_resource::<crate::hostile::PlayerState>().is_some_and(|ps| ps.health_of(p.id) != want) {
+        let mut ps = world.resource_mut::<crate::hostile::PlayerState>();
+        let i = p.id as usize;
+        if ps.health.len() <= i {
+            ps.health.resize(i + 1, 20.0);
+        }
+        ps.health[i] = want;
+    }
     let moved = world.resource::<Online>().get(p.id).is_none_or(|o| !same(&o, &p));
     if moved {
         world.resource_mut::<Online>().set(p);

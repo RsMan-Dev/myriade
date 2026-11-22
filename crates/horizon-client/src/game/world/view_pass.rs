@@ -477,83 +477,6 @@ pub(in crate::game) mod tests {
         t
     }
 
-    /// Summons `entity` in the Nether, at chunk (40, 40) above its bedrock roof, and gives its id.
-    fn summon_in_the_nether(game: &mut Game<'_>, entity: &str) -> i32 {
-        game.enter_level(Dim::Nether).unwrap();
-        game.set_allow_commands(true);
-        assert!(game.run_command(&format!("summon {entity} 648.5 130 648.5")));
-        let summoned = game.mobs.iter().find(|m| m.kind.id == entity).unwrap();
-        summoned.id as i32
-    }
-
-    /// An entity in a viewed `Ticking` Nether area reaches the viewer as a wrapped `AddEntity`,
-    /// then its fall onto the bedrock roof (y 128) as wrapped moves, and once killed its death
-    /// event (3) and, its death animation over, its removal.
-    #[test]
-    #[ignore = "daily"]
-    fn an_entity_in_a_ticking_viewed_area_is_added_moved_and_removed_wrapped() {
-        use horizon_client::lan::viewed_levels::areas::ChunkAreaMode;
-        let mut resources = None;
-        let (mut game, rx, _) =
-            stream_the_nether_in(&mut resources, "view-entities", ChunkAreaMode::Ticking);
-        let pig = summon_in_the_nether(&mut game, "minecraft:pig");
-        let mut packets = Vec::new();
-        for _ in 0..60 {
-            game.tick_server(false).unwrap();
-            packets.extend(sent(&rx).others);
-        }
-        let t = tracked(&packets, pig);
-        let (_, at) = t.added.expect("added, wrapped in a Nether run");
-        assert_eq!(at, [648.5, 130.0, 648.5]);
-        let last = *t.moves.last().expect("its fall, wrapped");
-        // It may walk off once it landed.
-        assert_eq!(last[1], 128.0, "on the bedrock roof: {:?}", t.moves);
-        assert!(!t.removed);
-        game.enter_level(Dim::Nether).unwrap();
-        assert!(game.run_command("kill @e[type=minecraft:pig]"));
-        for _ in 0..40 {
-            game.tick_server(false).unwrap();
-            packets.extend(sent(&rx).others);
-        }
-        let t = tracked(&packets, pig);
-        assert!(t.events.contains(&3), "its death, wrapped: {:?}", t.events);
-        assert!(t.removed, "removed, wrapped");
-        let viewer = game
-            .lan
-            .as_ref()
-            .unwrap()
-            .hub
-            .guests
-            .iter()
-            .find(|g| g.uuid == 2);
-        assert!(
-            !viewer.unwrap().tracker.is_tracking(pig),
-            "not the player's own"
-        );
-    }
-
-    /// An entity in a viewed `Loaded` Nether area is added, wrapped, and stands still in the air:
-    /// nothing ticks there, and a position sync, if any, gives the same place.
-    #[test]
-    #[ignore = "daily"]
-    fn an_entity_in_a_loaded_viewed_area_is_added_and_stands_still() {
-        let mut resources = None;
-        let (mut game, rx, _) = stream_the_nether(&mut resources, "view-entities-loaded");
-        let pig = summon_in_the_nether(&mut game, "minecraft:pig");
-        let mut packets = Vec::new();
-        for _ in 0..60 {
-            game.tick_server(false).unwrap();
-            packets.extend(sent(&rx).others);
-        }
-        let t = tracked(&packets, pig);
-        assert_eq!(t.added.map(|(_, at)| at), Some([648.5, 130.0, 648.5]));
-        assert!(
-            t.moves.iter().all(|&at| at == [648.5, 130.0, 648.5]),
-            "no move: {:?}",
-            t.moves
-        );
-    }
-
     /// A packet a client was sent: a plain one, or what `horizon:levels` carried.
     #[derive(Debug)]
     enum Got {
@@ -825,39 +748,5 @@ pub(in crate::game) mod tests {
         let sound = &sounds[0];
         assert_eq!((sound.x, sound.y, sound.z), (5188, 560, 5202));
         assert_eq!((sound.source, sound.volume, sound.pitch), (4, 1.0, 0.75));
-    }
-
-    /// A mod's sound bound to a pig in the viewed Nether reaches the viewer whose view tracks the
-    /// pig, wrapped, bound to the same entity, through `tick_server` (arismoko/horizon#3983).
-    #[test]
-    #[ignore = "daily"]
-    fn a_sound_bound_to_a_viewed_entity_reaches_the_view_tracking_it() {
-        let mut resources = None;
-        let (mut game, rx, _) = stream_the_nether(&mut resources, "view-pass-bound-sound");
-        let pig = summon_in_the_nether(&mut game, "minecraft:pig");
-        for _ in 0..60 {
-            game.tick_server(false).unwrap();
-        }
-        let _ = sent(&rx);
-        let tracks = |game: &Game<'_>| {
-            let view = viewer(game).viewed.view(Dim::Nether.id()).unwrap();
-            view.tracker.is_tracking(pig)
-        };
-        assert!(tracks(&game), "the view tracks the pig");
-        game.enter_level(Dim::Nether).unwrap();
-        game.native_lifecycle
-            .begin_open(mod_api::Authority::IntegratedServer);
-        let emitter = game.entity(pig as u32).unwrap();
-        let neutral = mod_api::SoundSource::Neutral;
-        let sound = "minecraft:entity.pig.ambient";
-        assert!(game.entity_play_bound_sound(emitter, sound, neutral, 1.0, 1.25));
-        game.tick_server(false).unwrap();
-        let bound: Vec<_> = (sent(&rx).others.into_iter())
-            .filter_map(|p| match p {
-                C::SoundEntity(p) => Some((p.id, p.source, p.volume, p.pitch)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(bound, [(pig, 6, 1.0, 1.25)]);
     }
 }

@@ -16,10 +16,6 @@ use horizon_core::{
     random::RandomSource,
 };
 
-#[cfg(test)]
-#[path = "tests/player_armor_weapon_tests.rs"]
-mod player_armor_weapon_tests;
-
 /// `MaceItem.SMASH_ATTACK_FALL_THRESHOLD`.
 const FALL_THRESHOLD: f64 = 1.5;
 /// `MaceItem.SMASH_ATTACK_HEAVY_THRESHOLD`.

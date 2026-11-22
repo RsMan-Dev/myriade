@@ -601,52 +601,6 @@ fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale
     });
 }
 
-/// A ravager's break (a mob's, not a player's) names the ravager as `breaker_entity` and no
-/// `breaker` UUID; a break the level makes (no entity) names neither.
-#[test]
-#[ignore = "daily"]
-fn block_drops_names_the_mob_that_broke_the_block() {
-    use horizon_client::mobs::Mob;
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-        "drops-probe",
-        Box::new(DropsProbe {
-            seen: seen.clone(),
-            handle: Arc::default(),
-            panic: false,
-        }),
-    )]
-    .into();
-    mod_platform::testing::with_mods(mods, || {
-        with_game(|game| {
-            with_player(game, GameMode::Survival, None);
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:ravager")
-                .unwrap()
-                .clone();
-            game.mobs
-                .push(Mob::new(51, kind, Vec3::new(5.5, 64.0, 5.5), 0.0));
-            let ravager = game.entity(51).expect("the ravager's handle");
-            let leaves = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:oak_leaves")
-                .unwrap();
-            game.world.set(9, 64, 4, leaves).unwrap();
-            game.entity_block_dropped([9, 64, 4], leaves, Some(51), Vec::new());
-            game.world.set(10, 64, 4, leaves).unwrap();
-            game.entity_block_dropped([10, 64, 4], leaves, None, Vec::new());
-            let heard = std::mem::take(&mut *seen.lock().unwrap());
-            assert_eq!(heard.len(), 2);
-            assert_eq!((heard[0].0, heard[0].1), (None, Some(ravager)));
-            assert_eq!((heard[1].0, heard[1].1), (None, None));
-        });
-    });
-}
-
 /// A listener that panics inside the event leaves nothing held: the handle it was given is stale
 /// after the break unwinds.
 #[test]

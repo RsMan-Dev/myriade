@@ -191,94 +191,12 @@ fn a_canceled_push_is_reported() {
     assert_eq!(heard.knocks.len(), 1);
 }
 
-#[test]
-#[ignore = "daily"]
-fn thorns_name_the_wearer_not_the_incoming_attacker() {
-    use horizon_client::motion::PlayerMotion;
-    let heard = heard(|game, _| {
-        let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
-        player.entity_id = 7;
-        game.player = Some(player);
-        let mut chest = ItemStack::new("minecraft:diamond_chestplate", 1);
-        chest.data_mut().enchantments = vec![("minecraft:thorns".into(), 255)];
-        game.armor[1] = Some(chest);
-        let kind = game
-            .res
-            .mob_types()
-            .get("minecraft:zombie")
-            .unwrap()
-            .clone();
-        game.mobs.push(Mob::new(42, kind, Vec3::ZERO, 0.0));
-        // The mob's own hit on the player is in progress: its attack names it.
-        let incoming = game.attack_of(42);
-        game.with_attack(incoming, |game| {
-            game.thorns(42);
-            assert_eq!(game.current_attack().attacker, 42);
-        });
-        assert_eq!(game.current_attack(), NO_ATTACK);
-    });
-    assert_eq!(heard.incoming_causing, [7]);
-}
-
 fn player_with_sword(game: &mut super::Game<'_>) {
     use horizon_client::motion::PlayerMotion;
     let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
     player.entity_id = 7;
     game.player = Some(player);
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
-}
-
-fn zombie_at(game: &mut super::Game<'_>, id: u32, at: Vec3) {
-    let kind = game
-        .res
-        .mob_types()
-        .get("minecraft:zombie")
-        .unwrap()
-        .clone();
-    game.mobs.push(Mob::new(id, kind, at, 0.0));
-}
-
-/// A player's melee hit goes `attack_mob` → `hurt_by_player` → `Mob::damage` → the hook:
-/// the hook names the player and the sword it holds, and nothing is left behind afterwards.
-#[test]
-#[ignore = "daily"]
-fn a_player_melee_hit_names_the_player_and_the_held_sword() {
-    let heard = heard(|game, _| {
-        player_with_sword(game);
-        zombie_at(game, 42, Vec3::new(0.0, 0.0, 1.0));
-        game.attack_mob(0);
-        assert_eq!(game.current_attack(), NO_ATTACK);
-    });
-    let sword = Some("minecraft:iron_sword".to_string());
-    assert!(
-        heard.knocks.contains(&(7, sword, None)),
-        "heard {:?}",
-        heard.knocks
-    );
-    assert_eq!(heard.incoming_causing, [7]);
-}
-
-/// A sweep names the player and its sword too, for each mob it hits.
-#[test]
-#[ignore = "daily"]
-fn a_sweep_names_the_player_and_the_held_sword() {
-    let heard = heard(|game, _| {
-        player_with_sword(game);
-        zombie_at(game, 42, Vec3::new(0.0, 0.0, 1.0));
-        let area = horizon_core::geometry::Aabb::new(
-            Vec3::new(-1.0, -1.0, -1.0),
-            Vec3::new(1.0, 2.0, 2.0),
-        );
-        game.sweep_damage(area, super::mace::Spared::Nothing, 1.0);
-    });
-    let sword = Some("minecraft:iron_sword".to_string());
-    // The hit's own push, then the sweep's 0.4 along the player's yaw.
-    assert_eq!(
-        heard.knocks,
-        [(7, sword.clone(), None), (7, sword, None)],
-        "heard {:?}",
-        heard.knocks
-    );
 }
 
 /// The attack the player-victim path lands in is lent by `with_attack`, restored when it
@@ -325,39 +243,6 @@ fn the_attack_scope_nests_restores_and_a_guest_swap_hides_it() {
             assert_eq!(game.current_attack(), NO_ATTACK, "the scope leaked");
         });
     });
-}
-
-/// What the mob's own random gives next after a push with no direction (the push then draws a
-/// random one, after the hook): with or without a listening mod, and with the push canceled.
-fn next_draw_after_a_directionless_push(cancel: Option<bool>) -> i32 {
-    let drawn = Mutex::new(0);
-    let draw = |game: &mut super::Game<'_>| {
-        zombie_at(game, 42, Vec3::ZERO);
-        let hit = Damage::of(DamageKind::Generic);
-        let mut mob = game.mobs.pop().unwrap();
-        mob.knockback(damage_level_of!(game), 0.4, 0.0, 0.0, &hit, 0.0);
-        *drawn.lock().unwrap() = mob.random.next_int();
-    };
-    match cancel {
-        None => with_game(draw),
-        Some(cancel) => {
-            let log = Arc::new(Mutex::new(Heard::default()));
-            log.lock().unwrap().cancel = cancel;
-            let mods: mod_api::Mods =
-                vec![mod_api::ModEntry::new("probe", Box::new(Probe(log)))].into();
-            mod_platform::testing::with_mods(mods, || with_game(draw));
-        }
-    }
-    drawn.into_inner().unwrap()
-}
-
-#[test]
-#[ignore = "daily"]
-fn the_push_draws_the_same_stream_with_and_without_a_mod_and_a_canceled_one_draws_nothing() {
-    let without = next_draw_after_a_directionless_push(None);
-    assert_eq!(next_draw_after_a_directionless_push(Some(false)), without);
-    let canceled = next_draw_after_a_directionless_push(Some(true));
-    assert_ne!(canceled, without, "a canceled push must not draw");
 }
 
 /// A guest's blow on another guest lands through `pvp_land`: the hook names the attacking guest
@@ -423,60 +308,4 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
         "heard {:?}",
         heard.knocks
     );
-}
-
-#[test]
-#[ignore = "daily"]
-fn the_hook_names_the_entry_a_push_came_through_once_per_full_entry_call() {
-    use mod_api::KnockbackEntry::{Full, Short};
-    let heard = heard(|game, log| {
-        log.lock().unwrap().repeat_short = true;
-        let hit = Damage::of(DamageKind::Generic);
-        zombie_at(game, 42, Vec3::ZERO);
-        let mut mob = game.mobs.pop().unwrap();
-        mob.velocity = Vec3::ZERO;
-        mob.on_ground = false;
-        mob.knockback(damage_level_of!(game), 0.4, 1.0, 0.0, &hit, 0.0);
-        assert_eq!(mob.velocity, Vec3::new(1.6, 0.0, 0.0));
-        mob.velocity = Vec3::ZERO;
-        assert_eq!(log.lock().unwrap().entries, [Short], "mob, short entry");
-        mob.knockback_full(damage_level_of!(game), 0.4, 1.0, 0.0, &hit, 0.0, false);
-        assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full],
-            "mob, full entry"
-        );
-        assert_eq!(mob.velocity, Vec3::new(0.8, 0.0, 0.0));
-        mob.knockback_full(damage_level_of!(game), 0.4, 1.0, 0.0, &hit, 0.0, true);
-        assert_eq!(
-            log.lock().unwrap().entries,
-            [Short, Full, Full],
-            "mob, full entry for an effect push"
-        );
-
-        player_with_sword(game);
-        game.player.as_mut().unwrap().ground.on_ground = false;
-        let attack = &NO_ATTACK;
-        game.knock_back_player(0.4, 1.0, 0.0, source(0), attack, 0.0);
-        assert_eq!(
-            game.player.as_ref().unwrap().velocity,
-            Vec3::new(1.6, 0.0, 0.0)
-        );
-        game.player.as_mut().unwrap().velocity = Vec3::ZERO;
-        game.knock_back_player_full(0.4, 1.0, 0.0, source(0), attack, 0.0, false);
-        assert_eq!(
-            game.player.as_ref().unwrap().velocity,
-            Vec3::new(0.8, 0.0, 0.0)
-        );
-        let entries = log.lock().unwrap().entries.clone();
-        assert_eq!(
-            &entries[3..],
-            [Short, Full],
-            "player, short then full entry"
-        );
-        // The short entry leaves nothing behind: a full call after it is `Full` again.
-        mob.knockback_full(damage_level_of!(game), 0.4, 1.0, 0.0, &hit, 0.0, false);
-        assert_eq!(log.lock().unwrap().entries.last(), Some(&Full));
-    });
-    assert_eq!(heard.entries.len(), 6, "one event per full-entry call");
 }

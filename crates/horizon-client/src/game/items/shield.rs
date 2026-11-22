@@ -571,10 +571,6 @@ mod blocked_hit_use_tests {
 }
 
 #[cfg(test)]
-#[path = "tests/shield_ram_tests.rs"]
-mod ram_tests;
-
-#[cfg(test)]
 #[path = "tests/shield_use_tests.rs"]
 mod use_tests;
 

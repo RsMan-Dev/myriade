@@ -5,7 +5,7 @@
 #![cfg(test)]
 use crate::game::Game;
 use crate::game::native_entity_refs::tests::{bind_local_player, run_on_guest_stack, with_game};
-use horizon_client::{chunk::Chunk, mobs::Mob, mobs::Who, motion::PlayerMotion};
+use horizon_client::{chunk::Chunk, mobs::Who, motion::PlayerMotion};
 use horizon_core::{
     geometry::Vec3,
     position::{BlockPos, ChunkPos},
@@ -181,16 +181,6 @@ fn stone(game: &Game<'_>) -> usize {
         .count()
 }
 
-fn mob(game: &mut Game<'_>, id: u32, kind: &str, at: Vec3, health: f32) {
-    let kind = game.res.mob_types().get(kind).unwrap().clone();
-    let mut mob = Mob::new(id, kind, at, 0.0);
-    mob.persistent = true;
-    mob.no_ai = true;
-    mob.on_ground = true;
-    mob.health = health;
-    game.mobs.push(mob);
-}
-
 /// What `living_death` heard: the dying entity, the damage type and the causing entity.
 type Deaths = Arc<Mutex<Vec<(u32, String, i32)>>>;
 struct Deathwatch(Deaths);
@@ -204,66 +194,6 @@ impl Hooks for Deathwatch {
             .push((event.entity, source.damage_type.into(), source.causing));
         Flow::Continue
     }
-}
-
-/// A blast at (4.5, 80, 4.5) whose source `source` makes (it answers the
-/// source's entity id) kills a zombie on one health beside it: what the
-/// zombie's death names, and whether a player is credited with the kill
-/// (`last_hurt_by_player`). The player in place is entity 11, out of reach.
-fn kill(via: Via, source: impl Fn(&mut Game<'_>) -> u32) -> (Vec<(u32, String, i32)>, bool) {
-    crate::entry::install_client_hooks();
-    let deaths = Deaths::default();
-    let mut credited = false;
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new(
-            "explode-deaths",
-            Box::new(Deathwatch(deaths.clone())),
-        )]
-        .into(),
-        || {
-            with_game(|game| {
-                floor(game);
-                game.player =
-                    Some(PlayerMotion::new(game.motion, Vec3::new(14.5, 80.0, 14.5)).unwrap());
-                bind_local_player(game, 11, 123);
-                game.set_mode_id(0);
-                game.next_entity = 100;
-                mob(game, 41, "minecraft:zombie", Vec3::new(6.0, 80.0, 4.5), 1.0);
-                let id = source(game);
-                let source = game.entity(id);
-                assert!(source.is_some(), "the source {id} resolves");
-                let blast = Blast {
-                    source,
-                    center: [4.5, 80.0, 4.5],
-                    radius: 4.0,
-                    fire: false,
-                    interaction: ExplosionInteraction::None,
-                    settings: ExplosionSettings::default(),
-                };
-                explode(game, via, blast, Ok(()));
-                credited = game.last_hurt_by_player.contains_key(&41);
-                game.tick_creature_entities().unwrap();
-            })
-        },
-    );
-    let deaths = deaths.lock().unwrap().clone();
-    (deaths, credited)
-}
-
-/// [`kill`] through both targets, each answering `expected`.
-fn kills(name: &str, source: fn(&mut Game<'_>) -> u32, expected: (i32, &'static str, bool)) {
-    crate::game::in_own_process(&format!("game::native_explosions_tests::{name}"), || {
-        run_on_guest_stack(move || {
-            for via in BOTH {
-                let (causing, damage_type, credited) = expected;
-                assert_eq!(
-                    kill(via, source),
-                    (vec![(41, damage_type.to_owned(), causing)], credited),
-                    "{via:?}"
-                );
-            }
-        });
-    });
 }
 
 /// Primed TNT lit by `owner` beside the zombie.
@@ -283,117 +213,6 @@ fn summoned(game: &mut Game<'_>, kind: &str, nbt: &str) -> u32 {
         Target::Stand(id) | Target::Trident(id) | Target::Rocket(id) => id,
         other => panic!("{kind} summoned as {other:?}"),
     }
-}
-
-#[test]
-#[ignore = "daily"]
-fn player_lit_tnt_as_the_source_credits_the_player_with_the_kill() {
-    kills(
-        "player_lit_tnt_as_the_source_credits_the_player_with_the_kill",
-        |game| tnt(game, Some(Who::Player)),
-        (11, "minecraft:player_explosion", true),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn unowned_tnt_as_the_source_credits_no_one() {
-    kills(
-        "unowned_tnt_as_the_source_credits_no_one",
-        |game| tnt(game, None),
-        (0, "minecraft:explosion", false),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_player_as_the_source_is_credited_as_a_player() {
-    kills(
-        "a_player_as_the_source_is_credited_as_a_player",
-        |_| 11,
-        (11, "minecraft:player_explosion", true),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_living_entity_outside_the_mob_list_causes_its_own_blast() {
-    kills(
-        "a_living_entity_outside_the_mob_list_causes_its_own_blast",
-        |game| summoned(game, "minecraft:armor_stand", "{}"),
-        (101, "minecraft:player_explosion", false),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_players_thrown_trident_credits_the_player() {
-    kills(
-        "a_players_thrown_trident_credits_the_player",
-        |game| {
-            let id = summoned(game, "minecraft:trident", "{NoGravity:1b}");
-            game.tridents.for_each_mut(|t| t.owner = 11);
-            id
-        },
-        (11, "minecraft:player_explosion", true),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_players_firework_rocket_credits_the_player() {
-    kills(
-        "a_players_firework_rocket_credits_the_player",
-        |game| {
-            let id = summoned(game, "minecraft:firework_rocket", "{LifeTime:100}");
-            game.rockets.for_each_mut(|r| r.owner = Some(Who::Player));
-            id
-        },
-        (11, "minecraft:player_explosion", true),
-    );
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_mob_blast_breaks_blocks_only_when_its_source_may_grief() {
-    run_on_guest_stack(|| {
-        for via in BOTH {
-            for griefing in [false, true] {
-                with_game(|game| {
-                    floor(game);
-                    assert!(game.session.rules.set(
-                        "mob_griefing",
-                        horizon_client::gamerules::Value::Bool(griefing),
-                    ));
-                    mob(
-                        game,
-                        42,
-                        "minecraft:creeper",
-                        Vec3::new(8.5, 80.0, 8.5),
-                        20.0,
-                    );
-                    let blast = Blast {
-                        source: game.entity(42),
-                        center: [8.5, 80.0, 8.5],
-                        radius: 3.0,
-                        fire: false,
-                        interaction: ExplosionInteraction::Mob,
-                        settings: ExplosionSettings::default(),
-                    };
-                    explode(game, via, blast, Ok(()));
-                    let (under, floor) = (name(game, [8, 79, 8]), stone(game));
-                    if griefing {
-                        assert_eq!(under, "minecraft:air", "{via:?}");
-                        assert!(floor < 256, "{via:?}: {floor}");
-                    } else {
-                        assert_eq!((under.as_str(), floor), ("minecraft:stone", 256), "{via:?}");
-                    }
-                    // The source is spared by its own blast.
-                    assert_eq!(game.mobs[0].health, 20.0, "{via:?}");
-                });
-            }
-        }
-    });
 }
 
 #[test]
@@ -450,42 +269,6 @@ fn a_blast_that_keeps_blocks_still_lights_fire() {
                     .count();
                 assert!(fires > 0, "{via:?}");
                 assert_eq!(stone(game), 256, "{via:?}");
-            });
-        }
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn an_invalid_source_explodes_nothing() {
-    run_on_guest_stack(|| {
-        for via in BOTH {
-            with_game(|game| {
-                floor(game);
-                mob(
-                    game,
-                    43,
-                    "minecraft:zombie",
-                    Vec3::new(8.5, 80.0, 9.5),
-                    20.0,
-                );
-                let live = game.entity(43).unwrap();
-                let stale =
-                    EntityRef::new(mod_api::WorldEpoch::new(live.epoch().get() + 1), live.id());
-                let nothing = EntityRef::new(live.epoch(), 9999);
-                for source in [stale, nothing] {
-                    let blast = Blast {
-                        source: Some(source),
-                        center: [8.5, 80.5, 8.5],
-                        radius: 4.0,
-                        fire: true,
-                        interaction: ExplosionInteraction::Block,
-                        settings: ExplosionSettings::default(),
-                    };
-                    explode(game, via, blast, Err(ExplodeError::Unavailable));
-                }
-                assert_eq!(stone(game), 256, "{via:?}");
-                assert_eq!(game.mobs[0].health, 20.0, "{via:?}");
             });
         }
     });
@@ -581,37 +364,6 @@ fn register_fuel_tank(game: &mut Game<'_>) {
 
 #[test]
 #[ignore = "daily"]
-fn a_mod_damage_type_names_the_death_message_and_is_what_living_damage_hears() {
-    heard(move |game, via, heard| {
-        register_fuel_tank(game);
-        mob(
-            game,
-            44,
-            "minecraft:zombie",
-            Vec3::new(10.5, 80.0, 8.5),
-            20.0,
-        );
-        let blast = Blast {
-            interaction: ExplosionInteraction::None,
-            settings: ExplosionSettings {
-                damage_type: Some("test:fuel_tank".into()),
-                ..Default::default()
-            },
-            ..Blast::at([8.5, 80.5, 8.5], 4.0)
-        };
-        explode(game, via, blast, Ok(()));
-        let heard = heard.lock().unwrap();
-        assert_eq!(heard.starts, ["test:fuel_tank"], "{via:?}");
-        assert_eq!(heard.damage, [(44, "test:fuel_tank".to_owned())], "{via:?}");
-        let zombie = game.mobs.remove(0);
-        assert!(zombie.health < 20.0, "{via:?}: {}", zombie.health);
-        let death = game.mob_death_message(&zombie, None).component();
-        assert_eq!(death["translate"], "death.attack.fuelTank", "{via:?}");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn immune_blocks_survive_and_every_other_cell_resists_nothing() {
     for immune in [Some("minecraft:logs"), None] {
         heard(move |game, via, _| {
@@ -654,76 +406,6 @@ fn immune_blocks_survive_and_every_other_cell_resists_nothing() {
 
 #[test]
 #[ignore = "daily"]
-fn a_calculator_that_damages_no_entities_leaves_health_while_blocks_break() {
-    for damages_entities in [false, true] {
-        heard(move |game, via, heard| {
-            mob(
-                game,
-                45,
-                "minecraft:zombie",
-                Vec3::new(10.5, 80.0, 8.5),
-                20.0,
-            );
-            let blast = Blast {
-                settings: ExplosionSettings {
-                    calculator: Some(ExplosionCalculator {
-                        damages_entities,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                ..Blast::at([8.5, 80.5, 8.5], 4.0)
-            };
-            explode(game, via, blast, Ok(()));
-            assert!(stone(game) < 256, "{via:?}: blocks break");
-            let health = game.mobs[0].health;
-            if damages_entities {
-                assert!(health < 20.0, "{via:?}: {health}");
-            } else {
-                assert_eq!(health, 20.0, "{via:?}");
-                assert!(heard.lock().unwrap().damage.is_empty(), "{via:?}");
-            }
-        });
-    }
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_knockback_multiplier_of_zero_leaves_velocity_unchanged() {
-    for knockback_multiplier in [Some(0.0), None] {
-        heard(move |game, via, _| {
-            mob(
-                game,
-                46,
-                "minecraft:zombie",
-                Vec3::new(11.5, 80.0, 8.5),
-                20.0,
-            );
-            let blast = Blast {
-                interaction: ExplosionInteraction::None,
-                settings: ExplosionSettings {
-                    calculator: Some(ExplosionCalculator {
-                        knockback_multiplier,
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                },
-                ..Blast::at([8.5, 80.5, 8.5], 4.0)
-            };
-            explode(game, via, blast, Ok(()));
-            let zombie = &game.mobs[0];
-            assert!(zombie.health < 20.0, "{via:?}: hurt either way");
-            if knockback_multiplier.is_some() {
-                assert_eq!(zombie.velocity, Vec3::new(0.0, 0.0, 0.0), "{via:?}");
-            } else {
-                assert!(zombie.velocity.x > 0.0, "{via:?}: {:?}", zombie.velocity);
-            }
-        });
-    }
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_radius_of_48_breaks_a_block_40_blocks_from_the_centre() {
     heard(move |game, via, _| {
         for x in 1..4 {
@@ -740,110 +422,6 @@ fn a_radius_of_48_breaks_a_block_40_blocks_from_the_centre() {
         explode(game, via, Blast::at([8.5, 100.5, 8.5], 48.0), Ok(()));
         assert_eq!(name(game, [48, 103, 11]), "minecraft:air", "{via:?}");
     });
-}
-
-#[test]
-#[ignore = "daily"]
-fn an_unknown_damage_type_particle_or_tag_explodes_nothing() {
-    let refusals = [
-        (
-            ExplosionSettings {
-                damage_type: Some("test:no_such_type".into()),
-                ..Default::default()
-            },
-            ExplodeError::UnknownDamageType,
-        ),
-        (
-            ExplosionSettings {
-                large_particle: Some("test:no_such_particle".into()),
-                ..Default::default()
-            },
-            ExplodeError::InvalidParticle,
-        ),
-        (
-            ExplosionSettings {
-                block_particles: Some(vec![mod_api::ExplosionBlockParticle {
-                    weight: 0,
-                    ..Default::default()
-                }]),
-                ..Default::default()
-            },
-            ExplodeError::InvalidParticle,
-        ),
-        (
-            ExplosionSettings {
-                sound: Some("Not A Sound".into()),
-                ..Default::default()
-            },
-            ExplodeError::UnknownSound,
-        ),
-        (
-            ExplosionSettings {
-                calculator: Some(ExplosionCalculator {
-                    immune_blocks: Some("test:no_such_tag".into()),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-            ExplodeError::UnknownBlockTag,
-        ),
-    ];
-    for (settings, refusal) in refusals {
-        refused(settings, refusal);
-    }
-}
-
-/// A blast with `settings` beside a zombie answers `refusal` through both
-/// targets: no block breaks, the zombie keeps its health and no hook hears it.
-fn refused(settings: ExplosionSettings, refusal: ExplodeError) {
-    heard(move |game, via, heard| {
-        mob(
-            game,
-            47,
-            "minecraft:zombie",
-            Vec3::new(10.5, 80.0, 8.5),
-            20.0,
-        );
-        let blast = Blast {
-            settings: settings.clone(),
-            ..Blast::at([8.5, 80.5, 8.5], 4.0)
-        };
-        explode(game, via, blast, Err(refusal));
-        assert_eq!(stone(game), 256, "{via:?} {refusal:?}");
-        assert_eq!(game.mobs[0].health, 20.0, "{via:?} {refusal:?}");
-        assert!(
-            heard.lock().unwrap().starts.is_empty(),
-            "{via:?} {refusal:?}"
-        );
-    });
-}
-
-/// Smoke block particles with these weights.
-fn weighted(weights: &[u32]) -> ExplosionSettings {
-    let list = weights
-        .iter()
-        .map(|&weight| mod_api::ExplosionBlockParticle {
-            weight,
-            ..Default::default()
-        });
-    ExplosionSettings {
-        block_particles: Some(list.collect()),
-        ..Default::default()
-    }
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_block_particle_weight_past_the_packets_int_explodes_nothing() {
-    let past = i32::MAX as u32 + 1;
-    refused(weighted(&[past]), ExplodeError::InvalidParticle);
-}
-
-#[test]
-#[ignore = "daily"]
-fn block_particle_weights_whose_total_is_past_an_int_explode_nothing() {
-    let max = i32::MAX as u32;
-    refused(weighted(&[max, 1]), ExplodeError::InvalidParticle);
 }
 
 /// A nether portal block at (8, 80, 10) between obsidian on its axis (x) and

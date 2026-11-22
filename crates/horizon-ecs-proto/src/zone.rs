@@ -208,7 +208,7 @@ pub fn zone_step(world: &mut World) {
     world.resource_scope(|world, mut idx: Mut<Index>| {
         let mut slept: Vec<Entity> = Vec::new();
         let mut woke: Vec<Entity> = Vec::new();
-        let dirty = world.resource::<Players>().dirty;
+        let dirty = std::mem::take(&mut world.resource_mut::<Players>().zone_dirty);
         let (mut down, mut up) = (false, false);
         if dirty {
             let list = world.resource::<Players>().list.clone();

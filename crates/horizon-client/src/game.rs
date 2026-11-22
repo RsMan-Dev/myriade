@@ -1306,6 +1306,8 @@ struct Game<'a> {
     loop_states: published_loops::LoopStates,
     /// The Agent Control setting the socket was last opened or closed for (`agent_settings`).
     agent_control_on: bool,
+    /// The control endpoint `horizon-server` talks to (`--control-socket`).
+    control: Option<horizon_client::control::Server>,
     /// When an agent's last command came.
     agent_last: Option<Instant>,
     /// This thread's and all threads' allocation counts at the last rendered frame.
@@ -5803,6 +5805,7 @@ impl<'a> Game<'a> {
             trial_spawner_tick_positions: Vec::new(),
             loop_states: Default::default(),
             agent_control_on: false,
+            control: None,
             agent_last: None,
             alloc_mark: None,
             pending_bench: None,

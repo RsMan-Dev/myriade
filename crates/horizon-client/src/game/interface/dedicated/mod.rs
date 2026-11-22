@@ -1499,6 +1499,7 @@ impl Game<'_> {
                 while let Ok(line) = state.console.try_recv() {
                     self.console_line(&mut state, &line);
                 }
+                self.poll_server_control(&mut state);
             }));
             if let Err(payload) = prelude {
                 crashed = Some(panic_message(payload.as_ref()));

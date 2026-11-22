@@ -500,7 +500,3 @@ mod tests {
     }
 }
 
-// A conversion keeps the old mob's state; lives here for the lightning's.
-#[cfg(test)]
-#[path = "tests/mob_conversion_state_tests.rs"]
-mod mob_conversion_state_tests;

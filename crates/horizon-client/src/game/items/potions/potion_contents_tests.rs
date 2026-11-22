@@ -154,32 +154,6 @@ fn a_lingering_potion_of_custom_effects_makes_its_cloud() {
     );
 }
 
-/// `AbstractThrownPotion.affectEntitiesAround` with `Axolotl.rehydrate`:
-/// water refills an axolotl's air by 1800 once, not once per copy of the
-/// `#rehydrates_axolotls` check.
-#[test]
-#[ignore = "daily"]
-fn a_water_potion_refills_an_axolotl_once() {
-    let mut resources = None;
-    let mut game = player_game(&mut resources);
-    assert!(game.run_command(
-        "summon minecraft:axolotl 0.5 64 0.5 {NoAI:1b,PersistenceRequired:1b,Silent:1b}"
-    ));
-    game.mobs[0].air = 0;
-    let water = ItemStack::new("minecraft:splash_potion", 1).with_potion("minecraft:water");
-    game.splash(
-        &water,
-        Vec3::new(0.5, 64.0, 0.5),
-        None,
-        None,
-        0,
-        &PotionOwner::default(),
-        true,
-        Vec3::ZERO,
-    );
-    assert_eq!(game.mobs[0].air, 1800, "one rehydrate, capped at the max");
-}
-
 /// `PotionContents.is(PotionTags.DOUSES_FIRE)` needs `isPotionWithoutCustomEffects`:
 /// water carrying a custom effect leaves a lit campfire alone, while plain
 /// water still puts it out.

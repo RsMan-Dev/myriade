@@ -157,6 +157,9 @@ impl World {
             }
             self.revision = self.revision.wrapping_add(1);
             self.modified.insert(key);
+            if self.path_writes.is_some() && !self.path_bulk.contains(&key) {
+                self.path_bulk.push(key);
+            }
             if self.block_log.is_some() {
                 self.bulk_log.insert(key);
             }

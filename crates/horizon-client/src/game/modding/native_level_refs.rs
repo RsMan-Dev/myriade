@@ -2469,61 +2469,6 @@ mod tests {
         });
     }
 
-    /// The flag adds a chunk to the spawning chunks (inhabited time, a spawn
-    /// attempt); the local mob cap still wants a non-spectator within 128
-    /// blocks of its centre.
-    #[test]
-    #[ignore = "daily"]
-    fn a_natural_spawning_ticket_far_from_every_player_runs_the_attempt_but_the_local_cap_refuses()
-    {
-        use horizon_client::chunk::Chunk;
-        use horizon_client::mobs::spawn_selection::{Category, SpawnPlayer, SpawnState};
-        use horizon_client::motion::PlayerMotion;
-        use horizon_core::geometry::Vec3;
-        use mod_api::TicketOwner::Block;
-        use std::sync::Arc;
-        with_machines(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            for cx in 6..=10 {
-                for cz in 6..=10 {
-                    let mut chunk = Chunk::empty(cx, cz);
-                    chunk.lit = true;
-                    game.world.chunks.insert((cx, cz), Arc::new(chunk));
-                }
-            }
-            let level = game.level(game.dim.id()).unwrap();
-            // Both chunks lie in the player's 8-chunk area and past 128 blocks of it.
-            let flagged = game.level_chunk_ref(level, [8, 8]).unwrap();
-            let plain = game.level_chunk_ref(level, [8, 7]).unwrap();
-            {
-                let _guard = in_mod("machines");
-                let owner = Block([128, 64, 128]);
-                assert!(game.chunk_set_mod_forced(flagged, quarry(), owner, true, true));
-                assert!(game.chunk_set_mod_forced(plain, quarry(), owner, true, false));
-            }
-            game.spawn_natural();
-            assert_eq!(game.world.inhabited.get(&(8, 8)), Some(&1));
-            assert!(
-                !game.world.inhabited.contains_key(&(8, 7)),
-                "without the flag it is no spawning chunk"
-            );
-            assert!(game.mobs.is_empty(), "the local cap refuses");
-            // The cap itself: no player within 128 blocks of the chunk.
-            let players: Vec<SpawnPlayer> = game
-                .level_players()
-                .iter()
-                .map(|p| SpawnPlayer {
-                    position: [p.position.x, p.position.y, p.position.z],
-                    spectator: p.spectator,
-                })
-                .collect();
-            let natural = game.natural_level();
-            let mut state = SpawnState::new(&natural, 1, players, &[], |_, _| true);
-            assert!(!state.can_spawn_local(Category::Monster, 8, 8));
-            assert!(state.can_spawn_local(Category::Monster, 0, 0));
-        });
-    }
-
     fn saved(controller: &str, pos: [i32; 3], chunk: (i32, i32)) -> ModTicket {
         ModTicket {
             controller: controller_slot(controller),

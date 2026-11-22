@@ -1153,6 +1153,7 @@ pub(crate) fn online_events(
     }
     pl.list = on.list.iter().flatten().map(|p| (p.x, p.z)).collect();
     pl.dirty = true;
+    pl.zone_dirty = true;
     on.seen = events;
 }
 /// The path a goal asked for ended (or none was found): the goal that owns it ends (called by `cow::path_ended`).

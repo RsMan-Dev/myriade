@@ -147,6 +147,14 @@ impl EcsLevel {
             w.set_block_event(pos);
         }
     }
+    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>)> {
+        self.inner.as_mut().map_or_else(Vec::new, |w| w.take_player_hits())
+    }
+    pub fn chunk_rewritten(&mut self, cx: i32, cz: i32) {
+        if let Some(w) = self.inner.as_mut() {
+            w.chunk_rewritten(cx, cz);
+        }
+    }
     pub fn chunk_loaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         if let Some(w) = self.inner.as_mut() {
             w.chunk_loaded(mw, cx, cz);

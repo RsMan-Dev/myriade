@@ -224,6 +224,8 @@ pub struct Players {
     pub list: Vec<(f64, f64)>,
     pub(crate) prev: Vec<(f64, f64)>,
     pub dirty: bool,
+    /// The same event for the zone (`zone_step`), which runs before `player_near` clears `dirty`: cleared by the zone alone.
+    pub zone_dirty: bool,
     /// The players by bin of 32 blocks (side `n`), rebuilt when one moves, the places they had before, and the
     /// cells the last move touched (scratch buffers kept between ticks).
     pub(crate) bins: Vec<Vec<(f64, f64)>>,

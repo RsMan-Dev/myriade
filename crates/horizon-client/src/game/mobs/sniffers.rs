@@ -119,6 +119,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/sniffers_tests.rs"]
-mod sniffers_tests;

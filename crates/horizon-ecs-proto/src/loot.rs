@@ -11,7 +11,7 @@ use horizon_world::loot::{EntityLootParams, LootData, LootEntity, PackOverlay};
 
 /// The loot tables of the world's resources (loaded once, from `HORIZON_TEST_RESOURCES` in the benches and tests).
 #[derive(Resource)]
-pub struct LootTables(pub LootData);
+pub struct LootTables(pub std::sync::Arc<LootData>);
 /// The level's random, which a table without a seed of its own is rolled with.
 #[derive(Resource)]
 pub struct LevelRandom(pub LegacyRandom);
@@ -109,6 +109,16 @@ pub struct DeathSeed(pub i64);
 
 /// Reads the loot tables now (what the first death of a world would do: some 276 million instructions, a hitch of 90 ms): a bench
 /// world calls it at its creation so that the first death of a fish on dry land is not counted as a cost of every tick.
+/// The host's tables (its data packs included), given again whenever it reloads them; the same tables twice change nothing.
+pub fn install(world: &mut World, data: std::sync::Arc<LootData>) {
+    if world.get_resource::<LootTables>().is_some_and(|t| std::sync::Arc::ptr_eq(&t.0, &data)) {
+        return;
+    }
+    world.insert_resource(LootTables(data));
+    if world.get_resource::<LevelRandom>().is_none() {
+        world.insert_resource(LevelRandom(LegacyRandom::new(0x5EED)));
+    }
+}
 pub fn preload(world: &mut World) {
     tables(world);
 }
@@ -119,7 +129,7 @@ fn tables(world: &mut World) -> bool {
     let Some(root) = std::env::var_os("HORIZON_TEST_RESOURCES").map(std::path::PathBuf::from) else { return false };
     let Ok(defaults) = horizon_world::item_defaults::read(&root) else { return false };
     let Ok(data) = LootData::load(&root, &PackOverlay::default(), &defaults) else { return false };
-    world.insert_resource(LootTables(data));
+    world.insert_resource(LootTables(std::sync::Arc::new(data)));
     if world.get_resource::<LevelRandom>().is_none() {
         world.insert_resource(LevelRandom(LegacyRandom::new(0x5EED)));
     }

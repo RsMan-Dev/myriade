@@ -34,6 +34,11 @@ pub struct BlockChanges(pub Vec<(i32, i32, i32, &'static str)>);
 #[derive(Resource, Default)]
 pub struct StateChanges(pub Vec<(i32, i32, i32, &'static str, &'static [(&'static str, &'static str)])>, pub Vec<(i32, i32, i32, horizon_world::registry::BlockStateId)>);
 
+/// The blocks the host wrote in its own world since the last step (a player, a command, another system of the game): `block_changes`
+/// reads each again and wakes what it can change, as for a block the creatures wrote.
+#[derive(Resource, Default)]
+pub struct HostWrites(pub Vec<(i32, i32, i32)>);
+
 pub(crate) const EGG: &str = "minecraft:turtle_egg";
 
 /// The top of what the bench worlds generate (the patches reach y = 3).
@@ -280,6 +285,7 @@ pub(crate) fn recompute(
 pub(crate) fn block_changes(
     mut changes: ResMut<BlockChanges>,
     mut state_changes: ResMut<StateChanges>,
+    mut host_writes: ResMut<HostWrites>,
     level: Res<Level>,
     mut hazards: ResMut<Hazards>,
     idx: Res<Index>,
@@ -292,19 +298,24 @@ pub(crate) fn block_changes(
     mut paths: Query<(Entity, &Pos, &Stroll, &mut Nav), With<Following>>,
     mut commands: Commands,
 ) {
-    if changes.0.is_empty() && state_changes.0.is_empty() && state_changes.1.is_empty() {
+    if changes.0.is_empty() && state_changes.0.is_empty() && state_changes.1.is_empty() && host_writes.0.is_empty() {
         return;
     }
     let mw = level.mw.0;
-    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..], None));
-    let with_state = std::mem::take(&mut state_changes.0).into_iter().map(|(x, y, z, n, p)| (x, y, z, n, p, None));
-    let by_id = std::mem::take(&mut state_changes.1).into_iter().map(|(x, y, z, id)| (x, y, z, "", &[][..], Some(id)));
+    let named = std::mem::take(&mut changes.0).into_iter().map(|(x, y, z, n)| (x, y, z, n, &[][..], None, false));
+    let with_state = std::mem::take(&mut state_changes.0).into_iter().map(|(x, y, z, n, p)| (x, y, z, n, p, None, false));
+    let by_id = std::mem::take(&mut state_changes.1).into_iter().map(|(x, y, z, id)| (x, y, z, "", &[][..], Some(id), false));
+    let written = std::mem::take(&mut host_writes.0).into_iter().map(|(x, y, z)| (x, y, z, "", &[][..], Some(mw.world.block(x, y, z)), true));
     let mut lit: Vec<(i32, i32, i32)> = Vec::new();
-    for (x, y, z, name, props, id) in named.chain(with_state).chain(by_id).collect::<Vec<_>>() {
+    for (x, y, z, name, props, id, written) in named.chain(with_state).chain(by_id).chain(written).collect::<Vec<_>>() {
         let Some(state) = id.or_else(|| crate::blocks::resolve(mw, name, props)) else { continue };
         let name: &str = if id.is_some() { mw.registry.state(state).map_or("", |s| s.name.as_str()) } else { name };
         // The host's level (no blocks: `host_level`) only reports the change; the host applies it to its own world.
-        if level.blocks.0.is_null() {
+        if written {
+            // The host already wrote it: the masks and the paths follow, nothing goes back to the host.
+            level.occ.changed(mw.world, mw.collision, x, y, z);
+            crate::pathsearch::layer_bump();
+        } else if level.blocks.0.is_null() {
             events.host.set_block([x, y, z], state);
         } else {
             // SAFETY: this system runs alone in the chain, no reference to the blocks is alive meanwhile.

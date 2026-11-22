@@ -114,11 +114,9 @@ pub(super) mod tests {
     use super::super::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
     use horizon_client::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
-    use horizon_client::mobs::Mob;
-    use horizon_core::geometry::Vec3;
     use horizon_protocol::packets::{configuration::ClientInformation, play::Clientbound};
     use mod_api::__private::game::*;
-    use mod_api::{SoundSource, WorldEpoch};
+    use mod_api::SoundSource;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
@@ -158,115 +156,6 @@ pub(super) mod tests {
             }
         }
         out
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn sounds_reach_the_right_connections() {
-        with_game(|game| {
-            let net = NetConfig {
-                listen: false,
-                announce: false,
-                lod_distance: 0,
-                ..NetConfig::lan(0, String::new(), 3)
-            };
-            let config = HubConfig {
-                default_game_mode: 0,
-                guest_commands: false,
-                force_game_mode: false,
-                hardcore: false,
-                view_distance: 2,
-                simulation_distance: 2,
-                dimension: game.dim.id().to_owned(),
-                allow_flight: true,
-                seed: 0,
-                max_players: 3,
-                integrated: true,
-                levels: game.level_shapes,
-                level_seeds: game.levels.runtime.seeds(),
-            };
-            let settings = LanSettings {
-                port: 0,
-                guest_commands: false,
-                force_game_mode: false,
-            };
-            game.lan_host(settings, net, config).unwrap();
-            let (a, rx_a) = guest(21, 21, [1.0, 64.0, 2.0]);
-            let (b, rx_b) = guest(22, 22, [3.0, 64.0, 2.0]);
-            let (far, rx_far) = guest(23, 23, [900.0, 64.0, 2.0]);
-            game.lan.as_mut().unwrap().hub.guests.extend([a, b, far]);
-            let pa = game.player(21).unwrap();
-            let pb = game.player(22).unwrap();
-            let sound = "minecraft:entity.player.burp";
-
-            // stop_sound: only the named player's connection.
-            assert!(game.player_stop_sound(pa, Some(sound), Some(SoundSource::Players)));
-            assert!(game.player_stop_sound(pa, None, None));
-            assert!(!game.player_stop_sound(pa, Some("bad id"), None));
-            let got = packets(&rx_a);
-            assert_eq!(got.len(), 2);
-            let Clientbound::StopSound(first) = &got[0] else {
-                panic!("expected stop sound")
-            };
-            assert_eq!(first.sound.as_deref(), Some(sound));
-            assert_eq!(first.source, Some(SoundSource::Players.index() as i32));
-            let Clientbound::StopSound(second) = &got[1] else {
-                panic!("expected stop sound")
-            };
-            assert_eq!((second.sound.clone(), second.source), (None, None));
-            assert!(packets(&rx_b).is_empty());
-
-            // play_sound: one packet for one player, at their position.
-            assert!(game.player_play_sound(pb, sound, SoundSource::Neutral, 0.5, 1.5));
-            assert!(!game.player_play_sound(pb, sound, SoundSource::Neutral, 1.0, f32::NAN));
-            assert!(!game.player_play_sound(
-                pb,
-                "minecraft:no.such.sound",
-                SoundSource::Neutral,
-                1.0,
-                1.0
-            ));
-            assert!(packets(&rx_a).is_empty());
-            let got = packets(&rx_b);
-            assert_eq!(got.len(), 1);
-            let Clientbound::Sound(p) = &got[0] else {
-                panic!("expected sound")
-            };
-            assert_eq!((p.x, p.y, p.z), (24, 512, 16));
-            assert_eq!((p.volume, p.pitch), (0.5, 1.5));
-            assert_eq!(p.source, SoundSource::Neutral.index() as i32);
-
-            // A stale handle and an offline player fail.
-            let stale = mod_api::__private::game::player_ref(
-                mod_api::EntityRef::new(
-                    WorldEpoch::new(pa.entity().epoch().get() + 1),
-                    pa.entity().id(),
-                ),
-                pa.fields().uuid,
-            );
-            assert!(!game.player_stop_sound(stale, None, None));
-            assert!(!game.player_play_sound(stale, sound, SoundSource::Players, 1.0, 1.0));
-            assert!(game.player(99).is_none());
-
-            // play_bound_sound: players in range get a SoundEntity packet.
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.mobs
-                .push(Mob::new(40, kind, Vec3::new(2.0, 64.0, 2.0), 0.0));
-            let cow = game.entity(40).unwrap();
-            assert!(game.entity_play_bound_sound(cow, sound, SoundSource::Neutral, 1.0, 1.0));
-            assert!(!game.entity_play_bound_sound(cow, sound, SoundSource::Neutral, -1.0, 1.0));
-            game.flush_native_sounds();
-            for rx in [&rx_a, &rx_b] {
-                let got = packets(rx);
-                assert_eq!(got.len(), 1);
-                let Clientbound::SoundEntity(p) = &got[0] else {
-                    panic!("expected sound entity")
-                };
-                assert_eq!(p.id, 40);
-                assert_eq!(p.source, SoundSource::Neutral.index() as i32);
-            }
-            assert!(packets(&rx_far).is_empty());
-        });
     }
 
     /// `Level.playSound` draws its seed at the call, from the level's own

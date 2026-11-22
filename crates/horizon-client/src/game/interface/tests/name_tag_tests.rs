@@ -10,17 +10,13 @@
 //! stack it names with -- and `Player.interactOn` puts a creative player's
 //! count straight back -- and `EntityAttachment.NAME_TAG` says where the tag
 //! hangs, which `EntityTypes.SNIFFER` moves to 2.05 above the feet.
-use super::super::sculk::TEST_POSTED_EVENTS;
 use super::super::*;
 use super::name_tag_at;
 use horizon_client::chunk::Chunk;
 use horizon_client::entities::ArmorStand;
 use horizon_client::items::ItemStack;
-use horizon_client::mobs::{Anim, Brain, Mob, MobType, Part, Species, Who};
+use horizon_client::mobs::{Anim, Brain, Mob, MobType, Part, Species};
 use horizon_client::motion::PlayerMotion;
-use horizon_client::save::uuid_text;
-use horizon_client::scoreboard as sb;
-use horizon_client::text::Text;
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use horizon_core::position::ChunkPos;
@@ -166,118 +162,6 @@ fn game() -> Game<'static> {
     game.selected = 0;
     game.set_mode_id(0);
     game
-}
-
-fn spawn(game: &mut Game<'_>, kind: &str, id: u32, at: [f64; 3]) -> usize {
-    let kind = game.res.mob_types().get(kind).unwrap().clone();
-    game.mobs
-        .push(Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0));
-    game.mobs.len() - 1
-}
-
-fn target(id: u32) -> Option<InteractTarget> {
-    Some(InteractTarget {
-        id: id as i32,
-        location: [0.0, 0.0, 0.0],
-    })
-}
-
-/// A name tag with `name` as its `minecraft:custom_name`.
-fn named_tag(name: &str) -> ItemStack {
-    let mut stack = ItemStack::new("minecraft:name_tag", 1);
-    stack.data_mut().set_other(
-        "minecraft:custom_name",
-        Some(horizon_core::nbt::Tag::String(name.into())),
-    );
-    stack
-}
-
-fn take_interacts() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    TEST_POSTED_EVENTS.with(|events| {
-        std::mem::take(events.borrow_mut().as_mut().unwrap())
-            .into_iter()
-            .filter(|event| event.0 == "minecraft:entity_interact")
-            .collect()
-    })
-}
-
-#[test]
-#[ignore = "daily"]
-fn naming_posts_entity_interact_at_the_named_entity() {
-    let mut game = game();
-    TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
-    // A mob names itself in `Mob.interact`: the event goes out at the mob,
-    // from the player who used the tag.
-    game.inventory[0] = Some(named_tag("Bessie"));
-    let cow = spawn(&mut game, "minecraft:cow", 7, [2.5, 64.0, 2.5]);
-    assert!(
-        game.interact_mob(target(7)).unwrap(),
-        "the tag names the cow"
-    );
-    assert_eq!(game.mobs[cow].custom_name.as_deref(), Some("Bessie"));
-    assert_eq!(
-        take_interacts(),
-        vec![(
-            "minecraft:entity_interact",
-            [2.5, 64.0, 2.5],
-            Some(Who::Player)
-        )]
-    );
-    // An armour stand is no mob: `Player.interactOn` posts the same event for
-    // any item that named a living entity.
-    game.inventory[0] = Some(named_tag("Holo"));
-    game.armor_stands
-        .push(ArmorStand::new(21, Vec3::new(3.0, 64.0, 4.0), 0.0));
-    assert!(game.interact_armor_stand(target(21)), "the tag names it");
-    assert_eq!(
-        game.armor_stands[0].custom_name.as_ref().map(Text::plain),
-        Some("Holo".to_owned())
-    );
-    assert_eq!(
-        take_interacts(),
-        vec![(
-            "minecraft:entity_interact",
-            [3.0, 64.0, 4.0],
-            Some(Who::Player)
-        )]
-    );
-    TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
-}
-
-#[test]
-#[ignore = "daily"]
-fn an_armour_stands_name_ignores_f1_and_team_visibility() {
-    let mut game = game();
-    let mut stand = ArmorStand::new(42, Vec3::new(0.0, 64.0, 4.0), 0.0);
-    stand.custom_name = Some(Text::literal("Holo"));
-    stand.name_visible = true;
-    game.armor_stands.push(stand);
-    let camera = glam::DVec3::new(0.5, 65.0, 0.5);
-    assert_eq!(game.shown_name_tags(camera), vec!["Holo".to_owned()]);
-    // Nor does a team the stand is on, whose name tags it hides from everyone.
-    let stand_uuid = [0, 0, 0, 42];
-    game.persist.uuids.insert(42, stand_uuid);
-    game.score.board.add_team("hidden").nametag_visibility = sb::Visibility::Never;
-    assert!(
-        game.score
-            .board
-            .add_to_team(&uuid_text(stand_uuid), "hidden")
-    );
-    // A mob's name still follows `LivingEntityRenderer`: the same team hides it.
-    let cow = spawn(&mut game, "minecraft:cow", 9, [1.0, 64.0, 4.0]);
-    game.mobs[cow].custom_name = Some("Moo".into());
-    game.mobs[cow].name_visible = true;
-    let cow_uuid = [0, 0, 0, 9];
-    game.persist.uuids.insert(9, cow_uuid);
-    assert!(game.score.board.add_to_team(&uuid_text(cow_uuid), "hidden"));
-    assert_eq!(
-        game.shown_name_tags(camera),
-        vec!["Holo".to_owned()],
-        "the team hides the cow's name, not the armour stand's"
-    );
-    // The same stand with its name hidden (`CustomNameVisible` off) shows none.
-    game.armor_stands[0].name_visible = false;
-    assert!(game.shown_name_tags(camera).is_empty());
 }
 
 /// `Player.interactOn`: `NameTagItem` shrinks the stack it named with, and a

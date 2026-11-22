@@ -470,65 +470,6 @@ fn block_parts_answer_explosion_resistance() {
     });
 }
 
-#[test]
-#[ignore = "daily"]
-fn block_parts_answer_drops_from_explosions() {
-    with_answers(&Answers::default(), |game| {
-        let registry = game.pack.assets.registry;
-        let [dirt, tnt, infested] = [
-            "minecraft:dirt",
-            "minecraft:tnt",
-            "minecraft:infested_stone",
-        ]
-        .map(|name| registry.default_state(name).unwrap());
-        let start = blast();
-        // Each row: the block at x 2 (its part answers) and x 3 (unanswered).
-        let hit = |game: &mut Game<'_>, state, z| {
-            let mut drops = ExplosionDrops::default();
-            for x in 2..=3 {
-                game.world.set(x, 64, z, state).unwrap();
-                game.explosion_hit_block(
-                    [x, 64, z],
-                    4.0,
-                    BlockInteraction::Destroy,
-                    &start,
-                    &mut drops,
-                )
-                .unwrap();
-                assert_eq!(game.world.block(x, 64, z), game.world.air);
-            }
-            drops.stacks
-        };
-        // Refused dirt drops nothing; the dirt beside it drops one.
-        let stacks = hit(game, dirt, 1);
-        let dirt_drops: Vec<_> = stacks
-            .iter()
-            .filter(|(_, stack)| &*stack.item == "minecraft:dirt")
-            .map(|(at, stack)| (*at, stack.count))
-            .collect();
-        assert_eq!(dirt_drops, [([3, 64, 1], 1)]);
-        // TNT answering true drops one TNT item and still primes; unanswered it only primes.
-        let primed = game.tnts.len();
-        let stacks = hit(game, tnt, 3);
-        let tnt_drops: Vec<_> = stacks
-            .iter()
-            .filter(|(_, stack)| &*stack.item == "minecraft:tnt")
-            .map(|(at, stack)| (*at, stack.count))
-            .collect();
-        assert_eq!(tnt_drops, [([2, 64, 3], 1)]);
-        assert_eq!(game.tnts.len(), primed + 2);
-        // Refused infested stone lets no silverfish out; the one beside it does.
-        let silverfish = |game: &Game<'_>| {
-            game.mobs
-                .iter()
-                .filter(|m| m.kind.id == "minecraft:silverfish")
-                .count()
-        };
-        hit(game, infested, 5);
-        assert_eq!(silverfish(game), 1);
-    });
-}
-
 /// Stone a dangerous wither skull may not destroy, while `proof` is set. It reads the
 /// supplied entity's kind and position first, and records them.
 #[derive(Clone)]

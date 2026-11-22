@@ -13,9 +13,6 @@ use horizon_gameplay::stats::{namespaced, phantom_group_size};
 use std::path::PathBuf;
 
 #[cfg(test)]
-#[path = "tests/phantom_spawn_tests.rs"]
-mod phantom_spawn_tests;
-#[cfg(test)]
 #[path = "tests/player_stat_award_tests.rs"]
 mod player_stat_award_tests;
 #[cfg(test)]

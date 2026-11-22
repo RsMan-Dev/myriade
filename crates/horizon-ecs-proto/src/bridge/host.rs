@@ -242,7 +242,9 @@ impl EcsWorld {
         let seed = self.spawned;
         self.lent(mw, |w| {
             let e = spawn_armed(w, sp, at[0], at[2], seed);
-            w.get_mut::<Pos>(e)?.0.y = at[1];
+            // The place asked for, box and movement included: a creature summoned in the air falls (`cow::teleport` raises `Moving`).
+            w.get::<Pos>(e)?;
+            crate::cow::teleport(w, e, horizon_core::geometry::Vec3::new(at[0], at[1], at[2]));
             match nbt {
                 Some(c) => {
                     nbt::load(w, e, c);
@@ -387,11 +389,55 @@ impl EcsWorld {
 
     /// A block changed on the host: the cows near it look again at it at the next step.
     pub fn set_block_event(&mut self, pos: [i32; 3]) {
-        self.world.resource_mut::<crate::hostile::ChangedBlocks>().0.push((pos[0], pos[1], pos[2]));
+        // `block_changes` reads it again at the next step: masks, hazards, `ChangedBlocks`, the creatures and the paths beside it.
+        self.world.resource_mut::<crate::cow::HostWrites>().0.push((pos[0], pos[1], pos[2]));
         // The creakings linked to a heart at `pos` ask it again (`host_creaking::ask_heart`); a lookup, nothing scanned.
         let linked = self.world.get_resource::<super::host_creaking::HeartWatch>().and_then(|m| m.0.get(&pos)).cloned();
         for e in linked.into_iter().flatten() {
             super::host_creaking::ask_heart(&mut self.world, e);
+        }
+    }
+
+    /// The blows the creatures dealt to players since the last call (`PlayerState.hits`): the player, the amount, where it came from
+    /// and the creature that dealt it. The host applies them (armour, effects, knock-back, death).
+    pub fn take_player_hits(&mut self) -> Vec<(u32, f32, [f64; 3], Option<Entity>)> {
+        let hits = std::mem::take(&mut self.world.resource_mut::<crate::hostile::PlayerState>().hits);
+        // The host owns the health: the copy counted down by these blows goes back to what the host last said (`PlayerFact.alive`).
+        for h in &hits {
+            let alive = self.world.get_resource::<super::players::PlayerFacts>().and_then(|f| f.0.get(&h.player)).is_none_or(|f| f.alive);
+            let mut ps = self.world.resource_mut::<crate::hostile::PlayerState>();
+            if let Some(v) = ps.health.get_mut(h.player as usize) {
+                *v = if alive { 20.0 } else { 0.0 };
+            }
+        }
+        hits.into_iter()
+            .map(|h| {
+                let by = match h.by {
+                    Some(Who::Entity(e)) => Some(e),
+                    _ => None,
+                };
+                let y = by.and_then(|e| self.world.get::<Pos>(e)).map_or(0.0, |p| p.0.y);
+                (h.player, h.amount, [h.from.0, y, h.from.1], by)
+            })
+            .collect()
+    }
+
+    /// The host rewrote the blocks of a chunk in bulk (`World::edit_runs`: a `/fill`, a mod's edit): the masks are dropped
+    /// (`Occupancy::clear`), the paths are stale, and the creatures of the chunk look at their ground again.
+    pub fn chunk_rewritten(&mut self, cx: i32, cz: i32) {
+        self.occ.clear();
+        crate::pathsearch::layer_bump();
+        for e in self.chunk_entities(cx, cz) {
+            if self.world.get_entity(e).is_ok_and(|r| r.contains::<Disabled>()) {
+                continue;
+            }
+            if let Some(mut c) = self.world.get_mut::<crate::cow::Contact>(e) {
+                c.on_ground = false;
+            }
+            if let Some(mut b) = self.world.get_mut::<crate::cow::Bounds>(e) {
+                b.set_changed();
+            }
+            self.world.entity_mut(e).insert((crate::cow::Moving, crate::cow::Recheck));
         }
     }
 

@@ -2046,9 +2046,6 @@ mod completed_test_coordinate_feedback_tests {
 }
 
 #[cfg(test)]
-#[path = "commands/test_summary_context_tests.rs"]
-mod added_test_summary_context_tests;
-#[cfg(test)]
 mod registered_game_test_tests {
     use super::*;
     use mod_api::{GameTestContext, GameTestFunction, GameTestResult, GameTests};

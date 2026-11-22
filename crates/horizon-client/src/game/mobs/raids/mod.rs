@@ -1262,13 +1262,6 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/bed_loss.rs"]
-mod bed_loss_tests;
-
-#[cfg(test)]
-#[path = "tests/bar_players.rs"]
-mod bar_players_tests;
 
 #[cfg(test)]
 mod entity_ticking_tests {

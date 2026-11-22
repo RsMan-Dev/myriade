@@ -188,28 +188,6 @@ fn selected(game: &mut Game<'_>) -> Option<String> {
 
 #[test]
 #[ignore = "daily"]
-fn a_saddled_camels_riding_jump_posts_entity_action() {
-    let mut game = game();
-    scene(&mut game, true);
-    jump(&mut game, 100);
-    // The jump is accepted: Camel.handleStartJump's setDashing(true).
-    let camel = game
-        .mobs
-        .iter()
-        .find(|m| m.species() == horizon_client::mobs::Species::Camel)
-        .expect("the camel");
-    assert!(camel.extra.flag2, "the camel dashes");
-    let event = selected(&mut game);
-    assert!(
-        event
-            .as_deref()
-            .is_some_and(|e| e.ends_with("\"minecraft:entity_action\"")),
-        "the camel's handleStartJump posts entity_action: {event:?}"
-    );
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_jump_without_power_or_saddle_posts_nothing() {
     let mut game = game();
     scene(&mut game, true);

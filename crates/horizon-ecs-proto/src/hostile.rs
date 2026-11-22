@@ -64,6 +64,8 @@ pub struct PlayerHit {
     pub player: u32,
     pub amount: f32,
     pub from: (f64, f64),
+    /// Who dealt it, when a creature or a player did.
+    pub by: Option<Who>,
 }
 /// The players' health (20 until set), and the log of the hits they took. `immortal`: the health never drops below
 /// 1 (the benches keep the players alive to measure a long chase).
@@ -184,7 +186,7 @@ impl PlayerState {
             self.health.resize(i + 1, 20.0);
         }
         self.health[i] = health_after(self.health[i], amount, self.immortal);
-        self.hits.push(PlayerHit { tick, player, amount, from });
+        self.hits.push(PlayerHit { tick, player, amount, from, by });
     }
 }
 /// The creatures hurt this step by a player or a creature: (victim, attacker), written by `apply_damage`.

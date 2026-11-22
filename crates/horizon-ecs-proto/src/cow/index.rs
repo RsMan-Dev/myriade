@@ -322,6 +322,9 @@ pub fn enter_index(world: &mut World, e: Entity) {
         }
         idx.insert(e, cell);
         idx.move_watcher(e, old, cell);
+        // An entity that comes into a column is looked at as one that crossed into it (`player_near`, the zone): born beside a
+        // player that stands still, it is active at once.
+        idx.crossed.push((e, cell));
     }
     world.get_mut::<Cell>(e).unwrap().0 = cell;
     world.resource_mut::<crate::goals::CellMoves>().0.push(e);

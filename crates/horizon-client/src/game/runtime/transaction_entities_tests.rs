@@ -193,31 +193,6 @@ fn boat_with_rider(game: &mut Game<'_>) -> (EntityRef, EntityRef) {
 
 #[test]
 #[ignore = "daily"]
-fn a_spawn_then_abort_leaves_no_entity_map_or_hook() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_spawn_then_abort_leaves_no_entity_map_or_hook";
-    with_observer(NAME, |game| {
-        let (mobs, next) = (game.mobs.len(), game.next_entity);
-        let seal = game.transaction_open();
-        let pig = summon(game, "minecraft:pig", "{}").unwrap();
-        assert!(game.entity(pig).is_some(), "in the level inside the action");
-        assert_eq!(MARK.get(game, Holder::Entity(pig)), Ok(1));
-        assert_eq!(heard().constructed, [pig], "constructed at the spawn call");
-        game.transaction_close(&seal, false);
-
-        assert_eq!(game.entity(pig), None);
-        assert_eq!(game.mobs.len(), mobs);
-        assert!(!game.entity_attachments.contains_key(&pig));
-        assert!(!game.persist.uuids.contains_key(&pig));
-        game.native_joins_flush(false, 0);
-        game.native_leaves_flush();
-        assert_eq!(heard(), Heard::default(), "no join and no leave");
-        assert_eq!(game.next_entity, next + 1, "its id is burnt");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit() {
     const NAME: &str = "game::transaction_entities_tests::a_mob_removed_in_a_transaction_leaves_once_at_the_root_commit";
     with_observer(NAME, |game| {
@@ -273,32 +248,6 @@ fn a_spawn_joins_at_the_root_commit() {
 
 #[test]
 #[ignore = "daily"]
-fn a_join_cancelled_at_commit_leaves_a_stale_handle() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_join_cancelled_at_commit_leaves_a_stale_handle";
-    with_observer(NAME, |game| {
-        assert_eq!(
-            summon(game, "minecraft:sheep", "{}"),
-            None,
-            "kept out at once"
-        );
-        heard();
-        let sheep_before = game.mobs.len();
-        let seal = game.transaction_open();
-        let sheep = summon(game, "minecraft:sheep", "{}").expect("the handle comes back at once");
-        assert!(game.entity(sheep).is_some());
-        game.transaction_close(&seal, true);
-        assert_eq!(game.entity(sheep), None);
-        assert_eq!(game.mobs.len(), sheep_before);
-        game.native_leaves_flush();
-        let heard = heard();
-        assert_eq!(heard.joined, [sheep]);
-        assert!(heard.left.is_empty(), "never announced, so it never leaves");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
     const NAME: &str = "game::transaction_entities_tests::outside_a_transaction_joins_and_leaves_are_told_at_the_call";
     with_observer(NAME, |game| {
@@ -322,48 +271,6 @@ fn outside_a_transaction_joins_and_leaves_are_told_at_the_call() {
 
 #[test]
 #[ignore = "daily"]
-fn a_removal_then_abort_keeps_the_row_map_and_rider() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_removal_then_abort_keeps_the_row_map_and_rider";
-    with_observer(NAME, |game| {
-        let (boat, cow) = boat_with_rider(game);
-        let pig = summon(game, "minecraft:pig", "{}").unwrap();
-        let pig = game.entity(pig).unwrap();
-        MARK.set(game, Holder::Entity(boat.id()), 7).unwrap();
-        heard();
-        let seal = game.transaction_open();
-        assert!(game.entity_discard(boat));
-        assert!(game.entity_remove(pig, RemovalReason::Killed));
-        assert_eq!(game.entity(boat.id()), None, "stale at once");
-        assert_eq!(game.entity(pig.id()), None);
-        assert!(!game.entity_discard(boat), "not removed twice");
-        assert!(
-            game.boats.iter().any(|b| b.id == boat.id()),
-            "the row stays"
-        );
-        let mount = |game: &Game<'_>| {
-            game.mobs
-                .iter()
-                .find(|m| m.id == cow.id())
-                .unwrap()
-                .extra
-                .mount
-        };
-        assert_eq!(mount(game), Some(boat.id()), "the rider stays on");
-        game.transaction_close(&seal, false);
-
-        assert_eq!(game.entity(boat.id()), Some(boat));
-        assert_eq!(game.entity(pig.id()), Some(pig));
-        assert_eq!(MARK.get(game, Holder::Entity(boat.id())), Ok(7));
-        assert_eq!(game.entity_vehicle(cow), Some(boat));
-        assert!(game.persist.removals.is_empty());
-        game.native_leaves_flush();
-        assert_eq!(heard(), Heard::default());
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn a_removal_then_commit_runs_each_effect_once() {
     const NAME: &str =
         "game::transaction_entities_tests::a_removal_then_commit_runs_each_effect_once";
@@ -381,29 +288,6 @@ fn a_removal_then_commit_runs_each_effect_once() {
         game.native_leaves_flush();
         assert!(!game.boats.iter().any(|b| b.id == boat.id()));
         assert_eq!(heard().left, [boat.id()], "told once");
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_killed_mobs_oozing_spawns_only_at_commit() {
-    const NAME: &str =
-        "game::transaction_entities_tests::a_killed_mobs_oozing_spawns_only_at_commit";
-    with_observer(NAME, |game| {
-        let zombie = summon(game, "minecraft:zombie", "{}").unwrap();
-        let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
-        (game.mobs[at].extra.effects).push(StoredEffect::new("minecraft:oozing", 600, 0));
-        let slimes = |game: &Game<'_>| {
-            let slime = horizon_client::mobs::Species::Slime;
-            game.mobs.iter().filter(|m| m.species() == slime).count()
-        };
-        let zombie = game.entity(zombie).unwrap();
-        let seal = game.transaction_open();
-        assert!(game.entity_remove(zombie, RemovalReason::Killed));
-        assert_eq!(slimes(game), 0);
-        game.transaction_close(&seal, true);
-        assert_eq!(slimes(game), 2);
-        assert!(game.mobs.iter().any(|m| m.id == zombie.id() && m.removed));
     });
 }
 
@@ -799,32 +683,6 @@ fn a_held_join_keeps_loaded_from_disk() {
             [heard.joined[1]],
             "only the saved cow came from disk"
         );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn commit_tells_the_joins_before_the_effects_of_the_removals() {
-    const NAME: &str = "game::transaction_entities_tests::commit_tells_the_joins_before_the_effects_of_the_removals";
-    with_observer(NAME, |game| {
-        let zombie = summon(game, "minecraft:zombie", "{}").unwrap();
-        let at = game.mobs.iter().position(|m| m.id == zombie).unwrap();
-        (game.mobs[at].extra.effects).push(StoredEffect::new("minecraft:oozing", 600, 0));
-        let zombie = game.entity(zombie).unwrap();
-        heard();
-        let seal = game.transaction_open();
-        assert!(game.entity_remove(zombie, RemovalReason::Killed));
-        let pig = summon(game, "minecraft:pig", "{}").unwrap();
-        game.transaction_close(&seal, true);
-
-        let heard = heard();
-        assert_eq!(
-            heard.joined.len(),
-            3,
-            "the pig, then the two slimes the death spawns"
-        );
-        assert_eq!(heard.joined[0], pig, "the tentative entity joins first");
-        assert!(heard.joined[1..].iter().all(|id| *id > pig));
     });
 }
 

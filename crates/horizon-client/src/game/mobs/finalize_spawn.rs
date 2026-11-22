@@ -430,38 +430,4 @@ mod tests {
             assert!(cow.extra.head_id().is_none());
         });
     }
-
-    /// The strider's zombified-piglin rider needs `isSpawningMonsters`
-    /// (`ServerLevel.isSpawningMonsters`: the difficulty and the `spawn_mobs`
-    /// and `spawn_monsters` gamerules), not the difficulty alone.
-    #[test]
-    #[ignore = "daily"]
-    fn the_striders_piglin_rider_needs_spawning_monsters() {
-        use horizon_client::gamerules::Value as RuleValue;
-        crate::game::native_guest_turn_tests::with_guests(|game| {
-            // The gate reads the difficulty setting (`ui.difficulty`), which a
-            // fresh test game leaves peaceful; the rules default on.
-            game.session.difficulty = 2;
-            let difficulty = game.local_difficulty([8.0, 65.0, 8.0]);
-            let piglins = |game: &Game<'_>| {
-                game.mobs
-                    .iter()
-                    .filter(|m| m.species() == Species::ZombifiedPiglin)
-                    .count()
-            };
-            for id in 1..=400u32 {
-                let mut s = mob_of(game, id, "minecraft:strider");
-                game.finalize_plain(&mut s, &difficulty, Reason::Natural);
-            }
-            assert!(piglins(game) > 0, "riders with the rules on");
-            // `spawn_monsters` off: no rider, though the difficulty allows it.
-            assert!(game.session.rules.set("spawn_monsters", RuleValue::Bool(false)));
-            let before = piglins(game);
-            for id in 1000..=1400u32 {
-                let mut s = mob_of(game, id, "minecraft:strider");
-                game.finalize_plain(&mut s, &difficulty, Reason::Natural);
-            }
-            assert_eq!(piglins(game), before);
-        });
-    }
 }

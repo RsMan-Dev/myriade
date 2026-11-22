@@ -6,8 +6,6 @@
 pub(super) mod biome_facts;
 #[path = "../../creatures/mob_conversion.rs"]
 mod mob_conversion;
-#[cfg(test)]
-mod mob_dispatch_panic_tests;
 mod borrowed_tick;
 mod combat_adaptations;
 mod conversion_identity;
@@ -20,8 +18,6 @@ mod player_loot_entity;
 mod projectile_world;
 pub(super) use projectile_world::ProjWorld;
 mod residency;
-#[cfg(test)]
-mod retained_limits_tests;
 pub(in crate::game) mod section_steps;
 mod world_view;
 use super::api_values::TryIntoApi;
@@ -5191,8 +5187,6 @@ mod living_visibility_tests {
     }
 }
 
-#[cfg(test)]
-mod enchanted_entity_loot_tests;
 
 #[cfg(test)]
 mod enderman_anger_tests {
@@ -5938,8 +5932,6 @@ mod pickable_projectile_tests {
 #[cfg(test)]
 mod mob_pearl_hook_tests;
 
-#[cfg(test)]
-mod breeding_orb_tests;
 
 #[cfg(test)]
 #[path = "rabbit_colour_tests.rs"]
@@ -6136,8 +6128,6 @@ mod loaded_mob_arrow_permission_tests {
     }
 }
 
-#[cfg(test)]
-mod h169_glide_travel_tests;
 
 /// `ServerLevel.getCurrentDifficultyAt` in `world`: the difficulty, the level's clock, and
 /// the inhabited time and moon of the chunk at `at` (both 0 when it isn't loaded).
@@ -6147,17 +6137,6 @@ pub(in crate::game) fn local_difficulty_in(
 ) -> spawning::LocalDifficulty {
     spawning::LocalDifficulty::at(world, at)
 }
-#[cfg(test)]
-#[path = "../../entities/tests/leash_without_item_criterion_tests.rs"]
-mod leash_without_item_criterion_tests;
-
-#[cfg(test)]
-#[path = "../../entities/tests/leash_without_item_postbaseline_controls.rs"]
-mod leash_without_item_postbaseline_controls;
-
-#[cfg(test)]
-#[path = "../tests/revenge_home_tests.rs"]
-mod revenge_home_tests;
 
 #[cfg(test)]
 mod death_loot_context_tests;

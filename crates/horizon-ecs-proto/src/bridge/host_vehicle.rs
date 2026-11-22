@@ -160,6 +160,10 @@ impl EcsWorld {
         }
     }
 
+    /// `loot::install`: the host's loot tables.
+    pub fn set_loot(&mut self, data: std::sync::Arc<horizon_world::loot::LootData>) {
+        crate::loot::install(self.world_mut(), data);
+    }
     /// The trade registries of the world (`TradeData`), installed once by the host: offers, professions (a mod's included, the same
     /// `ResolvedProfessions` the host resolves ids with) and the sequences' seed.
     pub fn install_trades(

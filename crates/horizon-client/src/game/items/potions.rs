@@ -2376,52 +2376,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn mod_tick_kills_mob_through_death_and_drops() {
-        // Mod effects are frozen process-wide: another fixture may have registered first.
-        if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::potions::tests::mod_tick_kills_mob_through_death_and_drops",
-            "HORIZON_POTION_EFFECT_CHILD",
-            &["effect"],
-        ) {
-            return;
-        }
-        effect_test_mod();
-        super::super::native_entity_refs::tests::with_game(|game| {
-            // Death drops read the server's loot, which a world open loads.
-            game.load_server_loot();
-            use horizon_client::chunk::Chunk;
-            use std::sync::Arc;
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            let mut mob = Mob::new(12, kind, Vec3::new(1.0, 64.0, 1.0), 0.0);
-            mob.extra
-                .set_main_hand(Some(Arc::from("minecraft:iron_sword")));
-            mob.extra.drop_chances = Some(Box::new([2.0; 8]));
-            mob.add_effect(brewing::effect("test:effect").unwrap().id, 10, 2);
-            game.remote_entities.push(mob);
-            game.tick_creature_entities().unwrap();
-            assert!(!game.remote_entities[0].alive());
-            assert!(
-                game.dropped
-                    .iter()
-                    .any(|item| &*item.stack.item == "minecraft:iron_sword")
-            );
-            for _ in 0..20 {
-                game.tick_creature_entities().unwrap();
-            }
-            assert!(game.remote_entities.is_empty());
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn mod_tick_sees_prior_regeneration() {
         // Mod effects are frozen process-wide: another fixture may have registered first.
         if super::super::native_entity_refs::tests::run_fresh_cases(

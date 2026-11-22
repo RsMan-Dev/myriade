@@ -237,6 +237,7 @@ impl Herd {
         let mut p = self.world.resource_mut::<Players>();
         p.list = players;
         p.dirty = true;
+        p.zone_dirty = true;
     }
     /// The players as `Online` knows them (ids from 1, at y = 1, nothing in hand), unkillable: for the hunting benches.
     pub fn set_online(&mut self, players: &[(f64, f64)]) {
@@ -362,6 +363,7 @@ pub(crate) fn assemble_resources(world: &mut World, level: Level, sleep: bool, p
     world.insert_resource(HurtCauses::default());
     world.insert_resource(BlockChanges::default());
     world.insert_resource(StateChanges::default());
+    world.insert_resource(HostWrites::default());
     world.insert_resource(level);
     world.insert_resource(species_table());
     crate::type_tags::register(world, crate::effects::TYPED_TAGS);

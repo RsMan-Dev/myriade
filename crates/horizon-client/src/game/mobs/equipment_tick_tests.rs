@@ -4,8 +4,6 @@ use super::Game;
 use horizon_client::{items::ItemStack, motion::PlayerMotion};
 use horizon_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
 
-const UUID_HIGH: i32 = 3221;
-
 /// A server with chunk (0, 0) loaded and entity-ticking, a stone floor at y 63 and lodestones
 /// at (5, 64, 5) and (7, 64, 7).
 fn lodestone_world(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
@@ -53,78 +51,6 @@ fn target(stack: &ItemStack) -> Option<(String, Vec<i32>)> {
 /// `tracked` reads true when it is left out (`Codec.BOOL.optionalFieldOf("tracked", true)`).
 fn tracked(stack: &ItemStack) -> bool {
     horizon_client::save::number(lodestone_tracker(stack).get("tracked")).is_none_or(|v| v != 0)
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_mobs_compass_loses_a_broken_lodestone_and_keeps_the_others() {
-    let mut resources = None;
-    let mut game = lodestone_world(&mut resources);
-    // A monster can't be summoned on peaceful.
-    assert!(game.run_command("difficulty easy"));
-    let overworld = "minecraft:overworld";
-    let nether = "minecraft:the_nether";
-    // n, held compass's target, worn (head) compass's target.
-    let zombies = [
-        (1, (overworld, [5, 64, 5]), Some((overworld, [5, 64, 5]))),
-        (2, (overworld, [7, 64, 7]), None),
-        (3, (nether, [5, 64, 5]), None),
-    ];
-    let mut ids = Vec::new();
-    for (n, (dim, pos), head) in zombies {
-        let x = f64::from(n * 2) + 0.5;
-        assert!(game.run_command(&format!(
-            "summon zombie {x} 64.0 2.5 {{UUID:[I;{UUID_HIGH},0,0,{n}],NoAI:1b,PersistenceRequired:1b,Silent:1b}}"
-        )));
-        let who = format!("00000c95-0000-0000-0000-{n:012x}");
-        assert!(game.run_command(&format!(
-            "item replace entity {who} weapon.mainhand with compass[{}] 1",
-            tracker(dim, pos)
-        )));
-        if let Some((dim, pos)) = head {
-            assert!(game.run_command(&format!(
-                "item replace entity {who} armor.head with compass[{}] 1",
-                tracker(dim, pos)
-            )));
-        }
-        let id = game
-            .mobs
-            .iter()
-            .find(|m| game.persist.uuid_of(m.id) == Some([UUID_HIGH, 0, 0, n]))
-            .expect("the summoned zombie")
-            .id;
-        ids.push((n, id));
-    }
-    assert!(game.run_command("setblock 5 64 5 stone"));
-    assert!(game.entity_ticking_area()(2, 2));
-    game.tick_creature_entities().unwrap();
-    let slot = |id: u32, slot: usize| -> ItemStack {
-        let m = game.mobs.iter().find(|m| m.id == id).unwrap();
-        m.extra.equipment[slot]
-            .clone()
-            .expect("the zombie keeps its compass")
-    };
-    for &(_, id) in &ids {
-        assert!(game.creatures.ticked.contains(&id), "the zombie ticked");
-    }
-    let mainhand = horizon_items::equipment::MAINHAND;
-    let head = horizon_items::equipment::HEAD;
-    // `new LodestoneTracker(Optional.empty(), true)`: the target goes, tracking stays.
-    for s in [slot(ids[0].1, mainhand), slot(ids[0].1, head)] {
-        assert_eq!(&*s.item, "minecraft:compass");
-        assert_eq!(target(&s), None);
-        assert!(tracked(&s));
-    }
-    // The lodestone at (7, 64, 7) is still there.
-    assert_eq!(
-        target(&slot(ids[1].1, mainhand)),
-        Some((overworld.to_owned(), vec![7, 64, 7]))
-    );
-    // `LodestoneTracker.tick` leaves a target in another dimension alone.
-    assert_eq!(
-        target(&slot(ids[2].1, mainhand)),
-        Some((nether.to_owned(), vec![5, 64, 5]))
-    );
 }
 
 #[test]

@@ -3,9 +3,6 @@
 //! (`Raider.applyRaidBuffs`).
 use super::Game;
 
-#[cfg(test)]
-#[path = "tests/drowned_spawn_tests.rs"]
-mod drowned_spawn_tests;
 use horizon_client::{
     mobs::{
         drops::{self, SLOTS},

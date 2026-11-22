@@ -22,6 +22,12 @@ impl Game<'_> {
                 ecs.hook_block_changed(&mw, [x, y, z]);
             }
         }
+        if let (Some(loot), Some(w)) = (self.server_loot.get(), ecs.ecs_mut()) {
+            w.set_loot(loot);
+        }
+        for (cx, cz) in std::mem::take(&mut self.world.path_bulk) {
+            ecs.chunk_rewritten(cx, cz);
+        }
         // An item's end of life is held for the host only when a mod hears it (`ecs_item_expiring`); else P removes it itself.
         ecs.set_item_expiry_hooked(
             mod_api::__private::listened(mod_api::HookId::ItemExpire) || mod_api::__private::listened(mod_api::HookId::ItemDespawn),
@@ -58,6 +64,15 @@ impl Game<'_> {
         };
         self.ecs = ecs;
         self.handle_mob_events_reusable(&mut mob)?;
+        // The blows the creatures landed on players (`Mob.doHurtTarget` on a player): each is the hit of the player it names.
+        for (player, amount, from, by) in self.ecs.take_player_hits() {
+            let mob = by.map(|e| self.ecs_id_of(e));
+            self.with_player(player, |g| {
+                g.combat.melee_mob = mob;
+                let _ = g.handle_mob_events(vec![horizon_client::mobs::MobEvent::AttackPlayer(amount, from)]);
+                g.combat.melee_mob = None;
+            });
+        }
         self.host_events(kept)
     }
 

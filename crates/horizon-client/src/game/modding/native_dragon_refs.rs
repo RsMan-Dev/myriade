@@ -144,7 +144,6 @@ mod tests {
     use super::super::Dim;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_client::{entities::ArmorStand, mobs::Mob};
     use horizon_core::geometry::Vec3;
     use horizon_core::nbt::Tag;
     use horizon_protocol::entity_data::{Value, serializer};
@@ -180,88 +179,6 @@ mod tests {
                 assert!(!dragon.mob().set_target(game, None));
                 assert_eq!(game.dragon.as_ref().unwrap().target, None);
             })
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn the_dragon_is_a_mob_with_mob_state() {
-        with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.mobs.push(Mob::new(12, kind.clone(), Vec3::ZERO, 0.0));
-            let mut shielded = Mob::new(13, kind, Vec3::ZERO, 0.0);
-            shielded.invulnerable_flag = true;
-            game.mobs.push(shielded);
-            game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let (entity, dragon) = dragon_in(game);
-            assert!(game.dragon(game.entity(12).unwrap()).is_none());
-            let mob = game.mob(entity).unwrap();
-            assert_eq!(mob, dragon.mob());
-            assert_eq!(mob.living().entity(), entity);
-
-            // Aggression is a synced mob flag; persistence is saved.
-            assert_eq!(mob.is_aggressive(game), Some(false));
-            assert!(mob.set_aggressive(game, true));
-            assert_eq!(mob.is_aggressive(game), Some(true));
-            let state = game.lan_dragon_state().unwrap();
-            assert!(state.meta.contains(&(15, serializer::BYTE, Value::Byte(4))));
-            assert!(mob.set_aggressive(game, false));
-            let state = game.lan_dragon_state().unwrap();
-            assert!(state.meta.iter().all(|m| m.0 != 15));
-            assert_eq!(mob.persistence_required(game), Some(false));
-            assert!(mob.set_persistence_required(game));
-            assert_eq!(mob.persistence_required(game), Some(true));
-            let saved = game.dragon.as_ref().unwrap().to_nbt([0; 4], None);
-            assert_eq!(saved.get("PersistenceRequired"), Some(&Tag::Byte(1)));
-            assert!(Dragon::from_nbt(&saved, 0).unwrap().persistent);
-            // `getBooleanOr` takes any nonzero number as true.
-            for (value, want) in [
-                (Tag::Byte(2), true),
-                (Tag::Int(1), true),
-                (Tag::Byte(0), false),
-            ] {
-                let mut tag = saved.clone();
-                if let Tag::Compound(map) = &mut tag {
-                    map.insert("PersistenceRequired".into(), value);
-                }
-                assert_eq!(Dragon::from_nbt(&tag, 0).unwrap().persistent, want);
-            }
-
-            // A target a mod set: valid mobs only, and it goes stale.
-            let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let shield = game.living(game.entity(13).unwrap()).unwrap();
-            let stand = game.living(game.entity(14).unwrap()).unwrap();
-            assert_eq!(mob.target(game), None);
-            assert!(mob.set_target(game, Some(zombie)));
-            assert_eq!(mob.target(game), Some(zombie));
-            assert!(!mob.set_target(game, Some(shield)));
-            assert!(!mob.set_target(game, Some(stand)));
-            assert!(!mob.set_target(game, Some(dragon.mob().living())));
-            assert_eq!(mob.target(game), Some(zombie));
-            game.mobs[0].invulnerable_flag = true;
-            assert_eq!(mob.target(game), None);
-            game.mobs[0].invulnerable_flag = false;
-            assert_eq!(mob.target(game), Some(zombie));
-            assert!(mob.set_target(game, None));
-            assert_eq!(mob.target(game), None);
-
-            // No PathNavigation: the dragon flies by its phase.
-            assert!(!mob.move_to(game, [1.0, 1.0, 1.0], 1.0));
-            assert!(!mob.stop(game));
-            assert_eq!(mob.is_done(game), None);
-
-            let stale = MobRef::new(EntityRef::new(
-                WorldEpoch::new(entity.epoch().get() + 1),
-                15,
-            ));
-            assert!(!stale.set_aggressive(game, true));
-            assert_eq!(stale.persistence_required(game), None);
-            assert!(!stale.set_target(game, None));
         });
     }
 

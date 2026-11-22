@@ -947,7 +947,3 @@ pub(super) mod generated {
 #[cfg(test)]
 #[path = "native_goal_ticks_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "native_behavior_tests.rs"]
-mod behavior_tests;

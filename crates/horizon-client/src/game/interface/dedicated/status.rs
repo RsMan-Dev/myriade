@@ -42,6 +42,55 @@ impl ServerState {
 }
 
 impl Game<'_> {
+    /// Answers the requests waiting on the control endpoint.
+    pub(super) fn poll_server_control(&mut self, state: &mut ServerState) {
+        while let Some(request) = self.control.as_ref().and_then(|c| c.try_recv()) {
+            // A `console stop` just before stops this server for the next request too.
+            self.note_stopping(state.lists.lock().unwrap().stop);
+            let reply = match request.line.trim().split_once(' ') {
+                _ if request.line.trim() == "server-status" => self.server_status(state),
+                _ if request.line.trim() == "server-mods" => server_mods(),
+                // `horizon-ctl memory`: what holds the server's memory (memory.rs).
+                _ if request.line.trim() == "memory" => self.memory_value(),
+                // A proxy reading whether it may send players here (transfer.rs).
+                _ if request.line.trim() == "transfer-status" => self.transfer_status(),
+                Some(("server-events", since)) => {
+                    super::events::since(since.trim().parse().unwrap_or(0))
+                }
+                Some(("management", rest)) => self.management(state, rest),
+                // A proxy moving a player here or away (transfer.rs, lan/arrivals.rs).
+                Some((verb, rest)) if verb.starts_with("player-") => {
+                    self.player_request(verb, rest)
+                }
+                Some(("console", line)) => {
+                    // Command feedback is logged as system chat; the reply carries the text alone.
+                    let output: Vec<String> = capture_log(|| self.console_command(state, line))
+                        .into_iter()
+                        .map(|l| {
+                            l.strip_prefix("System chat: ")
+                                .map_or(l.clone(), str::to_owned)
+                        })
+                        .collect();
+                    json!({ "output": output })
+                }
+                // An RCON command: run as the console, with the `Rcon` source, whose feedback the
+                // operators are told of when `broadcast-rcon-to-ops` is on.
+                Some(("rcon", line)) => {
+                    let output: Vec<String> = capture_log(|| self.rcon_line(state, line))
+                        .into_iter()
+                        .map(|l| {
+                            l.strip_prefix("System chat: ")
+                                .map_or(l.clone(), str::to_owned)
+                        })
+                        .collect();
+                    json!({ "output": output })
+                }
+                _ => json!({ "error": format!("unknown request {:?}", request.line) }),
+            };
+            let _ = request.reply.send(reply.to_string());
+        }
+    }
+
     /// Each level's loaded chunks and entities (players and block entities apart), the level in place
     /// first: what the Prometheus text reports by dimension.
     fn status_levels(&self) -> Value {
