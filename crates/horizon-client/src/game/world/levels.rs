@@ -76,7 +76,7 @@ impl EntityCountView<'_> {
 
 // Both Game and Parked own these typed families. Keep their instrumentation in one list.
 macro_rules! entity_count_view {
-    ($level:expr, $knots:expr) => {
+    ($level:expr) => {
         crate::game::levels::EntityCountView {
             fixed: [
                 ("minecraft:item", $level.ecs.item_ids().len()),
@@ -90,14 +90,14 @@ macro_rules! entity_count_view {
                 ("minecraft:firework_rocket", $level.ecs.species_count("minecraft:firework_rocket")),
                 ("minecraft:tnt", $level.ecs.species_count("minecraft:tnt")),
                 ("minecraft:end_crystal", $level.crystals.len()),
-                ("minecraft:leash_knot", $knots.len()),
+                ("minecraft:leash_knot", $level.ecs.species_count("minecraft:leash_knot")),
                 (
                     "minecraft:ominous_item_spawner",
                     $level.ominous_spawners.len(),
                 ),
                 ("minecraft:cushion", $level.cushions.len()),
                 ("minecraft:area_effect_cloud", $level.breath_clouds.len()),
-                ("minecraft:evoker_fangs", $level.fangs.perf_count()),
+                ("minecraft:evoker_fangs", $level.ecs.species_count("minecraft:evoker_fangs")),
                 // Multipart hitboxes are not independently admitted world entities.
                 (
                     "minecraft:ender_dragon",
@@ -136,7 +136,6 @@ pub(super) struct Parked {
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
     armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
     cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
-    fangs: super::fangs::FangState,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
@@ -146,9 +145,6 @@ pub(super) struct Parked {
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
     pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
-    /// The entity ids of the level's fence knots (`knot_ids`).
-    knot_ids: HashMap<[i32; 3], u32>,
-    knots: horizon_client::join_seq::JoinList<super::leads::Knot>,
     persist: persist::EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -175,11 +171,7 @@ pub(super) struct Parked {
 }
 
 impl Parked {
-    resident_owners!(
-        define_resident_access,
-        self,
-        knots
-    );
+    resident_owners!(define_resident_access, self);
 }
 
 impl Game<'_> {
@@ -634,7 +626,7 @@ impl Levels {
             (
                 dim,
                 &level.world,
-                entity_count_view!(level, &level.knots),
+                entity_count_view!(level),
                 level.ecs.count_by_kind(),
             )
         })
@@ -722,7 +714,6 @@ impl Game<'_> {
             item_frames: Default::default(),
             armor_stands: Default::default(),
             cushions: Default::default(),
-            fangs: Default::default(),
             jukebox_sounds: HashMap::new(),
             crystals: Default::default(),
             dragon: Default::default(),
@@ -731,8 +722,6 @@ impl Game<'_> {
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
             remote_entities: Default::default(),
-            knot_ids: HashMap::new(),
-            knots: Default::default(),
             persist: Default::default(),
             lectern_pulses: Vec::new(),
             lid_openers: HashMap::new(),
@@ -858,7 +847,6 @@ impl Game<'_> {
         swap(&mut self.portals.sections, &mut p.portal_sections);
         swap(&mut self.armor_stands, &mut p.armor_stands);
         swap(&mut self.cushions, &mut p.cushions);
-        swap(&mut self.fangs, &mut p.fangs);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.crystals, &mut p.crystals);
         swap(&mut self.dragon, &mut p.dragon);
@@ -867,8 +855,6 @@ impl Game<'_> {
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.remote_entities, &mut p.remote_entities);
         swap(&mut self.ecs, &mut p.ecs);
-        swap(&mut self.knot_ids, &mut p.knot_ids);
-        swap(&mut self.resident_entities.knots, &mut p.knots);
         swap(&mut self.persist, &mut p.persist);
         swap(&mut self.lectern_pulses, &mut p.lectern_pulses);
         swap(&mut self.lid_openers, &mut p.lid_openers);

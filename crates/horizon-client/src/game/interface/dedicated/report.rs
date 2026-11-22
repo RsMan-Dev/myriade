@@ -249,10 +249,7 @@ impl Game<'_> {
     }
 
     fn active_perf_view(&self) -> super::super::levels::EntityCountView<'_> {
-        super::super::levels::entity_count_view!(
-            self,
-            &self.resident_entities.knots
-        )
+        super::super::levels::entity_count_view!(self)
     }
 
     /// All typed entities in the active dimension, without allocating.

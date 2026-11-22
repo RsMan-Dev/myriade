@@ -192,11 +192,7 @@ impl Game<'_> {
                 self.save_portal_cooldown(id, &mut tag);
                 tag
             }
-            Target::Fangs(id) => {
-                let uuid = self.uuid_for(id);
-                let f = self.fangs.list.iter().find(|f| f.id == id)?;
-                self.fangs_to_nbt(f, uuid)
-            }
+            Target::Fangs(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Other(_) => return None,
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
@@ -486,17 +482,9 @@ impl Game<'_> {
             }
             Target::Other(_) => return Err(stale()),
             Target::Fangs(id) => {
-                let owner = self.loaded_fangs_owner(&tag);
+                // RESTE: Warmup et Owner ne sont pas dans le composant ECS du croc, seuls la place et le cap sont écrits.
                 let at = entity_nbt::position(&tag).ok_or_else(stale)?;
-                if let Some(i) = self.fangs.list.iter().position(|e| e.id == id) {
-                    self.fangs.list.update(i, |f| {
-                        f.pos = [at.x, at.y, at.z];
-                        f.yaw = entity_nbt::rotation(&tag)[0];
-                        f.warmup =
-                            horizon_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
-                        f.owner = owner;
-                    });
-                }
+                self.move_fang(id, [at.x, at.y, at.z], Some(entity_nbt::rotation(&tag)[0]));
             }
             Target::Stand(id) => {
                 let mut new = entity_nbt::armor_stand_from_nbt(&tag, id).ok_or_else(stale)?;

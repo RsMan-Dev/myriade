@@ -233,7 +233,7 @@ fn unknown_rider_type_hands_the_tree_back() {
             game.load_listed("mymod:robot", None, None, root),
             Err(handed.clone())
         );
-        assert!(game.general_quarantine_admits(&handed, "mymod:robot", Vec3::new(0.0, 0.0, 0.0)));
+        assert!(game.general_quarantine_admits(&handed, "mymod:robot", Vec3::new(0.0, 0.0, 0.0), 0));
         assert!(game.resident_entities.general.rows.is_empty());
     });
 }
@@ -298,9 +298,147 @@ fn general_row_unloads_with_its_chunk_and_reloads_once() {
     });
 }
 
+/// The records of `kind` the chunk saves, through the same walk the save uses.
+fn saved_records(game: &mut Game<'_>, key: ChunkKey, kind: &str) -> Vec<Tag> {
+    game.entity_chunks(&HashSet::from([key]), false)
+        .into_iter()
+        .flat_map(|(_, tags)| tags)
+        .filter(|tag| horizon_client::entity_nbt::kind(tag).as_deref() == Some(kind))
+        .collect()
+}
+
 /// The missing-mod quarantine: a record of a namespace no loaded mod owns
-/// keeps the existing unknown-kind path — held as loaded (`persist.raw`),
-/// never ticked, written back from that store — byte for byte.
+/// is held by its chunk as loaded, never ticked, written back byte for byte.
+#[test]
+#[ignore = "daily"]
+fn quarantine_preserves_a_missing_mods_record_byte_for_byte() {
+    with_types(|game| {
+        let mut tag = record_tag("gone:robot", [7, 7, 7, 7], b"opaque", Vec::new());
+        if let Tag::Compound(fields) = &mut tag {
+            // Vanilla fallback loading strips these fields; an opaque mod record must not.
+            fields.insert("Team".into(), Tag::String("missing-mod-team".into()));
+            fields.insert("leash".into(), Tag::Compound(Default::default()));
+        }
+        let loaded = tag.clone();
+        game.world.loaded_entities.push(((0, 0), vec![tag.into()]));
+        game.spawn_loaded_entities();
+        // What leaves the chunk is the very compound that arrived, once.
+        let records = saved_records(game, (0, 0), "gone:robot");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0], loaded);
+        // Unloaded with its chunk, then loaded again: still one record, the same one.
+        let unloaded = game.entity_chunks(&HashSet::from([(0, 0)]), true);
+        let back: Vec<_> = unloaded.into_iter().flat_map(|(_, tags)| tags).map(Into::into).collect();
+        game.world.loaded_entities.push(((0, 0), back));
+        game.spawn_loaded_entities();
+        let records = saved_records(game, (0, 0), "gone:robot");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0], loaded);
+    });
+}
+
+/// A loaded mod's namespace with an unknown type skips with a warning:
+/// nothing is published, quarantined or kept for it.
+#[test]
+#[ignore = "daily"]
+fn loaded_mods_unknown_type_skips() {
+    // The package inventory is what owns a namespace: "mymod" is a loaded
+    // package here, while no type of it was ever declared.
+    mod_platform::__private::with_test_packages(&["mymod"], || {
+        // No fixture declaration: the type is unknown precisely because no
+        // loaded mod declared it.
+        with_game(|game| {
+            let tag = record_tag("mymod:mystery", [7, 7, 7, 7], b"", Vec::new());
+            game.world.loaded_entities.push(((0, 0), vec![tag.into()]));
+            game.spawn_loaded_entities();
+            assert!(saved_records(game, (0, 0), "mymod:mystery").is_empty());
+            assert_eq!(game.quarantined_in_chunk((0, 0)), 0);
+        });
+    });
+}
+
+/// An unknown `minecraft:` kind keeps its existing path unchanged —
+/// preserved whatever its size, outside the quarantine bounds.
+#[test]
+#[ignore = "daily"]
+fn unknown_minecraft_kind_keeps_its_existing_path() {
+    with_types(|game| {
+        let mut oversized = record_tag("minecraft:mystery", [7, 7, 7, 7], b"", Vec::new());
+        if let Tag::Compound(map) = &mut oversized {
+            map.insert(
+                "Extra".into(),
+                Tag::ByteArray(vec![0; limits::QUARANTINE_RECORD_LIMIT as usize + 1]),
+            );
+        }
+        game.world.loaded_entities.push(((0, 0), vec![oversized.into()]));
+        game.spawn_loaded_entities();
+        // Not a quarantined record: the unknown store holds none of them.
+        assert_eq!(game.quarantined_in_chunk((0, 0)), 0);
+    });
+}
+
+/// The quarantine record bound: a missing-mod record one byte over
+/// [`limits::QUARANTINE_RECORD_LIMIT`] skips; one inside it is kept.
+#[test]
+#[ignore = "daily"]
+fn quarantine_record_limit_skips_one_byte_over() {
+    with_types(|game| {
+        let sized = |extra: u64| {
+            let mut tag = record_tag("gone:robot", [7, 7, 7, 7], b"", Vec::new());
+            if let Tag::Compound(map) = &mut tag {
+                map.insert("Extra".into(), Tag::ByteArray(vec![0; extra as usize]));
+            }
+            tag
+        };
+        // Size the record to exactly the bound, then one byte past it.
+        let base = nbt_size(&sized(0));
+        let fill = limits::QUARANTINE_RECORD_LIMIT - base;
+        assert!(fill > 1, "the base record must sit below the bound");
+        game.world.loaded_entities.push(((0, 0), vec![sized(fill).into()]));
+        game.spawn_loaded_entities();
+        assert_eq!(saved_records(game, (0, 0), "gone:robot").len(), 1, "a record at the bound is kept");
+        game.world.loaded_entities.push(((0, 0), vec![sized(fill + 1).into()]));
+        game.spawn_loaded_entities();
+        assert_eq!(saved_records(game, (0, 0), "gone:robot").len(), 1, "one byte over skips");
+    });
+}
+
+/// The quarantine chunk bound: the
+/// [`limits::QUARANTINE_CHUNK_LIMIT`]'th record of one chunk is kept, the
+/// next skips.
+#[test]
+#[ignore = "daily"]
+fn quarantine_chunk_limit_skips_past_256() {
+    with_types(|game| {
+        let at = |slot: usize| [slot as i32, 0, 0, 0];
+        let tag = |slot: usize| record_tag("gone:robot", at(slot), b"", Vec::new());
+        // One chunk load offers one more record than the bound holds.
+        let batch: Vec<Tag> = (0..=limits::QUARANTINE_CHUNK_LIMIT).map(tag).collect();
+        game.world.loaded_entities.push(((0, 0), batch.into_iter().map(Into::into).collect()));
+        game.spawn_loaded_entities();
+        assert_eq!(
+            saved_records(game, (0, 0), "gone:robot").len(),
+            limits::QUARANTINE_CHUNK_LIMIT,
+            "the bound's own record is kept, the next skips"
+        );
+        // A record of another chunk still quarantines.
+        let mut elsewhere = tag(252);
+        if let Tag::Compound(map) = &mut elsewhere {
+            map.insert(
+                format::POSITION.into(),
+                Tag::List(
+                    [1024.5f64, 64.0, 0.5]
+                        .map(|v| Tag::Double(v.to_bits()))
+                        .to_vec(),
+                ),
+            );
+        }
+        game.world.loaded_entities.push(((64, 0), vec![elsewhere.into()]));
+        game.spawn_loaded_entities();
+        assert_eq!(saved_records(game, (64, 0), "gone:robot").len(), 1);
+    });
+}
+
 /// The transfer load path (`load_listed_transferred`) accepts a general
 /// tree: what arrives with a transfer token is installed as the same
 /// logical entity — its runtime state (attachments map) carried over to

@@ -2,6 +2,8 @@
 //! An inert level answers as an empty world: nothing held, nothing attached, no uuid.
 use super::level::EcsLevel;
 use bevy_ecs::entity::Entity;
+
+const LEASH_KNOT: &str = "minecraft:leash_knot";
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::{
     bridge::{leash_save, uuids, view},
@@ -54,5 +56,26 @@ impl EcsLevel {
     }
     pub fn entity_by_uuid(&self, uuid: [i32; 4]) -> Option<Entity> {
         self.world().and_then(|w| uuids::entity_by_uuid(w, uuid))
+    }
+    /// The knot of the fence `fence`, made by the ECS and linked to `alloc`'s id; 0 when inert.
+    pub fn knot_tie(&mut self, fence: [i32; 3], alloc: &mut dyn FnMut() -> u32) -> u32 {
+        let Some(w) = self.ecs_mut() else { return 0 };
+        let e = w.leash_tie_knot(fence);
+        w.id_for(e, alloc)
+    }
+    /// A leashee left the knot of `fence`: the ECS discards it when no lead holds it.
+    pub fn knot_released(&mut self, fence: [i32; 3]) {
+        if let Some(w) = self.ecs_mut() {
+            w.leash_knot_released(fence);
+        }
+    }
+    /// The fence of the knot with the network id `id`, None when it is not a knot.
+    pub fn knot_fence_of(&self, id: u32) -> Option<[i32; 3]> {
+        let e = self.entity_of(id)?;
+        self.world().and_then(|w| leash_save::knot_fence(w, e))
+    }
+    /// The network ids and fences of the knots the ECS holds.
+    pub fn knots(&self) -> Vec<(u32, [i32; 3])> {
+        self.species_ids(LEASH_KNOT).into_iter().filter_map(|id| self.knot_fence_of(id).map(|f| (id, f))).collect()
     }
 }

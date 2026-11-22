@@ -1076,9 +1076,6 @@ struct Game<'a> {
     /// The fence knots a server tracks to this client, by entity id, at their
     /// block (`LeashFenceKnotEntity`).
     remote_knots: HashMap<u32, [i32; 3]>,
-    /// The entity ids a hosted server gives the knots its mobs hang on, by
-    /// block, while a lead is tied there.
-    knot_ids: HashMap<[i32; 3], u32>,
     text_display_vertices: usize,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
@@ -1405,7 +1402,6 @@ struct Game<'a> {
     border_section: Option<[i32; 3]>,
     adv: advancements::AdvState,
     restore_player_state: bool,
-    fangs: fangs::FangState,
     /// The local player as a model (third person, the inventory).
     player_model: Option<Mob>,
     block_entity_tick_key: Option<block_entity_tick_items::Key>,
@@ -5465,7 +5461,6 @@ impl<'a> Game<'a> {
             text_displays: Default::default(),
             interactions: Default::default(),
             remote_knots: Default::default(),
-            knot_ids: Default::default(),
             text_display_vertices: 0,
             skin_profiles: RefCell::new(horizon_client::skins::Resolver::new()),
             riding: None,
@@ -5620,7 +5615,6 @@ impl<'a> Game<'a> {
             border_section: None,
             adv: Default::default(),
             restore_player_state: true,
-            fangs: Default::default(),
             player_model: None,
         };
         game.reset_entity_residency();

@@ -49,7 +49,7 @@ fn cloud_fangs_and_kept_entities_keep_their_constructor_uuid() {
                 } else {
                     game.load_unlisted((0, 0), kind, saved, tag).unwrap();
                     if kind == "minecraft:evoker_fangs" {
-                        game.fangs.list.last().unwrap().id
+                        game.fang_ids().last().copied().unwrap()
                     } else {
                         game.breath_clouds.last().unwrap().id
                     }

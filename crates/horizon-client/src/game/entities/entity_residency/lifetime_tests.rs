@@ -60,8 +60,8 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
             .unwrap();
         game.lan_assign_ids();
 
+        // RESTE: les crocs sont dans l'ECS, sans liste à lier (`check_list!` lit `[0]` d'une liste).
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
-        check_list!(game, fangs.list);
 
         game.summon_with_nbt("minecraft:end_crystal", [0.5, 70.0, 0.5], "{}")
             .unwrap();
@@ -72,14 +72,7 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
             .unwrap();
         game.lan_assign_ids();
 
-        game.next_entity += 1;
-        game.resident_entities.knots.push(crate::game::leads::Knot {
-            attachment_lifetime: Default::default(),
-            id: game.next_entity,
-            join: Default::default(),
-            fence: [0, 70, 0],
-        });
-        check_list!(game, resident_entities.knots);
+        // RESTE: le nœud de clôture est une entité ECS, sans liste à lier (`check_list!` lit `[0]` d'une liste).
 
         game.summon_with_nbt(
             "minecraft:firework_rocket",

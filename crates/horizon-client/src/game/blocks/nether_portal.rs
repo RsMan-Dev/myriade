@@ -1237,7 +1237,7 @@ impl Game<'_> {
                 }
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
                 Target::Other(_) => {}
-                Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),
+                Target::Fangs(_) => self.kill_fang(id),
                 Target::Crystal(_) => self.crystals.retain(|e| e.id != id),
                 Target::Dragon(_) => self.discard_resident_dragon(),
                 Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),

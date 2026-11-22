@@ -98,6 +98,16 @@ pub fn can_attach(w: &World, e: Entity, center: [f64; 3]) -> bool {
     center_of(b.0).distance(Vec3::new(center[0], center[1], center[2])) < l.snap
 }
 
+/// `LeashFenceKnotEntity.getOrCreate`: the knot of the fence at `fence`, made at its centre when there is none.
+pub fn tie_knot(w: &mut World, fence: [i32; 3]) -> Entity {
+    crate::species::leash_knot::tie(w, fence)
+}
+
+/// The fence cell of `e`, when `e` is a knot.
+pub fn knot_fence(w: &World, e: Entity) -> Option<[i32; 3]> {
+    w.get::<crate::species::leash_knot::Knot>(e).map(|k| k.fence)
+}
+
 /// `e` accepts a lead and holds none.
 pub fn can_be_leashed(w: &World, e: Entity) -> bool {
     w.get::<Leashable>(e).is_some() && w.get::<Leash>(e).is_none()
@@ -125,6 +135,21 @@ impl EcsWorld {
 
     pub fn leash_can_be_leashed(&self, e: Entity) -> bool {
         can_be_leashed(self.world(), e)
+    }
+
+    /// The knot of the fence `fence` (see `tie_knot`).
+    pub fn leash_tie_knot(&mut self, fence: [i32; 3]) -> Entity {
+        tie_knot(self.world_mut(), fence)
+    }
+
+    /// A leashee left the knot of `fence` (see `leash_knot::released`).
+    pub fn leash_knot_released(&mut self, fence: [i32; 3]) {
+        crate::species::leash_knot::released(self.world_mut(), fence);
+    }
+
+    /// The fence cell of the knot `e` (see `knot_fence`).
+    pub fn leash_knot_fence(&self, e: Entity) -> Option<[i32; 3]> {
+        knot_fence(self.world(), e)
     }
 
     /// Marks the view of the holder `e`: its lead moved.

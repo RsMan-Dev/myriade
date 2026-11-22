@@ -81,7 +81,7 @@ impl Game<'_> {
             Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| [p.x, p.y, p.z]),
             Target::Trident(id) => self.ecs.position(id),
-            Target::Fangs(id) => self.fangs.list.iter().find(|f| f.id == id).map(|f| f.pos),
+            Target::Fangs(id) => self.ecs.position(id),
             Target::Spawner(id) => self
                 .ominous_spawners
                 .iter()

@@ -869,7 +869,7 @@ impl Game<'_> {
         candidates.extend(self.ecs_frames().into_iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.ecs_paintings().into_iter().map(|p| Target::Painting(p.id)));
         candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
-        candidates.extend(self.fangs.list.iter().map(|f| Target::Fangs(f.id)));
+        candidates.extend(self.fang_ids().into_iter().map(Target::Fangs));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
         candidates.extend(self.crystals.iter().map(|c| Target::Crystal(c.id)));
@@ -1659,14 +1659,8 @@ impl Game<'_> {
                 }
             }
             Target::Fangs(id) => {
-                if let Some(i) = self.fangs.list.iter().position(|e| e.id == id) {
-                    self.fangs.list.update(i, |f| {
-                        f.pos = [v.x, v.y, v.z];
-                        if let Some([yaw, _]) = rotation.filter(|r| r[0].is_finite()) {
-                            f.yaw = yaw;
-                        }
-                    });
-                }
+                let yaw = rotation.filter(|r| r[0].is_finite()).map(|[yaw, _]| yaw);
+                self.move_fang(id, [v.x, v.y, v.z], yaw);
             }
             // No `others` list: an entity of this kind lives in the ECS.
             Target::Other(_) => {}
@@ -2132,7 +2126,7 @@ impl Game<'_> {
                 }
             }
             Target::Other(id) => self.forget_entity(id),
-            Target::Fangs(id) => self.fangs.list.retain(|f| f.id != id),
+            Target::Fangs(id) => self.kill_fang(id),
             Target::Crystal(id) => self.kill_crystal(id),
             Target::Dragon(id) => self.kill_dragon(id),
             Target::Tnt(id) | Target::Orb(id) => {

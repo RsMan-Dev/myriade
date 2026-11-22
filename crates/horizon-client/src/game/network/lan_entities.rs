@@ -374,7 +374,7 @@ impl Game<'_> {
                     .push((10, serializer::INT, Value::Int(i32::from(f.rotation))));
             }
         }
-        for (p, &id) in self.knot_ids.iter().filter(|&(_, &id)| id > after) {
+        for (id, p) in self.ecs.knots().into_iter().filter(|&(id, _)| id > after) {
             // LeashFenceKnotEntity.getAddEntityPacket: the fence's block.
             add_state(
                 out,
@@ -645,13 +645,19 @@ impl Game<'_> {
     /// crystals, as guests track them. The ECS projectiles are tracked by
     /// `tick_lan_ecs`.
     fn lan_projectile_states(&mut self, out: &mut States, after: u32) {
+        let fangs: Vec<(u32, [f64; 3], f32)> = self
+            .fang_ids()
+            .into_iter()
+            .filter(|&id| id > after)
+            .filter_map(|id| Some((id, self.ecs.position(id)?, self.ecs.rotation(id)?[0])))
+            .collect();
         let Some(host) = self.lan.as_mut() else {
             return;
         };
         let hub = &mut host.hub;
         let at = |p: horizon_core::geometry::Vec3| [p.x, p.y, p.z];
-        for f in self.fangs.list.iter().filter(|f| f.id > after) {
-            add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
+        for (id, at, yaw) in fangs {
+            add_state(out, id, "minecraft:evoker_fangs", at, yaw, false);
         }
         // Thrown potions and bottles: ThrowableItemProjectile.DATA_ITEM_STACK
         // (the potion's colour), which a plain bottle's type already has.

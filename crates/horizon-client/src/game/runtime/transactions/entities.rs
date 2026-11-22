@@ -456,9 +456,8 @@ impl Game<'_> {
             self.crystals,
             self.cushions,
             self.breath_clouds,
-            self.fangs.list,
+            // RESTE: les crocs sont dans l'ECS, leur sortie de la transaction n'est pas encore faite.
             self.ominous_spawners,
-            self.resident_entities.knots,
         );
         if let Some(id) = (self.dragon.as_ref())
             .filter(|dragon| added(dragon.id, dragon.join_seq()))

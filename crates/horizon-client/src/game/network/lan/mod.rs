@@ -1742,7 +1742,7 @@ impl Game<'_> {
                     None => player_entity(),
                 },
                 Holder::Mob(id) | Holder::Boat(id) => Some(id as i32),
-                Holder::Knot(p) => self.knot_ids.get(&p).map(|&id| id as i32),
+                Holder::Knot(p) => self.ecs_knot_id(p).map(|id| id as i32),
             });
             let idle = idle_at(m.position);
             let place = super::lan_idle::Place {

@@ -801,20 +801,12 @@ impl Game<'_> {
             }
             "minecraft:evoker_fangs" => {
                 if let Some(at) = entity_nbt::position(&tag) {
-                    self.next_entity += 1;
-                    let id = self.next_entity;
                     let delay = horizon_client::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                     let owner = self.loaded_fangs_owner(&tag);
+                    let id = self.add_fangs([at.x, at.y, at.z], entity_nbt::rotation(&tag)[0], delay, owner);
                     if let Some(state) = transferred.take() {
                         self.adopt_transferred_entity_state(id, state);
                     }
-                    self.insert_fangs(
-                        id,
-                        [at.x, at.y, at.z],
-                        entity_nbt::rotation(&tag)[0],
-                        delay,
-                        owner,
-                    );
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
                 }
@@ -1655,23 +1647,6 @@ impl Game<'_> {
                     .entry(chunk_of(c.position))
                     .or_default()
                     .push((c.id, c.join_seq(), tag));
-            }
-        }
-        for f in &self.fangs.list {
-            let at = Vec3::new(f.pos[0], f.pos[1], f.pos[2]);
-            if keys.contains(&chunk_of(at)) {
-                let uuid = self
-                    .persist
-                    .uuids
-                    .get(&f.id)
-                    .copied()
-                    .unwrap_or_else(random_uuid);
-                let mut tag = self.fangs_to_nbt(f, uuid);
-                write_attachments(&mut tag, f.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
             }
         }
         // `AreaEffectCloud.addAdditionalSaveData`: a lingering potion's cloud is

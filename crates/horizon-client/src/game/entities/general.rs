@@ -669,6 +669,7 @@ impl Game<'_> {
         tag: &Tag,
         kind: &str,
         at: Vec3,
+        held: usize,
     ) -> bool {
         let Some((namespace, _)) = kind.split_once(':') else {
             return true;
@@ -700,6 +701,14 @@ impl Game<'_> {
             log::warn!(
                 "Horizon: quarantined general entity record of {size} bytes exceeds {}; skipping it",
                 limits::QUARANTINE_RECORD_LIMIT
+            );
+            return false;
+        }
+        if held >= limits::QUARANTINE_CHUNK_LIMIT {
+            log::warn!(
+                "Horizon: chunk {:?} already holds {} quarantined general entity records; skipping the next",
+                chunk_of(at),
+                limits::QUARANTINE_CHUNK_LIMIT
             );
             return false;
         }
@@ -869,6 +878,12 @@ fn mod_namespace_loaded(namespace: &str) -> bool {
 pub(in crate::game) fn quarantined_kind(kind: &str) -> bool {
     kind.split_once(':')
         .is_some_and(|(namespace, _)| namespace != "minecraft")
+}
+
+/// Whether a record of this kind is kept as quarantined data in its chunk's
+/// unknown store: a namespaced kind that no declared type claims.
+pub(in crate::game) fn quarantine_store_kind(kind: &str) -> bool {
+    quarantined_kind(kind) && general_type_catalog().slot(kind).is_none()
 }
 
 /// Whether any UUID of the record tree names a live entity of the level

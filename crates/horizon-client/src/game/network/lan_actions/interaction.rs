@@ -244,10 +244,11 @@ impl Game<'_> {
 
     /// The fence of the knot whose entity id is `id` (`lan_assign_ids`).
     pub(super) fn knot_at_id(&self, id: i32) -> Option<[i32; 3]> {
-        self.knot_ids
-            .iter()
-            .find(|&(_, &knot)| knot as i32 == id)
-            .map(|(&fence, _)| fence)
+        self.ecs
+            .knots()
+            .into_iter()
+            .find(|&(knot, _)| knot as i32 == id)
+            .map(|(_, fence)| fence)
     }
 
     /// `ServerGamePacketListenerImpl.handleUseItemOn` for guest `conn` (at `gi`) clicking

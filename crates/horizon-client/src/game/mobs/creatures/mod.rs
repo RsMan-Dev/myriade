@@ -1880,7 +1880,9 @@ impl Game<'_> {
                     yaw,
                     delay,
                     owner,
-                } => self.add_fangs(at, yaw, delay, owner),
+                } => {
+                    self.add_fangs(at, yaw, delay, owner);
+                }
                 MobEvent::Shoot(..) => {}
                 MobEvent::ExplosionSource {
                     mob,

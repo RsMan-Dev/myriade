@@ -12,18 +12,6 @@ use horizon_core::nbt::Tag;
 use horizon_ecs_proto::leash::Holder as EcsHolder;
 use mod_api::LootDrops;
 
-/// Natural fence knot: the fence is its authoritative position, not a render cache.
-/// Its JoinList carries the common residency binding and journal.
-pub(super) struct Knot {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub(super) attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    pub id: u32,
-    pub join: horizon_client::join_seq::JoinSeq,
-    pub fence: [i32; 3],
-}
-horizon_client::impl_joined!(Knot);
-horizon_mod_runtime::impl_attachment_lifetime!(Knot);
-
 /// The item context of a leash success (`InteractionResult.Success`): tying
 /// held mobs to this one and the holder's detach are `withoutItem`, so item
 /// criteria see an empty hand; shears and a new lead keep the used item.
@@ -96,10 +84,11 @@ impl Game<'_> {
     /// of the dead entities' memory (`prune_entity_memory`).
     pub(super) fn forget_untied_knots(&mut self) {
         let fences = self.lead_fences();
-        self.knot_ids.retain(|p, _| fences.contains(p));
-        self.resident_entities
-            .knots
-            .retain(|knot| fences.contains(&knot.fence));
+        for (_, p) in self.ecs.knots() {
+            if !fences.contains(&p) {
+                self.ecs.knot_released(p);
+            }
+        }
     }
     /// `LeashFenceKnotEntity.notifyLeasheeRemoved`: only a knot losing a
     /// holder asks whether it still has another one. The departing entity may
@@ -118,10 +107,7 @@ impl Game<'_> {
         {
             return;
         }
-        self.knot_ids.remove(&fence);
-        self.resident_entities
-            .knots
-            .retain(|knot| knot.fence != fence);
+        self.ecs_knot_released(fence);
     }
     /// `LeashFenceKnotEntity.getOrCreateKnot` → `createKnot`: the first lead
     /// tied to a fence makes its knot, a real entity with its own id (the
@@ -129,19 +115,18 @@ impl Game<'_> {
     /// it. A fence that already has one keeps it. Call
     /// [`Self::forget_untied_knots`] before the tie.
     pub(super) fn tie_knot(&mut self, fence: [i32; 3]) {
-        if self.knot_ids.contains_key(&fence) {
+        if self.ecs_knot_id(fence).is_some() {
             return;
         }
-        self.next_entity += 1;
-        let id = self.next_entity;
-        self.knot_ids.insert(fence, id);
-        self.resident_entities.knots.push(Knot {
-            attachment_lifetime: Default::default(),
-            id,
-            join: Default::default(),
-            fence,
+        let mut next = self.next_entity;
+        let id = self.ecs.knot_tie(fence, &mut || {
+            next += 1;
+            next
         });
-        self.uuid_for(id);
+        self.next_entity = next;
+        if id != 0 {
+            self.uuid_for(id);
+        }
     }
     /// The authoritative fence of an active natural knot, until a last-holder
     /// notification or the tracking cleanup retires its physical owner.
@@ -157,12 +142,11 @@ impl Game<'_> {
         if location.owner.dimension != self.dim.key() {
             return None;
         }
-        let index = self.resident_entities.knots.locate(location.join)?;
-        Some(self.resident_entities.knots[index].fence)
+        self.ecs.knot_fence_of(id)
     }
     /// Actual natural knot owners, without allocating or inferring membership from leashes.
     pub(super) fn natural_knot_id_iter(&self) -> impl Iterator<Item = u32> + '_ {
-        self.resident_entities.knots.iter().map(|knot| knot.id)
+        self.ecs.knots().into_iter().map(|(id, _)| id)
     }
     /// The ids of the level's natural knots that a lead still holds, in the
     /// order they were made.

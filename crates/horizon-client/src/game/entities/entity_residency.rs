@@ -37,18 +37,15 @@ macro_rules! assign_resident_ids {
 }
 pub(crate) use assign_resident_ids;
 
-// Projectiles and knots have distinct Game/Parked field paths;
-// keep binding and resolution on this one family list.
+// Keep binding and resolution on this one family list.
 macro_rules! resident_owners {
-    ($then:ident, $this:ident, $($knots:ident).+) => {
+    ($then:ident, $this:ident) => {
         $then! {
             ($this)
             Mob => Mob: remote_entities,
             Stand => Stand: armor_stands,
-            Fangs => Fangs: fangs.list,
             Crystal => Crystal: crystals,
             Cushion => Cushion: cushions,
-            Knot => Knot: $($knots).+,
             Spawner => Spawner: ominous_spawners,
             Cloud => Cloud: breath_clouds,
         }
@@ -147,7 +144,7 @@ macro_rules! define_resident_access {
                     let Some(part) = $this.dragon.as_mut().and_then(|dragon| dragon.parts.get_mut(usize::from(offset))) else { return SlotAccess::Missing; };
                     SlotAccess::Done(visit(part.attachment_lifetime()))
                 },
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -159,6 +156,7 @@ macro_rules! define_resident_access {
                     let id = entity.id;
                     Some(SourceEntity { id, value: (Target::$target(id), visible) })
                 })*
+                Kind::Fangs | Kind::Knot => None,
                 Kind::Dragon => {
                     $this.dragon.locate(at.join)?;
                     let id = $this.dragon.as_ref()?.id;
@@ -198,11 +196,7 @@ macro_rules! define_resident_access {
 pub(crate) use define_resident_access;
 
 impl Game<'_> {
-    resident_owners!(
-        define_resident_access,
-        self,
-        resident_entities.knots
-    );
+    resident_owners!(define_resident_access, self);
 }
 
 #[cfg(test)]

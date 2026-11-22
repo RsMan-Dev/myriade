@@ -9,13 +9,24 @@ impl Game<'_> {
         for (key, tags) in loaded {
             let count = tags.len();
             if self.ecs.is_active() {
-                let entities: Vec<_> = tags
-                    .into_iter()
-                    .filter_map(|pending| match pending.into_parts().0 {
-                        Tag::Compound(c) => Some(c),
-                        _ => None,
-                    })
-                    .collect();
+                // A missing mod's record is kept as loaded in the chunk's unknown store, never read by the world; the
+                // bounds count what the chunk already holds, once per load.
+                let mut held = self.quarantined_in_chunk(key);
+                let mut entities = Vec::new();
+                for pending in tags {
+                    let tag = pending.into_parts().0;
+                    let kind = entity_nbt::kind(&tag).unwrap_or_default();
+                    if super::super::general::quarantine_store_kind(&kind) {
+                        if let Some(at) = entity_nbt::position(&tag)
+                            && self.general_quarantine_admits(&tag, &kind, at, held)
+                        {
+                            self.keep_quarantined(tag, &kind, key);
+                            held += 1;
+                        }
+                    } else if let Tag::Compound(c) = tag {
+                        entities.push(c);
+                    }
+                }
                 self.ecs_load_chunk(key.0, key.1, &entities);
             } else {
                 for pending in tags {
@@ -25,6 +36,25 @@ impl Game<'_> {
             }
             self.native_entities_load(self.dim.id(), [key.0, key.1], count);
         }
+    }
+
+    /// The quarantined records of chunk `key` kept in its unknown store (`persist.unknown`).
+    pub(in crate::game) fn quarantined_in_chunk(&self, key: ChunkKey) -> usize {
+        self.persist.unknown.get(&key).map_or(0, |list| {
+            list.iter()
+                .filter(|tag| entity_nbt::kind(tag).is_some_and(|kind| super::super::general::quarantine_store_kind(&kind)))
+                .count()
+        })
+    }
+
+    /// Keeps a missing mod's record as loaded, byte for byte, in its chunk's unknown store, written back with the chunk.
+    /// The tag comes back for any other kind.
+    pub(in crate::game) fn keep_quarantined(&mut self, tag: Tag, kind: &str, chunk: ChunkKey) -> Option<Tag> {
+        if !super::super::general::quarantine_store_kind(kind) {
+            return Some(tag);
+        }
+        self.persist.unknown.entry(chunk).or_default().push(tag);
+        None
     }
 
     /// Install one fixture record or explicitly owned live transfer through the same
@@ -174,7 +204,10 @@ impl Game<'_> {
                 // A record no listed family claimed: the missing-mod gate
                 // decides whether the unknown-kind path may keep it.
                 let at = entity_nbt::position(&tag).unwrap();
-                if self.general_quarantine_admits(&tag, &kind, at) {
+                let held = self.quarantined_in_chunk(chunk_of(at));
+                if self.general_quarantine_admits(&tag, &kind, at, held)
+                    && let Some(tag) = self.keep_quarantined(tag, &kind, chunk_of(at))
+                {
                     self.load_other(tag, &kind);
                 }
             } else {

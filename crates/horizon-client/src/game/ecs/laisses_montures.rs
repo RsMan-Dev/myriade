@@ -50,18 +50,19 @@ impl Game<'_> {
         self.ecs.leash_resolve_pending();
     }
 
-    /// The fences the ECS's leads hang on, among the knots the host has named: no scan of the entities.
+    /// The fences the ECS's leads hang on, among the knots the ECS holds.
     pub(in crate::game) fn ecs_lead_fences(&self) -> Vec<[i32; 3]> {
-        self.knot_ids.keys().copied().filter(|&p| self.ecs_knot_held(p)).collect()
+        self.ecs.knots().into_iter().map(|(_, p)| p).filter(|&p| self.ecs_knot_held(p)).collect()
     }
 
-    /// `LeashFenceKnotEntity.notifyLeasheeRemoved` on the ECS: the knot at `p` goes once no lead hangs on it.
+    /// The network id of the knot of the fence `p`, None when the ECS has none.
+    pub(in crate::game) fn ecs_knot_id(&self, p: [i32; 3]) -> Option<u32> {
+        self.ecs.knots().into_iter().find(|&(_, f)| f == p).map(|(id, _)| id)
+    }
+
+    /// `LeashFenceKnotEntity.notifyLeasheeRemoved` on the ECS: the knot at `p` goes once no lead hangs on it (`leash_knot::released`).
     pub(in crate::game) fn ecs_knot_released(&mut self, p: [i32; 3]) {
-        if self.ecs_knot_held(p) {
-            return;
-        }
-        self.knot_ids.remove(&p);
-        self.resident_entities.knots.retain(|knot| knot.fence != p);
+        self.ecs.knot_released(p);
     }
 
     /// `Leashable.setLeashedTo` on the ECS: `id` takes the lead of `holder` whatever held it before.

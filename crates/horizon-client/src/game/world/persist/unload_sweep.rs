@@ -23,13 +23,13 @@ impl Game<'_> {
         if self.dragon.as_ref().is_some_and(|d| gone(d.position)) {
             self.discard_resident_dragon();
         }
-        self.fangs.list.retain(|f| {
-            let keep = !gone(Vec3::new(f.pos[0], f.pos[1], f.pos[2]));
-            if !keep {
-                removed.push(f.id);
+        for id in self.fang_ids() {
+            let Some(at) = self.ecs.position(id) else { continue };
+            if gone(Vec3::new(at[0], at[1], at[2])) {
+                removed.push(id);
+                self.kill_fang(id);
             }
-            keep
-        });
+        }
         self.armor_stands.retain(|a| {
             let keep = !gone(a.position);
             if !keep {

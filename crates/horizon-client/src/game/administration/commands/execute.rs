@@ -138,12 +138,7 @@ impl Game<'_> {
                 .find(|a| a.id == id)
                 .map_or([0.0; 2], |a| [a.yaw, 0.0]),
             Target::Boat(id) | Target::Cart(id) => self.ecs_view(id).map_or([0.0; 2], |v| [v.yaw, 0.0]),
-            Target::Fangs(id) => self
-                .fangs
-                .list
-                .iter()
-                .find(|f| f.id == id)
-                .map_or([0.0; 2], |f| [f.yaw, 0.0]),
+            Target::Fangs(id) => self.ecs.rotation(id).map_or([0.0; 2], |r| [r[0], 0.0]),
             // No `others` list: no rotation is stored for this kind.
             Target::Other(_) => [0.0; 2],
             // A cloud keeps its rotation in its saved compound (the model has no slot for it).

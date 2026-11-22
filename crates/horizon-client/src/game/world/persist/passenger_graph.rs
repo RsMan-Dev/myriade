@@ -183,7 +183,12 @@ impl Game<'_> {
             let Some(at) = entity_nbt::position(&tag) else {
                 continue;
             };
-            let children = take_passengers(&mut tag);
+            // A quarantined record keeps its riders inside it, as it arrived.
+            let children = if super::super::general::quarantine_store_kind(&kind) {
+                None
+            } else {
+                take_passengers(&mut tag)
+            };
             let before = self.next_entity;
             let key = super::chunk_of(at);
             let uuid = entity_nbt::uuid(&tag);
@@ -193,9 +198,13 @@ impl Game<'_> {
             } else if let Err(tag) = self.load_unlisted(key, &kind, uuid, tag)
                 && let Err(tag) = self.load_listed(&kind, uuid, self.level.player_uuid, tag)
                 // The missing-mod gate decides whether an unknown kind may be kept.
-                && self.general_quarantine_admits(&tag, &kind, at)
+                && self.general_quarantine_admits(&tag, &kind, at, self.quarantined_in_chunk(key))
             {
-                self.load_other(tag, &kind);
+                if let Some(tag) = self.keep_quarantined(tag, &kind, key) {
+                    self.load_other(tag, &kind);
+                } else {
+                    continue;
+                }
             }
             let Some(id) = ((before + 1)..=self.next_entity)
                 .find(|id| self.passenger_object_present(*id))
@@ -281,7 +290,9 @@ impl Game<'_> {
             }
         }
         self.cushions.retain(|e| !gone.contains(&e.id));
-        self.fangs.list.retain(|e| !gone.contains(&e.id));
+        for id in self.fang_ids().into_iter().filter(|id| gone.contains(id)) {
+            self.kill_fang(id);
+        }
         self.crystals.retain(|e| !gone.contains(&e.id));
         self.breath_clouds.retain(|e| !gone.contains(&e.id));
         self.ominous_spawners.retain(|e| !gone.contains(&e.id));
