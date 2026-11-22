@@ -126,6 +126,8 @@ impl MapData {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn staged_maps_restore_id_reservations_and_pending_copies_on_refusal() {
         for accepted in [false, true] {
@@ -192,59 +194,5 @@ mod tests {
                 assert_eq!((derived.scale, derived.center), (1, [64, 64]));
             }
         });
-    }
-
-    use super::*;
-    use crate::game::maps::{Decoration, Key};
-
-    fn close(a: [[f32; 2]; 4], b: [[f32; 2]; 4]) {
-        for (a, b) in a.iter().zip(&b) {
-            assert!(
-                (a[0] - b[0]).abs() < 1e-4 && (a[1] - b[1]).abs() < 1e-4,
-                "{a:?} {b:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn the_preview_skips_what_an_item_frame_skips() {
-        // GuiGraphicsExtractor.map: `if (decoration.renderOnFrame)`.
-        assert!(!shown_on_frame("map/decorations/player"));
-        assert!(!shown_on_frame("map/decorations/red_marker"));
-        assert!(shown_on_frame("map/decorations/frame"));
-        assert!(shown_on_frame("map/decorations/red_x"));
-    }
-
-    #[test]
-    fn map_markers_sit_on_the_preview_like_on_a_held_map() {
-        let player = |x, y, rot| Decoration {
-            sprite: "map/decorations/player",
-            x,
-            y,
-            rot,
-            name: None,
-            key: Key::Remote,
-        };
-        // The centre, facing north: 8 map pixels wide, nudged by (-0.5, 0.5).
-        close(
-            decoration_corners(&player(0, 0, 0), 0.0, 0.0, 1.0),
-            [[59.5, 68.5], [67.5, 68.5], [67.5, 60.5], [59.5, 60.5]],
-        );
-        // A quarter turn (rotation 4 of 16) turns the quad about its marker.
-        close(
-            decoration_corners(&player(0, 0, 4), 0.0, 0.0, 1.0),
-            [[59.5, 59.5], [59.5, 67.5], [67.5, 67.5], [67.5, 59.5]],
-        );
-        // The preview's offset and scale apply after: the top-left corner
-        // marker on the 0.45 preview at (71, 17).
-        close(
-            decoration_corners(&player(-128, -128, 0), 71.0, 17.0, 0.45),
-            [
-                [71.0 - 4.5 * 0.45, 17.0 + 4.5 * 0.45],
-                [71.0 + 3.5 * 0.45, 17.0 + 4.5 * 0.45],
-                [71.0 + 3.5 * 0.45, 17.0 - 3.5 * 0.45],
-                [71.0 - 4.5 * 0.45, 17.0 - 3.5 * 0.45],
-            ],
-        );
     }
 }

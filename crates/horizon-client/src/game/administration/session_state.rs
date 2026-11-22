@@ -294,6 +294,11 @@ impl Game<'_> {
         self.session.registries.permission = level;
         out
     }
+    #[cfg(test)]
+    pub(in crate::game) fn set_allow_commands(&mut self, allow: bool) {
+        self.level.allow_commands = Some(allow);
+        self.session.registries.permission = owner_permission(allow);
+    }
     /// `PlayerList.isOp` for the single-player owner: the world's Allow Commands.
     pub(in crate::game) fn allow_commands(&self) -> bool {
         self.level.allow_commands == Some(true)

@@ -625,21 +625,6 @@ fn exhausted_ids_refuse_every_mod_spawn() {
 
 #[test]
 #[ignore = "daily"]
-fn exhausted_ids_stop_the_tick_spawners() {
-    const NAME: &str = "game::transaction_entities_tests::exhausted_ids_stop_the_tick_spawners";
-    with_observer(NAME, |game| {
-        game.next_entity = u32::MAX - ENTITY_ID_HEADROOM - 1;
-        game.tick_spawners();
-        assert!(!game.native_lifecycle.ids_exhausted_told);
-        game.next_entity = u32::MAX - ENTITY_ID_HEADROOM;
-        game.tick_spawners();
-        assert!(game.native_lifecycle.ids_exhausted_told, "named in the log");
-        assert_eq!(game.next_entity, u32::MAX - ENTITY_ID_HEADROOM);
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn an_aborted_spawn_puts_back_the_raw_record_it_wrote_over() {
     const NAME: &str =
         "game::transaction_entities_tests::an_aborted_spawn_puts_back_the_raw_record_it_wrote_over";

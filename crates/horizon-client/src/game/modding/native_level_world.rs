@@ -437,7 +437,12 @@ mod tests {
     #[ignore = "daily"]
     fn rain_at_a_position_checks_sky_roof_and_biome() {
         with_game(|game| {
-            game.install_live_features();
+            crate::game::growth::install_live_features(
+                &game.res,
+                &game.pack,
+                &game.options,
+                &Default::default(),
+            );
             for (x, biome) in [
                 (0, "minecraft:plains"),
                 (1, "minecraft:desert"),

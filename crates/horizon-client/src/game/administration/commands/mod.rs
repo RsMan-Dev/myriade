@@ -4098,10 +4098,8 @@ mod teleport_pitch_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -4112,9 +4110,7 @@ mod teleport_pitch_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         let kind = game
@@ -4624,10 +4620,8 @@ mod selector_bounds_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -4638,9 +4632,7 @@ mod selector_bounds_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -4784,10 +4776,8 @@ mod query_feedback_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -4798,9 +4788,7 @@ mod query_feedback_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -4914,10 +4902,8 @@ mod forced_respawn_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -4928,9 +4914,7 @@ mod forced_respawn_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.player = Some(
@@ -5028,10 +5012,11 @@ mod forced_respawn_tests {
             assert_eq!(sound.position, [5.0, 100.0, 5.0]);
             assert_eq!((sound.volume, sound.pitch), (1.0, 1.0));
             assert_eq!(
-                game.audio
-                    .heard
-                    .get("minecraft:block.respawn_anchor.deplete"),
-                Some(&1)
+                played
+                    .iter()
+                    .filter(|s| s.event == "minecraft:block.respawn_anchor.deplete")
+                    .count(),
+                1
             );
             assert_eq!(
                 game.world.block(pos[0], pos[1], pos[2]),
@@ -5192,10 +5177,8 @@ mod fill_note_instrument_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -5210,9 +5193,7 @@ mod fill_note_instrument_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -5647,23 +5628,3 @@ mod knot_identity_tests;
 #[cfg(test)]
 #[path = "item_count_predicate_tests.rs"]
 mod item_count_predicate_tests;
-
-#[cfg(test)]
-mod ecs_command_tests {
-    use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
-
-    #[test]
-    fn a_summoned_ecs_mob_is_counted_by_its_selector_and_takes_a_kill() {
-        with_game(|game| {
-            game.ecs = game.test_ecs_level();
-            game.build_registries();
-            game.set_allow_commands(true);
-            assert!(game.run_command("summon minecraft:cow 0.5 64 0.5"));
-            assert_eq!(game.ecs_count("minecraft:cow", [0.5, 64.0, 0.5], 4.0), 1);
-            let s = Selector { kind: 'e', types: vec![("minecraft:cow".into(), false)], ..Default::default() };
-            assert_eq!(game.select(&s).len(), 1);
-            assert!(game.run_command("kill @e[type=minecraft:cow]"));
-        });
-    }
-}

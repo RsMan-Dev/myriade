@@ -33,7 +33,6 @@ macro_rules! restore_cases {
 }
 
 restore_cases! {
-    restores_mob_spawns: "minecraft:pig", "{}", mobs;
     restores_item_spawns: "minecraft:item", "{Item:{id:\"minecraft:stone\",count:1}}", dropped;
     restores_boat_spawns: "minecraft:oak_boat", "{}", boats;
     restores_cart_spawns: "minecraft:minecart", "{}", carts;

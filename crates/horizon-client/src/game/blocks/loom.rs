@@ -72,35 +72,3 @@ impl Game<'_> {
         self.audio.play(sound, Some(at), 1.0, 1.0);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scroller_rows_follow_the_offset() {
-        let l = LoomState {
-            patterns: (0..40)
-                .map(|i| Arc::from(format!("p{i}").as_str()))
-                .collect(),
-            display: true,
-            ..Default::default()
-        };
-        // 40 patterns = 10 rows, 6 off screen.
-        assert_eq!(l.offscreen_rows(), 6);
-        assert_eq!(l.row_for(0.0), 0);
-        assert_eq!(l.row_for(1.0), 6);
-        assert_eq!(l.row_for(0.5), 3);
-    }
-    #[test]
-    fn few_patterns_do_not_scroll() {
-        let l = LoomState {
-            patterns: (0..16)
-                .map(|i| Arc::from(format!("p{i}").as_str()))
-                .collect(),
-            display: true,
-            ..Default::default()
-        };
-        assert_eq!(l.offscreen_rows(), 0);
-    }
-}

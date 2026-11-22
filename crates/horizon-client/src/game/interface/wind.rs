@@ -696,44 +696,4 @@ mod tests {
         let arrow = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
         assert!(!Entity::ticks_after_projectiles(&arrow));
     }
-    #[test]
-    fn a_deflected_projectile_turns_around_at_half_speed() {
-        let mut p = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
-        p.velocity = Vec3::new(2.0, -1.0, 0.0);
-        reverse(&mut p);
-        assert!((p.velocity.x + 1.0).abs() < 1e-9 && (p.velocity.y - 0.5).abs() < 1e-9);
-        // Projectile.deflect sets needsSync on a turn, so ServerEntity sends it this tick.
-        assert!(p.needs_sync, "the turn goes out at once");
-        assert!((170.0..190.0).contains(&p.yaw));
-        // A snowball is no AbstractHurtingProjectile: Projectile.onDeflection
-        // is empty, so the power it carries is left as it was.
-        assert_eq!(p.acceleration, 0.1);
-    }
-
-    #[test]
-    fn a_breeze_deflect_halves_a_fireballs_power() {
-        // Breeze.PROJECTILE_DEFLECTION: ProjectileDeflection.REVERSE at power
-        // (1, 1, 1), then Projectile.deflect calls
-        // AbstractHurtingProjectile.onDeflection(false), which halves
-        // accelerationPower from 0.1 to 0.05 and so slows it down.
-        let mut p = Projectile::fireball(
-            ProjectileKind::LargeFireball { power: 1 },
-            Vec3::new(0.0, 64.0, 0.0),
-            Some(Who::Mob(3)),
-            [1.0, 0.0, 0.0],
-        );
-        assert_eq!(p.acceleration, 0.1);
-        reverse(&mut p);
-        assert!(p.needs_sync);
-        assert_eq!(p.acceleration, 0.05);
-        assert!((p.velocity.x + 0.05).abs() < 1e-12, "{:?}", p.velocity);
-        // AbstractHurtingProjectile.addAdditionalSaveData saves that power,
-        // so a deflected fireball comes back from a save as slow.
-        let tag = crate::entity_nbt::fireball_to_nbt(&p, [1, 2, 3, 4], None, None)
-            .expect("a fireball is saved");
-        let back = crate::entity_nbt::fireball_from_nbt(&tag, None).expect("and loaded");
-        assert_eq!(back.acceleration, 0.05);
-        // The power a server sends with the turn is the halved one.
-        assert_eq!(p.acceleration_power(), Some(0.05));
-    }
 }

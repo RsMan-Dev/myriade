@@ -12,10 +12,8 @@ fn with_game(check: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -27,9 +25,7 @@ fn with_game(check: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();

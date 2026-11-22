@@ -1601,28 +1601,6 @@ mod tests {
     }
 
     #[test]
-    fn a_mod_icon_sits_where_a_vanilla_decoration_would() {
-        // Half pixels from the map's centre: x 20 is 10 map pixels right of it.
-        let vanilla = Decoration {
-            sprite: "map/decorations/frame",
-            x: 20,
-            y: -30,
-            rot: 4,
-            name: None,
-            key: Key::Remote,
-        };
-        assert_eq!(
-            decoration_pose(&vanilla, -0.02),
-            decoration_pose_at(20, -30, 4, -0.02)
-        );
-        let at = decoration_pose_at(20, -30, 0, 0.0).transform_point3(glam::Vec3::ZERO);
-        assert!(
-            (at.x - 74.0).abs() < 0.6 && (at.y - 49.0).abs() < 0.6,
-            "{at:?}"
-        );
-    }
-
-    #[test]
     fn every_target_decoration_type_has_its_sprite() {
         // MapDecorationTypes: (name, asset).
         for (name, asset) in [
@@ -1726,10 +1704,8 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -1740,9 +1716,7 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
 

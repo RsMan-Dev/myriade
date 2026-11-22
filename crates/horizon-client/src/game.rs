@@ -6062,8 +6062,6 @@ fn reset_world_progress(adv: &mut advancements::AdvState, stats: &mut stats::Sta
 }
 
 pub(crate) use closest_space::closest_space_nudge;
-#[cfg(test)]
-use inventory_input::drop_whole_stack;
 use command_blocks::is_game_master_block;
 #[cfg(test)]
 mod test_neighbourhood {

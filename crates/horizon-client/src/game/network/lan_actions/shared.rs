@@ -1382,7 +1382,6 @@ mod tests {
                     (Answer::TryWithEmptyHand, 2, true, 1),
                 ] {
                     *user.answer.lock().unwrap() = Some(answer);
-                    game.swing = Default::default();
                     let before = game.swings_started;
                     let empty_before = user.empty_clicks.lock().unwrap().len();
                     assert!(game.use_hand(Some(&hit)).unwrap());
@@ -2427,10 +2426,8 @@ mod respawn_world_point_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2441,9 +2438,7 @@ mod respawn_world_point_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         let scratch = std::env::temp_dir().join(format!(
@@ -2581,10 +2576,8 @@ mod swing_echo_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2598,9 +2591,7 @@ mod swing_echo_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2825,10 +2816,8 @@ mod guest_close_listener_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2839,9 +2828,7 @@ mod guest_close_listener_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3085,10 +3072,8 @@ mod item_on_block_cooldown_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -3102,9 +3087,7 @@ mod item_on_block_cooldown_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();

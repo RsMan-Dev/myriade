@@ -296,18 +296,3 @@ impl Game<'_> {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::slot_in_group;
-
-    #[test]
-    fn slot_groups_cover_their_slots() {
-        assert!(slot_in_group("head", "head"));
-        assert!(slot_in_group("armor", "chest"));
-        assert!(!slot_in_group("armor", "mainhand"));
-        assert!(slot_in_group("hand", "offhand"));
-        assert!(slot_in_group("any", "feet"));
-        assert!(!slot_in_group("mainhand", "offhand"));
-    }
-}

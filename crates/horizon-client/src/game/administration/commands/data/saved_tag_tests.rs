@@ -15,10 +15,8 @@ pub(super) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -29,9 +27,7 @@ pub(super) fn with_command_game(name: &str, test: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(

@@ -2,6 +2,7 @@
 //! (`Entity.teleportCrossDimension`): what each kind keeps, and a kind it cannot move.
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::{Dim, Game};
+use horizon_core::geometry::Vec3;
 
 
 /// Summons `kind` with `nbt` at 0.5 80 0.5 in the Overworld, where `id` finds it, and sends

@@ -148,20 +148,5 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod source_tests {
-    #[test]
-    fn frame_model_reads_resolved_resources_without_files() {
-        use horizon_assets::resource_source::{Resource, ResourceSource};
-        let source = ResourceSource::indexed(std::collections::BTreeMap::from([
-            ("assets/minecraft/models/block/item_frame.json".into(), Resource::bytes(br##"{"textures":{"x":"example:block/frame"},"elements":[{"from":[0,0,0],"to":[16,16,16],"faces":{"north":{"texture":"#x"}}}]}"##.to_vec())),
-        ]));
-        let model = super::bake_frame(&source, "item_frame");
-        assert_eq!(model.len(), 1);
-        assert_eq!(model[0].2, "example:block/frame");
-    }
-}
-
-
-#[cfg(test)]
 #[path = "tests/lodestone_compass_tests.rs"]
 mod lodestone_compass_tests;

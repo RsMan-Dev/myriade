@@ -78,10 +78,8 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -92,9 +90,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     g.options.dedicated = Some(Vec::new());

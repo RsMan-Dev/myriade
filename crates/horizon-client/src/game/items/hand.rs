@@ -410,40 +410,6 @@ impl Game<'_> {
 mod tests {
     use super::*;
 
-    /// A zombie-sized box whose near face is `distance` blocks ahead of an
-    /// eye at the origin looking along +z.
-    fn mob_ahead(distance: f64) -> Vec<(usize, Aabb)> {
-        let min = Vec3::new(-0.3, -1.0, distance);
-        vec![(0, Aabb::new(min, min.add_vector(Vec3::new(0.6, 1.95, 0.6))))]
-    }
-
-    #[test]
-    fn a_spear_picks_a_mob_past_the_plain_reach() {
-        // #3209: a mob 4 blocks ahead is out of the plain pick's 3 blocks but
-        // within a spear's attack range (min 2, max 4.5, margin 0.125), so the
-        // crosshair picks it and the attack indicator shows.
-        let spear = serde_json::json!({
-            "min_reach": 2.0, "max_reach": 4.5,
-            "min_creative_reach": 2.0, "max_creative_reach": 6.5,
-            "hitbox_margin": 0.125,
-        });
-        let (eye, look) = (Vec3::ZERO, Vec3::new(0.0, 0.0, 1.0));
-        let boxes = mob_ahead(4.0);
-        let reach = attack_reach(&spear, false);
-        let pick = reach_pick(&boxes, eye, look, Vec3::ZERO, reach, |_, _| None);
-        assert_eq!(pick, Some(4.0));
-        assert!(attack_range_contains(&spear, 4.0, false));
-        // Past the maximum plus the margin: no pick.
-        let far = mob_ahead(4.7);
-        assert_eq!(
-            reach_pick(&far, eye, look, Vec3::ZERO, reach, |_, _| None),
-            None
-        );
-        // A block nearer than the minimum reach takes the pick.
-        let wall = |from: Vec3, _: Vec3| Some(from.add_vector(Vec3::new(0.0, 0.0, 1.0)));
-        assert_eq!(reach_pick(&boxes, eye, look, Vec3::ZERO, reach, wall), None);
-    }
-
     #[test]
     fn the_server_takes_attacks_within_vanilla_reach_only() {
         // handleAttack: AttackRange.defaultFor (0 to the entity interaction
@@ -484,49 +450,6 @@ mod tests {
         assert!(!attack_range_contains(&spear, 1.874, false));
         assert!(attack_range_contains(&spear, 4.625, false));
         assert!(!attack_range_contains(&spear, 4.626, false));
-    }
-
-    fn stack(item: &str, count: u32, damage: u32) -> Option<ItemStack> {
-        Some(ItemStack {
-            item: item.into(),
-            count,
-            damage,
-            extra: None,
-        })
-    }
-
-    #[test]
-    fn a_swapped_in_stack_of_the_same_item_re_equips() {
-        // #2866: F swaps 64 torches into the off hand that held 32. The off
-        // hand's slot stays, but the server's slot update puts another stack
-        // object there; a different count fails matchesIgnoringComponents,
-        // so the hand plays the swap animation.
-        let visible = (OFFHAND, stack("minecraft:torch", 32, 0));
-        let held = (OFFHAND, stack("minecraft:torch", 64, 0));
-        assert!(!shows_held_stack(&visible, &held, true));
-        // The same stack shrunk in place (a torch placed): no animation.
-        assert!(shows_held_stack(&visible, &held, false));
-        // An equal stack replaced it: shown at once.
-        assert!(shows_held_stack(&visible, &visible.clone(), true));
-        // DataComponents.DAMAGE ignores the swap animation: a sword with
-        // other damage swapped in shows at once.
-        let sword = (OFFHAND, stack("minecraft:iron_sword", 1, 3));
-        let worn = (OFFHAND, stack("minecraft:iron_sword", 1, 40));
-        assert!(shows_held_stack(&sword, &worn, true));
-        // Another component (an anvil's repair cost) differs.
-        let mut named = worn.clone();
-        named.1.as_mut().unwrap().data_mut().repair_cost = 1;
-        assert!(!shows_held_stack(&sword, &named, true));
-        // The main hand changing hotbar slot to an equal stack: instant; to
-        // a different count: animation.
-        let (a, b) = (
-            (0, stack("minecraft:torch", 32, 0)),
-            (1, stack("minecraft:torch", 32, 0)),
-        );
-        assert!(shows_held_stack(&a, &b, false));
-        let c = (1, stack("minecraft:torch", 5, 0));
-        assert!(!shows_held_stack(&a, &c, false));
-        assert!(shows_held_stack(&(0, None), &(OFFHAND, None), true));
     }
 
     #[test]

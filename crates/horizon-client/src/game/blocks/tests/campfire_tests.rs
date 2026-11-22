@@ -102,7 +102,7 @@ fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {
         .insert("minecraft:item_used_on_block".into(), vec![(0, 0)]);
     game.adv.tree = Arc::new(tree);
     let hit = game.forced_hit.unwrap();
-    game.sneaking = true;
+    game.sneak_held = true;
     assert!(game.use_hand(Some(&hit)).unwrap());
     assert_eq!(slots(&game, POS), 0, "the sneak put no beef on the fire");
     assert_eq!(game.held().unwrap().count, 4, "the beef stayed in hand");
@@ -113,7 +113,7 @@ fn a_sneak_keeps_the_food_and_placing_it_fires_item_used_on_block() {
     );
     // Stop eating, let go of the sneak: the same click now feeds the fire.
     game.using = None;
-    game.sneaking = false;
+    game.sneak_held = false;
     assert!(game.use_hand(Some(&hit)).unwrap());
     assert_eq!(slots(&game, POS), 1, "the beef went on the fire");
     assert_eq!(game.held().unwrap().count, 3, "one beef was used");

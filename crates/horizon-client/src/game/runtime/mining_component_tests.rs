@@ -15,10 +15,8 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -29,9 +27,7 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -152,10 +148,8 @@ fn with_survival_game(f: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -166,9 +160,7 @@ fn with_survival_game(f: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 62.0, 4.5)).unwrap());

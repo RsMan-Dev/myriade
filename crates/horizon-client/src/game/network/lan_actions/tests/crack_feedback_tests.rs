@@ -68,10 +68,8 @@ fn crack_packets_follow_start_clock_and_strict_observer_radius() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -82,9 +80,7 @@ fn crack_packets_follow_start_clock_and_strict_observer_radius() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let scratch =

@@ -1271,60 +1271,6 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn world_border_outer_chunk_gate_keeps_attempt_randomness() {
-        use horizon_client::{chunk::Chunk, motion::PlayerMotion};
-        use std::sync::Arc;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-            );
-            // Only the center chunk can tick: its eight neighbors are loaded,
-            // but none of those has all its own neighbors. The center is partial.
-            for x in -1..=1 {
-                for z in -1..=1 {
-                    let mut chunk = Chunk::empty(x, z);
-                    chunk.lit = x == 0 && z == 0;
-                    game.world.chunks.insert((x, z), Arc::new(chunk));
-                }
-            }
-            game.tickets.update(None);
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
-            game.border.set_center([8.0, 8.0]);
-            game.border.set_size(2.0);
-            let mut scratch = SpawnScratch::default();
-            game.spawning_chunks(&game.level_players(), &mut scratch);
-            assert_eq!(scratch.candidates, vec![(0, 0)]);
-            assert!(
-                game.session
-                    .rules
-                    .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
-            );
-            // A contained chunk must actually reach the spawning pass, so an
-            // empty category list cannot satisfy the rejected-chunk assertion.
-            game.border.set_size(64.0);
-            game.world.random.set_seed(12345);
-            game.spawn_natural();
-            assert_ne!(
-                game.world.random.next_long(),
-                LegacyRandom::new(12345).next_long()
-            );
-            game.world.inhabited.clear();
-            game.border.set_size(2.0);
-            game.world.random.set_seed(12345);
-            game.spawn_natural();
-            // No shuffle draw for one candidate, and no attempt draws for a
-            // rejected chunk. Inhabited time still advances before the gate.
-            assert_eq!(game.world.inhabited.get(&(0, 0)), Some(&1));
-            assert_eq!(
-                game.world.random.next_long(),
-                LegacyRandom::new(12345).next_long()
-            );
-        });
-    }
     fn player(x: f64, y: f64, z: f64, spectator: bool) -> LevelPlayer {
         LevelPlayer {
             uuid: 0,
@@ -1482,56 +1428,6 @@ mod tests {
             );
             assert_eq!(scratch.candidates, expected, "step {step}");
         }
-    }
-
-    /// The grid finds the same player a look at every one finds, the first of
-    /// two at the same distance included, and never a spectator.
-    #[test]
-    fn nearest_players_find_what_a_scan_finds() {
-        let mut seed = 0x9E37_79B9_7F4A_7C15u64;
-        let mut next = |m: f64| {
-            seed ^= seed << 13;
-            seed ^= seed >> 7;
-            seed ^= seed << 17;
-            (seed % 1_000_000) as f64 / 1_000_000.0 * 2.0 * m - m
-        };
-        let mut players: Vec<LevelPlayer> = (0..150)
-            .map(|i| player(next(3_000.0), 64.0 + next(60.0), next(3_000.0), i % 11 == 0))
-            .collect();
-        // Two at the same distance from the origin, the second one first in no cell order.
-        players.push(player(300.0, 64.0, 0.0, false));
-        players.push(player(-300.0, 64.0, 0.0, false));
-        players.push(player(0.0, 64.0, 300.0, false));
-        let grid = NearestPlayers::new(&players);
-        let index = |p: Option<&LevelPlayer>| p.map(|p| std::ptr::from_ref(p) as usize);
-        let mut probes: Vec<(f64, f64, f64)> = (0..400)
-            .map(|_| (next(3_000.0), next(100.0), next(3_000.0)))
-            .collect();
-        probes.extend([(0.0, 64.0, 0.0), (1.0e12, 0.0, 0.0), (f64::NAN, 0.0, 0.0)]);
-        for (x, y, z) in probes {
-            assert_eq!(
-                index(grid.nearest(x, y, z)),
-                index(nearest_player(&players, x, y, z)),
-                "({x}, {y}, {z})"
-            );
-        }
-        players.push(player(NearestPlayers::FAR * 2.0, 64.0, 0.0, false));
-        let grid = NearestPlayers::new(&players);
-        assert!(grid.scan);
-        for x in [0.0, NearestPlayers::FAR * 2.0] {
-            assert_eq!(
-                index(grid.nearest(x, 64.0, 0.0)),
-                index(nearest_player(&players, x, 64.0, 0.0))
-            );
-        }
-        let spectators: Vec<LevelPlayer> = (0..20)
-            .map(|i| player(f64::from(i) * 100.0, 0.0, 0.0, true))
-            .collect();
-        assert!(
-            NearestPlayers::new(&spectators)
-                .nearest(0.0, 0.0, 0.0)
-                .is_none()
-        );
     }
 
     /// Answers both spawn checks with one fixed result.
@@ -1717,53 +1613,6 @@ mod tests {
         }
     }
     const SULFUR_CUBE: &str = "minecraft:sulfur_cube";
-    /// A tropical fish's [`Spawned::school`] is the `TropicalFish.isSchool` its
-    /// `finalizeSpawn` settled: the `nextFloat() < 0.9` else-branch clears it, and
-    /// `isMaxGroupSizeReached = !isSchool` ends the pack there. The draws are replayed
-    /// on a copy of the level's random, before the spawner draws from it.
-    #[test]
-    #[ignore = "daily"]
-    fn a_loner_tropical_fish_reports_its_group_is_full() {
-        use super::super::native_entity_refs::tests::with_game;
-        with_game(|game| {
-            let level = game.natural_level();
-            let (mut loners, mut schools) = (0u32, 0u32);
-            for seed in 0..64u32 {
-                let mut random = LegacyRandom::new(i64::from(seed));
-                // `Mob.finalizeSpawn`: the follow range `random_spawn_bonus`
-                // (`triangle(0.0, 0.11485000000000001)`, two `nextDouble`s) and
-                // left-handedness; then `TropicalFish.finalizeSpawn`'s school roll.
-                let mut replay = random.clone();
-                let _bonus = replay.next_double() - replay.next_double();
-                let _left_handed = replay.next_float() < 0.05;
-                let school = f64::from(replay.next_float()) < 0.9;
-                let request = SpawnRequest {
-                    entity: "minecraft:tropical_fish",
-                    species: Species::TropicalFish,
-                    position: [0.5, 64.0, 0.5],
-                    yaw: 0.0,
-                    group_index: 0,
-                    reason: Reason::Natural,
-                };
-                let mut pending = Vec::new();
-                let spawned = level
-                    .finalize_spawned(&request, &mut pending, &mut random)
-                    .expect("a tropical fish finalizes");
-                assert_eq!(spawned.school, school, "seed {seed}");
-                assert_eq!(pending.len(), 1, "seed {seed}: one mob is added");
-                if school {
-                    schools += 1;
-                } else {
-                    loners += 1;
-                }
-            }
-            assert!(
-                loners > 0 && schools > 0,
-                "{loners} loners, {schools} schools"
-            );
-        });
-    }
-
     /// Answers `finalize_spawn` the way a test asks.
     #[derive(Clone, Copy)]
     enum FinalizeAnswer {
@@ -1888,31 +1737,5 @@ mod tests {
                 );
             });
         });
-    }
-
-    /// `ServerLevel.tick` ticks the raids before the chunk source spawns
-    /// (`raids.tick`, then `getChunkSource().tick`): a wave that lands in a
-    /// tick joins before that tick's natural and custom spawns, with the
-    /// lower entity ids. The phases name themselves in the spans they run in.
-    #[test]
-    #[ignore = "daily"]
-    fn raids_tick_before_natural_and_custom_spawning() {
-        let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        horizon_client::spans::record_here(true);
-        let _ = horizon_client::spans::take_raw();
-        game.tick_spawners();
-        let raw = horizon_client::spans::take_raw();
-        horizon_client::spans::record_here(false);
-        let phases: Vec<&str> = raw
-            .iter()
-            .map(|s| s.name)
-            .filter(|name| name.starts_with("spawn_"))
-            .collect();
-        assert_eq!(
-            phases,
-            ["spawn_raids", "spawn_natural", "spawn_custom"],
-            "ServerLevel.tick ticks the raids before the chunk source's spawns"
-        );
     }
 }

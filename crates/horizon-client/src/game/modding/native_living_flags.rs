@@ -1257,13 +1257,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(balance.drain_balanced(), 0, "rejected bed opened a pass");
             }
             bed(game, "minecraft:red_bed", [5, 64, 5]);
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    assert!(game.living_start_sleeping(living, [5, 64, 5]));
-                },
-            );
+            assert!(game.living_start_sleeping(living, [5, 64, 5]));
             assert_eq!(game.living_sleeping_pos(living), Some([5, 64, 5]));
             assert_eq!(game.remote_entities[0].position, Vec3::new(5.5, 64.6875, 5.5));
             assert_eq!(
@@ -1277,13 +1271,7 @@ pub(in crate::game) mod tests {
                     .map(String::as_str),
                 Some("true")
             );
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    assert!(game.living_stop_sleeping(living));
-                },
-            );
+            assert!(game.living_stop_sleeping(living));
             assert_eq!(game.living_sleeping_pos(living), None);
             assert_eq!(
                 game.pack

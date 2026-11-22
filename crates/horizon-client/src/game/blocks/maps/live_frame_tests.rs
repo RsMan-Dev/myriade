@@ -23,10 +23,8 @@ fn frame_adoption(glow_first: bool) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -37,9 +35,7 @@ fn frame_adoption(glow_first: bool) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();

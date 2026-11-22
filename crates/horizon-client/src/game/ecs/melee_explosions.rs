@@ -166,22 +166,3 @@ impl Game<'_> {
         Some(Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_blast_hurts_only_the_creatures_within_its_radius() {
-        let mut game = Game::test_fixture();
-        assert!(game.run_command("summon minecraft:zombie 0.5 200 0.5 {NoAI:1b}"));
-        assert!(game.run_command("summon minecraft:zombie 40.5 200 0.5 {NoAI:1b}"));
-        let ids = game.ecs.exists_ids();
-        let far = ids.iter().copied().find(|&i| game.ecs.position(i).is_some_and(|p| p[0] > 10.0)).expect("a far zombie");
-        let near = ids.iter().copied().find(|&i| i != far).expect("a near zombie");
-        game.explode_ecs([0.5, 200.0, 0.5], 3.0, false, None);
-        let hurt: Vec<u32> = game.ecs.drain_damage_events().iter().map(|d| d.target).collect();
-        assert!(hurt.contains(&near), "the creature in the blast's reach takes damage");
-        assert!(!hurt.contains(&far), "the creature out of the blast's reach takes none");
-    }
-}

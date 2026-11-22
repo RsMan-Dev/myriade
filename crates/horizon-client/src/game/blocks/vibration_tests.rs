@@ -86,10 +86,8 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -100,9 +98,7 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.world
@@ -224,10 +220,8 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -238,9 +232,7 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.world

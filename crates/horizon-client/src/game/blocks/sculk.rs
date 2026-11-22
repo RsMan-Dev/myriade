@@ -748,12 +748,6 @@ impl Game<'_> {
                 events.push((event, pos, ctx.source.and_then(|source| source.actor())));
             }
         });
-        #[cfg(test)]
-        super::item_use::interact_vibration_tests::record_event(
-            event,
-            pos,
-            ctx.source.and_then(|source| source.actor()),
-        );
         self.post_game_event_with(event, pos, |_| ctx);
     }
     /// [`Self::post_game_event`] with the context worked out only when some

@@ -15,10 +15,8 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -29,9 +27,7 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();

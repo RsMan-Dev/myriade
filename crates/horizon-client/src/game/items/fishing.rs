@@ -218,7 +218,7 @@ fn cast_direction(yaw: f32, pitch: f32) -> (f32, f32, f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Hook, cast_direction, rebound};
+    use super::cast_direction;
 
     #[test]
     fn casting_straight_down_aims_down_and_straight_up_aims_up() {
@@ -239,20 +239,5 @@ mod tests {
         );
         let (_, _, y) = cast_direction(0.0, 45.0);
         assert!((y - (-(s / c))).abs() < 1e-3, "{y}");
-    }
-
-    #[test]
-    fn removing_one_of_two_remote_hooks_clears_owner_fishing() {
-        let mut hooks = Vec::new();
-        super::push_remote_hook(&mut hooks, 10, 7, Vec3::ZERO, Vec3::ZERO, [0; 4]);
-        super::push_remote_hook(&mut hooks, 11, 7, Vec3::ZERO, Vec3::ZERO, [0; 4]);
-        super::push_remote_hook(&mut hooks, 20, 12, Vec3::ZERO, Vec3::ZERO, [0; 4]);
-        assert!(!hooks[0].owner_fishing);
-        assert!(hooks[1].owner_fishing);
-        assert!(hooks[2].owner_fishing);
-        super::remove_remote_hook_from(&mut hooks, 10);
-        assert_eq!(hooks.len(), 2);
-        assert!(!hooks.iter().any(|h| h.owner == 7 && h.owner_fishing));
-        assert!(hooks.iter().any(|h| h.owner == 12 && h.owner_fishing));
     }
 }

@@ -179,20 +179,3 @@ fn block_use_refusals_grant_nothing() {
         }
     });
 }
-
-#[test]
-#[ignore = "daily"]
-fn remote_block_use_refuses() {
-    crate::game::native_entity_refs::tests::with_client_game(|g| {
-        let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-        g.connect_local(pipe, "CriteriaClient").unwrap();
-        let p = mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 1),
-            12,
-        );
-        assert_eq!(
-            p.trigger_block_use(g, [0, 64, 0]),
-            Err(TriggerCriterionError::NotServer)
-        );
-    });
-}

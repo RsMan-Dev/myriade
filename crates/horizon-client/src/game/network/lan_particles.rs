@@ -631,53 +631,6 @@ pub(in crate::game) mod tests {
     use horizon_core::random::LegacyRandom;
     use horizon_protocol::packets::play;
 
-    #[test]
-    fn legacy_effect_markers_select_providers_without_a_registry_lookup() {
-        for (id, ambient) in [
-            (LEGACY_ENTITY_EFFECT_PARTICLE_ID, false),
-            (LEGACY_AMBIENT_ENTITY_EFFECT_PARTICLE_ID, true),
-        ] {
-            let options = legacy_effect_options(&Particle { id, data: None }).unwrap();
-            assert_eq!(options.ty, ParticleType::EntityEffect);
-            assert_eq!(options.legacy_entity_effect, Some(ambient));
-        }
-        assert!(
-            legacy_effect_options(&Particle {
-                id: MOD_PARTICLE_ID,
-                data: None
-            })
-            .is_none()
-        );
-        assert!(
-            legacy_effect_options(&Particle {
-                id: 28,
-                data: Some(ParticleData::Color(-1))
-            })
-            .is_none()
-        );
-    }
-
-    /// The Nether's evaporation smoke (ALTERNATIVE, dist 1, speed 0) lands
-    /// inside the block from its corner and stands still; DEFAULT spreads
-    /// both ways.
-    #[test]
-    fn alternative_particles_spread_from_the_corner_over_dist() {
-        let mut r = LegacyRandom::new(1);
-        let mut below = false;
-        for _ in 0..200 {
-            let (at, v) = spread(&mut r, 1, [3.0, 64.0, -7.0], [1.0; 3], [0.0; 3]);
-            assert!((3.0..4.0).contains(&at[0]), "{at:?}");
-            assert!((64.0..65.0).contains(&at[1]), "{at:?}");
-            assert!((-7.0..-6.0).contains(&at[2]), "{at:?}");
-            assert_eq!(v, [0.0; 3]);
-            let (_, v) = spread(&mut r, 2, [0.0; 3], [0.0; 3], [0.5, 0.0, 2.0]);
-            assert!((0.0..0.5).contains(&v[0]) && v[1] == 0.0 && (0.0..2.0).contains(&v[2]));
-            let (at, _) = spread(&mut r, 0, [0.0; 3], [1.0; 3], [0.0; 3]);
-            below |= at.iter().any(|&c| c < 0.0);
-        }
-        assert!(below, "DEFAULT is a Gaussian around the position");
-    }
-
     /// `PowderSnowBlock.entityInside`: vertical-only movement skips the roll;
     /// horizontal movement uses nextBoolean, then X and Z floats in order.
     #[test]

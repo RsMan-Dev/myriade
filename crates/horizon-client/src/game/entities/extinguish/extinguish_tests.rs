@@ -15,7 +15,9 @@ fn server<'a>(
     resources: &'a mut Option<std::sync::Arc<crate::game::Resources>>,
 ) -> Option<Game<'a>> {
     std::env::var_os("HORIZON_TEST_RESOURCES")?;
-    Some(server_game(resources))
+    let mut game = server_game(resources);
+    game.audio.capture = Some(Vec::new());
+    Some(game)
 }
 
 fn state(game: &Game<'_>, name: &str, level: &str) -> BlockStateId {
@@ -34,12 +36,13 @@ fn block(game: &Game<'_>, pos: [i32; 3]) -> String {
     game.res.facts().get(state).name.to_string()
 }
 
-fn heard(game: &Game<'_>) -> u32 {
+fn heard(game: &Game<'_>) -> usize {
     game.audio
-        .heard
-        .get("minecraft:entity.generic.extinguish_fire")
-        .copied()
-        .unwrap_or(0)
+        .capture
+        .iter()
+        .flatten()
+        .filter(|s| s.event == "minecraft:entity.generic.extinguish_fire")
+        .count()
 }
 
 /// A server's player standing in the block at `pos` (feet on its floor), on

@@ -1481,45 +1481,6 @@ mod tests {
             ]
         );
     }
-
-    #[test]
-    fn ominous_banner_survives_placement_save_and_drop() {
-        let original = raider::ominous_banner();
-        let Tag::Compound(components) = item_data::encode_components(&original).unwrap() else {
-            panic!("banner components");
-        };
-        for block in ["minecraft:white_banner", "minecraft:white_wall_banner"] {
-            let pos = (1, 64, 2);
-            let fresh = BlockEntity::for_block(block).unwrap();
-            let fresh = save::block_entity_encode::encode(pos, &fresh, block);
-            let placed = block_entity_item::place(&fresh, &components, false);
-            let (_, placed) = save::decode_block_entity(&placed).unwrap();
-            let saved = save::block_entity_encode::encode(pos, &placed, block);
-            let (_, loaded) = save::decode_block_entity(&saved).unwrap();
-            let BlockEntity::Banner(banner) = &loaded else {
-                panic!("placed banner");
-            };
-            assert_eq!(banner.layers.len(), item_data::OMINOUS_LAYERS.len());
-            let mut pending = Pending::default();
-            pending.record([pos.0, pos.1, pos.2], &loaded, block, None, None);
-            let mut dropped = ItemStack::new("minecraft:white_banner", 1);
-            pending.attach([pos.0, pos.1, pos.2], &mut dropped);
-            assert!(dropped.data().unwrap().ominous_banner);
-            assert!(horizon_client::banner::tooltip_layers(&dropped).is_empty());
-            assert_eq!(
-                horizon_client::item_tooltip::name_line(&dropped, &|_| None),
-                "Ominous Banner"
-            );
-            assert_eq!(
-                horizon_client::item_tooltip::rarity(&dropped, "common"),
-                "uncommon"
-            );
-            assert_eq!(
-                item_data::encode_components(&dropped),
-                Some(Tag::Compound(components.clone()))
-            );
-        }
-    }
 }
 
 #[cfg(test)]

@@ -1778,10 +1778,8 @@ pub(in crate::game) mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -1793,9 +1791,7 @@ pub(in crate::game) mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.reset_entity_residency();

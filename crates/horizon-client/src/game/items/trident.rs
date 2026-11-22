@@ -272,10 +272,8 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -290,9 +288,7 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.player =
@@ -336,7 +332,7 @@ mod tests {
         assert_eq!(game.tridents.len(), 1);
         assert_eq!(game.tridents[0].stack.damage, 250);
         assert!(game.held().is_none());
-        assert_eq!(game.tridents[0].pickup, super::Pickup::Allowed);
+        assert_eq!(game.tridents[0].pickup, horizon_client::arrows::Pickup::Allowed);
         assert_eq!(game.tridents[0].owner_uuid, game.level.player_uuid);
         assert!(!game.tridents[0].has_been_shot);
         assert!(!game.tridents[0].left_owner);
@@ -347,7 +343,7 @@ mod tests {
         *game.held_mut() = Some(stack.clone());
         assert!(game.use_trident(&stack));
         game.release_trident(10);
-        assert_eq!(game.tridents[1].pickup, super::Pickup::CreativeOnly);
+        assert_eq!(game.tridents[1].pickup, horizon_client::arrows::Pickup::CreativeOnly);
         assert!(game.held().is_some());
     }
 }

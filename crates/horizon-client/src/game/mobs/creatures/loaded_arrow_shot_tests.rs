@@ -13,10 +13,8 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -31,9 +29,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -125,49 +121,6 @@ fn a_landing_orb_posts_hit_ground_after_a_fall() {
         stop_events();
         assert_eq!(events.len(), 1);
         assert_eq!(game.orbs[i].fall_distance, 0.0);
-    });
-}
-/// `Entity.checkFallDamage`: an orb landing after a fall runs the block's
-/// `fallOn` before HIT_GROUND: honey slides (its sound), farmland draws one
-/// level float (before its LivingEntity check); stone does neither.
-#[test]
-#[ignore = "daily"]
-fn a_landing_orb_runs_the_blocks_fall_on() {
-    use horizon_client::entities::OrbMove;
-    with_game(|game| {
-        let slide = "minecraft:block.honey_block.slide";
-        for (block, slides, draws) in [("stone", 0, 0), ("honey_block", 1, 0), ("farmland", 0, 1)] {
-            assert!(game.run_command(&format!("setblock 6 200 10 {block}")));
-            game.orbs.clear();
-            assert!(
-                game.run_command("summon experience_orb 6.5 201 10.5 {Value:1,fall_distance:2d}")
-            );
-            game.orbs[0].on_ground = true;
-            game.audio.heard.clear();
-            let mut expected = game.world.random.clone();
-            for _ in 0..draws {
-                expected.next_float();
-            }
-            game.orb_moved(
-                0,
-                OrbMove {
-                    from: Vec3::new(6.5, 201.5, 10.5),
-                    moved: Vec3::new(0.0, -0.5, 0.0),
-                    in_water: false,
-                },
-            );
-            assert_eq!(game.orbs[0].fall_distance, 0.0);
-            assert_eq!(
-                game.audio.heard.get(slide).copied().unwrap_or(0),
-                slides,
-                "{block}"
-            );
-            assert_eq!(
-                game.world.random.clone().next_long(),
-                expected.next_long(),
-                "{block}: one draw per farmland landing"
-            );
-        }
     });
 }
 /// `ItemEntity.tick`: an item that drops through water onto honey in one tick

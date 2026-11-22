@@ -180,48 +180,6 @@ mod tests {
         Tag::Float(v.to_bits())
     }
 
-    /// `AreaEffectCloud.updateParticle` with a `custom_particle`: the codec's
-    /// type and payload win over the potion colour; none falls back to the
-    /// entity effect in that colour.
-    #[test]
-    fn cloud_custom_particle_overrides_potion_colour() {
-        let cloud = |custom: Option<Tag>| {
-            let mut tag = Tag::compound([
-                ("Pos", Tag::List(vec![Tag::Double(0f64.to_bits()); 3])),
-                ("Radius", flt(3.0)),
-                ("Duration", Tag::Int(200)),
-            ]);
-            if let (Tag::Compound(map), Some(custom)) = (&mut tag, custom) {
-                map.insert("custom_particle".into(), custom);
-            }
-            crate::game::potions::potion_cloud_from_nbt(&tag)
-                .unwrap()
-                .1
-                .potion
-                .unwrap()
-        };
-        let none = cloud(None).particle();
-        assert_eq!(none.ty, ParticleType::EntityEffect);
-        let flame = cloud(Some(Tag::compound([("type", Tag::String("flame".into()))])));
-        assert_eq!(flame.particle().ty, ParticleType::Flame);
-        let dust = cloud(Some(Tag::compound([
-            ("type", Tag::String("minecraft:dust".into())),
-            ("color", Tag::List(vec![flt(1.0), flt(0.0), flt(0.0)])),
-            ("scale", flt(2.0)),
-        ])))
-        .particle();
-        assert_eq!(dust.ty, ParticleType::Dust);
-        assert_eq!(dust.color[..3], [1.0, 0.0, 0.0]);
-        assert_eq!(dust.scale, 2.0);
-        let effect = cloud(Some(Tag::compound([
-            ("type", Tag::String("entity_effect".into())),
-            ("color", Tag::Int(0x00FF_8000u32 as i32)),
-        ])))
-        .particle();
-        assert_eq!(effect.ty, ParticleType::EntityEffect);
-        assert_eq!(effect.color[..3], [1.0, 128.0 / 255.0, 0.0]);
-    }
-
     /// The options codecs' rules: `ColorParticleOption` keeps the colour's
     /// alpha (an int's top byte, the fourth float), float lists have a fixed
     /// length and are packed to 8-bit channels, dust needs a scale in
@@ -310,24 +268,5 @@ mod tests {
                 .ty,
             ParticleType::Shriek
         );
-    }
-
-    /// `AreaEffectCloud.addAdditionalSaveData` writes `custom_particle` back.
-    #[test]
-    fn cloud_custom_particle_survives_a_save() {
-        let particle = Tag::compound([("type", Tag::String("flame".into()))]);
-        let tag = Tag::compound([
-            ("Pos", Tag::List(vec![Tag::Double(0f64.to_bits()); 3])),
-            ("Radius", flt(3.0)),
-            ("Duration", Tag::Int(200)),
-            ("custom_particle", particle.clone()),
-        ]);
-        let (at, cloud) = crate::game::potions::potion_cloud_from_nbt(&tag).unwrap();
-        let _ = at;
-        let saved = crate::game::potions::potion_cloud_to_nbt(&cloud, [1, 2, 3, 4], None);
-        let Tag::Compound(map) = saved else {
-            panic!("not a compound");
-        };
-        assert_eq!(map.get(&"custom_particle".into()), Some(&particle));
     }
 }

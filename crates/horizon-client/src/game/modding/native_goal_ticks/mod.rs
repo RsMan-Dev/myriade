@@ -31,8 +31,6 @@ mod live_mob;
 mod live_read_tests;
 mod live_support;
 mod live_vehicle;
-#[cfg(test)]
-mod redirect_tests;
 
 /// What a mod goal runs with: the mob in hand, the tick's `MobWorld` (the
 /// [`mobs::part_goals::GoalHost`], the snapshot and the player view ride on

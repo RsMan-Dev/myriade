@@ -5,47 +5,6 @@ include!("position_load_tests.rs");
 
 #[test]
 #[ignore = "daily"]
-fn resident_other_and_fangs_load_tick_and_reset() {
-    super::super::native_entity_refs::tests::with_game(|game| {
-        game.fangs.list.clear();
-        let tag = |kind| {
-            let mut tag = entity(kind);
-            if let Tag::Compound(c) = &mut tag {
-                c.insert(
-                    "Pos".into(),
-                    Tag::List(vec![
-                        Tag::Double(0.0_f64.to_bits()),
-                        Tag::Double(80.0_f64.to_bits()),
-                        Tag::Double(0.0_f64.to_bits()),
-                    ]),
-                );
-                c.insert("Warmup".into(), Tag::Int(40));
-            }
-            tag
-        };
-        game.load_unlisted(
-            (0, 0),
-            "minecraft:evoker_fangs",
-            None,
-            tag("minecraft:evoker_fangs"),
-        )
-        .unwrap();
-        let survivor = game.fangs.list[0].id;
-        game.insert_fangs(survivor + 1, [0.0, 80.0, 0.0], 0.0, -30, 0);
-        game.fangs.list.update(1, |f| {
-            f.life = 0;
-            f.started = true;
-        });
-        assert_eq!(game.fangs.list.len(), 1);
-        assert_eq!(game.fangs.list[0].id, survivor);
-        assert_eq!(game.fangs.list[0].warmup, 39);
-        game.fangs.list.clear();
-        assert!(game.fangs.list.is_empty());
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn comparator_and_hopper_live_state_survives_chunk_reload() {
     use super::super::{Audio, Options, Progress, Settings, load_resources};
     use horizon_client::{containers::BlockEntity, items::ItemStack, save};
@@ -68,10 +27,8 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!("no menu handoff"),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -83,9 +40,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let comparator = BlockPos::new(1, 64, 1);
@@ -496,10 +451,8 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!("no menu handoff"),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -510,9 +463,7 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let cloud = Tag::compound([

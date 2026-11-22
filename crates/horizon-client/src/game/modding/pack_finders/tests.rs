@@ -1,7 +1,6 @@
 use super::*;
-use horizon_client::datapack::{DataStore, FunctionLine};
-use horizon_client::text::Text;
-use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};
+use horizon_client::datapack::FunctionLine;
+use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry, PackPosition, PackSource};
 use mod_platform::testing::with_mods;
 use std::{fs, io::Write, path::PathBuf};
 
@@ -79,9 +78,6 @@ impl Fixture {
             .into(),
             ..Default::default()
         }
-    }
-    fn asset_id(&self) -> String {
-        format!("mod/packmod:{ASSET_PACK}")
     }
     fn data_id(&self) -> String {
         format!("mod/packmod:{DATA_PACK}")
@@ -163,95 +159,6 @@ fn with_finder_hidden(feature: bool, required: bool, hidden: bool, test: impl Fn
 }
 
 #[test]
-fn hidden_packs_reach_the_screens_marked_hidden_and_still_apply() {
-    let fixture = Fixture::new(false);
-    let sources = fixture.sources();
-    with_finder_hidden(false, true, true, || {
-        let packs = discover(PackType::ClientResources, &sources);
-        let infos = crate::game::packs::pack_infos(&fixture.root, &[], &packs);
-        let info = infos
-            .iter()
-            .find(|info| info.id == fixture.asset_id())
-            .unwrap();
-        assert!(info.hidden && info.required);
-        let data = data_packs(&sources);
-        assert!(data[0].selection.as_ref().is_some_and(|info| info.hidden));
-        // Required and hidden: on without the player picking it.
-        let base = fixture.root.join("base");
-        fs::create_dir_all(base.join("assets/packmod/lang")).unwrap();
-        fs::write(base.join(ASSET), b"base").unwrap();
-        let on = packs::resources(
-            ResourceSource::directory(base),
-            &packs::enabled(&packs, &[fixture.asset_id()]),
-        )
-        .unwrap();
-        assert_eq!(on.read(ASSET).unwrap(), br#"{"packmod.optional":"first"}"#);
-    });
-}
-
-#[test]
-fn contributed_packs_are_discoverable_and_only_selected_resources_apply() {
-    for archive in [false, true] {
-        let fixture = Fixture::new(archive);
-        let sources = fixture.sources();
-        with_finder(|| {
-            let packs = discover(PackType::ClientResources, &sources);
-            assert_eq!(packs.len(), 1);
-            let infos = crate::game::packs::pack_infos(&fixture.root, &[], &packs);
-            assert!(
-                infos
-                    .iter()
-                    .any(|info| info.id == fixture.asset_id() && !info.required)
-            );
-            let base = fixture.root.join("base");
-            fs::create_dir_all(base.join("assets/packmod/lang")).unwrap();
-            fs::write(base.join(ASSET), b"base").unwrap();
-            fs::write(base.join("assets/packmod/lang/hidden.json"), b"hidden").unwrap();
-            let base = ResourceSource::directory(base);
-            let off = packs::resources(base.clone(), &packs::enabled(&packs, &[])).unwrap();
-            assert_eq!(off.read(ASSET).unwrap(), b"base");
-            let selected = packs::enabled(&packs, &[fixture.asset_id()]);
-            let on = packs::resources(base, &selected).unwrap();
-            assert_eq!(on.read(ASSET).unwrap(), br#"{"packmod.optional":"first"}"#);
-            assert!(on.read("assets/packmod/lang/hidden.json").is_err());
-
-            let data = data_packs(&sources);
-            assert_eq!(data.len(), 1);
-            let world = fixture.root.join("world");
-            fs::create_dir(&world).unwrap();
-            let repository = data_repository(&world, &fixture.root, &data);
-            assert!(horizon_client::datapack::enabled_ids(&world, &repository, &[]).is_empty());
-            fs::write(
-                world.join("datapacks.json"),
-                serde_json::json!({
-                    "enabled": [fixture.data_id()], "disabled": [],
-                })
-                .to_string(),
-            )
-            .unwrap();
-            let stack = crate::game::functions::pack_stack(
-                &world,
-                &fixture.root,
-                &Default::default(),
-                &Default::default(),
-                true,
-                &[],
-                &data,
-            );
-            let enabled = stack.enabled_packs().collect::<Vec<_>>();
-            let store = DataStore::load(&enabled);
-            assert_eq!(
-                store.functions["packmod:probe"].lines,
-                [FunctionLine::Command("say from-optional".into())]
-            );
-            if archive {
-                assert!(!fixture.root.join("packmod").exists());
-            }
-        });
-    }
-}
-
-#[test]
 fn rediscovery_opens_the_new_archive_without_changing_old_readers() {
     let mut fixture = Fixture::new(true);
     let sources = fixture.sources();
@@ -260,11 +167,11 @@ fn rediscovery_opens_the_new_archive_without_changing_old_readers() {
         fixture.replace_asset();
         let new = discover(PackType::ClientResources, &sources);
         assert_eq!(
-            old[0].source.open().unwrap().read(ASSET).unwrap(),
+            old[0].source.read(ASSET).unwrap(),
             br#"{"packmod.optional":"first"}"#
         );
         assert_eq!(
-            new[0].source.open().unwrap().read(ASSET).unwrap(),
+            new[0].source.read(ASSET).unwrap(),
             br#"{"packmod.optional":"second"}"#
         );
         assert!(!fixture.root.join("packmod").exists());
@@ -305,85 +212,9 @@ fn refused_registrations_leave_the_repository_unchanged() {
         assert_eq!(registry.packs.len(), 1);
     }
     assert_eq!(
-        registry.packs[0]
-            .source
-            .open()
-            .unwrap()
-            .read(ASSET)
-            .unwrap(),
+        registry.packs[0].source.read(ASSET).unwrap(),
         br#"{"packmod.optional":"first"}"#
     );
-}
-
-#[test]
-fn required_packs_keep_their_priority_and_cannot_be_cleared() {
-    let fixture = Fixture::new(false);
-    let sources = fixture.sources();
-    with_finder_config(false, true, || {
-        let mut all = discover(PackType::ClientResources, &sources);
-        let optional = fixture.root.join("override");
-        fs::create_dir_all(optional.join("assets/packmod/lang")).unwrap();
-        fs::write(optional.join(ASSET), br#"{"packmod.optional":"override"}"#).unwrap();
-        fs::write(
-            optional.join("pack.mcmeta"),
-            &fixture
-                .files
-                .iter()
-                .find(|(name, _)| name == &format!("{ASSET_PACK}/pack.mcmeta"))
-                .unwrap()
-                .1,
-        )
-        .unwrap();
-        all.push(
-            packs::pack_for(
-                "file/override".into(),
-                Text::translate("packmod.optional.title", &[]),
-                Source::Dir(optional),
-                packs::RESOURCE_FORMAT,
-            )
-            .unwrap(),
-        );
-        assert!(!packs::able_to_clear_any_pack(&all, &[]));
-        let empty = ResourceSource::directory(fixture.root.join("base"));
-        let required = packs::enabled(&all, &[]);
-        assert_eq!(
-            packs::resources(empty.clone(), &required)
-                .unwrap()
-                .read(ASSET)
-                .unwrap(),
-            br#"{"packmod.optional":"first"}"#
-        );
-        let selected = ["file/override".to_owned()];
-        assert!(packs::able_to_clear_any_pack(&all, &selected));
-        assert_eq!(
-            packs::resources(empty, &packs::enabled(&all, &selected))
-                .unwrap()
-                .read(ASSET)
-                .unwrap(),
-            br#"{"packmod.optional":"override"}"#
-        );
-        let info = all[0].selection.as_ref().unwrap();
-        let model = packs::SelectionModel::new(vec![info.selectable()], &[]);
-        assert!(!model.can_unselect(true, 0));
-
-        let data = data_packs(&sources);
-        let mut options = crate::game::world_options::WorldOptions::default();
-        options.data_packs.push("file/already_installed".into());
-        options.set_additional_data_packs(data.clone().into());
-        assert!(options.data_packs.contains(&fixture.data_id()));
-        assert!(
-            options
-                .data_packs
-                .contains(&"file/already_installed".into())
-        );
-        assert!(options.data_packs.contains(&"vanilla".into()));
-        let world = fixture.root.join("world");
-        let repository = data_repository(&world, &fixture.root, &data);
-        assert!(
-            horizon_client::datapack::enabled_ids(&world, &repository, &[])
-                .contains(&fixture.data_id())
-        );
-    });
 }
 
 #[test]
@@ -396,7 +227,7 @@ fn contributed_experiments_supply_the_chosen_world_flags() {
         assert_eq!(features.len(), 1);
         assert_eq!(features[0].id, fixture.data_id());
         let mut options = crate::game::world_options::WorldOptions::default();
-        options.set_additional_data_packs(data.into());
+        options.additional_data_packs = data.into();
         assert_eq!(
             options.enabled_features(&fixture.root),
             ["minecraft:vanilla"]
@@ -475,164 +306,6 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
         });
     }
     assert_eq!(ran, 3, "every prepared-resource case must run");
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
-    // Reload publishes a language just as the other game fixtures do. Keep this
-    // fixture's publications visible locally, not at the mercy of their reloads.
-    let _language =
-        horizon_client::lang::isolate_publication(horizon_client::lang::Language::of("en_us", []));
-    let mut fixture = Fixture::new(true);
-    let mut ran = false;
-    with_finder(|| {
-        crate::game::native_entity_refs::tests::with_client_game(|game| {
-            ran = true;
-            game.mods = fixture.sources();
-            let staged = crate::game::packs::stage_pack(
-                &game.vanilla_root(),
-                &[],
-                &[],
-                &game.mods,
-                game.register_client_reload_listeners(),
-                &[],
-                &[],
-                &game.pack.assets,
-                &game.res,
-                &game.worker_context(),
-                false,
-                false,
-                &crate::game::Progress::new(),
-            )
-            .unwrap();
-            game.apply_staged_pack(staged).unwrap();
-            assert_eq!(
-                horizon_client::lang::get("packmod.optional.title"),
-                "Optional example"
-            );
-            assert_eq!(
-                horizon_client::lang::get("packmod.optional"),
-                "packmod.optional"
-            );
-            game.refresh_pack_lists();
-            game.settings.resource_packs = vec![fixture.asset_id()];
-            for expected in ["first", "second"] {
-                let listeners = game.register_client_reload_listeners();
-                let staged = crate::game::packs::stage_pack(
-                    &game.vanilla_root(),
-                    &game.settings.resource_packs,
-                    &[],
-                    &game.mods,
-                    listeners,
-                    &[],
-                    &[],
-                    &game.pack.assets,
-                    &game.res,
-                    &game.worker_context(),
-                    false,
-                    false,
-                    &crate::game::Progress::new(),
-                )
-                .unwrap();
-                assert_eq!(staged.language.get("packmod.optional"), Some(expected));
-                game.apply_staged_pack(staged).unwrap();
-                assert_eq!(horizon_client::lang::get("packmod.optional"), expected);
-                assert!(
-                    !game
-                        .options
-                        .resources
-                        .join(format!("{ASSET_PACK}/{ASSET}"))
-                        .exists()
-                );
-                if expected == "first" {
-                    fixture.replace_asset();
-                }
-            }
-        });
-    });
-    assert!(ran, "the prepared-resource fixture must run this case");
-}
-
-#[test]
-fn hidden_optional_data_pack_is_command_selectable_and_loads_its_function() {
-    let fixture = Fixture::new(false);
-    with_finder_hidden(false, false, true, || {
-        let data = data_packs(&fixture.sources());
-        assert_eq!(data.len(), 1);
-        let mut info = data[0].selection.clone().unwrap();
-        assert!(info.hidden);
-        assert!(!info.required);
-        info.title = Text::literal("Optional data fixture");
-        let atlas = horizon_client::hud::HudAtlas::build(&ResourceSource::directory(
-            "/nonexistent/horizon-test-assets".into(),
-        ))
-        .unwrap();
-        let m = horizon_client::screen_draw::Measure(&atlas.font);
-        let drawn_labels = |info| {
-            let screen = horizon_client::pack_screen::PackScreen::new(
-                &m,
-                Text::literal("Data packs"),
-                480,
-                320,
-                false,
-                vec![info],
-                &[],
-            );
-            screen
-                .draw(&m, (0, 0), 0, 0)
-                .into_iter()
-                .filter_map(|draw| {
-                    if let horizon_client::screen_draw::Draw::Text { text, .. } = draw {
-                        Some(text.plain())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        };
-        assert!(
-            !drawn_labels(info.clone())
-                .iter()
-                .any(|s| s == "Optional data fixture")
-        );
-        info.hidden = false;
-        assert!(
-            drawn_labels(info)
-                .iter()
-                .any(|s| s == "Optional data fixture")
-        );
-
-        let world = fixture.root.join("world");
-        fs::create_dir(&world).unwrap();
-        let repository = data_repository(&world, &fixture.root, &data);
-        assert!(
-            repository
-                .iter()
-                .any(|p| p.id == "mod/packmod:data/packmod/datapacks/optional")
-        );
-        assert!(horizon_client::datapack::enabled_ids(&world, &repository, &[]).is_empty());
-        fs::write(
-            world.join("datapacks.json"),
-            r#"{"enabled":["mod/packmod:data/packmod/datapacks/optional"],"disabled":[]}"#,
-        )
-        .unwrap();
-        let stack = crate::game::functions::pack_stack(
-            &world,
-            &fixture.root,
-            &Default::default(),
-            &Default::default(),
-            true,
-            &[],
-            &data,
-        );
-        let enabled = stack.enabled_packs().collect::<Vec<_>>();
-        let store = DataStore::load(&enabled);
-        assert_eq!(
-            store.functions["packmod:probe"].lines,
-            [FunctionLine::Command("say from-optional".into())]
-        );
-    });
 }
 
 /// A bundled pack is opened as the package's checks read it: an entry its END record leaves

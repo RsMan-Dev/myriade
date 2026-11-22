@@ -1796,10 +1796,8 @@ mod unused_feature_startup_tests {
             &resources,
             &settings,
             Instant::now(),
-            false,
             execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -1903,10 +1901,8 @@ mod unused_feature_preservation_tests {
             &resources,
             &settings,
             Instant::now(),
-            false,
             execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();

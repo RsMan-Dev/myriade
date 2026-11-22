@@ -151,23 +151,23 @@ mod tests {
             pickable: false,
             suggest_uuid: false,
         };
-        assert_eq!(nearest_entity([None; 4], None), None);
+        assert_eq!(nearest_entity([None; 3], None), None);
         assert_eq!(
-            nearest_entity([Some(object), None, None, None], None),
+            nearest_entity([Some(object), None, None], None),
             Some(object)
         );
         for block_distance in [1.0, 2.0] {
             assert_eq!(
-                nearest_entity([Some(object), None, None, None], Some(block_distance)),
+                nearest_entity([Some(object), None, None], Some(block_distance)),
                 None
             );
         }
         assert_eq!(
-            nearest_entity([Some(object), None, Some(projectile), None], Some(3.0)),
+            nearest_entity([Some(object), None, Some(projectile)], Some(3.0)),
             Some(projectile)
         );
         assert_eq!(
-            nearest_entity([Some(object), None, Some(projectile), Some(dragon)], None),
+            nearest_entity([Some(object), Some(projectile), Some(dragon)], None),
             Some(dragon)
         );
         assert_eq!(
@@ -178,7 +178,6 @@ mod tests {
                         distance: 2.0,
                         ..projectile
                     }),
-                    None,
                     None
                 ],
                 None

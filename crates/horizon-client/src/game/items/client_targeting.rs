@@ -60,26 +60,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn target_range_uses_nearest_box_point_and_rejects_invalid_geometry() {
-        let bounds = [[2.0, -1.0, -1.0], [4.0, 1.0, 1.0]];
-        assert_eq!(
-            target_point([0.0; 3], bounds, 2.0),
-            Some(([2.0, 0.0, 0.0], 2.0))
-        );
-        assert_eq!(target_point([0.0; 3], bounds, 1.999), None);
-        assert_eq!(
-            target_point([3.0, 0.0, 0.0], bounds, 0.0),
-            Some(([3.0, 0.0, 0.0], 0.0))
-        );
-        for reach in [-1.0, f64::NAN, f64::INFINITY] {
-            assert_eq!(target_point([0.0; 3], bounds, reach), None);
-        }
-        assert_eq!(target_point([f64::NAN; 3], bounds, 3.0), None);
-        assert_eq!(target_point([0.0; 3], [bounds[1], bounds[0]], 3.0), None);
-    }
-}

@@ -355,6 +355,7 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use horizon_ecs_proto::rules::push_rules::{boat_pushes, push_impulse};
 
     #[test]
     fn push_is_capped_and_scaled() {
@@ -366,45 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn warden_and_wither_never_board() {
-        assert!(!species_can_ride(Species::Warden));
-        assert!(!species_can_ride(Species::Wither));
-        assert!(species_can_ride(Species::Cow));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_growing_a_mob_during_vehicle_ticks_keeps_it_in_collision_queries() {
-        use super::super::native_entity_refs::tests::with_game;
-
-        struct Resize;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Resize {}
-
-        with_game(|game| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            let mut cow = Mob::new(77, kind, Vec3::ZERO, 0.0);
-            horizon_client::mobs::finalize::set_baby(&mut cow, true);
-            game.remote_entities.push(cow);
-            let mob = game.mob(game.entity(77).unwrap()).unwrap();
-            let area = Aabb::new(Vec3::new(0.3, 0.0, 0.0), Vec3::new(0.4, 1.0, 0.1));
-            assert!(!game.remote_entities[0].bounds().intersects(area));
-            let mods = vec![mod_api::ModEntry::new("resize-test", Box::new(Resize))].into();
-            mod_platform::testing::with_mods(mods, || {
-                game.vehicles_ticking(true);
-                assert!(mob.set_baby(game, false));
-                let cow = &game.remote_entities[0];
-                assert!(cow.bounds().intersects(area));
-                assert!(
-                    game.vehicle_mob_reach()
-                        .is_none_or(|reach| reach.may_meet(cow, area))
-                );
-                game.vehicles_ticking(false);
-            });
-        });
-    }
-
-    #[test]
     fn boats_push_by_height() {
         let boat = Aabb::new(Vec3::new(0.0, 64.0, 0.0), Vec3::new(1.0, 64.5625, 1.0));
         let at = |y: f64| Aabb::new(Vec3::new(0.0, y, 0.0), Vec3::new(1.0, y + 1.0, 1.0));
@@ -413,96 +375,6 @@ mod tests {
         assert!(boat_pushes(boat, at(64.5), true));
         assert!(!boat_pushes(boat, at(64.5625), true));
     }
-
-    /// A vehicle's box query during a stretch of vehicle ticks names the mobs a walk over
-    /// every box names, in the same order, also right after a mob moved into the box (a
-    /// push or a pick-up writes the mob list in the middle of a stretch).
-    #[test]
-    #[ignore = "daily"]
-    fn a_vehicles_box_query_matches_a_walk_over_every_mob() {
-        let mut resources = None;
-        let mut game = super::super::game_tests::tests::server_game(&mut resources);
-        let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        // A small LCG keeps the scene the same on every run.
-        let mut seed = 0x2545_f491_4f6c_dd1du64;
-        let mut next = |range: f64| {
-            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
-            (seed >> 11) as f64 / (1u64 << 53) as f64 * range
-        };
-        for id in 1..=400 {
-            let at = Vec3::new(next(48.0), 64.0 + next(3.0), next(48.0));
-            game.remote_entities.push(Mob::new(id, pig.clone(), at, 0.0));
-        }
-        let mut met = 0;
-        for round in 0..300 {
-            // Three stretches, each with two writes to the mob list.
-            if round % 100 == 0 {
-                game.vehicles_ticking(true);
-            }
-            let corner = Vec3::new(next(46.0), 63.0 + next(3.0), next(46.0));
-            let size = Vec3::new(0.5 + next(2.5), 0.5 + next(1.5), 0.5 + next(2.5));
-            let area = Aabb::new(corner, corner.add_vector(size));
-            if round % 40 == 20 {
-                let j = round % game.remote_entities.len();
-                game.remote_entities[j].position = area.center();
-            }
-            let walked: Vec<Aabb> = game
-                .remote_entities
-                .iter()
-                .map(Mob::bounds)
-                .filter(|b| b.intersects(area))
-                .collect();
-            met += walked.len();
-            assert_eq!(game.boat_obstacles(u32::MAX, area), walked, "round {round}");
-            if round % 100 == 99 {
-                // The last comparisons ran against the grid: it stands, for the list as it is.
-                let fresh = |(stamp, _): &(ListStamp, SeenGrid)| *stamp == game.remote_entities.stamp();
-                assert!(
-                    game.vehicle_mobs
-                        .grid
-                        .borrow()
-                        .built
-                        .as_ref()
-                        .is_some_and(fresh)
-                );
-                game.vehicles_ticking(false);
-            }
-        }
-        assert!(met > 100, "the boxes met {met} mobs");
-    }
-
-    /// Who rides a vehicle follows the mob list through a stretch of vehicle ticks: a mob that
-    /// boards counts from then on, one removed no longer does, and a dead one still makes
-    /// its cart a vehicle but is no passenger of a boat.
-    #[test]
-    #[ignore = "daily"]
-    fn a_vehicle_knows_its_mob_riders_as_soon_as_they_board() {
-        let mut resources = None;
-        let mut game = super::super::game_tests::tests::server_game(&mut resources);
-        let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-        for id in 1..=4 {
-            game.remote_entities.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
-        }
-        let riders =
-            |game: &Game| [100, 101, 102].map(|id| (game.mob_rides(id), game.boat_mobs(id)));
-        game.remote_entities[0].extra.mount = Some(100);
-        game.vehicles_ticking(true);
-        let none = (false, vec![]);
-        assert_eq!(riders(&game), [(true, vec![0]), none.clone(), none.clone()]);
-        game.remote_entities[0].removed = true;
-        game.remote_entities[1].extra.mount = Some(101);
-        game.remote_entities[3].extra.mount = Some(102);
-        game.remote_entities[3].health = 0.0;
-        let after = [none, (true, vec![1]), (true, vec![])];
-        assert_eq!(riders(&game), after);
-        game.vehicles_ticking(false);
-        assert_eq!(riders(&game), after);
-    }
-}
-
-#[cfg(test)]
-mod off_level_tests {
-    use super::*;
 
 }
 

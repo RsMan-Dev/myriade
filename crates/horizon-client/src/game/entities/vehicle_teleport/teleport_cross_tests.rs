@@ -18,10 +18,8 @@ fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -33,9 +31,7 @@ fn game() -> Game<'static> {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.reset_entity_residency();

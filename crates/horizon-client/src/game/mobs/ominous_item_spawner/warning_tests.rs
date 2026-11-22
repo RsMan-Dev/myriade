@@ -14,10 +14,8 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -28,9 +26,7 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     let scratch = std::env::temp_dir().join(format!(
@@ -182,78 +178,5 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
                 .collect::<Vec<_>>(),
             [(first, 1), (second, 1), (next + 1, 0), (next + 2, 0)]
         );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
-    use crate::game::{
-        commands::Target,
-        entity::taken_pass_tests::{LifecycleFixture, RemoteLifecycle},
-    };
-    use horizon_protocol::{
-        connection::Pipe,
-        entity_data::{Value, serializer},
-        item::Stack,
-    };
-    LifecycleFixture {
-        seed: |game, entries| {
-            game.ominous_spawners.clear();
-            for &(id, at) in entries {
-                game.add_remote_ominous_item_spawner(id, at);
-            }
-        },
-        ids: |game| game.ominous_spawners.iter().map(|s| s.id).collect(),
-        target: Target::Spawner,
-        unloads_with_chunk: true,
-        remote: Some(RemoteLifecycle {
-            prepare: |game| {
-                let (client, _server) = Pipe::pair();
-                game.connect_local(client, "Lifecycle").unwrap();
-            },
-            apply: |game, remove, update| {
-                let item = game
-                    .remote
-                    .as_ref()
-                    .unwrap()
-                    .builtin
-                    .get("minecraft:item")
-                    .unwrap()
-                    .id("minecraft:emerald")
-                    .unwrap();
-                game.remote_object_data(
-                    update as i32,
-                    &[(
-                        8,
-                        serializer::ITEM_STACK,
-                        Value::Item(Some(Stack::new(item, 7))),
-                    )],
-                );
-                let changed = game
-                    .ominous_spawners
-                    .iter()
-                    .find(|s| s.id == update)
-                    .unwrap();
-                assert_eq!(changed.item.item.as_ref(), "minecraft:emerald");
-                assert_eq!(changed.item.count, 7);
-                game.remove_remote_object(remove);
-            },
-        }),
-    }
-    .run();
-}
-
-#[test]
-#[ignore = "daily"]
-fn residency_command_positions() {
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.set_allow_commands(true);
-        game.add_remote_ominous_item_spawner(701, [1.0, 80.0, 1.0]);
-        game.spawn_creeper_cloud([2.0, 80.0, 2.0], Vec::new(), Vec::new(), Vec::new(), 0);
-        assert!(game.run_command("tp @e[type=minecraft:ominous_item_spawner] 64.0 80.0 64.0"));
-        assert_eq!(game.ominous_spawners[0].position, [64.0, 80.0, 64.0]);
-        assert!(game.run_command("tp @e[type=minecraft:area_effect_cloud] -32.0 90.0 -48.0"));
-        assert_eq!(game.breath_clouds[0].at, [-32.0, 90.0, -48.0]);
     });
 }

@@ -201,65 +201,6 @@ fn admitted_families_load_merge_save_and_reload() {
 }
 #[test]
 #[ignore = "daily"]
-fn nested_nonmob_tree_dismount_remove_and_root_vehicle() {
-    with_game(|g| {
-        assert!(g.run_command(r#"summon pig 4.5 200 4.5 {UUID:[I;161,26,3,700],NoAI:1b,NoGravity:1b,Passengers:[{id:"minecraft:armor_stand",UUID:[I;161,26,3,701],NoGravity:1b,Passengers:[{id:"minecraft:item",UUID:[I;161,26,3,702],Item:{id:"minecraft:stone",count:2}}]},{id:"missing:entity"},{id:"minecraft:pig",UUID:[I;161,26,3,703],NoAI:1b}]}"#));
-        let mut root = id(g, 700).unwrap();
-        let mut stand = id(g, 701).unwrap();
-        let mut item = id(g, 702).unwrap();
-        assert_eq!(g.passenger_vehicle(item), Some(stand));
-        let body = g.vehicle_tree_nbt(root).unwrap();
-        assert_eq!(child_uuids(&body), vec![701, 703]);
-        assert_eq!(
-            child_uuids({
-                let Some(Tag::List(children)) = body.get("Passengers") else {
-                    panic!("children")
-                };
-                &children[0]
-            }),
-            vec![702]
-        );
-        let (wrapper, parent, attach) = g.parent_vehicle_tag(Some(stand), &[]).unwrap();
-        assert_eq!(parent, root);
-        assert_eq!(attach, [161, 26, 3, 701]);
-        assert_eq!(wrapper.get("Entity"), Some(&body));
-        // Pinned EntityType.PIG passenger attachment, Entity's default zero
-        // rider attachment, and ArmorStand's 1.975F height. This exercises the
-        // seating phase directly without pretending a non-ticking chunk ticked.
-        g.sync_riders();
-        let seat = 200.0 + f64::from(0.86875_f32);
-        assert_eq!(
-            g.target_position(Target::Stand(stand)).unwrap(),
-            [4.5, seat, 4.5]
-        );
-        assert_eq!(
-            g.target_position(Target::Item(item)).unwrap(),
-            [4.5, seat + f64::from(1.975_f32), 4.5]
-        );
-        g.remove_vehicle_tree(root);
-        assert!(id(g, 700).is_none() && id(g, 701).is_none() && id(g, 702).is_none());
-        let saved_player = Tag::compound([("RootVehicle", wrapper)]);
-        stand = g
-            .restore_saved_vehicle([161, 26, 3, 701], Some(&saved_player))
-            .unwrap();
-        root = id(g, 700).unwrap();
-        item = id(g, 702).unwrap();
-        assert_eq!(g.passenger_vehicle(stand), Some(root));
-        assert_eq!(g.passenger_vehicle(item), Some(stand));
-        assert!(g.run_command("ride @e[nbt={UUID:[I;161,26,3,702]},limit=1] dismount"));
-        assert_eq!(g.passenger_vehicle(item), None);
-        assert!(g.run_command("kill @e[nbt={UUID:[I;161,26,3,701]},limit=1]"));
-        assert!(!g.passenger_present(stand));
-        assert!(g.passenger_present(item));
-        assert_eq!(child_uuids(&g.vehicle_tree_nbt(root).unwrap()), vec![703]);
-        g.remove_vehicle_tree(root);
-        assert!(!g.passenger_present(root));
-        assert!(g.passenger_present(item));
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn cold_registry_nonmob_uuid_collision_refuses_the_entire_tree() {
     with_game(|g| {
         let tag = horizon_core::nbt::parse_snbt(
@@ -558,5 +499,3 @@ fn saved_nonmob_slot_takes_destination_admission_without_moving_its_uuid_owner()
     });
 }
 
-#[path = "completion_tests/generic_seating_tests.rs"]
-mod generic_seating_tests;

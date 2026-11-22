@@ -560,10 +560,8 @@ mod tests {
             &root,
             &settings,
             Instant::now(),
-            false,
             execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let fixture = std::env::current_dir()
@@ -592,7 +590,7 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&ResourceSource::directory(root)),
+            Audio::default(),
         )
         .unwrap();
         game.fns.store.predicates.insert(

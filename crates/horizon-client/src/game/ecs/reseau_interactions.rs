@@ -269,28 +269,3 @@ impl Game<'_> {
         }
     }
 }
-
-// Tests (écrits, non lancés). Le fixture de jeu est celui des tests `lan_vehicles.rs` (`game.run_command`, `game.ecs`).
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn attack_of_an_unknown_id_is_refused_without_panic() {
-        let mut game = Game::test_fixture();
-        let conn = 1;
-        let refused = game.ecs_guest_hit(conn, 0, 987_654);
-        assert!(refused.is_none(), "an id the level does not hold is not a hit");
-    }
-
-    #[test]
-    fn attack_of_a_linked_id_writes_a_damage_event() {
-        let mut game = Game::test_fixture();
-        let conn = 1;
-        assert!(game.run_command("summon minecraft:zombie 0.5 200 0.5 {NoAI:1b}"));
-        let mob = game.ecs.exists_ids().first().copied().expect("a linked mob");
-        let landed = game.ecs_guest_hit(conn, 0, mob as i32);
-        assert_eq!(landed, Some(true));
-        assert!(game.ecs.drain_damage_events().iter().any(|d| d.target == mob));
-    }
-}

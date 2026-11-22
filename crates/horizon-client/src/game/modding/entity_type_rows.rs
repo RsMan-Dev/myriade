@@ -48,26 +48,3 @@ pub(in crate::game) fn entity_type_rows(root: &Path) -> Arc<EntityTypeRows> {
     cache.push((root.to_owned(), rows.clone()));
     rows
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_row_with_attributes_is_a_living_type() {
-        let rows = EntityTypeRows::parse(
-            br#"{"minecraft:oak_boat": {"width": 1.375},
-                 "minecraft:zombie": {"width": 0.6, "attributes": {"minecraft:armor": 2.0}},
-                 "ruby:golem": {"template": "minecraft:zombie", "attributes": {}}}"#,
-        );
-        assert_eq!(
-            rows.ids,
-            ["minecraft:oak_boat", "minecraft:zombie", "ruby:golem"]
-        );
-        assert!(rows.contains("minecraft:oak_boat"));
-        assert!(!rows.contains("nope:ghost"));
-        assert!(!rows.is_living("minecraft:oak_boat"));
-        assert!(rows.is_living("minecraft:zombie"));
-        assert!(rows.is_living("ruby:golem"));
-    }
-}

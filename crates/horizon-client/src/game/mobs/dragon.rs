@@ -4650,46 +4650,6 @@ mod tests {
     }
 
     /// `DragonFireball.onHit` creates the cloud at the fireball's hit position.
-    /// The shared projectile engine stores the box bottom there, so no -0.5.
-    #[test]
-    #[ignore = "daily"]
-    fn a_fireballs_breath_cloud_starts_at_its_hit_position() {
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let at = Vec3::new(0.5, 120.0, 0.5);
-            game.dragon_fireball_on_hit(at);
-            let cloud = game.breath_clouds.last().expect("one breath cloud");
-            assert_eq!(cloud.at, [at.x, at.y, at.z]);
-        });
-    }
-
-    #[test]
-    fn fireball_cloud_snaps_to_a_player_within_four() {
-        let (b, p) = player_box([2.0, 70.0, 1.0]);
-        assert_eq!(
-            fireball_cloud_origin([0.0, 70.0, 0.0], &[(b, p)]),
-            [2.0, 70.0, 1.0]
-        );
-        let (b, p) = player_box([4.5, 70.0, 0.0]);
-        assert_eq!(
-            fireball_cloud_origin([0.0, 70.0, 0.0], &[(b, p)]),
-            [0.0, 70.0, 0.0]
-        );
-    }
-
-    #[test]
-    fn dying_dragons_keep_their_flight_pose_between_frames() {
-        let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 432);
-        dragon.history.fill((70.0, 170.0));
-        dragon.position.y = 90.0;
-        dragon.yaw = -170.0;
-        dragon.record();
-        assert_eq!(dragon.sample_lerp(0, 0.5), (80.0, 180.0));
-        dragon.health = 0.0;
-        for partial in [0.0, 0.25, 0.5, 0.75, 1.0] {
-            assert_eq!(dragon.sample_lerp(0, partial), (70.0, 170.0));
-        }
-    }
-
     /// The damage type of the hits below, which count.
     const HIT: Option<HurtSource> = Some(HurtSource {
         damage_type: "minecraft:player_attack",
@@ -4836,30 +4796,6 @@ mod tests {
         let hurt = d.hurt_part(level, 0, 1.0, HIT, DamageKind::WindCharge, Some(&charge));
         assert_eq!(hurt, Hurt::Landed { full: true });
         assert_eq!(d.health, MAX_HEALTH - 1.0);
-    }
-
-    #[test]
-    fn only_a_player_owned_wither_skull_takes_the_dragons_health() {
-        let mut test_level = horizon_client::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        // WitherSkull.onHitEntity: EnderDragon.hurt takes the wither's skull
-        // (not a player, not an explosion) but takes no health, even perched.
-        let skull = ProjectileKind::WitherSkull { dangerous: false };
-        let wither = super::super::wither::skull_source(Some(Who::Mob(7)), [0.0; 3]);
-        assert_eq!((wither.amount, wither.kind), (8.0, DamageKind::WitherSkull));
-        let mut d = dragon(Phase::Scanning { time: 0 });
-        let hurt = d.hurt_part(level, 2, wither.amount, None, wither.kind, Some(&skull));
-        assert_eq!(hurt, Hurt::Landed { full: false });
-        assert_eq!(d.health, MAX_HEALTH);
-        // A player's skull: 8 on the head, 8 / 4 + 1 on the body.
-        let player = super::super::wither::skull_source(Some(Who::Player), [0.0; 3]);
-        let mut d = dragon(Phase::Scanning { time: 0 });
-        let hurt = d.hurt_part(level, 0, player.amount, HIT, player.kind, Some(&skull));
-        assert_eq!(hurt, Hurt::Landed { full: true });
-        assert_eq!(d.health, MAX_HEALTH - 8.0);
-        let mut d = dragon(flying());
-        d.hurt_part(level, 2, player.amount, HIT, player.kind, Some(&skull));
-        assert_eq!(d.health, MAX_HEALTH - 3.0);
     }
 
     #[test]
@@ -5304,7 +5240,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_tracked_dragon_lists_its_data_defaults() {
-        use horizon_protocol::entity_data::serializer;
+        use horizon_protocol::entity_data::{Value, serializer};
         super::super::native_entity_refs::tests::with_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;

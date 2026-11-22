@@ -6,6 +6,7 @@
 use super::super::native_entity_refs::tests::with_game;
 use horizon_client::mobs::Mob;
 use horizon_core::geometry::Vec3;
+use horizon_core::random::RandomSource as _;
 use mod_api::{
     EntityPart, EntityRef, Goal, GoalContext, GoalFlags, GoalRegistrar, Hooks, LivingRef, ModEntry,
     Registrar, RegistrationContext,

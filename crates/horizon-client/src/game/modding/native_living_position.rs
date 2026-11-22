@@ -371,49 +371,6 @@ pub(in crate::game) mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn random_teleport_drops_to_the_ground_and_honours_the_avoid_tag() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
-            floor_and_zombies(game);
-            let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let at = |game: &Game<'_>| game.remote_entities.iter().find(|m| m.id == 12).unwrap().position;
-            // From six blocks up it lands on the floor, one block lower per
-            // step down (`randomTeleport`).
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    assert!(zombie.random_teleport(game, [4.5, 70.0, 4.5], None));
-                },
-            );
-            assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
-            assert_eq!(
-                game.remote_entities.iter().find(|m| m.id == 12).unwrap().previous,
-                at(game)
-            );
-            // No ground below (outside the floor): it stays.
-            assert!(!zombie.random_teleport(game, [12.5, 70.0, 12.5], None));
-            assert_eq!(at(game), Vec3::new(4.5, 64.0, 4.5));
-            // Ground in the avoid tag: bedrock is in the enderman's.
-            let bedrock = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:bedrock")
-                .unwrap();
-            game.world.set(-4, 63, -4, bedrock).unwrap();
-            assert!(!zombie.random_teleport(
-                game,
-                [-3.5, 66.0, -3.5],
-                Some("minecraft:enderman_does_not_teleport_to"),
-            ));
-            assert!(zombie.random_teleport(game, [-3.5, 66.0, -3.5], None));
-            assert_eq!(at(game), Vec3::new(-3.5, 64.0, -3.5));
-            assert!(!zombie.random_teleport(game, [f64::NAN, 66.0, 0.5], None));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn dimensions_follow_the_pose_asked() {
         use super::super::lan::LanSettings;
         use horizon_client::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};

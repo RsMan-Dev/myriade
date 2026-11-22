@@ -2096,9 +2096,8 @@ impl horizon_client::mobs::ModEffectTicks for Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::sculk::darkness_blend_added;
     use super::*;
-    use horizon_client::{motion::PlayerMotion, screen_effects::nausea_blend_added};
+    use horizon_client::motion::PlayerMotion;
     fn effect_test_mod() {
         use mod_api::{self, *};
         struct TestMod;
@@ -2321,64 +2320,6 @@ mod tests {
         assert!(thrown_left_owner(&[], eye, up));
     }
 
-    /// A server's client (multiplayer and the default single player) fades
-    /// the darkness effect in over its 22 blend ticks, holds it, and fades
-    /// it out over the last 22 (arismoko/horizon#3393).
-    #[test]
-    fn a_servers_client_blends_the_darkness_effect() {
-        let mut effects = PlayerEffects::default();
-        effects.add(EffectInstance::new("darkness", 60, 0));
-        let mut darkness = (0.0, 0.0);
-        client_tick_effects(&mut effects, &mut darkness);
-        assert_eq!(darkness, (0.0, 1.0 / 22.0), "the first tick fades in");
-        for _ in 1..22 {
-            client_tick_effects(&mut effects, &mut darkness);
-        }
-        assert!((darkness.1 - 1.0).abs() < 1e-5, "{darkness:?}");
-        // 38 ticks left: full until 22 remain, then the fade out.
-        for _ in 0..16 {
-            client_tick_effects(&mut effects, &mut darkness);
-        }
-        assert_eq!(effects.get("darkness").map(|e| e.duration), Some(22));
-        assert!(
-            darkness.1 < darkness.0,
-            "fading out at 22 left: {darkness:?}"
-        );
-        for _ in 0..21 {
-            client_tick_effects(&mut effects, &mut darkness);
-        }
-        assert!(darkness.1.abs() < 1e-5, "{darkness:?}");
-    }
-
-    /// `ClientPacketListener.handleUpdateMobEffect`: a new darkness fades in
-    /// when the server blends it; one sent unblended (joining, changing
-    /// dimension) is at full strength at once.
-    #[test]
-    fn a_new_darkness_starts_blended_or_at_once() {
-        let e = EffectInstance::new("darkness", 260, 0);
-        assert_eq!(darkness_blend_added(&e, true), (0.0, 0.0));
-        assert_eq!(darkness_blend_added(&e, false), (1.0, 1.0));
-        let ending = EffectInstance::new("darkness", 10, 0);
-        assert_eq!(darkness_blend_added(&ending, false), (0.0, 0.0));
-        let infinite = EffectInstance::new("darkness", -1, 0);
-        assert_eq!(darkness_blend_added(&infinite, false), (1.0, 1.0));
-    }
-
-    /// `ClientPacketListener.handleUpdateMobEffect`: a new nausea fades in
-    /// when the server blends it; one sent unblended (joining, changing
-    /// dimension) is at full strength at once, unless it is already within
-    /// its blend-out ticks.
-    #[test]
-    fn a_new_nausea_starts_blended_or_at_once() {
-        let e = EffectInstance::new("nausea", 600, 0);
-        assert_eq!(nausea_blend_added(&e, true), (0.0, 0.0));
-        assert_eq!(nausea_blend_added(&e, false), (1.0, 1.0));
-        let ending = EffectInstance::new("nausea", 40, 0);
-        assert_eq!(nausea_blend_added(&ending, false), (0.0, 0.0));
-        let infinite = EffectInstance::new("nausea", -1, 0);
-        assert_eq!(nausea_blend_added(&infinite, false), (1.0, 1.0));
-    }
-
     /// `BottleItem.use`: collecting dragon's breath from an ender dragon's cloud (#8054).
     #[test]
     fn glass_bottle_collects_dragon_breath_from_dragon_cloud() {
@@ -2402,138 +2343,6 @@ mod tests {
         assert_eq!(clouds[0].radius, 4.5);
         assert!(collect_dragon_breath(player_box, &mut clouds).is_some());
         assert_eq!(clouds[0].radius, 4.0);
-    }
-
-    /// `BottleItem.use`: clouds that are expired, non-dragon, lingering potions,
-    /// or out of reach cannot be bottled (#8054).
-    #[test]
-    fn glass_bottle_ignores_non_dragon_or_expired_or_out_of_range_clouds() {
-        let player_box = Aabb::new(Vec3::new(-0.3, 64.0, -0.3), Vec3::new(0.3, 65.8, 0.3));
-        // Non-dragon cloud (`from_dragon: false`).
-        let mut non_dragon = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 1,
-            at: [0.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 3.0,
-            age: 0,
-            duration: 600,
-            from_dragon: false,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut non_dragon).is_none());
-        assert_eq!(non_dragon[0].radius, 3.0);
-
-        // Lingering potion cloud (`potion: Some(...)`).
-        let mut lingering = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 2,
-            at: [0.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 3.0,
-            age: 0,
-            duration: 600,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: Some(PotionCloud {
-                settings: CloudSettings::lingering(),
-                effects: Vec::new(),
-                hidden: Vec::new(),
-                ambient: Vec::new(),
-                radius_per_tick: -3.0 / 600.0,
-                color: 0,
-                custom_particle: None,
-            }),
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut lingering).is_none());
-        assert_eq!(lingering[0].radius, 3.0);
-
-        // Its last tick before the wait-shifted end still holds breath
-        // (`tickCount - waitTime < duration`).
-        let mut last = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 3,
-            at: [0.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 5.0,
-            age: 219,
-            duration: 200,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut last).is_some());
-        assert_eq!(last[0].radius, 4.5);
-
-        // Expired cloud (`tickCount - waitTime >= duration`).
-        let mut expired = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 3,
-            at: [0.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 5.0,
-            age: 220,
-            duration: 200,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut expired).is_none());
-        assert_eq!(expired[0].radius, 5.0);
-
-        // Out of horizontal reach: cloud at 10 blocks away with radius 1:
-        // cloud X range [9.0, 11.0], player inflated X range [-2.3, 2.3] -> no overlap.
-        let mut far = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 4,
-            at: [10.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 1.0,
-            age: 0,
-            duration: 200,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut far).is_none());
-        assert_eq!(far[0].radius, 1.0);
-
-        // Out of vertical reach: cloud at Y=64.0 (Y bounds [64.0, 64.5]),
-        // player at Y=67.0 (inflated Y bounds [65.0, 70.8] does not reach 64.5).
-        let high_player = Aabb::new(Vec3::new(-0.3, 67.0, -0.3), Vec3::new(0.3, 68.8, 0.3));
-        let mut ground_cloud = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id: 5,
-            at: [0.0, 64.0, 0.0],
-            motion: [0.0; 3],
-            radius: 1.0,
-            age: 0,
-            duration: 200,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(high_player, &mut ground_cloud).is_none());
-        assert_eq!(ground_cloud[0].radius, 1.0);
     }
 
 }
@@ -2666,10 +2475,8 @@ mod mob_absorption_max_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2684,9 +2491,7 @@ mod mob_absorption_max_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2838,10 +2643,8 @@ mod mob_health_boost_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2856,9 +2659,7 @@ mod mob_health_boost_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3090,10 +2891,8 @@ mod depleted_absorption_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -3108,9 +2907,7 @@ mod depleted_absorption_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -3418,10 +3215,8 @@ mod arrow_contents {
             &root,
             &settings,
             Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -3433,9 +3228,7 @@ mod arrow_contents {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.world

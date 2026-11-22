@@ -248,7 +248,7 @@ mod tests {
             game.ecs = level(game);
             let bearer = game.ecs_spawn("minecraft:zombie", [0.5, 64.0, 0.5], None).unwrap();
             let be = game.ecs.entity_of(bearer).unwrap();
-            let bounds = game.ecs.bounds(be).unwrap();
+            let bounds = game.ecs.bounds(bearer).unwrap();
             assert_eq!(game.ecs_oozing_count(bounds, Some(be), 24), 2);
             game.ecs_spawn("minecraft:slime", [0.5, 64.0, 0.5], None).unwrap();
             assert_eq!(game.ecs_oozing_count(bounds, Some(be), 1), 0, "the one slime beside fills the limit");

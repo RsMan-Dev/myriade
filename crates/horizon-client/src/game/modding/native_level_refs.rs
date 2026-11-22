@@ -1107,7 +1107,6 @@ mod tests {
         with_game(|game| {
             game.options.headless = true;
             game.streaming.paused = false;
-            game.streaming.mesh = false;
             game.streaming.radius = 0;
             test(game);
         });
@@ -1992,7 +1991,12 @@ mod tests {
         use std::sync::Arc;
 
         with_machines(|game| {
-            game.install_live_features();
+            crate::game::growth::install_live_features(
+                &game.res,
+                &game.pack,
+                &game.options,
+                &Default::default(),
+            );
             let level = game.level(game.dim.id()).unwrap();
             let registry = game.pack.assets.registry;
             let dry = registry.default_state("minecraft:farmland").unwrap();
@@ -3211,9 +3215,6 @@ mod environment_read_tests {
                             }
                             game.world.chunks.insert((cx, cz), Arc::new(chunk));
                         }
-                        game.streaming.biome_zoom = horizon_core::biome::BiomeZoom::new(
-                            input["zoom_seed"].as_i64().unwrap(),
-                        );
                     }
                     "floor" => {
                         game.world.chunks.clear();

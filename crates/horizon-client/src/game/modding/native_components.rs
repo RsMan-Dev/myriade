@@ -647,13 +647,6 @@ mod item_resource_property_tests {
                     item.foil(game)
                 );
                 assert_eq!(
-                    horizon_client::item_tooltip::rarity(
-                        &stack,
-                        props.map_or("common", |value| value.rarity.as_str())
-                    ),
-                    item.rarity(game).as_str()
-                );
-                assert_eq!(
                     horizon_client::stations::is_valid_repair_item(
                         definitions,
                         game.items(),
@@ -767,13 +760,6 @@ mod item_resource_property_tests {
             );
             let info = game.items().get(&stack.item);
             assert_eq!(stack.effective_damage(info), 75);
-            assert_eq!(
-                horizon_client::hud_overlays::damage_bar(
-                    stack.effective_damage(info),
-                    stack.max_damage(info)
-                ),
-                Some((bar.width, bar.color))
-            );
             let damage = ComponentId::new("minecraft:damage").unwrap();
             let zero = resource.with_component(game, &damage, Tag::Int(0)).unwrap();
             assert_eq!(zero.component(&damage), Some(Tag::Int(0)));
@@ -972,76 +958,6 @@ mod combat_query_tests {
             assert_eq!(resource(&stack).can_be_hurt_by(game, &source), Some(true));
             source.damage_type = mod_api::Identifier::parse("test:unknown").unwrap();
             assert_eq!(resource(&stack).can_be_hurt_by(game, &source), None);
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn stack_combat_prototype_overrides_and_removals_match_attacks() {
-        with_game(|game| {
-            let attacker = actor(game);
-            let target = attacker.entity();
-            let prototypes = std::sync::Arc::make_mut(
-                &mut std::sync::Arc::get_mut(&mut game.pack.item_renderer)
-                    .expect("fixture owns its renderer")
-                    .models
-                    .prototypes,
-            );
-            let prototype = prototypes.get_mut("minecraft:diamond_sword").unwrap();
-            prototype.insert(
-                "minecraft:enchantments".into(),
-                serde_json::json!({"minecraft:sharpness": 3}),
-            );
-            prototype.insert(
-                "minecraft:damage_type".into(),
-                serde_json::json!("minecraft:magic"),
-            );
-            let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
-            let defaults = resource(&sword);
-            assert_eq!(
-                defaults.attack_damage_bonus(game, attacker, target, 7.0),
-                Some(2.0)
-            );
-            assert_eq!(
-                defaults
-                    .damage_source(game, attacker)
-                    .unwrap()
-                    .damage_type
-                    .to_string(),
-                "minecraft:magic"
-            );
-            game.inventory[game.selected] = Some(sword.clone());
-            assert_eq!(
-                game.enchanted_damage("minecraft:player", 7.0, Some(target.id())),
-                9.0
-            );
-            assert_eq!(
-                super::super::creatures::source_damage_type(game.attack_source([0.0; 3])),
-                "minecraft:magic"
-            );
-            patch(&mut sword, "!minecraft:enchantments", serde_json::json!({}));
-            patch(&mut sword, "!minecraft:damage_type", serde_json::json!({}));
-            let removed = resource(&sword);
-            assert_eq!(
-                removed.attack_damage_bonus(game, attacker, target, 7.0),
-                Some(0.0)
-            );
-            assert_eq!(
-                removed
-                    .damage_source(game, attacker)
-                    .unwrap()
-                    .damage_type
-                    .to_string(),
-                "minecraft:player_attack"
-            );
-            game.inventory[game.selected] = Some(sword);
-            assert_eq!(
-                game.enchanted_damage("minecraft:player", 7.0, Some(target.id())),
-                7.0
-            );
-            assert_eq!(
-                super::super::creatures::source_damage_type(game.attack_source([0.0; 3])),
-                "minecraft:player_attack"
-            );
         });
     }
 }

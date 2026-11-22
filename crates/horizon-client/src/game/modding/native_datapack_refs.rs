@@ -85,7 +85,12 @@ mod tests {
             vec![ModEntry::new("example", Box::new(RegistryMod))].into(),
             || {
                 super::super::native_entity_refs::tests::with_game(|game| {
-                    game.install_live_features();
+                    crate::game::growth::install_live_features(
+                        &game.res,
+                        &game.pack,
+                        &game.options,
+                        &Default::default(),
+                    );
                     let level = game.level(game.dim.id()).unwrap();
                     let candidate = || {
                         DatapackCandidate::build(

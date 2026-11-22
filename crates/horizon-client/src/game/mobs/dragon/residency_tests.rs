@@ -1,6 +1,6 @@
 //! Production singleton installation/removal and id-allocation contracts.
 use super::*;
-use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+use crate::game::native_entity_refs::tests::with_game;
 
 #[test]
 #[ignore = "daily"]
@@ -93,26 +93,6 @@ fn singleton_fight_dragon_install_reserves_nine_ids() {
 
 #[test]
 #[ignore = "daily"]
-fn singleton_client_dragon_install_explicitly_replaces_network_owner() {
-    with_client_game(|game| {
-        game.dragon.discard();
-        let before = game.next_entity;
-        game.spawn_remote_dragon(420, [1.0, 80.0, 2.0], 45.0);
-        assert_eq!(game.dragon.as_ref().unwrap().id, 420);
-        game.spawn_remote_dragon(840, [3.0, 90.0, 4.0], 90.0);
-        let dragon = game.dragon.as_ref().unwrap();
-        assert_eq!(dragon.id, 840);
-        assert_eq!(dragon.position, Vec3::new(3.0, 90.0, 4.0));
-        assert_eq!(game.next_entity, before);
-        game.remove_remote_dragon(420);
-        assert_eq!(game.dragon.as_ref().unwrap().id, 840);
-        game.remove_remote_dragon(840);
-        assert!(game.dragon.is_none());
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn singleton_late_dragon_id_reserves_all_eight_parts_once() {
     with_game(|game| {
         game.dragon.discard();
@@ -123,57 +103,6 @@ fn singleton_late_dragon_id_reserves_all_eight_parts_once() {
         assert_eq!(game.next_entity, before + 9);
         game.assign_dragon_and_crystal_ids();
         assert_eq!(game.next_entity, before + 9);
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn singleton_lifecycle_commands_unload_and_parked_owners() {
-    crate::game::entity::taken_pass_tests::LifecycleFixture {
-        seed: |game, entries| {
-            if let Some(id) = game.dragon.as_ref().map(|d| d.id) {
-                game.remove_remote_dragon(id as i32);
-            }
-            for &(id, at) in entries {
-                game.spawn_remote_dragon(id as i32, at, 0.0);
-            }
-        },
-        ids: |game| game.dragon.as_ref().map(|d| vec![d.id]).unwrap_or_default(),
-        target: crate::game::commands::Target::Dragon,
-        unloads_with_chunk: true,
-        remote: None,
-    }
-    .run_singleton();
-}
-
-#[test]
-#[ignore = "daily"]
-fn singleton_death_fight_scan_and_resets_discard_owners() {
-    with_game(|game| {
-        game.spawn_remote_dragon(601, [1.0, 80.0, 1.0], 0.0);
-        game.dragon.as_mut().unwrap().death_time = 199;
-        game.tick_dragon_death();
-        assert!(game.dragon.is_none(), "death completion");
-        game.spawn_remote_dragon(602, [1.0, 80.0, 1.0], 0.0);
-        game.scan_state();
-        assert!(game.dragon.is_none(), "fight scan without exit portal");
-        game.spawn_remote_dragon(603, [1.0, 80.0, 1.0], 0.0);
-        game.clear_entities();
-        assert!(game.dragon.is_none(), "world reset");
-        game.spawn_remote_dragon(604, [1.0, 80.0, 1.0], 0.0);
-
-        assert!(game.dragon.is_none(), "remote reset");
-        game.spawn_remote_dragon(605, [1.0, 80.0, 1.0], 0.0);
-        game.set_allow_commands(true);
-        assert!(game.run_command("kill @e[type=minecraft:ender_dragon]"));
-        assert!(game.dragon.is_none(), "command selector");
-        game.spawn_remote_dragon(606, [1.0, 80.0, 1.0], 0.0);
-        game.world.modified.clear();
-        game.tick_dragon();
-        assert!(
-            game.world.modified.contains(&(0, 0)),
-            "tick dirties the owner's chunk"
-        );
     });
 }
 

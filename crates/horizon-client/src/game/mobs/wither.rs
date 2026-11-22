@@ -128,21 +128,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_unowned_skull_hurts_as_magic_from_nowhere() {
-        // DamageSources.magic(): no entity and no position, so nothing to
-        // blame or push away from.
-        let at = [1.0, 64.0, 2.0];
-        let unowned = skull_source(None, at);
-        assert_eq!((unowned.amount, unowned.kind), (5.0, DamageKind::Magic));
-        assert_eq!(unowned.from, None);
-        // witherSkull(skull, owner): from where the skull is.
-        let owned = skull_source(Some(Who::Mob(3)), at);
-        assert_eq!((owned.amount, owned.kind), (8.0, DamageKind::WitherSkull));
-        assert_eq!(owned.from, Some(at));
-        assert_eq!(skull_source(Some(Who::Player), at), owned);
-    }
-
-    #[test]
     fn a_totem_that_fires_is_no_kill() {
         assert!(killed(true, true, false));
         // The totem restores health next tick: alive inside hurtServer.

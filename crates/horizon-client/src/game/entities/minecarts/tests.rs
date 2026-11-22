@@ -83,6 +83,8 @@ fn a_tnt_cart_detonates_only_when_a_collision_stops_a_moving_one() {
     assert!(!tnt_ignites_by_collision(false, 0.36), "nothing in the way");
 }
 use super::*;
+use crate::mobs::Species;
+use horizon_world::registry::BlockStateId;
 
 /// Issue #8624: chest and hopper carts keep 0.995 of their speed when
 /// empty (0.98 when full), not the plain cart's 0.96, so powered rails

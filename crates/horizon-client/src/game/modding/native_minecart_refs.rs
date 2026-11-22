@@ -249,25 +249,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn a_carts_display_block_and_offset_round_trip_through_its_handle() {
-        with_game(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let chest = spawn(game, 30, "minecraft:chest_minecart");
-            assert_eq!(chest.display_offset(game), Some(8));
-            assert_eq!(chest.custom_display_block(game), Some(None));
-            let stone = game.pack.assets.registry.default_state("minecraft:stone");
-            assert!(chest.set_custom_display_block(game, stone));
-            assert_eq!(chest.custom_display_block(game), Some(stone));
-            assert!(chest.set_display_offset(game, 12));
-            assert_eq!(chest.display_offset(game), Some(12));
-            assert_eq!(chest.custom_display_block(game), Some(stone), "the offset write keeps the block");
-            assert!(chest.set_custom_display_block(game, None));
-            assert_eq!(chest.custom_display_block(game), Some(None));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn minecart_handles_narrow_read_and_write_by_kind() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());

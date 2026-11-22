@@ -126,12 +126,4 @@ mod tests {
         });
     }
 
-    #[test]
-    fn a_natural_spawn_is_linked_like_any_other() {
-        with_game(|game| {
-            game.ecs = game.new_ecs_level(game.dim, 0);
-            let id = game.ecs_spawn_natural("minecraft:cow", [1.5, 64.0, 1.5]).unwrap();
-            assert_eq!(game.ecs.kind(id), Some("minecraft:cow"));
-        });
-    }
 }

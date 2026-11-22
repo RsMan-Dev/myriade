@@ -151,27 +151,6 @@ fn a_hanging_entity_turned_back_to_south_is_sent_south() {
     });
 }
 
-#[test]
-#[ignore = "daily"]
-fn a_client_turns_its_painting_with_the_servers_direction() {
-    use horizon_protocol::entity_data::{Value, serializer};
-    super::native_entity_refs::tests::with_client_game(|game| {
-        let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-        game.connect_local(pipe, "Paintings").unwrap();
-        with_hanging_in(game);
-        let direction = |d| [(8, serializer::DIRECTION, Value::Id(d))];
-        // West (3D value 4): the painting keeps its 2D value, 1.
-        game.remote_object_data(PAINTING as i32, &direction(4));
-        assert_eq!(game.paintings[0].facing, 1);
-        // Up is no direction a painting takes: it stays.
-        game.remote_object_data(PAINTING as i32, &direction(1));
-        assert_eq!(game.paintings[0].facing, 1);
-        // Back to south, the default the server sends: 0.
-        game.remote_object_data(PAINTING as i32, &direction(3));
-        assert_eq!(game.paintings[0].facing, 0);
-    });
-}
-
 /// A listener that records the dimension `hanging_break` names, and keeps the frame.
 struct BreakWatcher(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
 

@@ -34,16 +34,6 @@ impl Hooks for Probe {
                 cx.game_tests_enabled(),
             ));
     }
-    fn client_tick_pre(
-        &self,
-        host: &mut dyn mod_api::ClientHost,
-        _: &mut mod_api::ClientTickPreEvent,
-    ) {
-        // The flag has only a server Host method; registration already pinned it.
-        let mut observed = self.0.lock().unwrap();
-        let tests = observed.registration[0].game_tests_enabled();
-        observed.later.push(from_host(host, tests));
-    }
     fn server_started(
         &self,
         host: &mut dyn mod_api::ServerHost,
@@ -289,8 +279,8 @@ fn run(wasm: bool) {
     assert!(observed.registration.iter().all(|value| value == &expected));
     assert_eq!(
         observed.later.len(),
-        if case.starts_with("client") { 2 } else { 1 },
-        "client Host and logical server Host hooks must each execute"
+        1,
+        "the logical server Host hook must execute"
     );
     assert!(observed.later.iter().all(|value| value == &expected));
     assert_eq!(

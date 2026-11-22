@@ -71,6 +71,8 @@ pub(super) fn name_component(m: &Mob, name: &str) -> horizon_core::nbt::Tag {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use horizon_core::geometry::Vec3;
+    use std::sync::Arc;
 
     #[test]
     fn a_mobs_name_is_sent_with_its_style() {

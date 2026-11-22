@@ -1,8 +1,8 @@
 use super::*;
 use crate::game::{Audio, Options, Progress, Settings, load_resources};
-use horizon_client::{chunk::Chunk, motion::PlayerMotion};
+use horizon_client::{arrows::Pickup, chunk::Chunk, motion::PlayerMotion};
 use horizon_core::position::ChunkPos;
-use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, bridge::select::Select, targeting::Who as ShotBy, trident::Pickup};
+use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, bridge::select::Select, targeting::Who as ShotBy};
 use std::sync::Arc;
 fn with_game(test: impl FnOnce(&mut Game<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
@@ -14,10 +14,8 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -32,9 +30,7 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.native_lifecycle

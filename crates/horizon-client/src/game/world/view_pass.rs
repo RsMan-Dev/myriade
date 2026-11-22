@@ -133,10 +133,8 @@ pub(in crate::game) mod tests {
             root,
             &settings,
             Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let resources = resources.insert(loaded.resources);
@@ -150,9 +148,7 @@ pub(in crate::game) mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();

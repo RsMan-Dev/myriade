@@ -13,10 +13,8 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -29,7 +27,7 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(root.clone())),
+        Audio::default(),
     )
     .unwrap();
     game.ecs = game.test_ecs_level();

@@ -132,6 +132,8 @@ fn dye_stack(target: &ItemStack, dye: usize) -> ItemStack {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use horizon_client::crafting::Ingredient;
+    use horizon_client::menu::place::Stacked;
     fn can_craft(stocks: &[ItemStack], ingredients: &[Ingredient]) -> bool {
         let mut stacked = Stacked::default();
         for stack in stocks {

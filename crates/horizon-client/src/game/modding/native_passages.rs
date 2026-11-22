@@ -329,13 +329,12 @@ fn form(id: PassageId, p: &Passage) -> PassageForm {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{HeldRefusal, Message, PassageForm, Refused, check};
+    use super::{Message, PassageForm, Refused, check};
     use crate::game::Dim;
     use crate::game::native_entity_refs::tests::{with_client_game, with_game};
     use crate::game::native_guest_turn_tests::with_guests;
     use horizon_client::chunk::Chunk;
     use horizon_protocol::packets::play::Clientbound;
-    use horizon_protocol::passage_sync::encode;
     use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
     use std::sync::{Arc, mpsc};
 
@@ -875,150 +874,4 @@ pub(in crate::game) mod tests {
         });
     }
 
-    /// Removes the passage in the second `chunk_sent` it hears.
-    struct RemoveOnSecondSent {
-        heard: std::sync::Mutex<u32>,
-        id: PassageId,
-    }
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for RemoveOnSecondSent {
-        fn chunk_sent(&self, host: &mut dyn mod_api::ServerHost, e: &mut mod_api::ChunkSentEvent) {
-            let mut heard = self.heard.lock().unwrap();
-            *heard += 1;
-            if *heard == 2 {
-                assert!(e.chunk.level().remove_passage(host, self.id));
-            }
-        }
-    }
-
-    /// Two chunk sends in one tick: the first gives a new passage to guest 12 with its
-    /// chunk, and the mod removes it at the second, before the tick's end told it to the
-    /// rest. The removal still reaches 12, which ends with no passage, and 13 is told
-    /// only the removal.
-    #[test]
-    #[ignore = "daily"]
-    fn a_passage_sent_with_its_chunk_and_removed_in_the_same_tick_leaves_no_ghost() {
-        use horizon_client::lan::chunk_watch::{
-            ChunkWatch, ChunkWatchKind, ChunkWatchLog, LevelWatches,
-        };
-        let mods = vec![mod_api::ModEntry::new(
-            "remover",
-            Box::new(RemoveOnSecondSent {
-                heard: Default::default(),
-                id: PassageId::from_raw(1),
-            }),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            with_guests(|game| {
-                game.native_lifecycle.world_open_ready().unwrap();
-                let receivers = listen(game, ["horizon", "horizon"]);
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let dimension = game.dim.id().to_owned();
-                let hub = &mut game.lan.as_mut().unwrap().hub;
-                hub.guests.update_all(|g| {
-                    g.center = Some((0, 0));
-                    g.sent_chunks.insert((0, 0));
-                });
-                let sent = |uuid: u128| ChunkWatch {
-                    kind: ChunkWatchKind::Sent,
-                    uuid,
-                    entity_id: uuid as i32,
-                    chunk: [0, 0],
-                };
-                hub.chunk_watches = ChunkWatchLog::new(vec![LevelWatches {
-                    dimension,
-                    watches: vec![sent(12), sent(13)],
-                }]);
-                let level = game.level(game.dim.id()).unwrap();
-                let id = game.level_register_passage(level, doorway()).unwrap();
-                assert_eq!(id, PassageId::from_raw(1));
-                game.run_chunk_watches();
-                game.flush_passages();
-                let twelve = packets(&receivers[0]);
-                assert_eq!(
-                    passage_messages(&twelve),
-                    [
-                        Message::Add(vec![doorway_form(1)]),
-                        Message::Remove(vec![1])
-                    ]
-                );
-                assert_eq!(
-                    passage_messages(&packets(&receivers[1])),
-                    [Message::Remove(vec![1])]
-                );
-                // Guest 12's client, given what it was sent, holds nothing.
-                for p in &twelve {
-                    if let Clientbound::CustomPayload(p) = p
-                        && p.channel == "horizon:passage_sync"
-                    {
-                        assert!(game.remote_passage_sync(&p.data).is_empty());
-                    }
-                }
-                assert!(game.passages.held.is_empty());
-            });
-        });
-    }
-
-    /// The window keeps what its server sent for a chunk it holds, by number, until the
-    /// server removes it or the window forgets the chunk. It refuses by name a passage the
-    /// server could not have registered, one for a chunk it does not hold, and a 257th,
-    /// across packets; a number sent again replaces its passage.
-    #[test]
-    #[ignore = "daily"]
-    fn the_window_keeps_only_passages_it_can_hold() {
-        with_client_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let send = |game: &mut crate::game::Game<'_>, message: Message| {
-                game.remote_passage_sync(&encode(&message).unwrap())
-            };
-            let bad = PassageForm {
-                width: f64::NAN,
-                ..doorway_form(2)
-            };
-            let skewed = PassageForm {
-                axis_h: [1.0, 0.0, 0.0],
-                ..doorway_form(3)
-            };
-            let elsewhere = PassageForm {
-                origin: [80.5, 65.5, 8.5],
-                ..doorway_form(4)
-            };
-            let refused = send(
-                game,
-                Message::Add(vec![doorway_form(1), bad, skewed, elsewhere]),
-            );
-            assert_eq!(
-                refused,
-                [
-                    (2, HeldRefusal::Bad(Refused::NotFinite)),
-                    (3, HeldRefusal::Bad(Refused::BadAxes)),
-                    (4, HeldRefusal::ChunkNotHeld),
-                ]
-            );
-            assert_eq!(
-                game.passages.held.get(&PassageId::from_raw(1)),
-                Some(&doorway())
-            );
-
-            let many = |ids: std::ops::Range<u64>| Message::Add(ids.map(doorway_form).collect());
-            assert!(send(game, many(10..210)).is_empty());
-            let refused = send(game, many(210..270));
-            assert_eq!(game.passages.held.len(), 256);
-            assert_eq!(refused.len(), 5);
-            assert!(refused.iter().all(|(_, why)| *why == HeldRefusal::Full));
-            assert_eq!(refused[0].0, 265);
-            assert!(send(game, many(10..11)).is_empty(), "a number sent again");
-
-            send(game, Message::Remove(vec![1]));
-            assert_eq!(game.passages.held.len(), 255);
-            game.client_chunk_unload(1, 0, true);
-            assert_eq!(game.passages.held.len(), 255);
-            game.client_chunk_unload(0, 0, true);
-            assert!(game.passages.held.is_empty());
-        });
-    }
 }

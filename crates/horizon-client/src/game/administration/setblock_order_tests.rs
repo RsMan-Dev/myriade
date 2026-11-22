@@ -22,10 +22,8 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -37,9 +35,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();
@@ -55,7 +51,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> Game<'_> {
 }
 
 fn at(game: &Game<'_>, x: i32, y: i32, z: i32) -> String {
-    game.state_string(game.world.block(x, y, z))
+    game.block_state_string(game.world.block(x, y, z)).unwrap()
 }
 
 fn run(game: &mut Game<'_>, commands: &[&str]) {

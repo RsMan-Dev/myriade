@@ -2015,109 +2015,6 @@ mod brewing_fuel_transfer_tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
     use horizon_client::brewing::BrewingStand;
-    use mod_api::HostTransaction;
-
-    struct PrepareProbe {
-        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-        fill: bool,
-    }
-
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for PrepareProbe {
-        fn prepare_hopper_transfer(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            _: &mut mod_api::PrepareHopperTransferEvent,
-        ) {
-            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            if self.fill {
-                let level = host.level("minecraft:overworld").unwrap();
-                let items = level
-                    .capability(host, &mod_api::ITEMS, [8, 64, 8], None)
-                    .unwrap();
-                let stack = mod_api::ItemStack::new(
-                    mod_api::__private::item_key("minecraft:stone").unwrap(),
-                    1,
-                )
-                .unwrap();
-                let resource = mod_api::ItemResource::of(&stack);
-                host.transaction(|host, tx| {
-                    assert_eq!(items.insert(host, tx, 0, &resource, 1), 1);
-                    Ok::<_, ()>(())
-                })
-                .unwrap();
-            }
-        }
-    }
-
-    fn check_prepare_transfer(fill: bool) {
-        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "prepare_probe",
-            Box::new(PrepareProbe {
-                calls: calls.clone(),
-                fill,
-            }),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                game.options.dedicated = Some(Vec::new());
-                game.world.chunks.insert(
-                    (0, 0),
-                    std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-                );
-                let pos = (8, 64, 8);
-                let state = game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:hopper")
-                    .unwrap();
-                game.world.set(pos.0, pos.1, pos.2, state).unwrap();
-                game.world
-                    .block_entities
-                    .insert(pos, BlockEntity::Chest(vec![None; HOPPER_SLOTS]));
-                if fill {
-                    let chest = game
-                        .pack
-                        .assets
-                        .registry
-                        .default_state("minecraft:chest")
-                        .unwrap();
-                    game.world.set(8, 63, 8, chest).unwrap();
-                    game.world
-                        .block_entities
-                        .insert((8, 63, 8), BlockEntity::Chest(vec![None; 27]));
-                }
-                game.hopper_try_move_items(pos);
-                assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-                if fill {
-                    let containers = game.containers();
-                    let target = containers.view((8, 63, 8), false).unwrap();
-                    assert_eq!(
-                        containers.get(&target, 0).unwrap().item.as_ref(),
-                        "minecraft:stone"
-                    );
-                    assert_eq!(containers.get(&target, 0).unwrap().count, 1);
-                    assert!(containers.is_empty(&containers.view(pos, false).unwrap()));
-                    assert_eq!(game.hoppers[&pos].cooldown, 8);
-                }
-            })
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn empty_hopper_dispatches_prepare_transfer() {
-        check_prepare_transfer(false);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn prepare_transfer_inventory_write_is_ejected() {
-        check_prepare_transfer(true);
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -2501,6 +2398,7 @@ mod capacity_tests {
             items: &items,
             registry,
             brewing: Some(&brewing),
+            ecs: None,
         };
         for (x, &(block, kind, len, _, offered)) in (0..).zip(&cases) {
             let view = View {

@@ -109,10 +109,8 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         &base,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -123,9 +121,7 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.world = World::new(game.res.facts().air, 1);

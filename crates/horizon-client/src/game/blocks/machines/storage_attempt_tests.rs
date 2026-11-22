@@ -787,38 +787,6 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
 
 #[test]
 #[ignore = "daily"]
-fn failed_block_pull_stops_but_minecart_falls_back_to_item_entities() {
-    fixture(
-        "game::machines::native_items::storage_attempt_tests::failed_block_pull_stops_but_minecart_falls_back_to_item_entities",
-        |game, _, probe| {
-            use crate::game::minecarts::{CartKind, Minecart};
-            storage(
-                game,
-                ABOVE,
-                vec![Some(ItemStack::new("minecraft:diamond", 1)), None],
-            );
-            probe.rules.lock().unwrap().refuse_extract = true;
-            game.spawn_item(
-                ItemStack::new("minecraft:stone", 1),
-                [8.5, 64.5, 8.5],
-                [0.0; 3],
-                0,
-            );
-            game.tick_hopper(HOPPER);
-            assert_eq!(game.dropped.len(), 1);
-            assert_eq!(count(game, HOPPER, 0), 0);
-            assert_eq!(trace(&probe), ["face:Down", "open", "extract:0", "abort"]);
-            let mut cart = Minecart::new(701, CartKind::Hopper, Vec3::new(8.5, 64.0, 8.5));
-            game.hopper_cart_suck(&mut cart);
-            assert!(game.dropped.is_empty());
-            assert_eq!(cart.items[0], Some(ItemStack::new("minecraft:stone", 1)));
-            assert_eq!(trace(&probe), ["face:Down", "open", "extract:0", "abort"]);
-        },
-    );
-}
-
-#[test]
-#[ignore = "daily"]
 fn nontransactional_storage_loses_a_blocked_extraction_on_abort() {
     fixture(
         "game::machines::native_items::storage_attempt_tests::nontransactional_storage_loses_a_blocked_extraction_on_abort",

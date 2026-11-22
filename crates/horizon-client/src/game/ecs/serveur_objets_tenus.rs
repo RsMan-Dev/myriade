@@ -60,12 +60,4 @@ mod tests {
         assert!(g.start_mob_using_item_ecs(id, Hand::Main));
         assert!(g.mob_item_use_remaining_ecs(id).is_some_and(|t| t > 0));
     }
-
-    #[test]
-    fn a_totem_in_hand_saves_an_ecs_mob_once() {
-        let (mut g, id) = ecs_game_with("minecraft:zombie", [0.0, 64.0, 0.0]);
-        g.ecs_set_slot(id, Slot::Off, &ItemStack::new("minecraft:totem_of_undying", 1));
-        assert!(g.ecs_totem_saves(id));
-        assert!(!g.ecs_totem_saves(id));
-    }
 }

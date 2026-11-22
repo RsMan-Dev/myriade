@@ -4,11 +4,8 @@
 //! random ticks, leaf decay and spawns come from.
 use super::*;
 use crate::game::game_tests::tests::server_game;
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
 use horizon_client::chunk::Chunk;
-use horizon_client::entities::{ExperienceOrb, ItemEntity};
 use horizon_client::items::ItemStack;
-use horizon_protocol::packets::play::{self, Clientbound as C};
 use std::sync::Arc;
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the
@@ -136,88 +133,6 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
         level,
         "/give drew from the level's random"
     );
-}
-
-/// A window joined to a server through memory, with the sounds it plays
-/// recorded: the client half of a pickup (`ClientPacketListener`).
-fn with_remote_game<R>(f: impl FnOnce(&mut Game<'_>) -> R) -> R {
-    let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-    let settings = Settings::default();
-    let loaded = load_resources(
-        horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-        Vec::new(),
-        None,
-        &root,
-        &settings,
-        std::time::Instant::now(),
-        false,
-        crate::game::execution_role::ExecutionRole::IntegratedServer,
-        &Progress::new(),
-        &mut |_, _| unreachable!(),
-    )
-    .unwrap();
-    let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-    options.resources = root.clone();
-    let mut game = Game::new(
-        &loaded.resources,
-        loaded.pack,
-        options,
-        settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.to_path_buf(),
-        )),
-    )
-    .unwrap();
-    let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-    game.connect_local(pipe, "Steve").unwrap();
-    game.audio.capture = Some(Vec::new());
-    f(&mut game)
-}
-
-/// `ClientPacketListener.handleTakeItemEntity`: a client pitches an item's and
-/// an orb's pickup from its own random (`ClientPacketListener.random`), so a
-/// pickup never draws the level's stream, which its particles and ambient
-/// sounds share.
-#[test]
-#[ignore = "daily"]
-fn a_client_pickup_sound_takes_the_listeners_random() {
-    with_remote_game(|game| {
-        let at = Vec3::new(2.5, 64.0, 2.5);
-        game.dropped.push(ItemEntity::new(
-            9,
-            ItemStack::new("minecraft:stone", 1),
-            at,
-            Vec3::ZERO,
-            0.0,
-        ));
-        game.orbs.push(ExperienceOrb::new(10, at, Vec3::ZERO, 1));
-        let take = |item: i32| {
-            C::TakeItemEntity(play::TakeItemEntity {
-                item,
-                player: 1,
-                amount: 1,
-            })
-        };
-        let level = game.world.random.state();
-        game.handle_packet(take(9)).unwrap();
-        let (volume, pitch) = sound(game, "minecraft:entity.item.pickup");
-        assert_eq!(volume, 0.2);
-        assert!((0.6..=3.4).contains(&pitch), "pitch {pitch}");
-        assert_eq!(
-            game.world.random.state(),
-            level,
-            "the client's pickup drew from the level's random"
-        );
-        game.handle_packet(take(10)).unwrap();
-        let (volume, pitch) = sound(game, "minecraft:entity.experience_orb.pickup");
-        assert_eq!(volume, 0.1);
-        assert!((0.55..1.25).contains(&pitch), "pitch {pitch}");
-        assert_eq!(
-            game.world.random.state(),
-            level,
-            "the client's orb pickup drew from the level's random"
-        );
-    });
 }
 
 /// `Entity.lavaHurt` pitches the burn sound from the item's own random, the

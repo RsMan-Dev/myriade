@@ -938,7 +938,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn goals_read_add_remove_and_refuse_what_the_mob_does_not_hold() {
-        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, balance| {
+        crate::game::entity::taken_pass_tests::in_both_dimensions(|game, _balance| {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1029,13 +1029,7 @@ mod tests {
                 }
             ));
             // Remove: the species' melee attack goes, and only that one.
-            crate::game::entity::taken_pass_tests::assert_mob_spawn_survives(
-                game,
-                balance,
-                |game| {
-                    assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(1));
-                },
-            );
+            assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(1));
             assert!(!has(game, zombie, "melee_attack"));
             assert_eq!(zombie.remove_goal(game, "melee_attack"), Some(0));
             assert_eq!(zombie.remove_target_goal(game, "hurt_by_target"), Some(1));

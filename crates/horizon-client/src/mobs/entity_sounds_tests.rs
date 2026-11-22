@@ -77,8 +77,8 @@ fn ids(events: &[MobEvent]) -> Vec<String> {
     let source = horizon_assets::resource_source::ResourceSource::directory(PathBuf::from(
         "/nonexistent/horizon-content-entity-sounds",
     ));
-    let mut server = crate::audio::Audio::silent(&source);
-    let mut remote = crate::audio::Audio::silent(&source);
+    let mut server = crate::audio::Audio::default();
+    let mut remote = crate::audio::Audio::default();
     server.capture = Some(vec![]);
     for event in events {
         match event {

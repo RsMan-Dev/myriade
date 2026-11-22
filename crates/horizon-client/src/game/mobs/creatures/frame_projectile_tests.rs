@@ -3,7 +3,8 @@
 use crate::game::{Audio, Game, Options, Progress, Settings, execution_role, load_resources};
 use horizon_client::chunk::Chunk;
 use horizon_core::position::ChunkPos;
-use horizon_ecs_proto::{arrow_more::{ArrowShot, Def}, trident::Pickup};
+use horizon_client::arrows::Pickup;
+use horizon_ecs_proto::arrow_more::{ArrowShot, Def};
 use std::sync::Arc;
 
 fn game() -> Game<'static> {
@@ -19,10 +20,8 @@ fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         crate::game::execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -34,9 +33,7 @@ fn game() -> Game<'static> {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.build_registries();

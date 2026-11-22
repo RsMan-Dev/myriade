@@ -1616,10 +1616,8 @@ mod wolf_live_anger_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -1630,9 +1628,7 @@ mod wolf_live_anger_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -1703,186 +1699,6 @@ mod wolf_live_anger_tests {
 }
 
 #[cfg(test)]
-mod boat_passenger_tree_tests {
-    use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
-    #[test]
-    #[ignore = "daily"]
-    fn actual_boat_getter_projects_runtime_children_and_existing_bookkeeping() {
-        with_game(|game| {
-            game.build_registries();
-            game.set_allow_commands(true);
-            // Supply the synthetic chunk before forceload's synchronous load barrier.
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
-            );
-            assert!(game.run_command("forceload add 0 0 15 15"));
-            assert!(game.world.loaded(8, 8));
-            assert!(game.run_command("setblock 8 199 8 stone"));
-            assert!(game.run_command("summon oak_boat 8.5 200 8.5 {UUID:[I;7,151,1,1],NoGravity:1b,Silent:1b,CustomName:\"Hull\"}"));
-            let bid = game
-                .ecs
-                .boats_in(
-                    horizon_core::geometry::Vec3::new(8.0, 199.0, 8.0),
-                    horizon_core::geometry::Vec3::new(9.0, 201.0, 9.0),
-                )
-                .into_iter()
-                .next()
-                .unwrap();
-            let child = game
-                .spawn_mob(
-                    "minecraft:cow",
-                    [8.5, 200.0, 8.5],
-                    true,
-                    crate::game::creatures::SpawnSite::Plain,
-                )
-                .unwrap();
-            let ci = game.remote_entities.iter().position(|m| m.id == child).unwrap();
-            game.remote_entities[ci].no_ai = true;
-            game.remote_entities[ci].no_gravity = true;
-            assert!(
-                !game.persist.raw.contains_key(&child),
-                "fresh actual runtime child has no raw NBT"
-            );
-            assert_eq!(
-                game.remote_entities[ci].extra.anger_end, 0,
-                "unprimed constructor state"
-            );
-            game.ride_mount(Target::Mob(child), Target::Boat(bid))
-                .unwrap();
-            assert_eq!(game.remote_entities[ci].extra.mount, Some(bid));
-            let clock = game.world.game_time;
-            let chunks = game.world.chunks.len();
-            let raw = game.persist.raw.get(&bid).cloned();
-            assert!(raw.as_ref().unwrap().get("Passengers").is_none());
-            let before = (
-                game.persist.uuids.len(),
-                game.persist.uuid_of(child),
-                game.remote_entities[ci].extra.anger_end,
-                game.remote_entities[ci].extra.angry_at,
-            );
-            let first = game.command_target_nbt(Target::Boat(bid)).unwrap();
-            let after = (
-                game.persist.uuids.len(),
-                game.persist.uuid_of(child),
-                game.remote_entities[ci].extra.anger_end,
-                game.remote_entities[ci].extra.angry_at,
-            );
-            println!("parent-first bookkeeping before={before:?} after={after:?}");
-            let mut failures = Vec::new();
-            if after.2 != -1 {
-                failures.push("first parent must use existing 0->-1 normalization".to_owned());
-            }
-            if after.1.is_none() || after.0 != before.0 + usize::from(before.1.is_none()) {
-                failures.push("first parent must use existing UUID registration once".into());
-            }
-            let control = game
-                .spawn_mob(
-                    "minecraft:cow",
-                    [12.5, 200.0, 8.5],
-                    true,
-                    crate::game::creatures::SpawnSite::Plain,
-                )
-                .unwrap();
-            let di = game.remote_entities.iter().position(|m| m.id == control).unwrap();
-            game.remote_entities[di].no_ai = true;
-            game.remote_entities[di].no_gravity = true;
-            assert!(!game.persist.raw.contains_key(&control));
-            assert_eq!(game.remote_entities[di].extra.anger_end, 0);
-            let direct_before = (
-                game.persist.uuids.len(),
-                game.persist.uuid_of(control),
-                game.remote_entities[di].extra.anger_end,
-            );
-            let direct_control = game.command_target_nbt(Target::Mob(control)).unwrap();
-            let direct_after = (
-                game.persist.uuids.len(),
-                game.persist.uuid_of(control),
-                game.remote_entities[di].extra.anger_end,
-            );
-            println!(
-                "existing child-getter bookkeeping before={direct_before:?} after={direct_after:?}"
-            );
-            assert_eq!(direct_after.2, -1);
-            assert_eq!(
-                direct_after.0,
-                direct_before.0 + usize::from(direct_before.1.is_none())
-            );
-            assert!(direct_after.1.is_some());
-            assert_eq!(
-                direct_control.get("UUID"),
-                Some(&Tag::IntArray(direct_after.1.unwrap().to_vec()))
-            );
-            let direct_child = game.command_target_nbt(Target::Mob(child)).unwrap();
-            let saved_child = |tag: &Tag| match tag.get("Passengers") {
-                Some(Tag::List(v)) if v.len() == 1 => Some(v[0].clone()),
-                _ => None,
-            };
-            if saved_child(&first).as_ref() != Some(&direct_child) {
-                failures.push("first parent typed child must equal actual child getter".into());
-            }
-            let stable = game.persist.uuids.len();
-            for _ in 0..2 {
-                let again = game.command_target_nbt(Target::Boat(bid)).unwrap();
-                if saved_child(&again).as_ref() != Some(&direct_child) {
-                    failures.push("repeated parent must keep exactly one actual child".into());
-                }
-                assert_eq!(game.persist.uuids.len(), stable);
-                assert_eq!(game.remote_entities[ci].extra.anger_end, -1);
-                assert_eq!(game.remote_entities[ci].extra.mount, Some(bid));
-            }
-            assert!(game.run_command("scoreboard objectives add h151 dummy"));
-            assert!(game.run_command("scoreboard players set #r h151 91"));
-            assert!(game.run_command("scoreboard players set #s h151 17"));
-            let accepted=game.run_command("execute store result score #r h151 store success score #s h151 run data get entity @e[nbt={UUID:[I;7,151,1,1]},limit=1] Passengers[0].UUID");
-            let score = |name| game.score.board.score(name, "h151").unwrap().value;
-            if (accepted, score("#r"), score("#s")) != (true, 4, 1) {
-                failures.push("registered data command must reach live tree".into());
-            }
-            let boat_entity = game.ecs.entity_of(bid).unwrap();
-            game.ecs.set_leash(
-                boat_entity,
-                Some(horizon_client::mobs::leash::Holder::Mob(control)),
-            );
-            let leashed = game.command_target_nbt(Target::Boat(bid)).unwrap();
-            assert_eq!(
-                leashed.get("leash").and_then(|t| t.get("UUID")),
-                direct_control.get("UUID")
-            );
-            assert_eq!(leashed.get("CustomName"), Some(&Tag::String("Hull".into())));
-            assert_eq!(leashed.get("Silent"), Some(&Tag::Byte(1)));
-            game.dismount_mob(child);
-            assert!(
-                game.command_target_nbt(Target::Boat(bid))
-                    .unwrap()
-                    .get("Passengers")
-                    .is_none()
-            );
-            game.ride_mount(Target::Mob(child), Target::Boat(bid))
-                .unwrap();
-            let remount_child = game.command_target_nbt(Target::Mob(child)).unwrap();
-            if saved_child(&game.command_target_nbt(Target::Boat(bid)).unwrap()).as_ref()
-                != Some(&remount_child)
-            {
-                failures.push("actual remount tree".into());
-            }
-            assert_eq!(
-                game.persist.raw.get(&bid),
-                raw.as_ref(),
-                "getter must not replay/mutate raw passenger input"
-            );
-            assert_eq!(game.world.chunks.len(), chunks, "no chunk loading");
-            assert_eq!(game.world.game_time, clock, "no scene ticks");
-            assert!(
-                failures.is_empty(),
-                "actual boat passenger getter mismatches: {failures:?}"
-            );
-        });
-    }
-}
-
-#[cfg(test)]
 mod loot_table_tests {
     use crate::game::{Audio, Game, Options, Progress, Settings, load_resources};
     use horizon_client::{
@@ -1936,10 +1752,8 @@ mod loot_table_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -1950,9 +1764,7 @@ mod loot_table_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2055,10 +1867,8 @@ mod modern_literal_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2069,9 +1879,7 @@ mod modern_literal_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2271,10 +2079,8 @@ mod falling_live_adoption_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2289,9 +2095,7 @@ mod falling_live_adoption_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();

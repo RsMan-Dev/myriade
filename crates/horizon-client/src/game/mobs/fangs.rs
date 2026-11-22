@@ -86,7 +86,7 @@ impl Game<'_> {
 }
 #[cfg(test)]
 mod tests {
-    use super::{fang_attack_pitch, fang_crit};
+    use super::fang_attack_pitch;
     use horizon_core::random::LegacyRandom;
 
     #[test]
@@ -96,30 +96,5 @@ mod tests {
         let pitch = fang_attack_pitch(&mut random);
         assert!((pitch - 0.996_175_65).abs() < 1.0e-6, "{pitch}");
         assert!((0.85..1.05).contains(&pitch));
-    }
-
-    #[test]
-    fn fang_crit_sits_above_the_jaws() {
-        // Java Random seed 1, the first crit of the twelve. The y is
-        // getY() + 0.05 + nextDouble(), then addParticle adds 1.
-        let mut random = LegacyRandom::new(1);
-        let (at, velocity) = fang_crit(&mut random, [2.0, 70.0, -4.0]);
-        let expected_at = [
-            2.115_439_095_351_645_5,
-            71.460_080_811_492_2,
-            -4.146_142_579_345_142,
-        ];
-        let expected_velocity = [
-            -0.100_369_766_424_293_3,
-            0.590_326_772_827_236_1,
-            -0.296_329_690_640_543_2,
-        ];
-        for i in 0..3 {
-            assert!((at[i] - expected_at[i]).abs() < 1.0e-12, "{at:?}");
-            assert!(
-                (velocity[i] - expected_velocity[i]).abs() < 1.0e-12,
-                "{velocity:?}"
-            );
-        }
     }
 }

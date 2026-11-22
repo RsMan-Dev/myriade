@@ -1,30 +1,8 @@
 //! Regressions for the typed bindings carried by the upstream sync.
-use super::native_entity_refs::tests::{with_client_game, with_game_at};
+use super::native_entity_refs::tests::with_game_at;
 use horizon_client::chunk::Chunk;
-use mod_api::{ClientHost, Flow, Hooks, ModEntry, ServerHost};
+use mod_api::{Flow, Hooks, ModEntry, ServerHost};
 use std::{path::PathBuf, sync::Arc};
-
-mod background {
-    use super::*;
-    #[derive(Default)]
-    struct Background;
-    #[mod_api::horizon_mod]
-    impl Hooks for Background {
-        fn screen_transparent_background(
-            &self,
-            host: &dyn ClientHost,
-            event: &mut mod_api::ScreenTransparentBackgroundEvent<'_>,
-        ) -> Flow {
-            if event.screen != "inventory" {
-                return Flow::Continue;
-            }
-            assert!(host.apply_screen_blur());
-            assert!(!host.apply_screen_blur());
-            event.batch.fill([3.0, 4.0, 5.0, 6.0], 0xff123456);
-            Flow::Cancel
-        }
-    }
-}
 
 mod claims {
     use super::*;

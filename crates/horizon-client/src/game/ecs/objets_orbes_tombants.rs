@@ -184,7 +184,7 @@ mod tests {
         with_game(|game| {
             game.ecs = level(game);
             let at = [0.5, 64.0, 0.5];
-            let (a, b) = (game.ecs_orb(3, at).unwrap(), game.ecs_orb(4, at).unwrap());
+            let (a, b) = (game.ecs_orb_moving(3, at, [0.0; 3]).unwrap(), game.ecs_orb_moving(4, at, [0.0; 3]).unwrap());
             for _ in 0..40 {
                 game.ecs_with(|ecs, mw| ecs.step(mw));
             }

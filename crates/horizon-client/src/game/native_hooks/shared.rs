@@ -2895,10 +2895,8 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             super::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!("no menu handoff"),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2909,9 +2907,7 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
+            Audio::default(),
         )
         .unwrap();
 
@@ -2949,42 +2945,6 @@ mod tests {
             Some(super::BlockEntity::Banner(_))
         ));
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    /// With no window to lay a screen out in there is no slot under the pointer.
-    #[test]
-    #[ignore = "daily"]
-    fn no_item_is_hovered_without_a_window() {
-        use super::super::{Audio, Game, Options, Progress, Settings, load_resources};
-
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            false,
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-            &mut |_, _| unreachable!("no menu handoff"),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        let game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.to_path_buf(),
-            )),
-        )
-        .unwrap();
-        assert_eq!(game.screen_hovered_item(), None);
     }
 
     /// A mod's own screen opens only over the world, never over another

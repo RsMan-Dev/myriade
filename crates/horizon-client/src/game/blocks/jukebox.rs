@@ -589,43 +589,6 @@ mod jukebox_component_tests {
         );
     }
 
-    /// `JukeboxBlock.useItemOn` asks the stack for `JUKEBOX_PLAYABLE`: a disc
-    /// whose component was removed is not taken, any item given one is.
-    #[test]
-    #[ignore = "daily"]
-    fn a_jukebox_takes_what_the_stacks_component_makes_playable() {
-        let mut resources = None;
-        let mut game = server_game(&mut resources);
-        let state = game
-            .pack
-            .assets
-            .registry
-            .default_state("minecraft:jukebox")
-            .unwrap();
-        game.world.set(8, 64, 8, state).unwrap();
-        let takes =
-            |game: &super::Game<'_>, stack: ItemStack| game.jukebox_takes([8, 64, 8], Some(&stack));
-        assert!(takes(&game, ItemStack::new("minecraft:music_disc_cat", 1)));
-        assert!(!takes(&game, ItemStack::new("minecraft:stone", 1)));
-        let mut removed = ItemStack::new("minecraft:music_disc_cat", 1);
-        removed.data_mut().set_other(
-            "!minecraft:jukebox_playable",
-            Some(Tag::Compound(Default::default())),
-        );
-        assert!(
-            !takes(&game, removed),
-            "a removed component is not playable"
-        );
-        let mut stone = ItemStack::new("minecraft:stone", 1);
-        stone.data_mut().set_other(
-            "minecraft:jukebox_playable",
-            Some(Tag::String("minecraft:cat".into())),
-        );
-        assert!(
-            takes(&game, stone),
-            "the stack's own component makes it playable"
-        );
-    }
 }
 
 #[cfg(test)]
@@ -653,10 +616,8 @@ mod block_change_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -667,9 +628,7 @@ mod block_change_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.world

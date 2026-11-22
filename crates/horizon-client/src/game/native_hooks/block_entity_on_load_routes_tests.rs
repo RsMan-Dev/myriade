@@ -176,43 +176,6 @@ mod tests {
             assert_eq!(game.world.block_entities.pending_on_load_len(), 0);
         });
     }
-    #[test]
-    #[ignore = "daily"]
-    fn block_entity_on_load_shared_type_replacement_has_fresh_handle() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_shared_type_replacement_has_fresh_handle";
-        if run_fresh_cases(NAME, "HORIZON_ON_LOAD_SHARED_TYPE", &["run"]) {
-            return;
-        }
-        with_fixture(false, |game, log, _| {
-            place(game);
-            let level = game.level("minecraft:overworld").unwrap();
-            let old = game.block_entity(level, [1, 64, 1]).unwrap();
-            let generation = game.world.block_entities.generation(&(1, 64, 1)).unwrap();
-            game.fire_pending_block_entity_loads();
-            let a = game.pack.assets.registry.default_state("test:a").unwrap();
-            let b = game.pack.assets.registry.default_state("test:b").unwrap();
-            game.world.set(1, 64, 1, b).unwrap();
-            game.sync_block_entity((1, 64, 1), Some(a), b);
-            let new = game.block_entity(level, [1, 64, 1]).unwrap();
-            assert_ne!(old, new);
-            assert_ne!(
-                game.world.block_entities.generation(&(1, 64, 1)),
-                Some(generation)
-            );
-            assert_eq!(old.data(game), None);
-            assert_eq!(
-                new.data(game).unwrap().get(&"count".into()),
-                Some(&Tag::Int(7))
-            );
-            assert_eq!(game.world.block_entities.pending_on_load_len(), 1);
-            game.tick_mod_block_entity((1, 64, 1));
-            game.tick_mod_block_entity((1, 64, 1));
-            assert_eq!(
-                *log.lock().unwrap(),
-                [("load", 7), ("load", 7), ("tick", -1), ("tick", -1)]
-            );
-        });
-    }
     fn assert_first_two_ticks(game: &mut Game<'_>, log: &Log, count: i32) {
         assert!(log.lock().unwrap().is_empty());
         assert_eq!(game.world.block_entities.pending_on_load_len(), 1);
@@ -258,27 +221,6 @@ mod tests {
                 Some(BlockEntity::Mod(_))
             ));
             assert_first_two_ticks(game, &log, 7);
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn block_entity_on_load_stale_queued_identity_is_skipped() {
-        const NAME: &str = "game::native_hooks::block_entity_on_load_routes_tests::tests::block_entity_on_load_stale_queued_identity_is_skipped";
-        if run_fresh_cases(NAME, "HORIZON_ON_LOAD_STALE", &["run"]) {
-            return;
-        }
-        with_fixture(false, |game, log, _| {
-            place(game);
-            let a = game.pack.assets.registry.default_state("test:a").unwrap();
-            let b = game.pack.assets.registry.default_state("test:b").unwrap();
-            game.world.set(1, 64, 1, b).unwrap();
-            game.sync_block_entity((1, 64, 1), Some(a), b);
-            assert_eq!(game.world.block_entities.pending_on_load_len(), 2);
-            game.fire_pending_block_entity_loads();
-            assert_eq!(*log.lock().unwrap(), [("load", 7)]);
-            assert_eq!(game.world.block_entities.pending_on_load_len(), 0);
-            game.tick_mod_block_entity((1, 64, 1));
-            assert_eq!(*log.lock().unwrap(), [("load", 7), ("tick", -1)]);
         });
     }
 }

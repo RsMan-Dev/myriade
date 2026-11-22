@@ -2,6 +2,7 @@
 //! trader sits at the cart's own y, and the old behavior sets a rider down
 //! beside its motion direction, not beside its facing.
 use super::*;
+use horizon_client::mobs::Species;
 
 /// `AbstractMinecart.getPassengerAttachmentPoint` lowers a villager's and a
 /// wandering trader's seat to the cart's own y; any other rider keeps the

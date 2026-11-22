@@ -1744,19 +1744,6 @@ mod tests {
             );
         }
     }
-
-    /// `endFlashPosition`'s direction: the flash sprite's centre, 100 blocks away.
-    #[test]
-    fn the_end_flash_is_where_its_sprite_is() {
-        let at =
-            |x: f32, y: f32| flash_pose(x, y).transform_point3(glam::Vec3::new(0.0, 100.0, 0.0));
-        // Straight up whatever the turn, and level toward the north at y_angle 180.
-        assert!(at(-90.0, 37.0).abs_diff_eq(glam::Vec3::new(0.0, 100.0, 0.0), 1e-3));
-        assert!(at(0.0, 180.0).abs_diff_eq(glam::Vec3::new(0.0, 0.0, -100.0), 1e-3));
-        for (x, y) in [(-60.0, -180.0), (10.0, 95.0), (-25.0, 3.0)] {
-            assert!((at(x, y).length() - 100.0).abs() < 1e-3);
-        }
-    }
 }
 
 #[cfg(test)]

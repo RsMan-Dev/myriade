@@ -3,6 +3,7 @@
 use super::super::native_machines::tests::server_game;
 use super::*;
 use horizon_client::chunk::Chunk;
+use horizon_client::mobs::Who;
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
 

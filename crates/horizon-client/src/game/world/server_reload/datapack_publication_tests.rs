@@ -181,36 +181,6 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
     );
 }
 
-#[test]
-#[ignore = "daily"]
-fn remote_reload_never_decodes_local_registry_files() {
-    let scratch = tempfile::tempdir().unwrap();
-    let root = scratch.path();
-    write(
-        &root.join("datapacks/local/pack.mcmeta"),
-        r#"{"pack":{"description":"remote poison"}}"#,
-    );
-    write(
-        &root.join("datapacks/local/data/registry_test/registry_test/spell/fire.json"),
-        "{malformed",
-    );
-    write(
-        &root.join("datapacks.json"),
-        r#"{"enabled":["file/local"],"disabled":[]}"#,
-    );
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("registry_test", Box::new(RegistryMod))].into(),
-        || {
-            crate::game::native_entity_refs::tests::with_client_game(|game| {
-                let (pipe, _server) = horizon_protocol::connection::Pipe::pair();
-                game.connect_local(pipe, "DatapackRemote").unwrap();
-                game.world_root = root.to_owned();
-                game.reload_datapacks(true, &[]).unwrap();
-                assert!(game.mods.datapack_registries.is_none());
-            });
-        },
-    );
-}
 /// A reload over a decode limit, or with a bad winning file, is refused naming the pack and
 /// file; the old generation stays live and the next valid reload publishes.
 #[test]

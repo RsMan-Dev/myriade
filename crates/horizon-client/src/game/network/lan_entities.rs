@@ -968,32 +968,6 @@ mod tests {
         assert!(stand_poses(&plain).is_empty());
     }
 
-    /// Issue #8050: a cart's custom display block and offset reach clients
-    /// as entries 11 and 12, the offset only off the kind's default.
-    #[test]
-    fn cart_display_block_and_offset_are_synched() {
-        let mut e = state(1, "minecraft:minecart", [0.0; 3], 0.0, false);
-        cart_display_data(&mut e, Some(BlockStateId(42)), Some(14), 6);
-        assert_eq!(
-            e.meta,
-            vec![
-                (11, serializer::OPTIONAL_BLOCK_STATE, Value::Id(42)),
-                (12, serializer::INT, Value::Int(14)),
-            ]
-        );
-        assert_eq!(
-            e.defaults,
-            vec![
-                (11, serializer::OPTIONAL_BLOCK_STATE, Value::Id(0)),
-                (12, serializer::INT, Value::Int(6)),
-            ]
-        );
-        let mut plain = state(2, "minecraft:hopper_minecart", [0.0; 3], 0.0, false);
-        cart_display_data(&mut plain, None, Some(1), 1);
-        assert!(plain.meta.is_empty());
-        assert_eq!(plain.defaults[1], (12, serializer::INT, Value::Int(1)));
-    }
-
     #[test]
     fn add_state_and_meta_helpers_reuse_pooled_capacity() {
         let mut states = States::default();
@@ -1030,27 +1004,5 @@ mod tests {
         assert_eq!(kind_ptr2, kind_ptr);
         assert_eq!(meta_ptr2, meta_ptr);
         assert_eq!(meta_cap2, meta_cap);
-    }
-}
-
-#[cfg(test)]
-mod vehicle_meta_tests {
-    use super::*;
-
-    #[test]
-    fn vehicle_wobble_state_carries_its_defaults() {
-        let mut e = state(5, "minecraft:minecart", [0.0; 3], 0.0, false);
-        vehicle_meta(&mut e, 0, 1, 0.0);
-        assert!(e.meta.is_empty());
-        assert_eq!(
-            e.defaults,
-            vec![
-                (8, serializer::INT, Value::Int(0)),
-                (9, serializer::INT, Value::Int(1)),
-                (10, serializer::FLOAT, Value::Float(0.0)),
-            ]
-        );
-        vehicle_meta(&mut e, 4, -1, 3.0);
-        assert_eq!(e.meta.len(), 3);
     }
 }

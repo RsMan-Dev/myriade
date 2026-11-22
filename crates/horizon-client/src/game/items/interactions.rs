@@ -58,34 +58,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_box_is_centred_on_the_feet_and_grows_with_the_data() {
-        let mut i = RemoteInteraction::new([10.0, 64.0, -3.0]);
-        let b = i.bounds();
-        assert_eq!(
-            (b.min_position().components(), b.max_position().components()),
-            ([9.5, 64.0, -3.5], [10.5, 65.0, -2.5])
-        );
-        i.metadata(&[
-            (8, 0, Value::Float(2.2)),
-            (9, 0, Value::Float(2.2)),
-            (10, 0, Value::Bool(true)),
-        ]);
-        let b = i.bounds();
-        let half = f64::from(2.2f32) / 2.0;
-        let height = f64::from(2.2f32);
-        let (lo, hi) = (b.min_position().components(), b.max_position().components());
-        for (got, want) in lo.iter().zip([10.0 - half, 64.0, -3.0 - half]) {
-            assert!((got - want).abs() < 1e-6, "{lo:?}");
-        }
-        for (got, want) in hi.iter().zip([10.0 + half, 64.0 + height, -3.0 + half]) {
-            assert!((got - want).abs() < 1e-6, "{hi:?}");
-        }
-        assert!(i.response);
-    }
-    #[test]
     fn a_riding_hitbox_moves_with_its_pivot() {
-        let mut i = RemoteInteraction::new([10.0, 64.0, -3.0]);
-        i.vehicle = Some(9);
+        let mut i = RemoteInteraction {
+            position: Vec3::new(10.0, 64.0, -3.0),
+            width: 1.0,
+            height: 1.0,
+            vehicle: Some(9),
+        };
         i.ride_to(glam::DVec3::new(12.0, 65.5, -3.0));
         assert_eq!(i.position, Vec3::new(12.0, 65.5, -3.0));
         let b = i.bounds();

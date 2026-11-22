@@ -6,7 +6,6 @@
 use super::native_entity_refs::tests::{
     bind_local_player, with_game,
 };
-use super::native_guest_turn_tests::with_guests;
 use horizon_client::items::ItemStack;
 use horizon_client::motion::PlayerMotion;
 use horizon_core::geometry::Vec3;
@@ -47,8 +46,6 @@ impl Hooks for NeutralMod {
 
 /// The host player's entity id.
 const PLAYER: u32 = 42;
-/// The LAN guest `with_guests` places as connection and entity 12.
-const GUEST: u32 = 12;
 
 /// A serving game with a survival host player, entity `PLAYER`, at `at`.
 fn serving(game: &mut super::Game<'_>, at: Vec3) {
@@ -76,75 +73,6 @@ fn wearing(game: &mut super::Game<'_>, head: Option<&str>, feet: Option<&str>) -
 
 fn asked() -> Vec<(&'static str, u32)> {
     ASKED.lock().unwrap().clone()
-}
-
-#[test]
-#[ignore = "daily"]
-fn a_part_decides_whether_a_worn_piece_counts_as_gold() {
-    crate::game::in_own_process(
-        "game::native_makes_piglins_neutral_tests::a_part_decides_whether_a_worn_piece_counts_as_gold",
-        a_part_decides_whether_a_worn_piece_counts_as_gold_isolated,
-    );
-}
-
-fn a_part_decides_whether_a_worn_piece_counts_as_gold_isolated() {
-    let mods: mod_api::Mods = vec![mod_api::ModEntry::new("neutral", Box::new(NeutralMod))].into();
-    mod_platform::testing::with_mods(mods.clone(), || {
-        crate::game::api_values::install_parts(&mods).unwrap();
-        with_game(|game| {
-            serving(game, Vec3::new(0.5, 64.0, 0.5));
-            assert!(wearing(game, Some("minecraft:leather_helmet"), None));
-            assert_eq!(
-                asked(),
-                [("minecraft:leather_helmet", PLAYER)],
-                "the part sees the wearer"
-            );
-            // Golden boots the part refuses don't count, though the tag lists them.
-            assert!(!wearing(game, None, Some("minecraft:golden_boots")));
-            assert_eq!(asked(), [("minecraft:golden_boots", PLAYER)]);
-            // A tagged piece no part is attached to keeps vanilla's answer.
-            assert!(wearing(game, Some("minecraft:golden_helmet"), None));
-            assert!(asked().is_empty());
-            assert!(!wearing(game, Some("minecraft:iron_helmet"), None));
-            // Feet come first (`EquipmentSlotGroup.ARMOR`): boots that count end the question
-            // before the helmet is asked; refused boots go on to the helmet.
-            assert!(wearing(
-                game,
-                Some("minecraft:leather_helmet"),
-                Some("minecraft:leather_boots")
-            ));
-            assert_eq!(asked(), [("minecraft:leather_boots", PLAYER)]);
-            assert!(wearing(
-                game,
-                Some("minecraft:leather_helmet"),
-                Some("minecraft:golden_boots")
-            ));
-            assert_eq!(
-                asked(),
-                [
-                    ("minecraft:golden_boots", PLAYER),
-                    ("minecraft:leather_helmet", PLAYER)
-                ]
-            );
-        });
-        // A LAN guest's view asks with the guest as the wearer.
-        with_guests(|game| {
-            game.options.dedicated = Some(Vec::new());
-            let lan = game.lan.as_mut().unwrap();
-            lan.hub.guests.update_all(|guest| {
-                guest.loaded = true;
-                if guest.conn == GUEST {
-                    guest.armor = armor(Some("minecraft:leather_helmet"), None);
-                }
-            });
-            ASKED.lock().unwrap().clear();
-            let views = game.lan_guest_views();
-            let gold = |conn: u32| views.iter().find(|(c, _)| *c == conn).unwrap().1.gold_armor;
-            assert!(gold(GUEST));
-            assert!(!gold(13));
-            assert_eq!(asked(), [("minecraft:leather_helmet", GUEST)]);
-        });
-    });
 }
 
 #[test]

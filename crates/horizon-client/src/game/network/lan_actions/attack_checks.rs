@@ -160,10 +160,8 @@ mod tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -177,9 +175,7 @@ mod tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -294,7 +290,7 @@ mod tests {
             &[],
         )];
 
-        let hp = |g: &Game<'_>| g.mobs.iter().find(|m| m.id as i32 == pig).unwrap().health;
+        let hp = |g: &Game<'_>| g.mob_object(pig as u32).unwrap().health;
         let full = hp(&game);
         attack(&mut game, 2, pig);
         assert_eq!(disconnects(&rx), vec![], "a pig is a target");

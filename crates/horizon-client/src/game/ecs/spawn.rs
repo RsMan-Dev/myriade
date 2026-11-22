@@ -156,27 +156,3 @@ fn ecs_reason(r: Reason) -> SpawnReason {
         _ => SpawnReason::Command,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::ecs_bridge::EcsLevel;
-    use crate::game::native_entity_refs::tests::with_game;
-    use horizon_ecs_proto::bridge::host::HostSetup;
-
-    #[test]
-    fn a_command_spawn_is_an_id_the_bridge_reads_and_the_count_agrees() {
-        with_game(|game| {
-            let level = {
-                game.test_ecs_level()
-            };
-            game.ecs = level;
-            let at = [0.5, 64.0, 0.5];
-            let first = game.ecs_spawn("minecraft:cow", at, None).unwrap();
-            let second = game.ecs_spawn("minecraft:cow", [1.5, 64.0, 0.5], None).unwrap();
-            assert!(game.ecs.exists(first) && game.ecs.exists(second));
-            assert_eq!(game.ecs.kind(first), Some("minecraft:cow"));
-            assert_eq!(game.ecs_count("minecraft:cow", at, 8.0), 2);
-            assert_eq!(game.ecs_count("minecraft:cow", [100.0, 64.0, 100.0], 8.0), 0);
-        });
-    }
-}

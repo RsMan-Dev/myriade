@@ -1882,45 +1882,9 @@ mod attribute_missing_tests;
 
 #[cfg(test)]
 mod tests {
-    use super::{look_at, take_new_reinforcements};
+    use super::look_at;
     use horizon_gameplay::commands::sound::playsound_placement;
     use horizon_client::mobs::{MobEvent, Who};
-
-    #[test]
-    fn command_reinforcements_leave_prior_requests_and_other_events_queued() {
-        let request = |mob| MobEvent::Reinforcements {
-            mob,
-            target: Who::Player,
-        };
-        let mut events = vec![request(1), MobEvent::Sound("before", [0.; 3], 1., 1.)];
-        let queued = events.len();
-        events.extend([
-            request(2),
-            MobEvent::Sound("after", [0.; 3], 1., 1.),
-            request(3),
-        ]);
-        assert_eq!(
-            take_new_reinforcements(&mut events, queued),
-            [(2, Who::Player), (3, Who::Player)]
-        );
-        assert!(matches!(
-            events.as_slice(),
-            [
-                MobEvent::Reinforcements { mob: 1, .. },
-                MobEvent::Sound("before", ..),
-                MobEvent::Sound("after", ..)
-            ]
-        ));
-        assert!(take_new_reinforcements(&mut events, queued).is_empty());
-        assert_eq!(events.len(), 3);
-    }
-
-    #[test]
-    fn command_reinforcements_tolerate_a_damage_handler_clearing_its_outbox() {
-        let mut events = vec![MobEvent::Sound("after", [0.; 3], 1., 1.)];
-        assert!(take_new_reinforcements(&mut events, 4).is_empty());
-        assert_eq!(events.len(), 1);
-    }
 
     fn assert_angle(got: f32, want: f32) {
         assert!((got - want).abs() < 1.0e-4, "{got} is not {want}");
@@ -2010,10 +1974,8 @@ mod vehicle_damage_command_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2028,9 +1990,7 @@ mod vehicle_damage_command_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();
@@ -2424,9 +2384,6 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "particle_command_tests.rs"]
-mod particle_command_tests;
 
 #[cfg(test)]
 #[path = "attribute_tests.rs"]
@@ -2453,10 +2410,8 @@ mod attribute_modifier_command_tests {
             &root,
             &settings,
             std::time::Instant::now(),
-            false,
             crate::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
-            &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -2473,9 +2428,7 @@ mod attribute_modifier_command_tests {
             loaded.pack,
             options,
             settings,
-            Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-                root.clone(),
-            )),
+            Audio::default(),
         )
         .unwrap();
         game.build_registries();

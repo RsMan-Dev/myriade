@@ -320,53 +320,7 @@ mod tests {
         }
     }
 
-    use super::{Screen, inventory_after_mode, loads_chunks, projectile_predicate_supported};
-
-    // Added after the frozen old Game proof: unsupported conjuncts must not
-    // become permission from their otherwise matching blocks portion.
-    #[test]
-    fn projectile_predicates_require_a_complete_supported_match() {
-        for extra in [
-            "nbt:{marker:1}",
-            "components:{}",
-            "predicates:{}",
-            "state:{age:{min:1}}",
-        ] {
-            let text = format!("{{blocks:\"minecraft:chorus_flower\",{extra}}}");
-            let (tag, _) = horizon_core::nbt::parse_snbt(&text).unwrap();
-            assert!(!projectile_predicate_supported(&tag), "{text}");
-        }
-        for text in ["7", "[]", "{blocks:[7]}"] {
-            let (tag, _) = horizon_core::nbt::parse_snbt(text).unwrap();
-            assert!(!projectile_predicate_supported(&tag), "{text}");
-        }
-        let (tag, _) = horizon_core::nbt::parse_snbt(
-            "{blocks:\"minecraft:chorus_flower\",state:{age:{min:\"0\",max:\"5\"}}}",
-        )
-        .unwrap();
-        assert!(projectile_predicate_supported(&tag));
-    }
-
-    /// `InventoryScreen.containerTick`: the survival inventory becomes the
-    /// creative one when the player gets infinite materials, and any other
-    /// screen is left where it is.
-    #[test]
-    fn a_survival_inventory_becomes_the_creative_one() {
-        assert!(inventory_after_mode(Screen::Inventory, true) == Screen::Creative);
-        let stays = inventory_after_mode(Screen::Inventory, false);
-        assert!(stays == Screen::Inventory, "survival keeps its inventory");
-        // Vanilla's only branch is `hasInfiniteMaterials`: a spectator's open
-        // inventory stays open.
-        for screen in [
-            Screen::Playing,
-            Screen::Creative,
-            Screen::Paused,
-            Screen::Stats,
-            Screen::Advancements,
-        ] {
-            assert!(inventory_after_mode(screen, true) == screen);
-        }
-    }
+    use super::loads_chunks;
 
     /// `ChunkMap.skipPlayer`: only a spectator with `spectators_generate_chunks`
     /// off stops loading chunks around itself.

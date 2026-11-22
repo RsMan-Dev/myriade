@@ -28,10 +28,8 @@ pub(super) fn game() -> Game<'static> {
         &root,
         &settings,
         std::time::Instant::now(),
-        false,
         execution_role::ExecutionRole::IntegratedServer,
         &Progress::new(),
-        &mut |_, _| unreachable!(),
     )
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
@@ -43,9 +41,7 @@ pub(super) fn game() -> Game<'static> {
         loaded.pack,
         options,
         settings,
-        Audio::silent(&horizon_assets::resource_source::ResourceSource::directory(
-            root.clone(),
-        )),
+        Audio::default(),
     )
     .unwrap();
     game.native_lifecycle
@@ -213,35 +209,4 @@ fn the_scene_sensor_hears_a_mob_beside_it() {
             .is_some_and(|e| e.ends_with("\"minecraft:entity_damage\"")),
         "the sensor is indexed: {event:?}"
     );
-}
-
-// Added after the baseline: one entity_action per accepted jump, none for a
-// refused one (the game events posted, as `dispense_fixture` records them).
-
-fn posted_actions(game: &mut Game<'_>, jumps: &[i32]) -> usize {
-    crate::game::dispense_fixture::start_recording();
-    for &data in jumps {
-        jump(game, data);
-    }
-    crate::game::dispense_fixture::stop_recording()
-        .iter()
-        .filter(|line| line.as_str() == "G 8,100,8 minecraft:entity_action")
-        .count()
-}
-
-#[test]
-#[ignore = "daily"]
-fn control_each_accepted_jump_posts_one_entity_action() {
-    let mut game = game();
-    scene(&mut game, true);
-    assert_eq!(posted_actions(&mut game, &[0]), 0, "refused: no power");
-    assert_eq!(posted_actions(&mut game, &[100]), 1, "one accepted jump");
-    assert_eq!(
-        posted_actions(&mut game, &[100, 0, 100]),
-        2,
-        "two accepted, one refused"
-    );
-    let mut game = self::game();
-    scene(&mut game, false);
-    assert_eq!(posted_actions(&mut game, &[100]), 0, "refused: no saddle");
 }
