@@ -256,6 +256,8 @@ pub struct Def {
     pub despawn: Option<crate::despawn::DespawnDef>,
     /// Whether the type is saved with its world (`EntityType` without `noSave`): false for the leash knot and the bobber (no `noSave` in the jar's `EntityTypes`: the lightning bolt has no species).
     pub saved: bool,
+    /// Whether the type is subject to gravity (`LivingEntity.getGravity`): false drops the `Gravity` component.
+    pub gravity: bool,
     /// `Goat`'s screaming chance at birth (`species::goat::SCREAMING_CHANCE`): `None` for a species that has none.
     pub screaming: Option<f64>,
     /// `Goat.finalizeSpawn`'s horn chance (`species::goat::LOST_HORN_CHANCE`): `None` for a species that has none.
@@ -288,7 +290,7 @@ pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::B
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -349,6 +351,8 @@ pub struct Resolved {
     pub despawn: Option<&'static crate::despawn::DespawnDef>,
     /// `Def::saved`: whether the type is saved (its entities get `nbt::Saved`).
     pub saved: bool,
+    /// `Def::gravity`.
+    pub gravity: bool,
     /// `Def::screaming`.
     pub screaming: Option<f64>,
     /// `Def::lost_horn`.
@@ -480,7 +484,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity,screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {

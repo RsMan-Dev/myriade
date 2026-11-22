@@ -144,7 +144,8 @@ pub struct Species {
     pub width: f32,
     pub height: f32,
     pub step_height: f32,
-    pub gravity: f64,
+    /// The gravity of the type (`Gravity`), absent when the type is not subject to it.
+    pub gravity: Option<f64>,
     pub speed: f64,
     /// `Attributes.FLYING_SPEED` and the `air_speed` of the type (`LivingEntity.getFlyingSpeed`).
     pub flying_speed: f64,

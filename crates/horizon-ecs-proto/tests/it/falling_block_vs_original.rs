@@ -97,7 +97,7 @@ fn a_block_still_in_the_air_after_600_ticks_is_removed_and_drops_its_item() {
     let sand = stone(&h);
     let item = horizon_client_lib::items::ItemStack::new("minecraft:sand", 1);
     let e = fall(&mut h.world, [0, top + 10, 0], sand, Some(item));
-    h.world.get_mut::<Body>(e).unwrap().gravity = 0.0;
+    h.world.entity_mut(e).remove::<Gravity>();
     let mut gone = None;
     for t in 1..=700u64 {
         h.tick();
@@ -173,14 +173,14 @@ fn a_falling_block_saved_mid_fall_reloads_and_keeps_the_limit_left() {
     let top = floor_under(&h, 0, 0, 40);
     let sand = stone(&h);
     let e = fall(&mut h.world, [0, top + 10, 0], sand, None);
-    h.world.get_mut::<Body>(e).unwrap().gravity = 0.0;
+    h.world.entity_mut(e).remove::<Gravity>();
     for _ in 0..100 {
         h.tick();
     }
     let saved = horizon_ecs_proto::nbt::save(&h.world, e).expect("a falling block is saved");
     h.world.entity_mut(e).despawn();
     let r = horizon_ecs_proto::nbt::restore(&mut h.world, &saved).expect("it is restored");
-    h.world.get_mut::<Body>(r).unwrap().gravity = 0.0;
+    h.world.entity_mut(r).remove::<Gravity>();
     let mut gone = None;
     for t in 1..=700u64 {
         h.tick();

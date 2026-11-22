@@ -31,13 +31,14 @@ use super::*;
 /// on the ground for x and z) and the bounce (a downward speed on the ground is halved and turned up). True when it is at rest. An object that
 /// walks (`Drive`) is accelerated as a creature is, before the move.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, gravity: Option<f64>, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
     if body.tnt {
-        return crate::tnt::travel_tnt(level, pos, vel, c, body, bounds, fall_damage);
+        return crate::tnt::travel_tnt(level, pos, vel, c, body, gravity, bounds, fall_damage);
     }
     if body.orb {
-        return travel_orb(level, pos, vel, c, d, body, bounds, fs, fall_damage);
+        return travel_orb(level, pos, vel, c, d, body, gravity, bounds, fs, fall_damage);
     }
+    let g = gravity.unwrap_or(0.0);
     let height = f64::from(0.1_f32);
     let (in_water, in_lava) = (fs.water > height, fs.lava > height);
     if in_water || in_lava {
@@ -45,14 +46,14 @@ pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Y
         let lift = if vel.0.y < f64::from(0.06_f32) { f64::from(5.0e-4_f32) } else { 0.0 };
         vel.0 = Vec3::new(vel.0.x * drag, vel.0.y + lift, vel.0.z * drag);
     } else {
-        vel.0.y -= body.gravity;
+        vel.0.y -= g;
     }
     if d.zza != 0.0 || d.xxa != 0.0 {
         let speed = if c.on_ground { d.speed } else { 0.02 };
         move_relative(vel, yaw.0, speed, d.xxa, d.yya, d.zza);
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
-    if c.on_ground && horizontal <= 1.0e-5 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
+    if c.on_ground && horizontal <= 1.0e-5 && d.zza == 0.0 && d.xxa == 0.0 && vel.0.y <= 0.0 && vel.0.y > -g * 1.01 {
         // Lying still on the ground: the gravity of this tick is not integrated, nothing moves.
         vel.0 = Vec3::ZERO;
         return true;
@@ -80,15 +81,16 @@ pub(crate) fn travel_object(level: &Level, pos: &mut Pos, vel: &mut Vel, yaw: &Y
 /// `ExperienceOrb.tick`'s motion: its eye in water floats it (0.99, lifted by 5.0E-4 up to 0.06), else gravity unless it is in a block; it moves,
 /// then every axis loses the same drag (0.98, times the block's friction on the ground), and a fall faster than 0.03 bounces by 0.4 of it.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
+pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, d: &mut Drive, body: &Body, gravity: Option<f64>, bounds: &mut Bounds, fs: &FluidState, fall_damage: &mut f32) -> bool {
     let mw = level.mw.0;
+    let g = gravity.unwrap_or(0.0);
     if fs.eye_in_water {
         vel.0 = Vec3::new(vel.0.x * f64::from(0.99_f32), (vel.0.y + f64::from(5.0e-4_f32)).min(f64::from(0.06_f32)), vel.0.z * f64::from(0.99_f32));
     } else if level.no_collision(bounds.0) {
-        vel.0.y -= body.gravity;
+        vel.0.y -= g;
     }
     let horizontal = vel.0.x * vel.0.x + vel.0.z * vel.0.z;
-    if c.on_ground && !fs.in_water && horizontal <= 1.0e-10 && vel.0.y <= 0.0 && vel.0.y > -body.gravity * 1.01 {
+    if c.on_ground && !fs.in_water && horizontal <= 1.0e-10 && vel.0.y <= 0.0 && vel.0.y > -g * 1.01 {
         vel.0 = Vec3::ZERO;
         return true;
     }
@@ -115,8 +117,8 @@ pub(crate) fn travel_orb(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Co
 
 /// `LivingEntity.travel` of a cow: in the air (on the ground), or in water or lava (`travelInFluid`).
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_one(level: &Level, sp: &FluidParams, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, bounds: &mut Bounds, fs: &FluidState, jumping: bool, fall_damage: &mut f32) -> bool {
-    travel_one_with(level, sp, pos, vel, yaw, c, d, body, bounds, fs, jumping, fall_damage, true)
+pub(crate) fn travel_one(level: &Level, sp: &FluidParams, pos: &mut Pos, vel: &mut Vel, yaw: &Yaw, c: &mut Contact, d: &mut Drive, body: &Body, gravity: Option<f64>, bounds: &mut Bounds, fs: &FluidState, jumping: bool, fall_damage: &mut f32) -> bool {
+    travel_one_with(level, sp, pos, vel, yaw, c, d, body, gravity, bounds, fs, jumping, fall_damage, true)
 }
 
 /// `travel_one`, with the tiny motions dropped here (`drop_tiny`) or already dropped by the caller's control, before it changed the velocity.
@@ -130,6 +132,7 @@ pub(crate) fn travel_one_with(
     c: &mut Contact,
     d: &mut Drive,
     body: &Body,
+    gravity: Option<f64>,
     bounds: &mut Bounds,
     fs: &FluidState,
     jumping: bool,
@@ -137,9 +140,10 @@ pub(crate) fn travel_one_with(
     drop_tiny: bool,
 ) -> bool {
     if body.object {
-        return travel_object(level, pos, vel, yaw, c, d, body, bounds, fs, fall_damage);
+        return travel_object(level, pos, vel, yaw, c, d, body, gravity, bounds, fs, fall_damage);
     }
-    let rest_vy = (0.0 - body.gravity) * f64::from(0.98_f32);
+    let g = gravity.unwrap_or(0.0);
+    let rest_vy = (0.0 - g) * f64::from(0.98_f32);
     let in_fluid = fs.in_water || fs.in_lava;
     let jumping = jumping || d.jump;
     // A cow at its resting state stays as it is: no sweep is made for it.
@@ -191,7 +195,7 @@ pub(crate) fn travel_one_with(
             do_move(level, pos, vel, c, body, bounds, fall_damage);
             let m = vel.0;
             let m = Vec3::new(m.x * f64::from(slow), m.y * f64::from(0.8_f32), m.z * f64::from(slow));
-            vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, m);
+            vel.0 = horizon_client_lib::mobs::living::fluid_falling(g, falling, false, m);
             c.fall_distance = 0.0;
         } else {
             move_relative(vel, yaw.0, 0.02, d.xxa, d.yya, d.zza);
@@ -199,12 +203,12 @@ pub(crate) fn travel_one_with(
             let v = vel.0;
             if fs.lava <= threshold {
                 vel.0 = Vec3::new(v.x * 0.5, v.y * f64::from(0.8_f32), v.z * 0.5);
-                vel.0 = horizon_client_lib::mobs::living::fluid_falling(body.gravity, falling, false, vel.0);
+                vel.0 = horizon_client_lib::mobs::living::fluid_falling(g, falling, false, vel.0);
             } else {
                 vel.0 = Vec3::new(v.x * 0.5, v.y * 0.5, v.z * 0.5);
             }
-            if body.gravity != 0.0 {
-                vel.0.y -= body.gravity / 4.0;
+            if g != 0.0 {
+                vel.0.y -= g / 4.0;
             }
         }
         // A cow against the shore with free space and no liquid ahead hops out.
@@ -245,7 +249,7 @@ pub(crate) fn travel_one_with(
         c.fall_distance = 0.0;
         movement.y + (0.05 * f64::from(d.levitation) - movement.y) * 0.2
     } else {
-        movement.y - body.gravity
+        movement.y - g
     };
     if d.discard_friction {
         vel.0 = Vec3::new(movement.x, y, movement.z);
@@ -264,12 +268,12 @@ pub(crate) fn travel(
     mut par: crate::cow::OrdCmds,
     plain: ParallelCommands,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
+        (Entity, &mut Pos, &mut Vel, Option<&Yaw>, &mut Contact, Option<&mut Drive>, &Body, Option<&Gravity>, &mut Bounds, &FluidState, Has<Following>, Option<&crate::goals::Jump>, Option<&FluidParams>, Option<&Immune>, Has<Stilled>),
         (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, Without<crate::mount::Riding>, Or<(With<crate::locomotion::WalkMode>, Without<crate::locomotion::Modes>)>),
     >,
 ) {
     let void_y = f64::from(level.mw.0.world.bottom_y() - 64);
-    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
+    let one = |e: Entity, mut p: Mut<Pos>, mut v: Mut<Vel>, y: Option<&Yaw>, mut c: Mut<Contact>, d: Option<Mut<Drive>>, b: &Body, gr: Option<&Gravity>, mut bb: Mut<Bounds>, fs: &FluidState, following: bool, jump: Option<&crate::goals::Jump>, fp: Option<&FluidParams>, imm: Option<&Immune>, still: bool| {
         let mut fall = 0.0_f32;
         let jumping = jump.is_some_and(|j| j.0) && !still;
         // A body without walking (an object) has no yaw and no input.
@@ -282,7 +286,7 @@ pub(crate) fn travel(
         let was_in_air = !c.on_ground;
         let was_on_ground = c.on_ground;
         let fell = c.fall_distance;
-        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, &mut bb, fs, jumping, &mut fall);
+        let rest = travel_one(&level, fp.unwrap_or(&FluidParams::DEFAULT), &mut p, &mut v, y.unwrap_or(&Yaw(0.0)), &mut c, dr, b, gr.map(|g| g.0), &mut bb, fs, jumping, &mut fall);
         // The events of landing are the goals' (an object has none: an orb that glides over the ground would queue two a tick).
         if was_on_ground && !c.on_ground && !b.object {
             par.command_scope(e, |mut cmd| {
@@ -337,10 +341,10 @@ pub(crate) fn travel(
         }
     };
     if cfg.parallel {
-        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st)| one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st));
+        q.par_iter_mut().for_each(|(e, p, v, y, c, d, b, gr, bb, fs, f, j, i, m, st)| one(e, p, v, y, c, d, b, gr, bb, fs, f, j, i, m, st));
     } else {
-        for (e, p, v, y, c, d, b, bb, fs, f, j, i, m, st) in &mut q {
-            one(e, p, v, y, c, d, b, bb, fs, f, j, i, m, st);
+        for (e, p, v, y, c, d, b, gr, bb, fs, f, j, i, m, st) in &mut q {
+            one(e, p, v, y, c, d, b, gr, bb, fs, f, j, i, m, st);
         }
     }
     par.flush();

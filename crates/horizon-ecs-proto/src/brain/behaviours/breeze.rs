@@ -300,7 +300,7 @@ fn jump_start(w: &mut World, e: Entity, _: &Ctx) {
 fn optimal_jump_vector(w: &mut World, e: Entity, target: Vec3) -> Option<Vec3> {
     let angles = crate::jump_arc::shuffle(rules::ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
     let max = rules::jump_max_velocity(w.get::<FollowRange>(e).map_or(24.0, |f| f.0));
-    crate::jump_arc::first_reaching(&angles, pos(w, e), body(w, e).gravity, target, max, None)
+    crate::jump_arc::first_reaching(&angles, pos(w, e), w.get::<Gravity>(e)?.0, target, max, None)
 }
 /// `LongJump.tick`, and `canStillUse` (not standing, and the jump's cooldown not started).
 fn jump_tick(w: &mut World, e: Entity, _: &Ctx) -> bool {

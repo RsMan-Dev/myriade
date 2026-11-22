@@ -34,9 +34,9 @@ pub struct Primed {
 
 /// Primes a TNT at `at` with velocity `vel`, its fuse `fuse` ticks long (`PrimedTnt`'s constructor; the random short fuse is the caller's).
 pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -> Entity {
-    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
+    let body = Body { width: SIZE, height: SIZE, step_height: 0.0, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
     let e = w
-        .spawn((Pos(at), Vel(vel), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), Moving))
+        .spawn((Pos(at), Vel(vel), OwnTime, body, Gravity(0.04), Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), Moving))
         .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::TNT);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::TNT));
@@ -81,12 +81,14 @@ pub(crate) fn primed_due(w: &mut World, e: Entity) {
 /// The motion of a primed TNT (`travel_one` for `Body.tnt`): the gravity, the move, then the drag and the ground's friction. True when it
 /// lies still on the ground with no speed: nothing moves it until a blast or a push wakes it.
 #[allow(clippy::too_many_arguments)]
-pub(crate) fn travel_tnt(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, bounds: &mut Bounds, fall_damage: &mut f32) -> bool {
+pub(crate) fn travel_tnt(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Contact, body: &Body, gravity: Option<f64>, bounds: &mut Bounds, fall_damage: &mut f32) -> bool {
     let v = vel.0;
     if c.on_ground && v.x == 0.0 && v.y == 0.0 && v.z == 0.0 {
         return true;
     }
-    vel.0.y -= body.gravity;
+    if let Some(g) = gravity {
+        vel.0.y -= g;
+    }
     do_move(level, pos, vel, c, body, bounds, fall_damage);
     // `Entity.move`'s last step: the horizontal velocity scaled by the block's speed factor, read only when it moves sideways.
     if vel.0.x != 0.0 || vel.0.z != 0.0 {

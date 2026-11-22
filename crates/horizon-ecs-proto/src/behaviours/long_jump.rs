@@ -657,9 +657,9 @@ fn candidates([x, y, z]: [i32; 3], width: i32, height: i32) -> Vec<([i32; 3], i3
 fn optimal_jump_vector(w: &mut World, e: Entity, p: &Params, mw: &MobWorld, target: Vec3) -> Option<Vec3> {
     let angles = crate::jump_arc::shuffle(ALLOWED_ANGLES, |i| with_rng(w, e, |r| r.next_int(i)));
     let max = (p.jump_strength * f64::from(JUMP_VELOCITY_MULTIPLIER)) as f32;
-    let (pos, body) = (w.get::<Pos>(e)?.0, *w.get::<Body>(e)?);
+    let (pos, body, gravity) = (w.get::<Pos>(e)?.0, *w.get::<Body>(e)?, w.get::<Gravity>(e)?.0);
     // The arc is tested with the standing box (fallback: the pose's box is not read).
-    crate::jump_arc::first_reaching(&angles, pos, body.gravity, target, max, Some((mw, crate::jump_arc::Footprint { width: body.width, height: body.height, occ: Some(w.resource::<Level>().occ) })))
+    crate::jump_arc::first_reaching(&angles, pos, gravity, target, max, Some((mw, crate::jump_arc::Footprint { width: body.width, height: body.height, occ: Some(w.resource::<Level>().occ) })))
 }
 
 /// `LongJumpMidJump` : le bond (vitesse de l'arc, frottement coupé, le corps tourné vers son cap), puis le vol.

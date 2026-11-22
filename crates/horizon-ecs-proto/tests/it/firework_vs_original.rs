@@ -48,7 +48,8 @@ fn creature_at(h: &mut Herd, feet: Vec3) -> Entity {
         .spawn((
             Pos(feet),
             Vel(Vec3::ZERO),
-            Body { width: w, height: hgt, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Body { width: w, height: hgt, step_height: 0.0, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Gravity(0.04),
             Bounds(Aabb::new(
                 Vec3::new(feet.x - 0.125, feet.y, feet.z - 0.125),
                 Vec3::new(feet.x + 0.125, feet.y + 0.25, feet.z + 0.125),

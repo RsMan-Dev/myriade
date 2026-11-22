@@ -204,7 +204,7 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             width: kind.width as f32,
             height: kind.height as f32,
             step_height: kind.step_height as f32,
-            gravity: kind.gravity,
+            gravity: crate::species::registry().by_name(name).unwrap().gravity.then_some(kind.gravity),
             speed: mob.attrs.speed,
             flying_speed: horizon_client_lib::mobs::finalize::value(&mob, horizon_client_lib::mobs::finalize::Attr::FlyingSpeed),
             air_speed: kind.air_speed,

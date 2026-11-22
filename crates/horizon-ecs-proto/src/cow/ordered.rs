@@ -92,6 +92,7 @@ pub(crate) type OrderedItems = (
     &'static FluidParams,
     Has<Moving>,
     Option<&'static Immune>,
+    Option<&'static Gravity>,
 );
 
 /// One island of the ordered pass, its animals in the order of creation: each travels, then pushes every animal that
@@ -114,11 +115,11 @@ pub(crate) fn run_island(
     for &e in ids {
         {
             // SAFETY: the islands are disjoint: no other thread touches the components of this animal.
-            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sp, _, imm)) = (unsafe { q.get_unchecked(e) }) else { continue };
+            let Ok((_, mut p, mut v, y, mut c, mut d, body, mut b, fs, _following, jump, sp, _, imm, gr)) = (unsafe { q.get_unchecked(e) }) else { continue };
             let mut fall = 0.0_f32;
             let jumping = jump.is_some_and(|j| j.0);
             let (was_in_air, fell) = (!c.on_ground, c.fall_distance);
-            travel_one(level, sp, &mut p, &mut v, y, &mut c, &mut d, body, &mut b, fs, jumping, &mut fall);
+            travel_one(level, sp, &mut p, &mut v, y, &mut c, &mut d, body, gr.map(|g| g.0), &mut b, fs, jumping, &mut fall);
             let dmg = if fall > 0.0 && !imm.is_some_and(|i| i.has(IMMUNE_FALL)) { fall } else { 0.0 };
             if dmg > 0.0 || (was_in_air && c.on_ground && fell > 1.0) {
                 out.push(Effect::Fall(e, dmg, fell));

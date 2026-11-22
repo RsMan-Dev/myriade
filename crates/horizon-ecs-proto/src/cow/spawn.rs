@@ -52,7 +52,7 @@ pub fn solid_bundle(sp: &Species, x: f64, z: f64) -> impl Bundle {
 /// `Body`: the physics of a body that falls, lands, floats and is pushed by the water and the blocks (`travel`).
 pub fn body_bundle(sp: &Species) -> impl Bundle {
     (
-        Body { width: sp.width, height: sp.height, step_height: sp.step_height, gravity: sp.gravity, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
+        Body { width: sp.width, height: sp.height, step_height: sp.step_height, speed: sp.speed, fall_factor: crate::rules::attrs_of(sp.rules).fall_factor.unwrap_or(1.0), object: false, orb: false, tnt: false, lava_walker: sp.lava_walker },
         Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },
         FluidParams { eye_height: sp.eye_height, can_float: sp.can_float, water_slowdown: sp.water_slowdown, water_efficiency: sp.water_efficiency, max_air: sp.max_air },
         crate::targeting::Eye(sp.eye_height),
@@ -154,6 +154,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     }
     if has(crate::behaviours::Cap::Body) {
         e.insert(body_bundle(sp));
+        if let Some(g) = sp.gravity {
+            e.insert(crate::cow::Gravity(g));
+        }
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
@@ -234,7 +237,8 @@ pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64)
 
 /// An animal of the species the process was built for (see `species`).
 pub fn cow_bundle(x: f64, z: f64, seed: u64) -> impl Bundle {
-    spawn_bundle(species(), x, z, seed)
+    // A cow is always subject to gravity: `LivingEntity.getGravity` of the type (0.08, the attribute's default).
+    (spawn_bundle(species(), x, z, seed), Gravity(0.08))
 }
 
 pub fn schedule() -> Schedule {

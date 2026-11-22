@@ -385,7 +385,7 @@ pub fn look_yaw(from: Vec3, to: Vec3) -> f32 {
 /// objects, projectiles and flyers do not take these scenes (they have no ground mode, or no gravity to bring them to rest).
 pub fn ground_walker() -> bool {
     let s = species();
-    s.gravity > 0.0 && s.modes.iter().any(|(m, _)| *m == horizon_ecs_proto::locomotion::Medium::Ground)
+    s.gravity.is_some_and(|g| g > 0.0) && s.modes.iter().any(|(m, _)| *m == horizon_ecs_proto::locomotion::Medium::Ground)
 }
 
 /// A host world whose zone ticks around the origin: a player there and two steps, so what is spawned next is awake (a

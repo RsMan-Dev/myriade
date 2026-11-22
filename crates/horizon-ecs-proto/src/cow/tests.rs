@@ -238,6 +238,9 @@ fn cows_and_pigs_share_a_world_and_keep_their_own_values() {
     let mut herd = Herd::with_mix_awake(0, 3.0, true, false, 5, false, 0);
     let spawn = |herd: &mut Herd, sp: &Species, x: f64| {
         let e = herd.world.spawn(spawn_bundle(sp, x, 0.5, 9 + x as u64)).id();
+        if let Some(g) = sp.gravity {
+            herd.world.entity_mut(e).insert(Gravity(g));
+        }
         herd.world.get_mut::<ActiveUntil>(e).unwrap().0 = 0;
         e
     };

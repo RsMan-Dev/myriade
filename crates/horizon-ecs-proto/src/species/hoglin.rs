@@ -58,6 +58,7 @@ fn is_breeding(w: &World, e: Entity) -> bool {
 
 pub static DEF: Def = Def {
     name: "minecraft:hoglin",
+    gravity: true,
     sounds: None,
     sound_on_breed: false,
     reference: None,

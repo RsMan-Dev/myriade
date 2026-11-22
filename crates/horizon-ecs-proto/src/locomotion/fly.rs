@@ -398,11 +398,11 @@ pub fn steer_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
 pub(crate) fn travel(
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &FlyParams, Has<Following>, &MoveTo), (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<FlyMode>)>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, Option<&Gravity>, &mut Bounds, &FluidState, &FluidParams, &Immune, &FlyParams, Has<Following>, &MoveTo), (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<FlyMode>)>,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fluid, imm, fp, following, wanted) in &mut q {
+    for (e, mut p, mut v, y, mut c, mut d, b, gr, mut bb, fs, fluid, imm, fp, following, wanted) in &mut q {
         // A flier at rest on the ground (perched) is at rest as a walker is: no sweep, and it leaves the physics until something moves it.
-        let rest = rest_vy(b.gravity, fp.vertical_drag);
+        let rest = rest_vy(gr.map_or(0.0, |g| g.0), fp.vertical_drag);
         if !fs.in_water && !fs.in_lava && c.on_ground && d.zza == 0.0 && d.xxa == 0.0 && d.yya == 0.0 && v.0.x == 0.0 && v.0.z == 0.0 && v.0.y == rest {
             if !following {
                 par.command_scope(e, |mut cmd| {
@@ -436,7 +436,7 @@ pub(crate) fn travel(
             let m = v.0;
             v.0 = drag_velocity(m, drag);
         } else if fs.in_water || fs.in_lava {
-            travel_one(&level, fluid, &mut p, &mut v, y, &mut c, &mut d, b, &mut bb, fs, false, &mut fall);
+            travel_one(&level, fluid, &mut p, &mut v, y, &mut c, &mut d, b, gr.map(|g| g.0), &mut bb, fs, false, &mut fall);
         } else {
             drop_tiny(&mut v, fp);
             let friction: f32 = if c.on_ground { 0.6 } else { 1.0 };
@@ -444,7 +444,7 @@ pub(crate) fn travel(
             move_relative_3d(&mut v, y.0, speed, d.xxa, d.yya, d.zza);
             do_move(&level, &mut p, &mut v, &mut c, b, &mut bb, &mut fall);
             let m = v.0;
-            let gravity = if d.no_gravity { 0.0 } else { b.gravity };
+            let gravity = if d.no_gravity { 0.0 } else { gr.map_or(0.0, |g| g.0) };
             v.0 = air_velocity(m, friction, fp.vertical_drag, gravity);
         }
         if fp.damp_y != 1.0 {

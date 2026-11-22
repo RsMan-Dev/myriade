@@ -51,7 +51,6 @@ pub struct Body {
     pub width: f32,
     pub height: f32,
     pub step_height: f32,
-    pub gravity: f64,
     /// The movement speed attribute.
     pub speed: f64,
     /// The downward speed is multiplied by it in the air (1: none; the hen's `slow_fall`).
@@ -66,6 +65,10 @@ pub struct Body {
     /// A primed TNT's motion (`PrimedTnt.tick`, `tnt.rs`).
     pub tnt: bool,
 }
+
+/// `LivingEntity.getGravity`: the downward acceleration of an entity subject to gravity. Absent: no gravity is applied.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct Gravity(pub f64);
 
 /// The world box of the cow: persistent data, translated by the move, changed by growth; nothing rebuilds it.
 #[derive(Component, Clone, Copy, Debug)]

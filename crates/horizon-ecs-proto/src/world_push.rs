@@ -330,7 +330,7 @@ fn restitute(w: &mut World, e: Entity, limited: Vec3, moved: Vec3) {
         v.z = 0.0;
     }
     if vertical {
-        let gravity = w.get::<Body>(e).map_or(crate::rules::minecart::GRAVITY, |b| b.gravity);
+        let gravity = w.get::<Gravity>(e).map_or(crate::rules::minecart::GRAVITY, |g| g.0);
         let restitution = w.get::<Restitution>(e).map_or(OBJECT_RESTITUTION, |r| r.0);
         let p = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
         let on = [p.x.floor() as i32, (p.y - 0.2).floor() as i32, p.z.floor() as i32];

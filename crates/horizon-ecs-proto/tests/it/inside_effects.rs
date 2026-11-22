@@ -13,7 +13,8 @@ fn body(h: &mut Herd, p: Vec3, living: bool) -> Entity {
         .spawn((
             Pos(p),
             Vel(Vec3::ZERO),
-            Body { width: 0.6, height: 1.8, step_height: 0.6, gravity: 0.08, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Body { width: 0.6, height: 1.8, step_height: 0.6, speed: 0.0, fall_factor: 1.0, object: false, orb: false, tnt: false, lava_walker: false },
+            Gravity(0.08),
             Bounds(box_at(p, 0.6, 1.8)),
             Cell(u32::MAX, [i32::MIN; 8], u32::MAX),
             Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 },

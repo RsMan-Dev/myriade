@@ -25,6 +25,7 @@ pub const SHOT: homing_projectile::Config = homing_projectile::Config {
 
 pub static DEF: Def = Def {
     name: "minecraft:shulker",
+    gravity: false,
     targets: &[
         Entry::new(&hurt_by::MODULE, 1, &hurt_by::Params { alert: true, alert_types: SHELLS, ..hurt_by::Params::DEFAULT }),
         Entry::new(&nearest_target::MODULE, 2, &nearest_target::Params { attach_reach: Some(4.5), ..nearest_target::Params::PLAYER }),

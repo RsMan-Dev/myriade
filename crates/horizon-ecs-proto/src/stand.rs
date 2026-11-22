@@ -146,10 +146,10 @@ fn fall(w: &mut World) {
         return;
     }
     let rest: Vec<(Entity, [i32; 3])> = w
-        .query_filtered::<(Entity, &Pos, &Vel, &Contact, &Body), With<Unsettled>>()
+        .query_filtered::<(Entity, &Pos, &Vel, &Contact, Option<&Gravity>), With<Unsettled>>()
         .iter(w)
         // At rest on the ground a living entity keeps the speed its gravity gives in the tick (`(0 - g) * 0.98`), which `travel` leaves as it is.
-        .filter(|(_, _, v, c, b)| c.on_ground && v.0.x == 0.0 && v.0.y == (0.0 - b.gravity) * f64::from(0.98_f32) && v.0.z == 0.0)
+        .filter(|(_, _, v, c, g)| c.on_ground && v.0.x == 0.0 && v.0.y == (0.0 - g.map_or(0.0, |g| g.0)) * f64::from(0.98_f32) && v.0.z == 0.0)
         .map(|x| (x.0, [x.1 .0.x.floor() as i32, x.1 .0.y.floor() as i32 - 1, x.1 .0.z.floor() as i32]))
         .collect();
     for (e, support) in rest {
