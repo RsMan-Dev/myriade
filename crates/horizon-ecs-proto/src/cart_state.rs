@@ -466,9 +466,7 @@ mod tests {
     use crate::nbt;
 
     fn world() -> Herd {
-        let mut h = Herd::new(0, 1.0, true, false, 1);
-        nbt::register(&mut h.world, FIELDS);
-        h
+        Herd::new(0, 1.0, true, false, 1)
     }
 
     #[test]

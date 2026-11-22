@@ -180,19 +180,14 @@ pub fn take_loot(w: &mut World, e: Entity) -> Option<(String, i64)> {
 mod tests {
     use super::*;
     use crate::boat_state;
-    use crate::cow::{Clock, Index, Wheel};
-    use crate::goals::{Events, Player};
-    use crate::item::{insert_resources, Item};
+    use crate::cow::Index;
+    use crate::goals::Player;
+    use crate::item::Item;
     use crate::leash::holder_of;
 
     fn world() -> World {
-        let mut w = World::new();
-        w.init_resource::<Clock>();
-        w.init_resource::<Wheel>();
-        w.init_resource::<Events>();
-        w.init_resource::<Online>();
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
         w.insert_resource(Index::new(-32.0, 32));
-        insert_resources(&mut w);
         set_hand(&mut w, goals::lead());
         w
     }

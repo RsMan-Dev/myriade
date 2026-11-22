@@ -101,7 +101,8 @@ if crate::cow::skip_unless_walker("falls_fire_lava_snow_and_cactus_hurt_a_cow") 
         assert!(health(&herd, hurt) == Some(species().max_health) && health(&herd, dies) == Some(species().max_health), "{:?} {:?}", health(&herd, hurt), health(&herd, dies));
     } else {
         assert!(health(&herd, hurt).is_some_and(|h| h > 0.0 && h < species().max_health), "{:?}", health(&herd, hurt));
-        assert!(health(&herd, dies).is_none(), "the cow that fell 39 blocks lives");
+        // Dead, its body lingers for the 20 ticks of `tickDeath`.
+        assert!(health(&herd, dies).is_none_or(|h| h <= 0.0), "the cow that fell 39 blocks lives");
     }
     assert!(health(&herd, cactus).is_none_or(|h| h < species().max_health), "the cactus did not hurt");
     for _ in 0..100 {

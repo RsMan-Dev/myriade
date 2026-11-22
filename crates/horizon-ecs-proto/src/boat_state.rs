@@ -211,8 +211,7 @@ mod tests {
     use crate::species::boats::index;
 
     fn world() -> World {
-        let mut w = World::new();
-        register_nbt(&mut w);
+        let w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
         w
     }
 

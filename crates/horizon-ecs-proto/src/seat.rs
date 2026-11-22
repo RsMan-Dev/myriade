@@ -237,7 +237,8 @@ pub fn vehicle_of(w: &World, rider: Entity) -> Option<Entity> {
     w.get::<Seated>(rider).map(|s| s.vehicle)
 }
 pub fn free_seat(w: &World, vehicle: Entity) -> bool {
-    w.get::<Seats>(vehicle).is_some_and(|s| s.riders.iter().any(Option::is_none))
+    let free = |s: &Seats| s.riders.iter().any(Option::is_none);
+    w.get::<Seats>(vehicle).map_or_else(|| seats_of(w, vehicle).is_some_and(|s| free(&s)), free)
 }
 /// The seats have no system of their own: `follow` is called by the vehicle's movement.
 pub fn register(_s: &mut Schedule) {}
@@ -253,7 +254,7 @@ mod tests {
         w
     }
     fn boat(w: &mut World, chest: bool, raft: bool, at: Vec3) -> Entity {
-        w.spawn((Seats::new(SeatKind::Boat { chest, raft }), Pos(at), Yaw(0.0), Vel(Vec3::new(0.0, 0.0, 0.0)))).id()
+        w.spawn((crate::boat::Kind { raft, chest }, Seats::new(SeatKind::Boat { chest, raft }), Pos(at), Yaw(0.0), Vel(Vec3::new(0.0, 0.0, 0.0)))).id()
     }
     fn creature(w: &mut World) -> Entity {
         w.spawn(Pos(Vec3::new(0.0, 0.0, 0.0))).id()

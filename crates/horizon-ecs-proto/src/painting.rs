@@ -139,9 +139,7 @@ mod tests {
     use super::*;
 
     fn world() -> World {
-        let mut w = World::new();
-        hanging::insert_resources(&mut w);
-        w.insert_resource(Events::default());
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
         w.insert_resource(Motives(vec![
             ("minecraft:kebab".into(), Size { width: 1, height: 1 }),
             ("minecraft:pigscene".into(), Size { width: 4, height: 4 }),

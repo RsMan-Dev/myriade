@@ -238,9 +238,7 @@ mod tests {
         false
     }
     fn world() -> World {
-        let mut w = World::new();
-        hanging::insert_resources(&mut w);
-        w.insert_resource(Events::default());
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
         w.insert_resource(Walls(wall));
         w
     }
