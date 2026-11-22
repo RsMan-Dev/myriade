@@ -15,9 +15,7 @@ fn setup() -> HostSetup {
 #[test]
 fn supplied_path_is_followed_from_the_next_step() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let nodes = [[1.5, 1.0, 0.5], [2.5, 1.0, 0.5], [3.5, 1.0, 0.5]];
     assert!(h.nav_move_to_supplied(mw, e, &nodes, 1.0));
@@ -30,9 +28,7 @@ fn supplied_path_is_followed_from_the_next_step() {
 #[test]
 fn empty_path_and_creature_without_navigation_are_refused() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(!h.nav_move_to_supplied(mw, e, &[], 1.0));
     let bare = h.world_mut().spawn_empty().id();
@@ -42,9 +38,7 @@ fn empty_path_and_creature_without_navigation_are_refused() {
 #[test]
 fn flag_and_malus_read_back_what_was_written() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.set_nav_flag(e, "can_open_doors", true));
     assert_eq!(h.nav_flag(e, "can_open_doors"), Some(true));
@@ -57,9 +51,7 @@ fn flag_and_malus_read_back_what_was_written() {
 #[test]
 fn avoid_sun_flag_is_the_marker() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.set_nav_flag(e, "avoid_sun", true));
     assert!(h.world().get::<AvoidSun>(e).is_some());
@@ -69,9 +61,7 @@ fn avoid_sun_flag_is_the_marker() {
 #[test]
 fn flag_write_lands_on_the_creature_navigation() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.set_nav_flag(e, "can_pass_doors", true));
     assert!(h.set_nav_malus(e, "FENCE", 3.0));

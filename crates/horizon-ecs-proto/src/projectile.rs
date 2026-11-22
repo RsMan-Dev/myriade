@@ -111,7 +111,7 @@ pub enum Damage {
 const INERTIA: f64 = 0.99_f32 as f64;
 impl Flight {
     const BASE: Flight = Flight { id: "", gravity: 0.0, inertia: INERTIA, sticks: false, damage: Damage::Fixed(0.0), size: 0.25, order: Order::MoveThenDrag, accel: 0.0, max_age: 6000, hit: OnHit::Nothing, wither: false, spit_end: false, bullet: false, blue: false };
-    pub const ARROW: Flight = Flight { id: "minecraft:arrow", gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
+    pub const ARROW: Flight = Flight { id: crate::species::lists::ARROW, gravity: 0.05, sticks: true, damage: Damage::BySpeed(2.0), size: 0.5, ..Self::BASE };
     /// `SmallFireball`: 5 damage and fire for 5 seconds; no explosion.
     pub const SMALL_FIREBALL: Flight = Flight { id: "minecraft:small_fireball", inertia: 0.95_f32 as f64, damage: Damage::Fixed(5.0), size: 0.3125, order: Order::Hurting, accel: 0.1, max_age: 1200, hit: OnHit::Ignite(100), ..Self::BASE };
     /// `LargeFireball` of the explosion power `power`: 6 damage, then the explosion (with fire).
@@ -142,7 +142,7 @@ pub const UNSAVED: &[&str] = &[crate::species::lists::TRIDENT];
 /// Every projectile identifier with the `Flight` it is made from: `build` launches the kind of its saved `id`. A fireball comes back with
 /// the explosion power its `ExplosionPower` field saves (1 when absent).
 pub const KINDS: &[(&str, Flight)] = &[
-    ("minecraft:arrow", Flight::ARROW),
+    (crate::species::lists::ARROW, Flight::ARROW),
     ("minecraft:small_fireball", Flight::SMALL_FIREBALL),
     ("minecraft:fireball", Flight::large_fireball(1)),
     ("minecraft:wither_skull", Flight::WITHER_SKULL),

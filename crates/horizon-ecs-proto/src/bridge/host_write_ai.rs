@@ -1,5 +1,6 @@
 //! The host's writes on the AI of a creature: the path, the move control's wish, the look, the restriction, the sleep, the age, the
 //! pause, the aggression and the no-action count. Each one writes a component the world has, or a marker in sparse storage.
+use horizon_client_lib::mobs::MobWorld;
 use crate::behaviours::{bed::Sleeping, breed::{BreedData, Params}, follow_parent, hurt_by, move_towards_restriction::Restriction};
 use crate::bridge::{host::EcsWorld, view};
 use crate::cow::{box_at, Body, Bounds, GrowAt, MoveTo, Nav, Pos, Sizes};
@@ -126,14 +127,13 @@ impl EcsWorld {
 
     /// `Attacker.setTarget`: `who` becomes the target with the riposte's memory (`HurtBy`'s default, halved) and no goal slot; `None`
     /// takes the target away.
-    pub fn set_target(&mut self, e: Entity, who: Option<Who>) {
-        let w = self.world_mut();
-        match who {
+    pub fn set_target(&mut self, mw: &MobWorld<'_>, e: Entity, who: Option<Who>) {
+        self.lent(mw, |w| match who {
             Some(who) => {
                 let memory = ((hurt_by::Params::DEFAULT.unseen_memory + 1) / 2) as u16;
                 targeting::set_target(w, e, Target::new(who, memory, u8::MAX));
             }
             None => targeting::clear_target(w, e),
-        }
+        })
     }
 }

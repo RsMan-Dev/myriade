@@ -58,7 +58,9 @@ fn collar_dye_of_the_same_colour_is_refused() {
     hold(&mut h, blue);
     assert!(interact(&mut h.world, wolf, &Interaction { player: 1, item: blue }));
     assert_eq!(h.world.get::<Collar>(wolf).map(|c| c.0), Some(11), "blue is ordinal 11");
-    assert!(!interact(&mut h.world, wolf, &Interaction { player: 1, item: blue }), "same colour: not used");
+    // The same colour is not the dye's: the click falls to the owner's own (sit), and the collar stays.
+    interact(&mut h.world, wolf, &Interaction { player: 1, item: blue });
+    assert_eq!(h.world.get::<Collar>(wolf).map(|c| c.0), Some(11));
 }
 
 #[test]

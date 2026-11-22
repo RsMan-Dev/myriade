@@ -91,6 +91,7 @@ fn a_wall_stops_a_cow_the_piston_pushes() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     // A stone wall at x = 2 (its face at 2.0). The blocks are placed at the next step.
     // As high as the tallest species (the giant is 12 blocks) and as wide as the widest (the ghast is 4).
+    // The cow's back edge sits in the slab the piston sweeps (x 0.0 to 0.5), its front edge is shorter of the wall (x = 1) than the push.
     for y in 1..=14 {
         for z in -3..=3 {
             h.set_block(2, y, z, "minecraft:stone");
@@ -231,11 +232,11 @@ fn a_cow_loses_its_velocity_against_the_wall_a_piston_pushes_it_into() {
     let mut h = Herd::new_awake(0, 6.0, true, false, 3);
     for y in 1..=14 {
         for z in -3..=3 {
-            h.set_block(2, y, z, "minecraft:stone");
+            h.set_block(1, y, z, "minecraft:stone");
         }
     }
     h.tick();
-    let e = indexed_cow(&mut h, 1.55 - f64::from(horizon_ecs_proto::cow::species().width) / 2.0, 1.0, 0.5, 20);
+    let e = indexed_cow(&mut h, 0.05 + f64::from(horizon_ecs_proto::cow::species().width) / 2.0, 1.0, 0.5, 20);
     h.world.get_mut::<Vel>(e).unwrap().0 = Vec3::new(0.3, 0.0, 0.2);
     for _ in 0..4 {
         push(&mut h, piston(Direction::East, true), Direction::East, false);

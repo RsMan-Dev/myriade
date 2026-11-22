@@ -7,6 +7,13 @@ use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
 use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::raid_buffs::{RaidBuff, RaidBuffRules};
 use horizon_ecs_proto::raids::{self, RaidView};
+use horizon_ecs_proto::bridge::host::PlayerFact;
+use horizon_ecs_proto::goals::Player;
+
+/// The schedule runs only while a player is online: one stands by the raiders.
+fn with_player(h: &mut EcsWorld) {
+    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
+}
 
 fn world() -> (&'static horizon_client_lib::mobs::MobWorld<'static>, EcsWorld) {
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
@@ -22,12 +29,17 @@ fn a_loaded_raider_is_announced_once_without_recounting_health() {
     have_data();
     let (mw, mut h) = world();
     let e = h.spawn(mw, "minecraft:vindicator", [0.5, 1.0, 0.5], None).expect("a known species");
+    with_player(&mut h);
     let id = h.id_for(e, &mut || 41);
     let mut patch = Compound::new();
     patch.insert("RaidId".into(), Tag::Int(9));
     patch.insert("Wave".into(), Tag::Int(2));
     assert!(horizon_ecs_proto::nbt::merge(h.world_mut(), e, &patch));
-    let first = h.step(mw);
+    // A sleeping raider (`Dormant`) is told when it wakes, within a few ticks.
+    let mut first = Vec::new();
+    for _ in 0..5 {
+        first.extend(h.step(mw));
+    }
     assert!(
         first.iter().any(|ev| matches!(ev, HostEvent::RaiderJoined { raid: 9, id: i, wave: 2, loaded: true, .. } if *i == id)),
         "the loaded raider says its raid"
@@ -41,6 +53,7 @@ fn an_idle_raider_that_can_join_walks_into_the_active_raid() {
     have_data();
     let (mw, mut h) = world();
     let e = h.spawn(mw, "minecraft:pillager", [0.5, 1.0, 0.5], None).expect("a known species");
+    with_player(&mut h);
     let id = h.id_for(e, &mut || 42);
     assert!(raids::set_can_join_raid(h.world_mut(), e, true));
     h.set_raid_view(3, Some(RaidView { center: [0, 1, 0], active: true, over: false, loss: false, wave: 4 }));

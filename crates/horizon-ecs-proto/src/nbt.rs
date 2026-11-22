@@ -220,7 +220,7 @@ pub fn save(w: &World, e: Entity) -> Option<Compound> {
             c.insert(d.key.into(), (d.default)());
         }
     }
-    for &(key, default) in crate::nbt_fields::common::DEFAULTS.iter().chain(crate::nbt_fields::living_state::DEFAULTS) {
+    for &(key, default) in crate::nbt_fields::common::DEFAULTS {
         if c.get(&JavaString::from(key)).is_none() {
             c.insert(key.into(), default());
         }
@@ -764,6 +764,10 @@ fn restore_one(w: &mut World, c: &Compound) -> Option<Entity> {
         return None;
     };
     if !matches!(recipe.build, Build::Passive) {
+        // A species with a variant table starts at the registry's default; the saved key then replaces it.
+        if w.get::<crate::behaviours::variant::Variant>(e).is_none() && crate::behaviours::variant::table_of(w, e).is_some() {
+            crate::behaviours::variant::set_variant(w, e, 0);
+        }
         load(w, e, c);
     }
     w.trigger(Restored { entity: e });

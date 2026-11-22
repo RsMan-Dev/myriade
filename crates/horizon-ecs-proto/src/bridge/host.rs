@@ -102,7 +102,7 @@ impl EcsWorld {
     }
 
     /// Runs `f` over the world with the level lent for the call, and takes the level out again (panics included).
-    pub(super) fn lent<R>(&mut self, mw: &MobWorld<'_>, f: impl FnOnce(&mut World) -> R) -> R {
+    pub fn lent<R>(&mut self, mw: &MobWorld<'_>, f: impl FnOnce(&mut World) -> R) -> R {
         let level = Level { mw: Mw(lend(mw)), blocks: Blocks(std::ptr::null_mut()), occ: self.occ, half: self.half };
         self.world.insert_resource(level);
         self.note_game_time(mw, None);
@@ -246,6 +246,11 @@ impl EcsWorld {
             // The place asked for, box and movement included: a creature summoned in the air falls (`cow::teleport` raises `Moving`).
             w.get::<Pos>(e)?;
             crate::cow::teleport(w, e, horizon_core::geometry::Vec3::new(at[0], at[1], at[2]));
+            // `Mob.checkDespawn` covers every mob, whoever made it: the creature gets its rule of going away, as a wild birth does.
+            if let Some(def) = crate::spawning::spawn_def(sp) {
+                let near = w.resource::<Online>().players().map(|p| (p.x - at[0]).powi(2) + (p.y - at[1]).powi(2) + (p.z - at[2]).powi(2)).fold(f64::INFINITY, f64::min);
+                crate::despawn::admit(w, e, def.despawn, near);
+            }
             match nbt {
                 Some(c) => {
                     nbt::load(w, e, c);
@@ -268,23 +273,9 @@ impl EcsWorld {
         crate::despawn::keep(&mut self.world, e);
     }
 
-    /// Puts `item` (0: empty) in `slot` of `e`; the entity gets an `Equipment` when it had none. A slot the entity lacks is ignored.
+    /// `LivingEntity.setItemSlot`: puts `item` (0: empty) in `slot` of `e` (the saddle saddles the mount, armor is refreshed); the entity gets an `Equipment` when it had none.
     pub fn equip(&mut self, e: Entity, slot: Slot, item: u32) {
-        if self.world.get::<Equipment>(e).is_none() {
-            self.world.entity_mut(e).insert(Equipment::default());
-        }
-        let Some(mut q) = self.world.get_mut::<Equipment>(e) else { return };
-        let f = match slot {
-            Slot::Head => &mut q.head,
-            Slot::Chest => &mut q.chest,
-            Slot::Legs => &mut q.legs,
-            Slot::Feet => &mut q.feet,
-            Slot::Main => &mut q.main,
-            Slot::Off => &mut q.off,
-            Slot::Body => &mut q.body,
-            Slot::Saddle => &mut q.saddle,
-        };
-        *f = item;
+        crate::equipment::set_slot(&mut self.world, e, slot, item);
     }
 
     /// `rider` takes a seat of `vehicle` (the first seat steers); false when the seats are taken.

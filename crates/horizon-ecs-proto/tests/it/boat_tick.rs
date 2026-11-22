@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use horizon_ecs_proto::{
     boat_state,
     boat_tick::{self, take_boat_events, BoatEvents},
-    cow::{build_level_with, Level, Moving, Pos},
+    cow::{build_level_with, Bounds, Cell, Contact, Level, Moving, Pos},
     host_out_boats::BoatEvent,
 };
 use std::sync::Arc;
@@ -32,8 +32,13 @@ fn world_with_boat(y: f64) -> (World, Entity) {
     let mut w = World::new();
     w.insert_resource(level());
     w.insert_resource(BoatEvents::default());
+    w.insert_resource(horizon_ecs_proto::cow::Index::new(-32.0, 32));
+    w.insert_resource(horizon_ecs_proto::goals::Online::default());
+    w.insert_resource(horizon_ecs_proto::hostile::PlayerState::default());
     let e = boat_state::spawn(&mut w, 0, false, [0.5, y, 0.5], 0.0);
-    w.entity_mut(e).insert(Moving);
+    // What the host adds at the apparition (`spawn_boat`): the box, the spatial cell and the contact.
+    let p = horizon_core::geometry::Vec3::new(0.5, y, 0.5);
+    w.entity_mut(e).insert((Bounds(horizon_ecs_proto::rules::boat::bounds_at(p)), Cell(u32::MAX, [i32::MIN; 8], u32::MAX), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, Moving));
     (w, e)
 }
 

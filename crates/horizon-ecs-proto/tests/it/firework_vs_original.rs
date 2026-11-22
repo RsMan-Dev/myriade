@@ -72,7 +72,7 @@ fn a_free_rocket_flies_and_goes_off_as_the_jar_s_does() {
     }
     let (_r, mut h) = flat_pair();
     let at = Vec3::new(0.5, 10.0, 0.5);
-    let e = launch(&mut h.world, shot(at));
+    let e = launch_with(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
     let mut model = Model::new(at, i32::from(FLIGHT), &mut LegacyRandom::new(SEED));
     let life = model.life;
     for t in 1..=life + 2 {
@@ -102,17 +102,20 @@ fn the_blast_hurts_a_creature_as_the_jar_s_does() {
     }
     let boom = probe.pos;
     let (_r, mut h) = flat_pair();
-    launch(&mut h.world, shot(at));
+    launch_with(&mut h.world, shot(at), &mut LegacyRandom::new(SEED));
     for _ in 0..life {
         h.tick();
     }
     // The creature is set at the last moment (one that waits for the flight falls out of reach), 2.5 blocks from the blast; the rocket
-    // goes off in the tick `life + 1` and the queued blow is applied by the next.
+    // goes off in the tick `life + 1`; the blow leaves as a `Hurt` event for the host to apply.
     let c = creature_at(&mut h, Vec3::new(boom.x + 2.5, boom.y, boom.z));
     let mut got = None;
     for _ in 0..3 {
         h.tick();
-        got = got.or(h.world.resource::<DamageQueue>().0.iter().find(|x| x.target == c).map(|x| x.amount));
+        got = got.or(h.world.resource::<horizon_ecs_proto::firework_burst::FireworkOut>().0.iter().find_map(|x| match x {
+            horizon_ecs_proto::host_out_firework::FireworkEvent::Hurt { victim, damage, .. } if *victim == c => Some(*damage),
+            _ => None,
+        }));
     }
     let want = (5.0 + 2.0 * f32::from(EXPLOSIONS)) * ((5.0 - 2.5_f32) / 5.0).sqrt();
     assert!(got.is_some_and(|a| (a - want).abs() < 1e-3), "creature hit {got:?}, jar {want}");

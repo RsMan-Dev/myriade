@@ -63,6 +63,8 @@ fn world() -> (EcsWorld, &'static MobWorld<'static>) {
     let (mw, types) = stone_world();
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     h.set_player(player(), fact());
+    h.step(mw);
+    h.step(mw);
     (h, mw)
 }
 
@@ -138,7 +140,7 @@ fn a_box_finds_a_vehicle_whose_position_is_outside_it() {
 fn a_wind_burst_pushes_a_cart_at_rest() {
     let (mut h, mw) = world();
     let cart = h.spawn_cart(mw, CHEST_CART, [2.5, 1.0, 0.5], 0.0).expect("a known genre");
-    horizon_ecs_proto::explosion::wind_burst(h.world_mut(), Vec3::new(0.5, 1.0, 0.5), 3.0, None);
+    h.lent(mw, |w| horizon_ecs_proto::explosion::wind_burst(w, Vec3::new(0.5, 1.0, 0.5), 3.0, None));
     assert!(h.velocity(cart).is_some_and(|v| v.x > 0.0), "the burst gives the cart a velocity away from the centre");
 }
 

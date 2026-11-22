@@ -28,5 +28,6 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::INTERACT, 9, &look_at_player::Params { range: 3.0, period: 1, ..look_at_player::Params::DEFAULT }),
         Entry::new(&look_at_player::MODULE, 10, &look_at_player::Params { range: 8.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
     ],
+    rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &())],
     ..Def::EMPTY
 };

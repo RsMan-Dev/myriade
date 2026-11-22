@@ -5,7 +5,7 @@ use horizon_ecs_proto::{
     colony_register::MiscOut,
     cow::*,
     host_out_misc::MiscEvent,
-    leash::{self, Holder},
+    leash::{self, Holder, Leashable},
 };
 
 fn broke(h: &Herd) -> Vec<MiscEvent> {
@@ -16,6 +16,7 @@ fn cow(h: &mut Herd) -> (bevy_ecs::entity::Entity, i32) {
     let table = h.world.resource::<SpeciesTable>().0.clone();
     let sp = *table.iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 61);
+    h.world.entity_mut(e).insert(Leashable { elastic: 6.0, snap: 12.0, follow_speed: 1.0 });
     let y = h.world.get::<Pos>(e).unwrap().0.y.floor() as i32;
     (e, y)
 }

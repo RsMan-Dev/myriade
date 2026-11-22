@@ -20,7 +20,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("HurtTime"), write: write_hurt_time, read: read_hurt_time, accepts: accept::short, owner: Some(owner::<HurtAt>) },
     Field { key: Cow::Borrowed("HurtByTimestamp"), write: write_hurt_by, read: read_hurt_by, accepts: accept::int, owner: Some(owner::<LastHurtBy>) },
     Field { key: Cow::Borrowed("anger_end_time"), write: write_anger_end, read: read_anger_end, accepts: accept::long, owner: Some(owner::<Anger>) },
-    Field { key: Cow::Borrowed("home_pos"), write: write_heart_pos, read: read_heart_pos, accepts: is_int_array, owner: Some(owner::<HeartLink>) },
+    Field { key: Cow::Borrowed("home_pos"), write: write_heart_pos, read: read_heart_pos, accepts: is_block_pos, owner: Some(owner::<HeartLink>) },
 ];
 
 /// The keys whose presence poses their component (`nbt::register_creators`).
@@ -33,7 +33,7 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("PersistenceRequired"), write: write_persistent, read: read_persistent, accepts: is_byte, owner: None },
     Field { key: Cow::Borrowed("Rotation"), write: write_rotation, read: read_rotation, accepts: is_list, owner: Some(owner::<Yaw>) },
     Field { key: Cow::Borrowed("Silent"), write: write_silent, read: read_silent, accepts: is_byte, owner: Some(owner::<Silent>) },
-    Field { key: Cow::Borrowed("home_pos"), write: write_home_pos, read: read_home_pos, accepts: is_int_array, owner: Some(owner::<Home>) },
+    Field { key: Cow::Borrowed("home_pos"), write: write_home_pos, read: read_home_pos, accepts: is_block_pos, owner: Some(owner::<Home>) },
     Field { key: Cow::Borrowed("home_radius"), write: write_home_radius, read: read_home_radius, accepts: accept::int, owner: Some(owner::<Home>) },
     Field { key: Cow::Borrowed("active_effects"), write: write_effects, read: read_effects, accepts: is_list, owner: Some(owner::<Effects>) },
 ];
@@ -175,6 +175,11 @@ fn is_byte(t: &Tag) -> bool {
 
 fn is_list(t: &Tag) -> bool {
     matches!(t, Tag::List(_))
+}
+
+/// A block position: an int array of three.
+fn is_block_pos(t: &Tag) -> bool {
+    matches!(t, Tag::IntArray(v) if v.len() == 3)
 }
 
 fn is_int_array(t: &Tag) -> bool {

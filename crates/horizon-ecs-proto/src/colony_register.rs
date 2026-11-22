@@ -9,5 +9,5 @@ use bevy_ecs::prelude::*;
 pub struct MiscOut(pub Vec<MiscEvent>);
 
 pub fn register(s: &mut Schedule) {
-    s.add_systems(crate::cloud_tick::tick.run_if(crate::cloud_tick::any_live));
+    s.add_systems(crate::cloud_tick::tick.after(crate::cow::apply_pushes).run_if(crate::cloud_tick::any_live));
 }

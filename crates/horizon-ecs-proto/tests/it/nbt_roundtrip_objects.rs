@@ -75,7 +75,7 @@ fn reference(id: &str) -> Vec<(&'static str, Tag)> {
         "minecraft:egg" | "minecraft:snowball" | "minecraft:ender_pearl" | "minecraft:experience_bottle" | "minecraft:splash_potion" | "minecraft:lingering_potion" => vec![("HasBeenShot", Tag::Byte(1)), ("Item", item("minecraft:snowball", 1))],
         "minecraft:wind_charge" | "minecraft:breeze_wind_charge" => vec![("HasBeenShot", Tag::Byte(1)), ("acceleration_power", d(0.1))],
         "minecraft:llama_spit" | "minecraft:shulker_bullet" => vec![("HasBeenShot", Tag::Byte(1))],
-        "minecraft:falling_block" => vec![("BlockState", state("minecraft:stone")), ("Time", Tag::Int(4)), ("DropItem", Tag::Byte(1))],
+        "minecraft:falling_block" => vec![("BlockState", state("minecraft:stone")), ("Time", Tag::Int(4)), ("DropItem", Tag::Byte(1)), ("HurtEntities", Tag::Byte(0)), ("FallHurtAmount", f(0.0)), ("FallHurtMax", Tag::Int(40)), ("CancelDrop", Tag::Byte(0))],
         "minecraft:tnt" => vec![("fuse", Tag::Short(80)), ("block_state", state("minecraft:tnt")), ("explosion_power", f(4.0))],
         "minecraft:firework_rocket" => vec![("Life", Tag::Int(10)), ("LifeTime", Tag::Int(30)), ("ShotAtAngle", Tag::Byte(0))],
         "minecraft:item_frame" | "minecraft:glow_item_frame" => vec![("Facing", Tag::Byte(2)), ("Fixed", Tag::Byte(0)), ("Invisible", Tag::Byte(0)), ("ItemDropChance", f(1.0)), ("ItemRotation", Tag::Byte(0)), ("block_pos", Tag::IntArray(vec![0, 1, 0]))],
@@ -84,6 +84,7 @@ fn reference(id: &str) -> Vec<(&'static str, Tag)> {
         "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display" => vec![("width", f(0.0)), ("height", f(0.0))],
         "minecraft:interaction" => vec![("width", f(0.0)), ("height", f(0.0)), ("response", Tag::Byte(0))],
         "minecraft:ominous_item_spawner" => vec![("item", item("minecraft:stone", 1)), ("spawn_item_after_ticks", Tag::Long(100))],
+        _ if id.ends_with("chest_boat") || id.ends_with("chest_raft") => vec![("Items", Tag::List(vec![]))],
         _ => vec![],
     };
     v.extend(own);

@@ -22,7 +22,7 @@ fn body(h: &mut Herd, p: Vec3, living: bool) -> Entity {
         ))
         .id();
     if living {
-        h.world.entity_mut(e).insert(Health(20.0));
+        h.world.entity_mut(e).insert((Health(20.0), HurtAt { at: 0, last: 0.0 }));
     }
     enter_index(&mut h.world, e);
     e
@@ -68,7 +68,7 @@ fn powder_snow_slows_less_than_a_web() {
     let e = body(&mut h, Vec3::new(0.5, 4.0, 0.5), false);
     h.tick();
     h.tick();
-    assert_eq!(h.world.get::<Contact>(e).unwrap().stuck, 0, "the move consumed the kind");
+    // Still inside the block, the kind is set again after each move (`entityInside` runs after the move): it is not 0 at the end of a tick.
     let y = y_after(&mut h, e, 20);
     assert!(y < 2.5, "powder snow held a non-living entity as a web would (y = {y})");
 }

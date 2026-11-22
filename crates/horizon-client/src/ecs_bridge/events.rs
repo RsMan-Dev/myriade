@@ -7,7 +7,7 @@
 use super::level::EcsLevel;
 use crate::mobs::{MobEvent, Who};
 use bevy_ecs::world::World;
-use horizon_ecs_proto::bridge::{host_events_more::resolve_death, ids::id_of, view};
+use horizon_ecs_proto::bridge::{ids::id_of, view};
 use horizon_ecs_proto::host_out::HostEvent;
 
 impl EcsLevel {
@@ -95,21 +95,21 @@ impl EcsLevel {
     }
 
     /// The answer to a `TotemAsk` of `e`: `cancel` lets it die, else the totem is used up. True when it was saved.
-    pub fn resolve_totem(&mut self, e: bevy_ecs::entity::Entity, cancel: bool) -> bool {
-        self.ecs_mut().is_some_and(|w| w.resolve_totem(e, cancel))
+    pub fn resolve_totem(&mut self, mw: &crate::mobs::MobWorld<'_>, e: bevy_ecs::entity::Entity, cancel: bool) -> bool {
+        self.ecs_mut().is_some_and(|w| w.resolve_totem(mw, e, cancel))
     }
 
     /// The end of a lethal hit held by the death policy, of the entity with network id `id` (`None`: the death goes on; `Some(v)`:
     /// the entity lives on with health `v`). Nothing when the id is unknown.
-    pub fn loot_dying(&mut self, id: u32) -> bool {
+    pub fn loot_dying(&mut self, mw: &crate::mobs::MobWorld<'_>, id: u32) -> bool {
         let Some(e) = self.entity_of(id) else { return false };
-        self.ecs_mut().is_some_and(|w| w.loot_dying(e))
+        self.ecs_mut().is_some_and(|w| w.loot_dying(mw, e))
     }
 
-    pub fn resolve_death(&mut self, id: u32, veto: Option<f32>) {
+    pub fn resolve_death(&mut self, mw: &crate::mobs::MobWorld<'_>, id: u32, veto: Option<f32>) {
         let Some(e) = self.entity_of(id) else { return };
-        if let Some(w) = self.world_mut() {
-            resolve_death(w, e, veto);
+        if let Some(w) = self.ecs_mut() {
+            w.resolve_death(mw, e, veto);
         }
     }
 }

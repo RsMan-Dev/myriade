@@ -169,11 +169,15 @@ pub fn roll_params(world: &mut World, params: EntityLootParams, seed: i64) -> Ve
 }
 /// The stacks a table that is not an entity's rolls (a gameplay table such as the dig of a seed: `minecraft:gameplay/...`), from `seed`.
 pub fn roll_table(world: &mut World, table: &str, seed: i64) -> Vec<ItemStack> {
+    roll_table_for(world, None, table, seed)
+}
+/// `roll_table` for a table that reads the entity `this` (a gift: the chicken's variant picks its egg); no entity: a placeholder type.
+pub fn roll_table_for(world: &mut World, this: Option<Entity>, table: &str, seed: i64) -> Vec<ItemStack> {
     if !tables(world) {
         return Vec::new();
     }
-    // No entity rolls this table: a placeholder type that is no species.
-    let params = EntityLootParams { this: LootEntity::new(crate::species::lists::MARKER), damage: None, player: None, luck: 0.0 };
+    let this = this.and_then(|e| entity_for_loot(world, e)).unwrap_or_else(|| LootEntity::new(crate::species::lists::MARKER));
+    let params = EntityLootParams { this, damage: None, player: None, luck: 0.0 };
     let stacks = world.resource_scope(|_, t: Mut<LootTables>| t.0.roll_entity(table, &mut LegacyRandom::new(seed), &params));
     stacks.into_iter().filter(|s| !s.is_empty()).map(|s| ItemStack::from_loot(&s)).collect()
 }
@@ -216,9 +220,11 @@ fn facts(world: &World, e: Entity) -> Option<LootEntity> {
         _ => false,
     };
     this.sheep = world.get::<crate::farm::Wool>(e).map(|w| (crate::species::cushion::DYES[usize::from(w.color & 15)].to_owned(), w.sheared));
-    if let (Some(v), Some(t)) = (world.get::<crate::behaviours::variant::Variant>(e), crate::behaviours::variant::table_of(world, e))
+    // A creature never given a variant (no spawn draw) has the registry's default: the first (temperate).
+    let drawn = world.get::<crate::behaviours::variant::Variant>(e).map_or(0, |v| v.0);
+    if let Some(t) = crate::behaviours::variant::table_of(world, e)
         && t.key == "variant"
-        && let Some(name) = t.ids.iter().position(|x| *x == v.0).and_then(|i| t.names.get(i))
+        && let Some(name) = t.ids.iter().position(|x| *x == drawn).and_then(|i| t.names.get(i))
     {
         let id = if name.contains(':') { (*name).to_owned() } else { format!("minecraft:{name}") };
         (this.frog_variant, this.chicken_variant) = (Some(id.clone()), Some(id));

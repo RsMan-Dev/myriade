@@ -10,7 +10,7 @@ use horizon_ecs_proto::fishing_hook::cast;
 use horizon_ecs_proto::goals::*;
 use horizon_ecs_proto::host_out_hook::{HookEvent, HookOut};
 use horizon_ecs_proto::bridge::host::PlayerFact;
-use horizon_ecs_proto::hook_wait::{leave_water, speed_changed, Wait};
+use horizon_ecs_proto::hook_wait::{left_now, leave_water, speed_changed, Wait};
 use horizon_ecs_proto::rules::hook_wait::{hooked_after, lured_after};
 
 const SEED: i64 = 11;
@@ -74,7 +74,7 @@ fn a_lured_fish_approaches_at_its_date_and_the_bite_comes_at_the_end_of_the_appr
     let (hook, _) = land(&mut h);
     speed_changed(&mut h.world, hook, 1);
     let now = own(&h, hook);
-    let lured = now + h.world.get::<Wait>(hook).unwrap().left as u64;
+    let lured = now + left_now(&h.world, hook) as u64;
     skip_to(&mut h, hook, lured - 1);
     assert!(!h.world.get::<Wait>(hook).unwrap().approach, "lured one tick early");
     skip_to(&mut h, hook, lured);
@@ -95,7 +95,7 @@ fn a_faster_fish_halves_what_is_left_of_the_lure() {
     let (hook, _) = land(&mut h);
     speed_changed(&mut h.world, hook, 1);
     let now = own(&h, hook);
-    let left = h.world.get::<Wait>(hook).unwrap().left as u64;
+    let left = left_now(&h.world, hook) as u64;
     speed_changed(&mut h.world, hook, 2);
     let half = now + left.div_ceil(2);
     skip_to(&mut h, hook, half - 1);
@@ -110,7 +110,7 @@ fn a_hook_out_of_the_water_ignores_its_stale_deadline() {
     let (hook, _) = land(&mut h);
     speed_changed(&mut h.world, hook, 1);
     let now = own(&h, hook);
-    let lured = now + h.world.get::<Wait>(hook).unwrap().left as u64;
+    let lured = now + left_now(&h.world, hook) as u64;
     leave_water(&mut h.world, hook);
     skip_to(&mut h, hook, lured);
     assert!(!h.world.get::<Wait>(hook).is_some_and(|w| w.approach), "a stale lure started an approach");

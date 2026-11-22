@@ -21,7 +21,8 @@ fn kill_cow(h: &mut Herd, seed: i64, weapon: Option<ItemStack>) -> (i32, usize) 
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 9);
     h.world.entity_mut(e).insert((DeathSeed(seed), PlayerCredit { player: Some(1), uuid: None, until: u64::MAX }));
     note_killer(&mut h.world, e, 1, 0.0, weapon);
-    h.hit(e, 1000.0, (0.0, 0.0));
+    // The blow is the player's: the loot reads the killer and its weapon from the combat log.
+    h.world.resource_mut::<DamageQueue>().add_by(e, 1000.0, (0.0, 0.0), 1);
     h.tick();
     let items: Vec<(Entity, i32)> = h.world.query::<(Entity, &Item)>().iter(&h.world).map(|(e, i)| (e, i.stack.count as i32)).collect();
     let orbs: Vec<Entity> = h.world.query::<(Entity, &Orb)>().iter(&h.world).map(|(e, _)| e).collect();

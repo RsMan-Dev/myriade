@@ -10,11 +10,12 @@ fn level_look_goes_forward() {
 }
 
 #[test]
+/// The jar's `getRiddenInput`: up is `-sin(pitch)` and forward `cos(pitch)`, both times -0,5 backwards (so backwards, looking down, goes up).
 fn look_up_climbs_and_backwards_is_halved() {
     let (_, y, z) = look_input(0.0, 1.0, -90.0);
     assert!((y - 1.0).abs() < 1e-5 && z.abs() < 1e-5);
     let (_, y, z) = look_input(0.0, -1.0, 45.0);
-    assert!((y + 0.5 * 0.707_106_8).abs() < 1e-5 && (z + 0.5 * 0.707_106_8).abs() < 1e-5);
+    assert!((y - 0.5 * 0.707_106_8).abs() < 1e-5 && (z + 0.5 * 0.707_106_8).abs() < 1e-5);
 }
 
 #[test]

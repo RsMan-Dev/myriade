@@ -121,7 +121,9 @@ fn the_framework_events_report_landing_and_fire() {
         }
     }
     assert!(lit, "no `ignited` event for the zombie in the sun");
-    assert!(out || h.world.get_entity(z).is_err(), "the fire neither went out nor killed");
+    // A death lingers 20 ticks (the fall animation): dead is health 0 as well as gone.
+    let dead = h.world.get_entity(z).is_err() || h.world.get::<Health>(z).is_some_and(|x| x.0 <= 0.0);
+    assert!(out || dead, "the fire neither went out nor killed");
 }
 
 /// A configuration declares its capabilities and `spawn_species` creates those components and no others.

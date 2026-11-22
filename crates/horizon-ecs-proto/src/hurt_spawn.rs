@@ -17,7 +17,7 @@ pub struct HurtSpawn {
     pub sound: &'static str,
 }
 pub const TABLE: &[HurtSpawn] =
-    &[HurtSpawn { effect: Kind::Infested, chance: 0.1, extra: 2, species: "minecraft:silverfish", sound: "minecraft:entity.silverfish.hurt" }];
+    &[HurtSpawn { effect: Kind::Infested, chance: 0.1, extra: 2, species: crate::species::lists::SILVERFISH, sound: "minecraft:entity.silverfish.hurt" }];
 
 /// The velocity of one spawn: the look direction times 0.3 (1.5 on y), turned about y by `angle`.
 pub fn thrown(look: Vec3, angle: f32) -> Vec3 {

@@ -39,7 +39,7 @@ pub fn drop_gift(w: &mut World, e: Entity, g: &GiftDrop) -> bool {
     }) else {
         return false;
     };
-    let stacks = roll_table(w, g.table, seed);
+    let stacks = crate::loot::roll_table_for(w, Some(e), g.table, seed);
     if stacks.is_empty() {
         return false;
     }

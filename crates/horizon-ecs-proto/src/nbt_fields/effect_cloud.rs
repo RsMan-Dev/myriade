@@ -71,7 +71,7 @@ float_key!(write_radius_on_use, read_radius_on_use, radius_on_use, "RadiusOnUse"
 float_key!(write_radius_per_tick, read_radius_per_tick, radius_per_tick, "RadiusPerTick");
 float_key!(write_radius, read_radius, radius, "Radius");
 
-/// `Age`: the cloud's own time. A load starts its clock at 0 and keeps the saved age as `age_base`, so the end (`Duration`) and the dose
+/// `Age`: the cloud's age, its own time plus `age_base` (the saved age less the time already run), so the end (`Duration`) and the dose
 /// phase go on where they were; the wake-up is armed with what the wait leaves of it (now if none is left).
 fn write_age(w: &World, e: Entity, c: &mut Compound) {
     if let Some(s) = w.get::<CloudSpec>(e) {
@@ -82,8 +82,9 @@ fn write_age(w: &World, e: Entity, c: &mut Compound) {
 fn read_age(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     let Some(wait) = w.get::<CloudSpec>(e).map(|s| s.wait) else { return false };
+    let now = now_of(w, e) as i32;
     if let Some(mut s) = w.get_mut::<CloudSpec>(e) {
-        s.age_base = *v;
+        s.age_base = *v - now;
     }
     if *v < wait {
         after(w, e, wait - *v, wake);
@@ -113,7 +114,7 @@ pub(crate) const KINDS: &[(&str, Kind)] = &[
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
     ("minecraft:poison", Kind::Poison),
-    ("minecraft:wither", Kind::Wither),
+    (crate::species::lists::WITHER_EFFECT, Kind::Wither),
     ("minecraft:regeneration", Kind::Regeneration),
     ("minecraft:fire_resistance", Kind::FireResistance),
     ("minecraft:water_breathing", Kind::WaterBreathing),

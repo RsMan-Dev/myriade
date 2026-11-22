@@ -19,9 +19,7 @@ fn setup() -> HostSetup {
 /// A host world with one `kind` at the origin, and the world it reads blocks from.
 fn with_mw(kind: &str) -> (&'static MobWorld<'static>, EcsWorld, Entity) {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, kind, [0.5, 64.0, 0.5], None).expect("a known species");
     (mw, h, e)
 }
@@ -43,6 +41,7 @@ fn saddle(h: &mut EcsWorld, e: Entity) {
 #[test]
 fn charge_jump_released_after_ten_ticks_gives_the_bar_and_ends_the_charge() {
     let (mut h, horse) = with("minecraft:horse");
+    saddle(&mut h, horse);
     ride(&mut h, horse);
     for _ in 0..10 {
         assert_eq!(h.charge_jump(horse, true), 0.0, "a held jump gives nothing yet");
@@ -57,9 +56,9 @@ fn charge_jump_released_after_ten_ticks_gives_the_bar_and_ends_the_charge() {
 fn start_jump_refused_without_saddle_accepted_with_it() {
     let (mut h, horse) = with("minecraft:horse");
     ride(&mut h, horse);
-    assert!(h.start_jump(horse, 0).is_none(), "no saddle, no jump");
+    assert!(h.start_jump(horse, 50).is_none(), "no saddle, no jump");
     saddle(&mut h, horse);
-    assert_eq!(h.start_jump(horse, 0), Some(("entity.horse.jump", 0.4)));
+    assert_eq!(h.start_jump(horse, 50), Some(("entity.horse.jump", 0.4)));
 }
 
 #[test]
@@ -71,7 +70,10 @@ fn a_pig_is_not_jumpable_even_saddled() {
 
 #[test]
 fn a_camel_dash_starts_a_cooldown_that_ends_after_55_ticks() {
-    let (mw, mut h, camel) = with_mw("minecraft:camel");
+    have_data();
+    let (mw, mut h) = awake_host_on_stone(&setup());
+    let camel = h.spawn(mw, "minecraft:camel", [0.5, 1.0, 0.5], None).expect("a known species");
+    saddle(&mut h, camel);
     ride(&mut h, camel);
     for _ in 0..20 {
         h.step(mw);
@@ -109,10 +111,10 @@ fn refuse_rider_empties_the_seats() {
 #[test]
 fn dismounts_in_water_only_with_the_tag() {
     let (h, camel) = with("minecraft:camel");
-    let (g, pig) = with("minecraft:pig");
+    let (g, cow) = with("minecraft:cow");
     assert!(h.dismounts_in_water(camel, true), "the camel carries the tag");
     assert!(!h.dismounts_in_water(camel, false), "its eyes must be in the water");
-    assert!(!g.dismounts_in_water(pig, true), "the pig does not carry the tag");
+    assert!(!g.dismounts_in_water(cow, true), "the cow does not carry the tag");
 }
 
 #[test]

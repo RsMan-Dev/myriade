@@ -177,7 +177,7 @@ pub fn on_hit(w: &mut World, e: Entity, victim: Option<Who>, damage: f32, killed
     }
     let (dx, dz) = flat_dir(w, e).unwrap_or((0.0, 0.0));
     emit(w, ArrowEvent::ModImpact { entity: e, kind, at, target: victim, owner, block, face });
-    emit(w, ArrowEvent::Hit { entity: e, victim, owner, at, damage, damage_type: "minecraft:arrow", knockback: strength as f32, dx, dz, fire: fx.fire, sound, pitch });
+    emit(w, ArrowEvent::Hit { entity: e, victim, owner, at, damage, damage_type: crate::species::lists::ARROW, knockback: strength as f32, dx, dz, fire: fx.fire, sound, pitch });
     let Some(target) = victim else { return };
     let mut effects = fx.effects;
     // `SpectralArrow.onHitEntity`: the creature glows for its duration (200 ticks by default).

@@ -60,6 +60,7 @@ fn a_mod_edits_one_animal_and_the_others_keep_their_species_list() {
     // Reset: the species list is back, the edit state is gone, the untouched animal did not change.
     assert!(goal_edit::reset(&mut h.world, a));
     assert_eq!(mods(&h, a), species);
-    assert!(h.world.get::<GoalEdit>(a).is_none());
+    // The slot a mod added stays (emptied): its edit state stays with it.
+    assert!(h.world.get::<GoalEdit>(a).is_some());
     assert!(h.world.get::<GoalEdit>(c).is_none());
 }

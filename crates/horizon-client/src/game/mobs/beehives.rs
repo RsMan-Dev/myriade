@@ -160,7 +160,7 @@ impl Game<'_> {
             },
             None => None,
         };
-        self.ecs.set_target(id, who)
+        self.ecs_with(|ecs, mw| ecs.set_target(mw, id, who))
     }
     fn hive_with_honey(&self, state: BlockStateId, level: i32) -> Option<BlockStateId> {
         let registry = self.pack.assets.registry;

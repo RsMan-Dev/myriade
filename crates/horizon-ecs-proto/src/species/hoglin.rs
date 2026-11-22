@@ -62,6 +62,7 @@ pub static DEF: Def = Def {
     changes: &[],
     // `Hoglin`: `shouldDropExperience` true and `xpReward` 5 as is, also for a baby (which leaves no loot: `LivingEntity.shouldDropLoot`).
     rules: &[
+        crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT),
         crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
         crate::rules::RuleEntry::new(&crate::loot::FLAT_XP, &()),
         crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::HOGLIN),

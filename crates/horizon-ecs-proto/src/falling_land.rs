@@ -51,7 +51,7 @@ fn damage_kind(name: &str) -> &'static str {
     } else if is_stalactite(name) {
         "minecraft:falling_stalactite"
     } else {
-        "minecraft:falling_block"
+        crate::species::lists::FALLING_BLOCK
     }
 }
 

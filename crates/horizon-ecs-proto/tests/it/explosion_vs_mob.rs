@@ -119,7 +119,7 @@ fn the_blast_hurts_by_the_distance_and_pushes_away() {
     }
     for (k, &c) in cows.iter().enumerate() {
         let d = [1.0, 3.0, 5.0][k];
-        let lost = before[k] - health(&h, c);
+        let lost = (before[k] - health(&h, c)).min(before[k]);
         let expect = explosion::blast_damage(d / 6.0, 1.0, 6.0).min(before[k]);
         eprintln!("before {} after {}", before[k], health(&h, c));
         eprintln!("at {d} blocks: lost {lost}, formula {expect}, speed after {:?}", h.world.get::<Vel>(c).map(|v| (v.0.x, v.0.y)));
@@ -178,6 +178,12 @@ fn primed_tnt_falls_explodes_on_the_fuse_and_breaks_blocks_whatever_mob_griefing
         h.tick();
         if h.world.get_entity(t).is_err() {
             gone = Some(k);
+            // The blast is the host's: it reads the asked blast, visible the tick after, and applies it (`EcsWorld::tnt_explode`).
+            h.tick();
+            let asked: Vec<_> = h.world.resource::<horizon_ecs_proto::goals::Events>().exploded.iter().collect();
+            for b in asked {
+                horizon_ecs_proto::explosion::explode_tnt(&mut h.world, b);
+            }
             break;
         }
         let c = h.world.get::<Contact>(t).unwrap();

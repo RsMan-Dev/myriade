@@ -98,7 +98,7 @@ fn a_wither_skull_without_owner_hurts_by_5_and_withers_the_creature() {
     assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(cow).is_some_and(|f| !f.list.is_empty()), "the wither effect");
 }
 
-/// A flask with its potion splashes its table's brews where it breaks: the creature near takes poison, the far one nothing.
+/// A flask with its potion splashes its table's brews where it breaks: the creature near takes the effect (slowness: poison spares the undead species the suite also runs), the far one nothing.
 #[test]
 fn a_potion_with_its_id_splashes_its_brews_by_distance() {
     if !have_data() {
@@ -109,7 +109,7 @@ fn a_potion_with_its_id_splashes_its_brews_by_distance() {
     let far = ecs_cow(&mut h, 9.5, 1.0, 0.5, 7);
     h.tick();
     let e = launch(&mut h.world, Flight::POTION, Vec3::new(0.5, 1.2, 0.5), Vec3::new(0.0, -0.1, 0.0), None);
-    h.world.entity_mut(e).insert(horizon_ecs_proto::arrow_more::ThrownItem(horizon_client_lib::items::ItemStack::new("minecraft:splash_potion", 1).with_potion("minecraft:poison")));
+    h.world.entity_mut(e).insert(horizon_ecs_proto::arrow_more::ThrownItem(horizon_client_lib::items::ItemStack::new("minecraft:splash_potion", 1).with_potion("minecraft:slowness")));
     for _ in 0..60 {
         h.tick();
         if h.world.get_entity(e).is_err() {
@@ -117,7 +117,7 @@ fn a_potion_with_its_id_splashes_its_brews_by_distance() {
         }
     }
     assert!(h.world.get_entity(e).is_err(), "the flask is gone where it broke");
-    assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(near).is_some_and(|f| !f.list.is_empty()), "poison near");
+    assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(near).is_some_and(|f| !f.list.is_empty()), "slowness near");
     assert!(h.world.get::<horizon_ecs_proto::effects::Effects>(far).is_none_or(|f| f.list.is_empty()), "nothing far");
 }
 

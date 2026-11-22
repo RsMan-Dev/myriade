@@ -202,6 +202,7 @@ pub fn spawn_like(world: &mut World, parent: Entity, x: f64, z: f64, seed: u64) 
     let e = spawn_declared(world, &sp, x, z, seed, false);
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
+    crate::leash::equip_default(world, e, sp.name);
     e
 }
 
@@ -218,6 +219,7 @@ pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64)
     let e = spawn_declared(world, sp, x, z, seed, true);
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
+    crate::leash::equip_default(world, e, sp.name);
     crate::brain::start(world, e);
     e
 }

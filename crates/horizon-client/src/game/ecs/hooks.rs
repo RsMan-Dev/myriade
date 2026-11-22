@@ -121,7 +121,7 @@ mod tests {
             game.ecs.set_death_vetoable(true);
             game.ecs_with(|ecs, mw| ecs.kill(mw, id));
             assert!(game.ecs.entity_of(id).is_some());
-            game.ecs.resolve_death(id, None);
+            game.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
             assert!(game.ecs.entity_of(id).is_none());
         });
     }

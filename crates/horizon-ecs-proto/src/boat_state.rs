@@ -111,7 +111,7 @@ pub fn register_nbt(w: &mut World) {
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Fire"), write: write_fire, read: read_fire, accepts: accept::short, owner: Some(owner::<Hull>) },
     Field { key: Cow::Borrowed("TicksFrozen"), write: write_frozen, read: read_frozen, accepts: accept::int, owner: Some(owner::<Hull>) },
-    Field { key: Cow::Borrowed("FallDistance"), write: write_fall, read: read_fall, accepts: accept::any, owner: Some(owner::<Hull>) },
+    Field { key: Cow::Borrowed("fall_distance"), write: write_fall, read: read_fall, accepts: accept::any, owner: Some(owner::<Hull>) },
     Field { key: Cow::Borrowed("OnGround"), write: write_on_ground, read: read_on_ground, accepts: accept::any, owner: Some(owner::<Hull>) },
     Field { key: Cow::Borrowed("Items"), write: write_items, read: read_items, accepts: accept::any, owner: Some(owner::<Chest>) },
     Field { key: Cow::Borrowed("LootTable"), write: write_loot_table, read: read_loot_table, accepts: accept::string, owner: Some(owner::<Chest>) },
@@ -143,7 +143,7 @@ fn read_frozen(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 fn write_fall(w: &World, e: Entity, c: &mut Compound) {
     if let Some(h) = w.get::<Hull>(e) {
-        c.insert("FallDistance".into(), Tag::Double(h.fall.to_bits()));
+        c.insert("fall_distance".into(), Tag::Double(h.fall.to_bits()));
     }
 }
 fn read_fall(w: &mut World, e: Entity, t: &Tag) -> bool {

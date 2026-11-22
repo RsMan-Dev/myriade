@@ -55,11 +55,13 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
     ps::set_flag(w, e, FLAG_ON_BACK, false);
     set_counter(w, e, 1);
     let creative = w.get_resource::<crate::used_stack::UsedStack>().is_some_and(|u| u.creative);
-    if equipped(w, e, Slot::Main) != 0 && !creative {
-        let old = crate::equipment::take_slot(w, e, Slot::Main);
-        let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
-        if let Some(name) = crate::items::item_name(old) {
-            crate::behaviours::shear::drop_stacks(w, vec![ItemStack::new(name, 1)], at);
+    if !creative {
+        if equipped(w, e, Slot::Main) != 0 {
+            let old = crate::equipment::take_slot(w, e, Slot::Main);
+            let at = w.get::<Pos>(e).map_or([0.0; 3], |q| [q.0.x, q.0.y, q.0.z]);
+            if let Some(name) = crate::items::item_name(old) {
+                crate::behaviours::shear::drop_stacks(w, vec![ItemStack::new(name, 1)], at);
+            }
         }
         crate::equipment::set_slot(w, e, Slot::Main, i.item);
     }

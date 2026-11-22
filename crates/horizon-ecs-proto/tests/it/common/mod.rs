@@ -387,3 +387,38 @@ pub fn ground_walker() -> bool {
     let s = species();
     s.gravity > 0.0 && s.modes.iter().any(|(m, _)| *m == horizon_ecs_proto::locomotion::Medium::Ground)
 }
+
+/// A host world whose zone ticks around the origin: a player there and two steps, so what is spawned next is awake (a
+/// creature outside a ticking chunk sleeps and reads as absent).
+pub fn awake_host_with(setup: &horizon_ecs_proto::bridge::host::HostSetup, build: impl FnOnce(&mut horizon_client_lib::world::World, &horizon_world::registry::BlockRegistry)) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+    use horizon_ecs_proto::bridge::host::{EcsWorld, PlayerFact};
+    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
+    let (mw, types, _) = horizon_client_lib::mobs::world::leaked_test_world_mut(true, build).expect("a prepared world");
+    let mut h = EcsWorld::new(setup, mw, types, &tags);
+    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
+    // The players' chunks reach the zone one step after the player is set.
+    h.step(mw);
+    h.step(mw);
+    (mw, h)
+}
+
+pub fn awake_host(setup: &horizon_ecs_proto::bridge::host::HostSetup) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+    awake_host_with(setup, |_, _| {})
+}
+
+/// `awake_host` over a stone floor at y = 0 (x and z from -8 to 8), for what walks or paths.
+pub fn awake_host_on_stone(setup: &horizon_ecs_proto::bridge::host::HostSetup) -> (&'static MobWorld<'static>, horizon_ecs_proto::bridge::host::EcsWorld) {
+    awake_host_with(setup, |blocks, registry| {
+        for cx in -2..2 {
+            for cz in -2..2 {
+                blocks.chunks.insert((cx, cz), std::sync::Arc::new(horizon_client_render::chunk::Chunk::empty(cx, cz)));
+            }
+        }
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        for x in -8..8 {
+            for z in -8..8 {
+                blocks.set(x, 0, z, stone).unwrap();
+            }
+        }
+    })
+}

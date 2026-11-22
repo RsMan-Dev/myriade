@@ -4,7 +4,7 @@ use crate::bridge::host::EcsWorld;
 use crate::bridge::view;
 use crate::boat_state::{self, BoatMarker};
 use crate::boat_tick::{OutOfControl, TIME_TO_EJECT};
-use crate::cow::{enter_index, now_of, Bounds, Cell, Index, Pos, Yaw};
+use crate::cow::{enter_index, now_of, Bounds, Cell, Contact, Index, Pos, Yaw};
 use crate::rules::boat::bounds_at;
 use crate::rules::seat_rules::{capacity, seat_height, seat_offset, seat_point, SeatKind};
 use crate::species::boats::index;
@@ -25,7 +25,7 @@ impl EcsWorld {
         let wood = index(wood)?;
         Some(self.lent(mw, |w| {
             let e = boat_state::spawn(w, wood, chest, at, yaw);
-            w.entity_mut(e).insert((Bounds(bounds_at(Vec3::new(at[0], at[1], at[2]))), Cell(u32::MAX, [i32::MIN; 8], u32::MAX)));
+            w.entity_mut(e).insert((Bounds(bounds_at(Vec3::new(at[0], at[1], at[2]))), Cell(u32::MAX, [i32::MIN; 8], u32::MAX), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }));
             enter_index(w, e);
             zone::admit(w, &[e]);
             view::mark(w, e);

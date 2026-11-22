@@ -32,18 +32,12 @@ pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("LeftHanded"), write: write_left_handed, read: read_left_handed, accepts: is_byte, owner: Some(owner::<LeftHanded>) },
 ];
 
-/// The default of `AbsorptionAmount` (0.0), for a free key equal to it.
-pub const DEFAULTS: &[(&str, fn() -> Tag)] = &[("AbsorptionAmount", zero_float)];
-
 /// The keys of the worn and held stacks, in the order of `equip_stack::SLOTS`.
 const SLOT_KEYS: [&str; SLOTS] = ["mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle"];
 /// The keys of the drop chances, in the order of `DropChances` (its index: main, off, feet, legs, chest, head, body, saddle).
 const DROP_KEYS: [&str; SLOTS] = ["mainhand", "offhand", "feet", "legs", "chest", "head", "body", "saddle"];
 const MINECRAFT: &str = "minecraft:";
 
-fn zero_float() -> Tag {
-    Tag::Float(0.0f32.to_bits())
-}
 fn is_byte(t: &Tag) -> bool {
     matches!(t, Tag::Byte(_))
 }

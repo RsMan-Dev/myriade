@@ -37,7 +37,7 @@ impl Game<'_> {
         let fake = self.lan_acting_fake
             || player.is_some_and(|c| self.lan.as_ref().and_then(|h| h.hub.guest(c)).is_some_and(|g| g.is_fake()));
         if matches!(target, Who::Player) && fake {
-            self.ecs.set_target(mob, None);
+            self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, None));
             return;
         }
         if self.native_authoritative() && mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
@@ -54,7 +54,7 @@ impl Game<'_> {
             match self.native_mob_target_event(me, original, self.ecs.has_brain(mob)) {
                 // Cancelled: the event does not carry the previous target, so the creature is left without one.
                 None => {
-                    self.ecs.set_target(mob, None);
+                    self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, None));
                     return;
                 }
                 Some(new) if new != original => {
@@ -65,7 +65,7 @@ impl Game<'_> {
                             None => self.with_player(id, |_| ()).map(|_| PWho::Player(id)),
                         }
                     });
-                    self.ecs.set_target(mob, who);
+                    self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, who));
                     return;
                 }
                 Some(_) => {}

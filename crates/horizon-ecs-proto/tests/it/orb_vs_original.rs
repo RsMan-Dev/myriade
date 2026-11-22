@@ -155,6 +155,8 @@ fn a_killed_animal_leaves_one_to_three_experience() {
     let mut tally = [0usize; 4];
     for k in 0..300 {
         let e = spawn_species(&mut h.world, species(), 0.5, 0.5, 21 + k as u64);
+        // An animal leaves experience only when a player hurt it lately (`lastHurtByPlayerMemory`).
+        h.world.entity_mut(e).insert(horizon_ecs_proto::credit::PlayerCredit { player: Some(1), uuid: None, until: u64::MAX });
         h.hit(e, 1000.0, (0.0, 0.0));
         h.tick();
         let total: i32 = h.world.query::<&Orb>().iter(&h.world).map(|o| o.value * o.count as i32).sum();

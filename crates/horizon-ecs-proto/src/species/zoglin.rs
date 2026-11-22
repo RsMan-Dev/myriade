@@ -19,6 +19,7 @@ pub static DEF: Def = Def {
     ],
     // `Zoglin`: `xpReward` 5 (`Mob`'s reward, the equipment adds), a baby keeps its loot and its experience (`Monster`).
     rules: &[
+        crate::rules::RuleEntry::new(&crate::leash::LEASH, &crate::leash::LeashParams::DEFAULT),
         crate::rules::RuleEntry::new(&crate::loot::XP, &crate::loot::XpReward { min: 5, max: 5 }),
         crate::rules::RuleEntry::new(&crate::loot::BABY_DROPS, &crate::loot::BabyDrops::MONSTER),
     ],

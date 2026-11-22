@@ -38,14 +38,14 @@ fn a_cow_under_water_drowns_after_320_ticks_then_every_20_for_2_damage() {
     let mut at = Vec::new();
     for t in 1..=420 {
         h.tick();
+        // The drowning's 2 damage is queued by the breath and taken by the next tick's hit system.
+        if let Some(&d) = at.last().filter(|&&d| d + 1 == t && at.len() <= 2) {
+            assert_eq!(h.world.get::<Health>(e).unwrap().0, max - 2.0 * at.len() as f32, "2 damage a drowning (at {d})");
+        }
         let n = drownings(&h).len();
         if n > at.len() {
             at.push(t);
             assert_eq!(drownings(&h)[n - 1], (e, 8), "eight bubbles");
-            // 2 damage for each drowning (the cow has 10 health: it is alive after the first two).
-            if n <= 2 {
-                assert_eq!(h.world.get::<Health>(e).unwrap().0, max - 2.0 * n as f32, "2 damage a drowning");
-            }
         }
     }
     assert!(at.len() >= 3, "drowned at {at:?}");

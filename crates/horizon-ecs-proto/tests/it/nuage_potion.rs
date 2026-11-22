@@ -7,8 +7,7 @@ use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::cloud_tick::{self, Live};
 use horizon_ecs_proto::cow::{skip_unless_default_species, DamageQueue, Health, Herd};
 use horizon_ecs_proto::effect_cloud::CloudSpec;
-use horizon_ecs_proto::nbt::{load, register, save};
-use horizon_ecs_proto::nbt_fields::effect_cloud::FIELDS;
+use horizon_ecs_proto::nbt::{load, save};
 
 fn at() -> Vec3 {
     Vec3::new(0.5, 64.0, 0.5)
@@ -31,7 +30,6 @@ fn a_cloud_shrinks_then_ends_under_half_a_block() {
 #[test]
 fn a_cloud_saves_to_the_jar_keys_and_loads_back() {
     let mut herd = Herd::new(0, 4.0, false, false, 7);
-    register(&mut herd.world, FIELDS);
     let spec = CloudSpec { radius_on_use: -0.5, duration_on_use: 4, ..CloudSpec::new(3.0, "minecraft:slowness", None) };
     let e = cloud_tick::spawn(&mut herd.world, at(), spec);
     let saved = save(&herd.world, e).expect("a cloud is saved");
@@ -40,7 +38,6 @@ fn a_cloud_saves_to_the_jar_keys_and_loads_back() {
     assert!(matches!(saved.get(&JavaString::from("DurationOnUse")), Some(Tag::Int(4))));
 
     let mut other = Herd::new(0, 4.0, false, false, 7);
-    register(&mut other.world, FIELDS);
     let back = cloud_tick::spawn(&mut other.world, at(), CloudSpec::new(0.0, "minecraft:harming", None));
     assert!(load(&mut other.world, back, &saved).is_some());
     let got = other.world.get::<CloudSpec>(back).expect("loaded");

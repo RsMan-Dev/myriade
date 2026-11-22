@@ -16,9 +16,7 @@ fn setup() -> HostSetup {
 #[test]
 fn attach_to_a_knot_then_save_writes_its_coordinates() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [3.5, 64.0, 5.5], None).expect("a cow");
     assert!(leash::attach(h.world_mut(), cow, Holder::Knot([3, 64, 5])), "the lead goes on");
     let mut tag = Tag::Compound(Default::default());
@@ -29,9 +27,7 @@ fn attach_to_a_knot_then_save_writes_its_coordinates() {
 #[test]
 fn attach_to_an_entity_saves_its_uuid() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let holder = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a cow");
     let cow = h.spawn(mw, "minecraft:cow", [1.5, 64.0, 0.5], None).expect("a cow");
     let uuid = [1, -2, 3, -4];
@@ -45,9 +41,7 @@ fn attach_to_an_entity_saves_its_uuid() {
 #[test]
 fn a_pending_lead_waits_for_its_uuid_then_ties_when_the_entity_appears() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a cow");
     let uuid = [9, 9, 9, 9];
     let saved = Tag::compound([("leash", Tag::compound([("UUID", Tag::IntArray(uuid.to_vec()))]))]);
@@ -63,9 +57,7 @@ fn a_pending_lead_waits_for_its_uuid_then_ties_when_the_entity_appears() {
 #[test]
 fn can_attach_is_false_beyond_the_snapping_distance() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a cow");
     assert!(h.leash_can_attach(cow, [0.5, 64.5, 0.5]), "a holder at the creature's side");
     assert!(!h.leash_can_attach(cow, [60.5, 64.5, 0.5]), "a holder sixty blocks away");
@@ -74,9 +66,7 @@ fn can_attach_is_false_beyond_the_snapping_distance() {
 #[test]
 fn entity_by_uuid_finds_the_entity_then_nothing_once_it_is_despawned() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a cow");
     let uuid = [5, 6, 7, 8];
     h.set_uuid(cow, uuid);
@@ -88,9 +78,7 @@ fn entity_by_uuid_finds_the_entity_then_nothing_once_it_is_despawned() {
 #[test]
 fn a_creature_view_is_a_creature_and_a_boat_view_is_a_vehicle() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a cow");
     let boat = h.world_mut().spawn((Pos(Vec3::new(10.5, 64.0, 10.5)), Vel(Vec3::ZERO), Boat { water_level: 64.0, ..Boat::default() })).id();
     let cv = view(h.world(), cow).expect("a view of the creature");

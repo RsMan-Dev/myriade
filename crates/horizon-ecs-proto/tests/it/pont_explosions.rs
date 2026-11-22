@@ -60,6 +60,8 @@ fn explode_with_false_hurts_the_creatures_and_changes_no_block() {
     let (mw, types) = stone_world();
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     h.set_player(player(), fact());
+    h.step(mw);
+    h.step(mw);
     let near = h.spawn(mw, "minecraft:cow", [1.5, 1.0, 0.5], None).expect("a known species");
     let before = h.world().get::<Health>(near).unwrap().0;
     h.explode_with(mw, blast(Vec3::new(0.5, 1.0, 0.5), None), false);
@@ -74,6 +76,8 @@ fn explode_with_true_breaks_the_blocks_of_the_floor() {
     let (mw, types) = stone_world();
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     h.set_player(player(), fact());
+    h.step(mw);
+    h.step(mw);
     h.explode_with(mw, blast(Vec3::new(0.5, 1.0, 0.5), None), true);
     let out = h.step(mw);
     assert!(out.iter().any(|ev| matches!(ev, HostEvent::SetBlock { .. })), "the stone under the blast breaks");
@@ -85,10 +89,13 @@ fn the_source_of_a_blast_is_not_hurt_by_it() {
     let (mw, types) = stone_world();
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     h.set_player(player(), fact());
+    h.step(mw);
+    h.step(mw);
     let source = h.spawn(mw, "minecraft:cow", [1.5, 1.0, 0.5], None).expect("a known species");
     let other = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 0.5], None).expect("a known species");
     let (hs, ho) = (h.world().get::<Health>(source).unwrap().0, h.world().get::<Health>(other).unwrap().0);
     h.explode(mw, blast(Vec3::new(1.5, 1.0, 0.5), Some(source)));
+    h.step(mw);
     h.step(mw);
     assert_eq!(h.world().get::<Health>(source).unwrap().0, hs, "the source is spared");
     assert!(h.world().get::<Health>(other).unwrap().0 < ho, "the others are hurt");
@@ -112,9 +119,12 @@ fn indirect_magic_names_its_owner_as_the_last_attacker() {
     let (mw, types) = stone_world();
     let mut h = EcsWorld::new(&setup(), mw, types, &tags());
     h.set_player(player(), fact());
+    h.step(mw);
+    h.step(mw);
     let target = h.spawn(mw, "minecraft:cow", [1.5, 1.0, 0.5], None).expect("a known species");
     let owner = h.spawn(mw, "minecraft:cow", [3.5, 1.0, 0.5], None).expect("a known species");
     h.hurt(mw, target, 1.0, HurtSource::IndirectMagic { owner: Some(Who::Entity(owner)) });
+    h.step(mw);
     h.step(mw);
     let last = h.world().get::<LastHurtBy>(target).expect("the target was hurt");
     assert_eq!(last.who, Who::Entity(owner), "the owner is the last attacker");

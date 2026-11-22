@@ -16,14 +16,14 @@ fn an_idle_piglin_near_the_player_is_alerted_and_a_busy_one_is_not() {
         return;
     }
     let mut h = Herd::with_slab_awake(60, true, false);
-    h.set_players(vec![(3.5, 0.5)]);
+    h.set_online(&[(3.5, 0.5)]);
     let idle = piglin(&mut h, 0.5, 0.5);
     let busy = piglin(&mut h, 1.5, 0.5);
     horizon_ecs_proto::targeting::set_target(&mut h.world, busy, Target::new(Who::Entity(idle), 0, 0));
     assert!(guard_alert::at_rest(&h.world, idle) && !guard_alert::at_rest(&h.world, busy));
-    let n = guard_alert::alert(&mut h.world, 0, false);
+    let n = guard_alert::alert(&mut h.world, 1, false);
     assert_eq!(n, 1);
-    assert_eq!(h.world.get::<Target>(idle).map(|t| t.who), Some(Who::Player(0)));
+    assert_eq!(h.world.get::<Target>(idle).map(|t| t.who), Some(Who::Player(1)));
     assert_eq!(h.world.get::<Target>(busy).map(|t| t.who), Some(Who::Entity(idle)));
 }
 

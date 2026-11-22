@@ -18,6 +18,8 @@ const RANDOM: &[&str] = &["UUID", "Pos", "Motion", "Rotation", "Strength", "EggL
 /// Known gaps: (identifier or `*`, key, category, reason). A gap is `missing` (the ecs lacks a key Horizon writes), `extra` (the ecs
 /// writes one Horizon does not), `type` or `value`.
 const KNOWN: &[(&str, &str, &str, &str)] = &[
+    ("minecraft:armadillo", "scute_time", "value", "the wait to the next scute is a random draw of each creature (the origin's and the ecs's streams differ)"),
+    ("minecraft:copper_golem", "next_weather_age", "value", "the ecs arms the weathering at creation (a date on the wheel); the origin writes -1 until its first tick sets one"),
     ("*", "Sitting", "missing", "the tamable writes the key only once it holds an occupation (`Occupied`, set when it is ordered to sit); the origin writes it at creation"),
     ("*", "Trusting", "missing", "the ocelot writes the marker only when it holds it (set when a player feeds it); the origin writes it at creation"),
     ("*", "ExplosionPower", "missing", "the ghast keeps its fireball power in its goal parameters, not in a component that would own the key"),

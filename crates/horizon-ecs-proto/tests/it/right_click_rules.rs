@@ -107,7 +107,9 @@ fn a_llama_wears_a_carpet_untamed_and_takes_a_chest_only_tame() {
     assert_eq!(equipped(&h.world, e, Slot::Body), carpet);
     let chest = items::item_id("minecraft:chest");
     hold(&mut h, chest);
-    assert!(!click(&mut h, e, chest), "a wild llama refuses the chest");
+    // The click is not lost (a wild llama is mounted or angered), but the chest does not go on.
+    click(&mut h, e, chest);
+    assert!(h.world.get::<horizon_ecs_proto::mount_inventory::MountInventory>(e).is_none(), "a wild llama refuses the chest");
     h.world.entity_mut(e).insert(Owner(Some(Who::Player(1))));
     assert!(click(&mut h, e, chest));
     assert!(h.world.get::<horizon_ecs_proto::mount_inventory::MountInventory>(e).is_some());

@@ -33,12 +33,19 @@ pub struct Live;
 pub struct Reached(pub Vec<(Who, i32)>);
 
 /// A cloud at `at` (its floor), announced to the host as `HostEvent::Cloud`. Its wait is a deadline on the wheel; nothing visits it before.
-pub fn spawn(w: &mut World, at: Vec3, c: CloudSpec) -> Entity {
+pub fn spawn(w: &mut World, at: Vec3, mut c: CloudSpec) -> Entity {
     let (wait, radius, duration) = (c.wait, c.radius, c.duration);
+    // The age counts from the creation, and the entity's own time from the world's start: the base cancels the time already run.
+    c.age_base = -(w.resource::<crate::cow::Clock>().0 as i32);
     let e = w.spawn((Pos(at), c, Reached::default(), OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
     w.resource_mut::<Events>().host.cloud([at.x, at.y, at.z], radius, duration);
-    after(w, e, wait, wake);
+    // A wait of 0 is over at once: a deadline on the current tick would never come.
+    if wait <= 0 {
+        wake(w, e);
+    } else {
+        after(w, e, wait, wake);
+    }
     e
 }
 

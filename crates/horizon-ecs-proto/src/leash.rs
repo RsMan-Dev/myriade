@@ -84,6 +84,21 @@ fn equip(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync)) {
     let p = *params::<LeashParams>(p);
     w.entity_mut(e).insert(Leashable { elastic: p.elastic, snap: p.snap, follow_speed: p.follow_speed });
 }
+/// The creature `canBeLeashed` returns false for (`Mob.canBeLeashed` overridden: panda, turtle, fish, bat, villagers): the rule `NEVER`.
+#[derive(Component)]
+pub struct NoLead;
+pub static NEVER: Rule = Rule { name: "no_leash", equip: |w, e, _| { w.entity_mut(e).insert(NoLead); }, attrs: no_attrs, interact: crate::rules::no_interact };
+/// `Mob.canBeLeashed` (`!(this instanceof Enemy)`) for a species no rule settles: a creature with goals that is not a monster, unless it
+/// carries `NEVER`. A monster that is leashable anyway (hoglin, zoglin, zombie horse) carries `LEASH`.
+pub fn equip_default(w: &mut World, e: Entity, name: &str) {
+    if w.get::<Leashable>(e).is_some() || w.get::<NoLead>(e).is_some() || w.get::<GoalSet>(e).is_none() {
+        return;
+    }
+    if crate::bridge::host_read::category_of(name) != Some("monster") {
+        let p = LeashParams::DEFAULT;
+        w.entity_mut(e).insert(Leashable { elastic: p.elastic, snap: p.snap, follow_speed: p.follow_speed });
+    }
+}
 /// A lead in hand puts the creature on a lead; the holder's empty hand takes it off.
 fn interact(w: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync), i: &crate::behaviours::Interaction) -> bool {
     if let Some(l) = w.get::<Leash>(e) {

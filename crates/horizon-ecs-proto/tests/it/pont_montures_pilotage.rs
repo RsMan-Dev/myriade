@@ -14,10 +14,8 @@ use horizon_ecs_proto::targeting::Who;
 
 fn with_mw(kind: &str) -> (&'static MobWorld<'static>, EcsWorld, Entity) {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
     let setup = HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 };
-    let mut h = EcsWorld::new(&setup, mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup);
     let e = h.spawn(mw, kind, [0.5, 64.0, 0.5], None).expect("a known species");
     (mw, h, e)
 }
@@ -39,9 +37,11 @@ fn a_harnessed_happy_ghast_flies_along_its_riders_look() {
         h.ride_input(ghast, [0.0, 1.0], 0.0, false, false, false, 0.0, 0.0);
         h.step(mw);
     }
+    // The ghast's own float goal still runs under a player (`updateControlFlags` leaves its goals on): the heading is not asserted, only
+    // the rider's forward input (`getRiddenInput`) in the drive and the flight it adds.
+    assert!(h.world().get::<horizon_ecs_proto::cow::Drive>(ghast).unwrap().zza > 0.1, "the rider's forward input reaches the drive");
     let end = h.world().get::<Pos>(ghast).unwrap().0;
-    // Yaw 0 faces +z in the game's frame.
-    assert!(end.z - start.z > 1.0, "30 ticks of forward input moved it along the look: {start:?} -> {end:?}");
+    assert!((end.x - start.x).hypot(end.z - start.z) > 1.0, "30 ticks of forward input flew it: {start:?} -> {end:?}");
 }
 
 /// A llama carries a player but is neither steered nor jumpable, saddle or not.
@@ -62,13 +62,16 @@ fn a_nautilus_gives_its_rider_the_breath_and_the_dash_ready_sound() {
     h.world_mut().get_mut::<Mount>(nautilus).unwrap().saddled = true;
     ride(&mut h, nautilus);
     assert!(h.jumpable(nautilus), "a saddled nautilus may dash: its jump key does something");
+    let level = mw.clone();
     let mut breaths: Vec<i32> = Vec::new();
     let mut ready = 0;
     for tick in 0..90 {
         if tick == 5 {
             h.ride_input(nautilus, [0.0, 0.0], 1.0, false, false, false, 0.0, 0.0);
         }
-        for ev in h.step(mw) {
+        // The host moves the game time on at each tick; the test world's stands still.
+        let now: &'static MobWorld<'static> = Box::leak(Box::new(MobWorld { game_time: level.game_time + i64::from(tick) + 1, ..level.clone() }));
+        for ev in h.step(now) {
             match ev {
                 HostEvent::Misc(MiscEvent::PlayerEffect { player: 1, effect: "minecraft:breath_of_the_nautilus", ticks: 60, amplifier: 0, ambient: true }) => breaths.push(tick),
                 HostEvent::Sound { name, .. } if name.starts_with("entity.nautilus.dash_ready") => ready += 1,

@@ -29,7 +29,7 @@ impl Game<'_> {
         let id = self.entity_id(e);
         // A hook that went away since the flag was set: the death simply goes on.
         if !mod_api::__private::listened(mod_api::HookId::LivingDeathPost) {
-            self.ecs.resolve_death(id, None);
+            self.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
             return;
         }
         let by = match attacker {
@@ -38,7 +38,7 @@ impl Game<'_> {
         };
         // As the mob's: the loot leaves first (`loot_dying`), the hook reads the entity still there, then it is removed. A false
         // answer means P no longer holds it `Dying` (gone already): there is nothing to tell or remove.
-        if !self.ecs.loot_dying(id) {
+        if !self.ecs_with(|ecs, mw| ecs.loot_dying(mw, id)) {
             return;
         }
         self.native_ecs_death_post(id, &format!("minecraft:{cause}"), by);
@@ -58,7 +58,7 @@ impl Game<'_> {
             }
             _ => false,
         };
-        self.ecs.resolve_totem(e, cancel);
+        self.ecs_with(|ecs, mw| ecs.resolve_totem(mw, e, cancel));
     }
 
     /// `HostEvent::TargetChanged` with no target: `living_change_target` hears the clear (not a brain's). A refusal puts `previous` back,
@@ -74,7 +74,7 @@ impl Game<'_> {
             Some(None) => {}
             None => {
                 if previous.is_some() {
-                    self.ecs.set_target(id, previous);
+                    self.ecs_with(|ecs, mw| ecs.set_target(mw, id, previous));
                 }
             }
             Some(Some(new)) => {
@@ -84,7 +84,7 @@ impl Game<'_> {
                     None => self.with_player(new_id, |_| ()).map(|_| Who::Player(new_id)),
                 };
                 if who.is_some() {
-                    self.ecs.set_target(id, who);
+                    self.ecs_with(|ecs, mw| ecs.set_target(mw, id, who));
                 }
             }
         }

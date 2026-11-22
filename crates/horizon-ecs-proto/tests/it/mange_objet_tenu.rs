@@ -12,7 +12,7 @@ use horizon_ecs_proto::species::Config;
 use horizon_ecs_proto::swing;
 
 static FOOD: [&str; 1] = ["minecraft:sweet_berries"];
-static ENTRIES: [Entry; 1] = [Entry::new(&eat_held::MODULE, 0, &eat_held::Params { delay: 30, crumbs_from: 20, retry: 5, foods: &FOOD, ..eat_held::Params::DEFAULT })];
+static ENTRIES: [Entry; 1] = [Entry::new(&eat_held::MODULE, 0, &eat_held::Params { delay: 30, crumbs_from: 20, retry: 10, foods: &FOOD, ..eat_held::Params::DEFAULT })];
 
 fn berry(count: u32) -> ItemStack {
     ItemStack::new("minecraft:sweet_berries", count)

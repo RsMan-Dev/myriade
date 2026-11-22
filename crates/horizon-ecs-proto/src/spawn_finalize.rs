@@ -47,7 +47,7 @@ pub fn kind_of(w: &World, e: Entity) -> Finalize {
     use crate::cow::tag;
     let bits = w.get::<SpeciesId>(e).map_or(0, |id| crate::cow::tags_of_id(*id));
     if bits & tag::ZOMBIE != 0 {
-        Finalize::Zombie { jockey: "minecraft:chicken" }
+        Finalize::Zombie { jockey: crate::species::lists::CHICKEN }
     } else if let Some(kit) = crate::spawn_gear::kit_of(w, e) {
         Finalize::Geared(kit)
     } else if bits & tag::AGEING != 0 && bits & tag::TADPOLE == 0 {

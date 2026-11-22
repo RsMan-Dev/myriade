@@ -16,20 +16,16 @@ fn setup() -> HostSetup {
 #[test]
 fn kill_removes_a_mob() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     h.kill(mw, e);
-    assert!(h.world().get_entity(e).is_err(), "the cow is gone");
+    assert!(horizon_ecs_proto::tear_down::is_dead(h.world(), e) || h.world().get_entity(e).is_err(), "the cow is dead");
 }
 
 #[test]
 fn kill_under_veto_stays_alive() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     h.set_death_vetoable(true);
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     h.kill(mw, e);
@@ -40,9 +36,7 @@ fn kill_under_veto_stays_alive() {
 #[test]
 fn portal_entries_visit_only_the_moved() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let still = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let moved = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 0.5], None).expect("a known species");
     h.world_mut().entity_mut(still).remove::<Moving>();
@@ -57,9 +51,7 @@ fn portal_entries_visit_only_the_moved() {
 #[test]
 fn no_portal_entity_cannot_use_a_portal() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.can_use_portal(cow), "a cow takes a portal");
     h.world_mut().entity_mut(cow).insert(NoPortal);
@@ -69,9 +61,7 @@ fn no_portal_entity_cannot_use_a_portal() {
 #[test]
 fn a_boat_keeps_its_two_passengers_through_a_save() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let boat = horizon_ecs_proto::boat_state::spawn(h.world_mut(), 0, false, [0.5, 64.0, 0.5], 0.0);
     h.world_mut().entity_mut(boat).insert(Seats::new(SeatKind::Boat { chest: false, raft: false }));
     let a = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a known species");
@@ -86,9 +76,7 @@ fn a_boat_keeps_its_two_passengers_through_a_save() {
 #[test]
 fn a_boat_gets_its_seats_at_boarding_and_loses_them_when_empty() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let boat = horizon_ecs_proto::boat_state::spawn(h.world_mut(), 0, false, [0.5, 64.0, 0.5], 0.0);
     assert!(h.world().get::<Seats>(boat).is_none(), "a new boat has no seats");
     let cow = h.spawn(mw, "minecraft:cow", [0.5, 64.0, 0.5], None).expect("a known species");

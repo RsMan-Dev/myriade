@@ -80,8 +80,8 @@ impl EcsLevel {
     }
 
     /// `EcsWorld::set_target` for the creature `id`; `None` takes its target away.
-    pub fn set_target(&mut self, id: u32, who: Option<Who>) -> bool {
-        self.write_id(id, |w, e| w.set_target(e, who))
+    pub fn set_target(&mut self, mw: &MobWorld<'_>, id: u32, who: Option<Who>) -> bool {
+        self.write_id(id, |w, e| w.set_target(mw, e, who))
     }
 
     /// `EcsWorld::bee_forget_hive` for the bee `e` (the hive it went to is full or gone).

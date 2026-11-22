@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use horizon_client_lib::mobs::world::leaked_test_world_mut;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::bridge::host::{EcsWorld, HostSetup};
-use horizon_ecs_proto::cow::{Contact, Health, MaxHealth, Resist, Vel, Yaw};
+use horizon_ecs_proto::cow::{Contact, Health, Resist, Vel, Yaw};
 use horizon_ecs_proto::effects::Kind;
 use horizon_ecs_proto::goals::{self, Head};
 
@@ -14,9 +14,7 @@ fn setup() -> HostSetup {
 
 fn world_and_cow() -> (EcsWorld, Entity) {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     (h, e)
 }
@@ -24,7 +22,7 @@ fn world_and_cow() -> (EcsWorld, Entity) {
 #[test]
 fn heal_stops_at_max_and_refuses_the_dead() {
     let (mut h, e) = world_and_cow();
-    let max = h.world().get::<MaxHealth>(e).expect("a cow has a max health").0;
+    let max = h.max_health(e).expect("a cow has a max health");
     h.set_health(e, 1.0);
     assert!(h.heal(e, 1000.0));
     assert_eq!(h.world().get::<Health>(e).unwrap().0, max, "the heal is capped at the max");
@@ -36,7 +34,7 @@ fn heal_stops_at_max_and_refuses_the_dead() {
 #[test]
 fn set_health_is_bounded() {
     let (mut h, e) = world_and_cow();
-    let max = h.world().get::<MaxHealth>(e).unwrap().0;
+    let max = h.max_health(e).unwrap();
     assert!(h.set_health(e, -3.0));
     assert_eq!(h.world().get::<Health>(e).unwrap().0, 0.0);
     assert!(h.set_health(e, 1.0e9));

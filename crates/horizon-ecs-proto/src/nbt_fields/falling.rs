@@ -27,13 +27,16 @@ fn compound(t: &Tag) -> bool {
 
 /// `Time`: the entity's own ticks since it fell. The load re-arms the deadline with what the jar's limit leaves of it.
 fn write_time(w: &World, e: Entity, c: &mut Compound) {
-    if w.get::<FallingBlock>(e).is_some() {
-        c.insert("Time".into(), Tag::Int(now_of(w, e) as i32));
+    if let Some(f) = w.get::<FallingBlock>(e) {
+        c.insert("Time".into(), Tag::Int(now_of(w, e).saturating_sub(f.born) as i32));
     }
 }
 
 fn read_time(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
+    let now = now_of(w, e);
+    let Some(mut f) = w.get_mut::<FallingBlock>(e) else { return false };
+    f.born = now.saturating_sub(i64::from(*v).max(0) as u64);
     // The deadline `fall` armed for a new block is the stale one: the earlier one ends the fall, and `expire` ignores a gone entity.
     after(w, e, (LIMIT + 1 - *v).max(0), expire);
     true

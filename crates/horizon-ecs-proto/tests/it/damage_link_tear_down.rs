@@ -32,7 +32,7 @@ fn blow(h: &mut Herd, e: Entity, by: Option<Who>) {
 }
 
 fn hurts(h: &Herd) -> Vec<bool> {
-    h.world.resource::<MiscOut>().0.iter().filter_map(|m| if let MiscEvent::LinkedHurt { by_player, .. } = m { Some(*by_player) } else { None }).collect()
+    h.world.get_resource::<MiscOut>().map_or_else(Vec::new, |o| o.0.iter().filter_map(|m| if let MiscEvent::LinkedHurt { by_player, .. } = m { Some(*by_player) } else { None }).collect())
 }
 
 #[test]

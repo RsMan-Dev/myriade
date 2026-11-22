@@ -15,21 +15,25 @@ fn setup() -> HostSetup {
 /// Runs `f` on a host with one cow at the centre of a block, and no player.
 fn cow_world(f: impl FnOnce(&mut EcsWorld, Entity)) {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     f(&mut h, e);
 }
 
 #[test]
 fn nav_move_to_then_stop_navigation() {
-    cow_world(|h, e| {
-        assert!(h.nav_move_to(e, [4.5, 1.0, 0.5], 1.0));
-        assert!(!h.nav_is_done(e), "a path is being walked");
-        h.stop_navigation(e);
-        assert!(h.nav_is_done(e), "the stop ends the path");
-    });
+    have_data();
+    let (mw, mut h) = awake_host_on_stone(&setup());
+    let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
+    // Three ticks settle it on the floor: no path is made in the air.
+    for _ in 0..3 {
+        h.step(mw);
+    }
+    assert!(h.nav_move_to(e, [4.5, 1.0, 0.5], 1.0));
+    h.step(mw);
+    assert!(!h.nav_is_done(e), "a path is being walked");
+    h.stop_navigation(e);
+    assert!(h.nav_is_done(e), "the stop ends the path");
 }
 
 #[test]
@@ -84,12 +88,13 @@ fn start_sleeping_is_read_back() {
 
 #[test]
 fn set_target_then_ai_target() {
-    cow_world(|h, e| {
-        h.set_target(e, Some(Who::Player(1)));
-        assert!(matches!(h.ai_target(e), Some(Who::Player(1))));
-        h.set_target(e, None);
-        assert!(h.ai_target(e).is_none());
-    });
+    have_data();
+    let (mw, mut h) = awake_host(&setup());
+    let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
+    h.set_target(mw, e, Some(Who::Player(1)));
+    assert!(matches!(h.ai_target(e), Some(Who::Player(1))));
+    h.set_target(mw, e, None);
+    assert!(h.ai_target(e).is_none());
 }
 
 #[test]
@@ -107,6 +112,7 @@ fn baby_is_smaller_and_grows_back() {
 fn no_action_time_zero_restarts_the_despawn_count() {
     cow_world(|h, e| {
         h.world_mut().get_mut::<Despawn>(e).expect("a creature that may go away").deadline = 0;
+        h.world_mut().get_mut::<horizon_ecs_proto::cow::ActiveUntil>(e).unwrap().0 = 1;
         h.set_no_action_time(e, 0);
         assert!(h.world().get::<Despawn>(e).unwrap().deadline > 0, "the deadline is pushed back");
     });

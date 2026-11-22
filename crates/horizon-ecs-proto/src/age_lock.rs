@@ -39,7 +39,7 @@ pub fn interact(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) ->
         arm_at(w, e, now + start, Due::Grow);
     }
     w.entity_mut(e).insert(LockParticles(PULSES));
-    after(w, e, 0, pulse);
+    after(w, e, 1, pulse);
     if let Some(at) = w.get::<Pos>(e).map(|p| p.0) {
         let name = if locked { "item.golden_dandelion.use" } else { "item.golden_dandelion.unuse" };
         w.resource_mut::<Events>().host.sound(name, [at.x.floor(), at.y.floor(), at.z.floor()], 1.0, 1.0);

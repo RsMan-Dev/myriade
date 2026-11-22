@@ -156,7 +156,7 @@ pub const FOX: Kit = Kit {
         gate: Some(Gate::Below([0.2, 0.2])),
         choice: Choice::Roll(&[
             (0.05, &["minecraft:emerald"]),
-            (0.2, &["minecraft:egg"]),
+            (0.2, &[crate::species::lists::EGG]),
             (0.4, &["minecraft:rabbit_foot", "minecraft:rabbit_hide"]),
             (0.6, &["minecraft:wheat"]),
             (0.8, &["minecraft:leather"]),

@@ -11,12 +11,17 @@ use bevy_ecs::entity::Entity;
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::Vec3;
 
+/// The bound of a write on health: the maximum the entity has (its component, else its species'), none without a species.
+fn cap(w: &bevy_ecs::world::World, e: Entity) -> f32 {
+    w.get::<MaxHealth>(e).map(|m| m.0).or_else(|| w.get::<crate::cow::SpeciesId>(e).is_some().then(|| crate::cow::max_health(w, e))).unwrap_or(f32::MAX)
+}
+
 impl EcsWorld {
     /// `LivingEntity.heal`: `amount` more health, capped at the max; false when the entity is dead or has no health.
     pub fn heal(&mut self, e: Entity, amount: f32) -> bool {
         let w = self.world_mut();
         let Some(h) = w.get::<Health>(e).map(|h| h.0).filter(|h| *h > 0.0) else { return false };
-        let max = w.get::<MaxHealth>(e).map_or(f32::MAX, |m| m.0);
+        let max = cap(w, e);
         if let Some(mut hp) = w.get_mut::<Health>(e) {
             hp.0 = regen::healed(h, amount, max);
         }
@@ -27,7 +32,7 @@ impl EcsWorld {
     /// Writes `Health` bounded to `[0, max]`; it does not kill (`hurt` does). False when the entity has no health.
     pub fn set_health(&mut self, e: Entity, value: f32) -> bool {
         let w = self.world_mut();
-        let max = w.get::<MaxHealth>(e).map_or(f32::MAX, |m| m.0);
+        let max = cap(w, e);
         let Some(mut hp) = w.get_mut::<Health>(e) else { return false };
         hp.0 = value.max(0.0).min(max);
         drop(hp);

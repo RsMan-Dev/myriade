@@ -46,6 +46,7 @@ fn a_tamed_sitting_wolf_sends_the_flags_byte_0x05() {
 #[test]
 fn a_pet_sends_the_uuid_of_its_owner_entity() {
     let mut w = World::new();
+    w.init_resource::<horizon_ecs_proto::bridge::uuids::Uuids>();
     let owner = w.spawn(EntityUuid(42)).id();
     let pet = w.spawn_empty().id();
     set_owner(&mut w, pet, Who::Entity(owner));
@@ -55,6 +56,7 @@ fn a_pet_sends_the_uuid_of_its_owner_entity() {
 #[test]
 fn set_owner_is_the_owner_the_tamer_gave() {
     let mut w = World::new();
+    w.init_resource::<horizon_ecs_proto::tame::Pets>();
     let e = w.spawn_empty().id();
     set_owner(&mut w, e, Who::Player(7));
     assert!(matches!(w.get::<Owner>(e), Some(Owner(Some(Who::Player(7))))));

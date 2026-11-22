@@ -23,7 +23,7 @@ fn an_armed_horse_waits_while_no_player_is_near() {
         return;
     }
     let mut h = Herd::with_slab_awake(60, true, false);
-    h.set_players(vec![(30.5, 0.5)]);
+    h.set_online(&[(30.5, 0.5)]);
     let e = horse(&mut h);
     assert!(spring_trap::arm(&mut h.world, e, 0));
     spring_trap::player_changed(&mut h.world);
@@ -38,10 +38,10 @@ fn a_player_in_range_springs_the_trap() {
         return;
     }
     let mut h = Herd::with_slab_awake(60, true, false);
-    h.set_players(vec![(30.5, 0.5)]);
+    h.set_online(&[(30.5, 0.5)]);
     let e = horse(&mut h);
     spring_trap::arm(&mut h.world, e, 0);
-    h.set_players(vec![(3.5, 0.5)]);
+    h.set_online(&[(3.5, 0.5)]);
     spring_trap::player_changed(&mut h.world);
     assert!(h.world.get::<Armed>(e).is_none() && h.world.get::<Tamed>(e).is_some());
     assert_eq!(count(&mut h, "minecraft:skeleton_horse"), 4);
@@ -55,7 +55,7 @@ fn a_disarmed_horse_springs_nothing_and_the_wait_is_counted() {
         return;
     }
     let mut h = Herd::with_slab_awake(60, true, false);
-    h.set_players(vec![(3.5, 0.5)]);
+    h.set_online(&[(3.5, 0.5)]);
     let e = horse(&mut h);
     assert_eq!(spring_trap::elapsed(&h.world, e), None);
     spring_trap::player_changed(&mut h.world);

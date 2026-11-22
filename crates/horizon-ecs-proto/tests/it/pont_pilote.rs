@@ -60,14 +60,15 @@ fn a_boat_steered_up_moves() {
     if !have_data() {
         return;
     }
-    let (mut w, e) = world_with_boat();
-    let before = w.get::<Pos>(e).expect("a position").0;
-    pilot::set(&mut w, e, input(Who::Player(7), 1.0, 0.0, [false, false, true, false]));
+    let (mw, mut h) = awake_host_on_stone(&horizon_ecs_proto::bridge::host::HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 });
+    let e = h.spawn_boat(mw, "oak", false, [0.5, 1.0, 0.5], 0.0).expect("a known wood");
+    let before = h.world().get::<Pos>(e).expect("a position").0;
+    pilot::set(h.world_mut(), e, input(Who::Player(7), 1.0, 0.0, [false, false, true, false]));
     for _ in 0..5 {
-        boat_tick::boat_step(&mut w);
+        h.step(mw);
     }
-    let after = w.get::<Pos>(e).expect("a position").0;
-    assert_ne!(after, before, "the up key pushes the boat");
+    let after = h.world().get::<Pos>(e).expect("a position").0;
+    assert!((after.x, after.z) != (before.x, before.z), "the up key pushes the boat along the water");
 }
 
 #[test]
@@ -116,10 +117,10 @@ fn a_minecart_with_a_pilot_rolls_and_takes_its_intent() {
     if !have_data() {
         return;
     }
-    let mut w = World::new();
-    w.insert_resource(level());
-    let e = horizon_ecs_proto::cart_state::spawn(&mut w, Kind::Rideable, [0.5, 1.0, 0.5], 0.0);
-    assert!(pilot::set(&mut w, e, input(Who::Player(7), 0.5, 0.25, [false; 4])));
+    let (mw, mut h) = awake_host(&horizon_ecs_proto::bridge::host::HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 });
+    let e = h.spawn_cart(mw, "minecraft:minecart", [0.5, 1.0, 0.5], 0.0).expect("a known genre");
+    let w = h.world_mut();
+    assert!(pilot::set(w, e, input(Who::Player(7), 0.5, 0.25, [false; 4])));
     assert!(w.get::<Rolling>(e).is_some(), "a minecart with a pilot rolls");
-    assert_eq!(pilot::cart_intent(&pilot::input_of(&w, e).expect("a pilot")), [0.25, 0.5]);
+    assert_eq!(pilot::cart_intent(&pilot::input_of(w, e).expect("a pilot")), [0.25, 0.5]);
 }

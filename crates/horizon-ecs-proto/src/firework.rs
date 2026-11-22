@@ -74,7 +74,10 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 pub fn launch(w: &mut World, s: Shot) -> Entity {
     // The seed mixes the tick and the live entities, so two rockets launched in one tick draw differently.
     let seed = (w.resource::<Clock>().0 as i64).wrapping_mul(0x9E37_79B9) ^ i64::from(w.entities().len());
-    let mut random = LegacyRandom::new(seed);
+    launch_with(w, s, &mut LegacyRandom::new(seed))
+}
+/// [`launch`] with the random the draws are read from (a test replays the jar's sequence).
+pub fn launch_with(w: &mut World, s: Shot, random: &mut LegacyRandom) -> Entity {
     let drawn_x = random.triangle(0.0, 0.002297);
     let drawn_z = random.triangle(0.0, 0.002297);
     let lifetime = life_ticks(s.flight, random.next_int_bound(6).unwrap_or(0), random.next_int_bound(7).unwrap_or(0));

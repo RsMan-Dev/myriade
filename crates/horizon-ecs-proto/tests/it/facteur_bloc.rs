@@ -4,7 +4,7 @@ use bevy_ecs::prelude::Entity;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::block_factor::{self, BlockSpeed};
-use horizon_ecs_proto::cart_move;
+use horizon_ecs_proto::cart_move::{self, TrackRead};
 use horizon_ecs_proto::cart_state::Cart;
 use horizon_ecs_proto::cow::{Herd, Level, Pos, Vel};
 use horizon_ecs_proto::minecart::{Kind, Track};
@@ -34,6 +34,7 @@ fn speed_of(h: &Herd, e: Entity) -> f64 {
 fn soul_sand_slows_the_point_above_it() {
     let mut h = herd();
     h.set_block(1, 0, 0, "minecraft:soul_sand");
+    h.tick();
     assert!((block_factor::speed(mw(&h), [1.5, 1.0, 0.5]) - 0.4).abs() < 1e-6);
 }
 
@@ -41,6 +42,7 @@ fn soul_sand_slows_the_point_above_it() {
 fn honey_halves_the_jump_of_its_block() {
     let mut h = herd();
     h.set_block(2, 1, 2, "minecraft:honey_block");
+    h.tick();
     assert!((block_factor::jump(mw(&h), [2.5, 1.0, 2.5]) - 0.5).abs() < 1e-6);
 }
 
@@ -48,6 +50,7 @@ fn honey_halves_the_jump_of_its_block() {
 fn stone_does_not_slow() {
     let mut h = herd();
     h.set_block(3, 0, 0, "minecraft:stone");
+    h.tick();
     assert_eq!(block_factor::speed(mw(&h), [3.5, 1.0, 0.5]), 1.0);
 }
 
@@ -60,8 +63,11 @@ fn nothing_slows_outside_the_loaded_chunks() {
 #[test]
 fn a_block_speed_cart_on_soul_sand_is_slower_than_an_unmarked_one() {
     let mut h = herd();
+    // No rail anywhere: the carts are off the track, where the block factor applies.
+    h.world.insert_resource(TrackRead { rail: |_, _| None, conductor: |_, _| false, activator: |_, _| false, signal: |_, _| 0 });
     h.set_block(-2, 0, 0, "minecraft:soul_sand");
     h.set_block(1, 0, 0, "minecraft:soul_sand");
+    h.tick();
     let slow = cart(&mut h, Vec3::new(-1.5, 1.0, 0.5), true);
     let free = cart(&mut h, Vec3::new(1.5, 1.0, 0.5), false);
     for e in [slow, free] {

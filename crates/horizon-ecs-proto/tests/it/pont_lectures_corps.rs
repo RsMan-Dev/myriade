@@ -20,9 +20,7 @@ fn cow_world_tags() -> std::path::PathBuf {
 #[test]
 fn bounds_move_with_a_teleport() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let before = h.bounds(e).expect("a cow has a box").min_position().x;
     h.teleport(mw, e, [10.5, 1.0, 0.5]);
@@ -33,10 +31,7 @@ fn bounds_move_with_a_teleport() {
 #[test]
 fn alive_ends_with_a_lethal_hit() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
-    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 0.5, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.alive(e), "a fresh cow is alive");
     h.hurt(mw, e, 1e6, HurtSource::Generic);
@@ -47,9 +42,7 @@ fn alive_ends_with_a_lethal_hit() {
 #[test]
 fn motion_follows_set_velocity() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     goals::set_velocity(h.world_mut(), e, Vec3::new(0.25, 0.0, -0.5));
     let m = h.motion(e).expect("a cow moves");
@@ -60,9 +53,7 @@ fn motion_follows_set_velocity() {
 #[test]
 fn pushable_is_false_for_an_object() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.pushable(e), "a living cow is pushed");
     h.world_mut().entity_mut(e).insert(PushFree);
@@ -72,10 +63,9 @@ fn pushable_is_false_for_an_object() {
 #[test]
 fn eye_offset_is_none_without_eye() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
+    h.world_mut().entity_mut(e).remove::<Eye>();
     assert_eq!(h.eye_offset(e), None, "no targeting, no eye");
     h.world_mut().entity_mut(e).insert(Eye(0.5));
     assert_eq!(h.eye_offset(e), Some(0.5));
@@ -84,9 +74,7 @@ fn eye_offset_is_none_without_eye() {
 #[test]
 fn species_count_follows_spawn_and_despawn() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let before = h.species_count("minecraft:cow");
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert_eq!(h.species_count("minecraft:cow"), before + 1, "the spawn is counted");
@@ -98,9 +86,7 @@ fn species_count_follows_spawn_and_despawn() {
 #[test]
 fn count_with_a_sphere_is_the_length_of_select() {
     have_data();
-    let tags = cow_world_tags();
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     for x in [0.5, 1.5, 2.5] {
         h.spawn(mw, "minecraft:cow", [x, 1.0, 0.5], None).expect("a known species");
     }

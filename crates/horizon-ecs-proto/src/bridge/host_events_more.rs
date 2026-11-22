@@ -5,6 +5,7 @@ use crate::bridge::ids::Removed;
 use crate::cow::{DeathPolicy, Dying, Health, enter_index};
 use crate::goals::Events;
 use bevy_ecs::{entity::Entity, prelude::*};
+use horizon_client_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `DeathPolicy.vetoable`: a lethal hit leaves the entity as `Dying` until `resolve_death`, instead of removing it.
@@ -23,8 +24,8 @@ impl EcsWorld {
     }
 
     /// The answer to a `TotemAsk`: `cancel` leaves the totem unused and the entity dies. True when the entity was saved.
-    pub fn resolve_totem(&mut self, e: Entity, cancel: bool) -> bool {
-        crate::using::resolve_totem(self.world_mut(), e, cancel)
+    pub fn resolve_totem(&mut self, mw: &MobWorld<'_>, e: Entity, cancel: bool) -> bool {
+        self.lent(mw, |w| crate::using::resolve_totem(w, e, cancel))
     }
 
     /// While `on`, a conversion waits for the host (`conversion::convert_or_ask`): its mods can refuse it and see both entities.
@@ -63,22 +64,23 @@ impl EcsWorld {
     }
 
     /// The end of a lethal hit held by the policy (`resolve_death`).
-    pub fn resolve_death(&mut self, e: Entity, veto: Option<f32>) {
-        resolve_death(self.world_mut(), e, veto);
+    pub fn resolve_death(&mut self, mw: &MobWorld<'_>, e: Entity, veto: Option<f32>) {
+        self.lent(mw, |w| resolve_death(w, e, veto));
     }
 
     /// The first half of a death that goes on: the loot leaves, the entity stays (no longer `Dying`) for the host's hook, which then
     /// removes it with `despawn`. False when `e` is not `Dying`.
-    pub fn loot_dying(&mut self, e: Entity) -> bool {
-        let w = self.world_mut();
-        if w.get::<Dying>(e).is_none() {
-            return false;
-        }
-        w.entity_mut(e).remove::<Dying>();
-        crate::loot::on_death(w, e);
-        crate::item::spill_destroyed(w, e);
-        crate::spawn_trial::forget(w, e);
-        true
+    pub fn loot_dying(&mut self, mw: &MobWorld<'_>, e: Entity) -> bool {
+        self.lent(mw, |w| {
+            if w.get::<Dying>(e).is_none() {
+                return false;
+            }
+            w.entity_mut(e).remove::<Dying>();
+            crate::loot::on_death(w, e);
+            crate::item::spill_destroyed(w, e);
+            crate::spawn_trial::forget(w, e);
+            true
+        })
     }
 }
 

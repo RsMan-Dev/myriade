@@ -20,10 +20,11 @@ fn setup() -> HostSetup {
     HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 }
 }
 
-/// Moves the world's clock on by `n` ticks and lets the host run its deadlines (the schedule runs while a player is online).
+/// Runs `n` ticks of the host: the wheel's far deadlines cascade from level to level as the clock goes by, so it is never jumped.
 fn advance(h: &mut EcsWorld, mw: &MobWorld<'_>, n: u64) {
-    h.world_mut().resource_mut::<Clock>().0 += n;
-    h.step(mw);
+    for _ in 0..n {
+        h.step(mw);
+    }
 }
 
 fn online(h: &mut EcsWorld) {
@@ -37,9 +38,7 @@ fn all_of(_: &ItemStack) -> u32 {
 #[test]
 fn a_stack_in_reach_is_taken_whole_and_the_far_one_stays() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let near = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 3), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
     let far = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 3), Vec3::new(5.5, 1.0, 0.5), Vec3::ZERO, 0);
     let taken = h.pickup_items(mw, Who::Player(1), UUID, FEET, 1.0, &mut all_of);
@@ -52,9 +51,7 @@ fn a_stack_in_reach_is_taken_whole_and_the_far_one_stays() {
 #[test]
 fn the_host_takes_what_it_accepts_and_the_rest_stays() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 3), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
     let taken = h.pickup_items(mw, Who::Player(1), UUID, FEET, 1.0, &mut |_: &ItemStack| 2);
     assert_eq!(taken.len(), 1);
@@ -65,9 +62,7 @@ fn the_host_takes_what_it_accepts_and_the_rest_stays() {
 #[test]
 fn a_stack_targeted_at_another_player_stays() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
     h.world_mut().get_mut::<Item>(e).unwrap().target = Some([9, 9, 9, 9]);
     assert!(h.pickup_items(mw, Who::Player(1), UUID, FEET, 1.0, &mut all_of).is_empty());
@@ -77,9 +72,7 @@ fn a_stack_targeted_at_another_player_stays() {
 #[test]
 fn a_stack_waits_for_its_pickup_delay() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 10);
     assert!(h.pickup_items(mw, Who::Player(1), UUID, FEET, 1.0, &mut all_of).is_empty());
     h.world_mut().resource_mut::<Clock>().0 += 10;
@@ -90,9 +83,7 @@ fn a_stack_waits_for_its_pickup_delay() {
 #[test]
 fn an_orb_without_an_id_is_bound_and_collected_one_of_its_count_at_a_time() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = orb::spawn_orb(h.world_mut(), 7, 2, Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO);
     let mut next = 40;
     let mut alloc = || {
@@ -112,9 +103,7 @@ fn an_orb_without_an_id_is_bound_and_collected_one_of_its_count_at_a_time() {
 #[test]
 fn the_thrower_is_kept_on_the_stack() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
     h.set_thrower(e, [1, 2, 3, 4]);
     assert_eq!(item::thrower(h.world(), e), Some([1, 2, 3, 4]));
@@ -123,9 +112,7 @@ fn the_thrower_is_kept_on_the_stack() {
 #[test]
 fn extending_the_life_pushes_the_end_back_by_its_ticks() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host_on_stone(&setup());
     online(&mut h);
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
     advance(&mut h, mw, 100);
@@ -139,20 +126,20 @@ fn extending_the_life_pushes_the_end_back_by_its_ticks() {
 #[test]
 fn with_the_hook_the_end_is_held_and_reported_until_the_host_answers() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host_on_stone(&setup());
     online(&mut h);
     h.set_item_expiry_hooked(true);
     let e = item::drop_item(h.world_mut(), ItemStack::new("minecraft:wheat", 1), Vec3::new(0.5, 1.0, 0.5), Vec3::ZERO, 0);
-    advance(&mut h, mw, item::LIFE);
-    assert!(h.world().get::<Expiring>(e).is_some());
+    advance(&mut h, mw, item::LIFE - 1);
+    assert!(h.world().get::<Expiring>(e).is_none());
     let events: Vec<ItemEvent> = h.step(mw).into_iter().filter_map(|ev| if let horizon_ecs_proto::host_out::HostEvent::Item(i) = ev { Some(i) } else { None }).collect();
     assert!(matches!(events.as_slice(), [ItemEvent::Expiring { entity, .. }] if *entity == e));
+    assert!(h.world().get::<Expiring>(e).is_some());
     h.resolve_item_expiry(e, Some(50));
+    // The end is 50 ticks after the hold began: the step that reported it is the hold's tick.
     advance(&mut h, mw, 49);
     assert!(h.world().get::<Expiring>(e).is_none());
-    advance(&mut h, mw, 2);
+    advance(&mut h, mw, 1);
     assert!(h.world().get::<Expiring>(e).is_some());
     h.resolve_item_expiry(e, None);
     assert!(h.world().get_entity(e).is_err());

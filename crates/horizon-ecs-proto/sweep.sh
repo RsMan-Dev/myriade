@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # sweep.sh FORM K : the calibration of the batch push for one (form, k); prints one line of measures
-export HORIZON_TEST_RESOURCES=/tmp/claude-1000/-home-rsman-projects-horizon-server-tests/f80a876d-5501-4517-a3ca-22948ac8b0bb/scratchpad/new-main-perf/resources
+: "${HORIZON_TEST_RESOURCES:?dossier des ressources 26.3}"
 export PUSH_FORM=$1 PUSH_K=$2
-D=/home/rsman/projects/horizon-server-tests/wt/.tgt-ecs/fast
+D=${D:?dossier cible du profil fast}
 T=$(ls -t $D/deps/crowd_vs_mob-* | grep -v '\.d$' | head -n1)
 line=""
 for sp in 0.8 0.5; do

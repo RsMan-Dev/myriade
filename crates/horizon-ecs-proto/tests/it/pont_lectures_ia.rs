@@ -25,9 +25,7 @@ fn player(id: u32, x: f64, z: f64) -> Player {
 #[test]
 fn target_is_read_then_cleared() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert_eq!(h.ai_target(e), None);
     set_target(h.world_mut(), e, Target::new(Who::Player(9), 20, 1));
@@ -39,9 +37,7 @@ fn target_is_read_then_cleared() {
 #[test]
 fn last_attacker_is_read_after_a_hit() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     h.set_player(player(3, 1.0, 1.0), fact());
     let attacker = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let victim = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 0.5], None).expect("a known species");
@@ -54,9 +50,7 @@ fn last_attacker_is_read_after_a_hit() {
 #[test]
 fn vex_owner_entity_is_read() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let owner = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let vex = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 0.5], None).expect("a known species");
     tame::set_owner(h.world_mut(), vex, Who::Entity(owner));
@@ -66,9 +60,7 @@ fn vex_owner_entity_is_read() {
 #[test]
 fn restriction_tells_inside_from_outside() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(!h.has_restriction(e));
     assert!(h.is_within_restriction(e, [40.5, 1.0, 40.5]), "no restriction: anywhere");
@@ -83,9 +75,7 @@ fn restriction_tells_inside_from_outside() {
 #[test]
 fn navigation_is_done_without_a_path() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     assert!(h.nav_is_done(e));
     assert_eq!(h.wanted(e), None);

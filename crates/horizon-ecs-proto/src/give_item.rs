@@ -41,7 +41,7 @@ impl GiveParams {
         items: &["minecraft:golden_apple"],
         needs: Some(Kind::Weakness),
         swallow: true,
-        cure: Some(Cure { into: "minecraft:villager", base: 3600, spread: 2401, grants: Some(Kind::Strength), event: 16 }),
+        cure: Some(Cure { into: crate::species::lists::VILLAGER, base: 3600, spread: 2401, grants: Some(Kind::Strength), event: 16 }),
         ..Self::NONE
     };
 }
@@ -62,13 +62,13 @@ fn interact(w: &mut World, e: Entity, p: &'static (dyn std::any::Any + Sync), i:
         return p.swallow;
     }
     if p.only_hurt {
-        let (Some(h), Some(m)) = (w.get::<Health>(e).map(|h| h.0), w.get::<MaxHealth>(e).map(|m| m.0)) else { return false };
+        let (Some(h), m) = (w.get::<Health>(e).map(|h| h.0), max_health(w, e)) else { return false };
         if h >= m {
             return false;
         }
     }
     if p.heal > 0.0 {
-        let max = w.get::<MaxHealth>(e).map_or(f32::MAX, |m| m.0);
+        let max = max_health(w, e);
         if let Some(mut h) = w.get_mut::<Health>(e) {
             h.0 = crate::rules::regen::healed(h.0, p.heal, max);
         }

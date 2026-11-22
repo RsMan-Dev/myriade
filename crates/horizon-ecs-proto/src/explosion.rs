@@ -154,7 +154,7 @@ fn push_vehicle(w: &mut World, c: Entity, dir: Vec3, pow: f64) {
 #[derive(Resource, Default)]
 pub struct ExplosionSpared(pub Vec<Entity>);
 /// The projectiles an explosion redirects (`REDIRECTABLE_PROJECTILE`): their owner becomes the explosion's causing entity.
-const REDIRECTABLE: [&str; 3] = ["minecraft:fireball", "minecraft:wind_charge", "minecraft:breeze_wind_charge"];
+const REDIRECTABLE: [&str; 3] = ["minecraft:fireball", crate::species::lists::WIND_CHARGE, "minecraft:breeze_wind_charge"];
 /// The share of its box height where an entity's eyes are, as `EntityDimensions.scalable` sets them (jar: 0.85).
 const EYE_SHARE: f64 = 0.85;
 /// `ServerExplosion.hurtEntities` for what has no health: every entity of the box is pushed by `pushFromExplosion`; a boat or a cart is

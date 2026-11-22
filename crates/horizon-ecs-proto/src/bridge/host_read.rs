@@ -119,6 +119,12 @@ pub fn category(w: &World, e: Entity) -> Option<&'static str> {
     types.types.get(species(w, e)?).map(|t| t.category.as_str())
 }
 
+/// The category name of the species `name`, from the prepared mob types.
+pub fn category_of(name: &str) -> Option<&'static str> {
+    let types: &'static MobTypes = *TYPES.get()?;
+    types.types.get(name).map(|t| t.category.as_str())
+}
+
 /// `Mob.isEnemy` (`instanceof Enemy`): a monster, but not a zombie horse, camel husk or zombie nautilus.
 pub fn is_enemy(w: &World, e: Entity) -> bool {
     category(w, e) == Some("monster") && !matches!(species(w, e), Some("minecraft:zombie_horse" | "minecraft:camel_husk" | "minecraft:zombie_nautilus"))

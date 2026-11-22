@@ -23,7 +23,7 @@ fn an_iron_ingot_heals_a_hurt_golem_by_25() {
     h.world.resource_mut::<Entered>().0.push(e);
     let ingot = items::item_id("minecraft:iron_ingot");
     h.world.resource_mut::<Online>().set(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: ingot, off: 0, ..Default::default() });
-    let max = h.world.get::<MaxHealth>(e).unwrap().0;
+    let max = horizon_ecs_proto::cow::max_health(&h.world, e);
     assert!(!interact(&mut h.world, e, &Interaction { player: 1, item: ingot }), "a golem at full health refuses the ingot");
     h.world.get_mut::<Health>(e).unwrap().0 = max - 40.0;
     assert!(interact(&mut h.world, e, &Interaction { player: 1, item: ingot }));

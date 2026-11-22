@@ -172,9 +172,11 @@ fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeti
     if w.get_entity(e).is_err() || crate::tear_down::is_dead(w, e) {
         return;
     }
+    // A stack is no living body: it has no death animation and no fade, it is discarded (`ItemEntity.hurtServer`).
+    let quiet = crate::remove_killed::silent(w, e) || w.get::<crate::item::Item>(e).is_some();
     w.resource_mut::<crate::goals::Events>().host.death(e, damage, by, at);
     if let Some(id) = crate::bridge::ids::id_of(w, e) {
-        if !crate::remove_killed::silent(w, e) {
+        if !quiet {
             w.resource_mut::<crate::goals::Events>().host.death_animation(id, at);
         }
         if let Some(r) = w.get::<crate::raids::Raider>(e).copied()
@@ -197,7 +199,7 @@ fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeti
     crate::loot::on_death(w, e);
     crate::item::spill_destroyed(w, e);
     crate::spawn_trial::forget(w, e);
-    if crate::remove_killed::silent(w, e) {
+    if quiet {
         if let Ok(m) = w.get_entity_mut(e) {
             m.despawn();
         }

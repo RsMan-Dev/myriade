@@ -263,6 +263,7 @@ static WORK_KIDS: &[Kid] = &[
 
 pub static DEF: Def = Def {
     name: "minecraft:villager",
+    rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &())],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
     brain: BrainDef {
         // The order of the `Mob`'s sensors (its draws of the first due, `make_brain`): living, players, items, bed, hurt, hostiles, babies, secondary, golem.

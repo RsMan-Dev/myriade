@@ -30,7 +30,7 @@ pub struct Params {
     pub scatter: f64,
 }
 impl Params {
-    pub const SKELETON_TRAP: Self = Self { radius: 10.0, lifetime: 18000, mount: "minecraft:skeleton_horse", rider: "minecraft:skeleton", extra: 3, invulnerable: 60, helmet: "minecraft:iron_helmet", scatter: 1.1485 };
+    pub const SKELETON_TRAP: Self = Self { radius: 10.0, lifetime: 18000, mount: crate::species::lists::SKELETON_HORSE, rider: crate::species::lists::SKELETON, extra: 3, invulnerable: 60, helmet: "minecraft:iron_helmet", scatter: 1.1485 };
 }
 
 /// The species can be armed (set at its creation by its rule).

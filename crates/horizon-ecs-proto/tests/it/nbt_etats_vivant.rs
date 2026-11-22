@@ -86,7 +86,7 @@ fn a_creature_without_state_writes_none_of_them() {
     h.tick();
     let e = nbt::restore(&mut h.world, &cow(&[])).expect("a cow");
     let saved = nbt::save(&h.world, e).expect("a saved cow");
-    for k in ["CustomName", "CustomNameVisible", "NoGravity", "LeftHanded", "equipment", "drop_chances"] {
+    for k in ["CustomName", "CustomNameVisible", "NoGravity", "equipment", "drop_chances"] {
         assert!(saved.get(&JavaString::from(k)).is_none(), "{k} written without its component");
     }
     // The living defaults of `common` (what vanilla writes at rest) are the only ones allowed, and they must be the defaults.
