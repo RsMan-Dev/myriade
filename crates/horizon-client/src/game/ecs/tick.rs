@@ -118,6 +118,8 @@ impl Game<'_> {
         let mut trades = self.stations().trades.clone();
         trades.professions = self.stations().professions.clone();
         ecs.install_trades(trades, items, enchantments, setup.seed);
+        let (motives, placeable) = self.painting_variants.motives();
+        ecs.set_motives(motives, placeable);
         ecs.set_trident_hit_bonus(self.trident_hit_bonus_fn());
         ecs.set_melee_gear(self.melee_gear_fn());
         ecs.set_item_resists_table(self.item_resists_fn());

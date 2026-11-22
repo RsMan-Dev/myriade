@@ -18,8 +18,8 @@ pub fn box_at(p: Vec3) -> Aabb {
 }
 
 /// The tick an item's life ends at: its age base plus `LIFE`, kept within the wheel's reach and after `now`.
-pub fn expire_at(age_base: u64, now: u64) -> u64 {
-    (age_base + LIFE).min(now + REACH).max(now + 1)
+pub fn expire_at(age_base: i64, now: u64) -> u64 {
+    (age_base.saturating_add(LIFE as i64).min((now + REACH) as i64).max((now + 1) as i64)) as u64
 }
 
 /// The wait to the item's next check: the next multiple of 40 ticks of its age in its block.

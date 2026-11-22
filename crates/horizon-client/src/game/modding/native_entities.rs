@@ -606,6 +606,11 @@ mod tests {
                     check_interval: 0,
                     custom_name: None,
                 });
+                // A painting and a frame of the ECS, placed after the cushion (ids base + 6 and base + 7).
+                game.ecs = game.test_ecs_level();
+                game.next_entity = base + 5;
+                assert_eq!(crate::game::ecs::test_support::hang_test_painting(game, [0, 0, 4], 3, "minecraft:kebab"), Some(base + 6));
+                assert_eq!(crate::game::ecs::test_support::hang_test_frame(game, [0, 0, 0], 3, false), Some(base + 7));
                 let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = base + 8;
                 dragon.join = horizon_client::join_seq::JoinSeq::next();
@@ -619,13 +624,15 @@ mod tests {
                     &[
                         (base + 4, "minecraft:end_crystal".into(), true),
                         (base + 5, "minecraft:cushion".into(), true),
+                        (base + 6, "minecraft:painting".into(), true),
+                        (base + 7, "minecraft:item_frame".into(), true),
                         (base + 8, "minecraft:ender_dragon".into(), true)
                     ]
                 );
                 drop(seen);
                 game.native_joins_flush(false, 0);
                 game.native_joins_flush(false, 0);
-                assert_eq!(joins.lock().unwrap().len(), 6);
+                assert_eq!(joins.lock().unwrap().len(), 8);
             });
         });
     }

@@ -34,7 +34,7 @@ pub const KINDS: &[Kind] = &[
 /// A hanging entity: the cell it occupies, the face it hangs on (`Direction.get3DDataValue`: down 0, up 1, north 2, south 3,
 /// west 4, east 5), its kind and its birth (its own time).
 #[derive(Component, Clone, Copy, Debug)]
-#[component(on_remove = leave_index)]
+#[component(on_add = arrived, on_remove = leave_index)]
 pub struct Attached {
     pub pos: [i32; 3],
     pub face: u8,
@@ -55,6 +55,15 @@ pub struct AttachIndex(HashMap<[i32; 3], Vec<Entity>>);
 /// footprint is free of solid blocks. Absent: the wall is taken to hold.
 #[derive(Resource)]
 pub struct Walls(pub fn(&World, [i32; 3], u8, (u8, u8)) -> bool);
+
+/// When a hanging entity joined the level (`JoinSeq`), taken as it is hung: the host tells the mods of it in that order.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct JoinedAt(pub horizon_client_lib::join_seq::JoinSeq);
+
+fn arrived(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let at = JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    world.commands().entity(ctx.entity).insert(at);
+}
 
 fn leave_index(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
     let Some(a) = world.get::<Attached>(ctx.entity).copied() else { return };

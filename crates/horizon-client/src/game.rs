@@ -5463,7 +5463,7 @@ impl<'a> Game<'a> {
             tickets: Default::default(),
             random_tick_sections: Default::default(),
             level_events: Vec::new(),
-            painting_variants: Default::default(),
+            painting_variants: paintings::PaintingVariants::load(&root),
             armor_stands: Default::default(),
             location_armor: Default::default(),
             cushions: Default::default(),

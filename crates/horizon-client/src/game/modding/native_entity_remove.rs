@@ -109,17 +109,15 @@ impl Game<'_> {
             return None;
         }
         let at = self.target_position(target)?;
-        let [x, y, z] = match target {
-            Target::Frame(id) => {
-                let frame = self.ecs_frames().into_iter().find(|frame| frame.id == id)?;
-                super::frames::hanging_drop_position(at, frame.step())
-            }
-            Target::Painting(id) => {
-                let painting = self.ecs_paintings().into_iter().find(|painting| painting.id == id)?;
-                super::frames::hanging_drop_position(at, painting.step())
-            }
-            _ => at,
+        let hanging = match target {
+            Target::Mob(id) | Target::Frame(id) | Target::Painting(id) => Some(id),
+            _ => None,
         };
+        let step = hanging.and_then(|id| {
+            self.ecs_frames().into_iter().find(|f| f.id == id).map(|f| f.step())
+                .or_else(|| self.ecs_paintings().into_iter().find(|p| p.id == id).map(|p| p.step()))
+        });
+        let [x, y, z] = step.map_or(at, |step| super::frames::hanging_drop_position(at, step));
         // Found by its id: the hooks the spawn runs may add entities after it.
         let id = self.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);

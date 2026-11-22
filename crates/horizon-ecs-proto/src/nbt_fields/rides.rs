@@ -1,8 +1,6 @@
 //! The keys of the vehicles, stands, frames and riders: the armor stand's flags, pose and disabled slots (`Stand`, `Pose`, `DisabledSlots`),
-//! a hanging entity's item, rotation, facing and block (`Held`, `Attached`), a furnace or TNT cart (`Furnace`, `Fuse`), and the riders of
+//! a furnace or TNT cart (`Furnace`, `Fuse`), and the riders of
 //! a mount (`Passengers`, written by the mount's compound, the riders not saved a second time by `save_all`).
-use crate::frame_item::Held;
-use crate::hanging::Attached;
 use crate::minecart::{Fuse, Furnace};
 use crate::mount::Mount;
 use crate::nbt::{owner, Field};
@@ -11,7 +9,6 @@ use crate::stand::{set_pose, DisabledSlots, Stand, DEFAULT_POSE, INVISIBLE, MARK
 use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
-use horizon_items::item_nbt::{item_from_nbt, item_to_nbt};
 use std::borrow::Cow;
 
 /// The keys of the rides, in the jar's order of writing.
@@ -23,10 +20,6 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Invisible"), write: write_invisible, read: read_invisible, accepts: byte, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("Pose"), write: write_pose, read: read_pose, accepts: compound, owner: Some(owner::<Stand>) },
     Field { key: Cow::Borrowed("DisabledSlots"), write: write_disabled, read: read_disabled, accepts: crate::nbt::accept::int, owner: Some(owner::<DisabledSlots>) },
-    Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Held>) },
-    Field { key: Cow::Borrowed("ItemRotation"), write: write_rotation, read: read_rotation, accepts: byte, owner: Some(owner::<Held>) },
-    Field { key: Cow::Borrowed("Facing"), write: write_facing, read: read_facing, accepts: byte, owner: Some(owner::<Attached>) },
-    Field { key: Cow::Borrowed("block_pos"), write: write_block_pos, read: read_block_pos, accepts: int_array, owner: Some(owner::<Attached>) },
     Field { key: Cow::Borrowed("PushX"), write: write_push_x, read: read_push_x, accepts: double, owner: Some(owner::<Furnace>) },
     Field { key: Cow::Borrowed("PushZ"), write: write_push_z, read: read_push_z, accepts: double, owner: Some(owner::<Furnace>) },
     Field { key: Cow::Borrowed("Fuel"), write: write_fuel, read: read_fuel, accepts: crate::nbt::accept::short, owner: Some(owner::<Furnace>) },
@@ -182,63 +175,6 @@ fn write_disabled(w: &World, e: Entity, c: &mut Compound) {
 fn read_disabled(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
     w.entity_mut(e).insert(DisabledSlots(*v));
-    true
-}
-
-fn write_item(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(item) = w.get::<Held>(e).and_then(|h| h.stack.as_ref()) {
-        c.insert("Item".into(), item_to_nbt(item));
-    }
-}
-
-fn read_item(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Some(item) = item_from_nbt(t) else { return false };
-    let Some(mut h) = w.get_mut::<Held>(e) else { return false };
-    h.stack = Some(item);
-    true
-}
-
-fn write_rotation(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(h) = w.get::<Held>(e) {
-        c.insert("ItemRotation".into(), Tag::Byte(h.rotation as i8));
-    }
-}
-
-fn read_rotation(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Byte(v) = t else { return false };
-    let Some(mut h) = w.get_mut::<Held>(e) else { return false };
-    h.rotation = v.rem_euclid(8) as u8;
-    true
-}
-
-fn write_facing(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(a) = w.get::<Attached>(e) {
-        c.insert("Facing".into(), Tag::Byte(a.face as i8));
-    }
-}
-
-fn read_facing(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Byte(v) = t else { return false };
-    let Ok(face) = u8::try_from(*v) else { return false };
-    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
-    if face >= 6 {
-        return false;
-    }
-    a.face = face;
-    true
-}
-
-fn write_block_pos(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(a) = w.get::<Attached>(e) {
-        c.insert("block_pos".into(), Tag::IntArray(a.pos.to_vec()));
-    }
-}
-
-fn read_block_pos(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::IntArray(v) = t else { return false };
-    let Ok(pos) = <[i32; 3]>::try_from(v.as_slice()) else { return false };
-    let Some(mut a) = w.get_mut::<Attached>(e) else { return false };
-    a.pos = pos;
     true
 }
 

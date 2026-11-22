@@ -65,8 +65,13 @@ pub mod accept {
     pub fn long(t: &Tag) -> bool {
         matches!(t, Tag::Long(_))
     }
+    pub use super::short_of;
     pub fn short(t: &Tag) -> bool {
         matches!(t, Tag::Short(_))
+    }
+    /// Any number: `getShortOr` narrows it (`short_of`).
+    pub fn numeric(t: &Tag) -> bool {
+        short_of(t).is_some()
     }
     pub fn float_or_short(t: &Tag) -> bool {
         matches!(t, Tag::Float(_) | Tag::Short(_))
@@ -372,7 +377,7 @@ pub const COMMON: &[Field] = &[
     Field { key: Cow::Borrowed("Pos"), owner: Some(owner::<Pos>), accepts: accept::vec3, write: write_pos, read: read_pos },
     Field { key: Cow::Borrowed("Motion"), owner: Some(owner::<Vel>), accepts: accept::vec3, write: write_motion, read: read_motion },
     Field { key: Cow::Borrowed("Air"), owner: Some(owner::<Air>), accepts: accept::short, write: write_air, read: read_air },
-    Field { key: Cow::Borrowed("Health"), owner: Some(owner::<Health>), accepts: accept::float_or_short, write: write_health, read: read_health },
+    Field { key: Cow::Borrowed("Health"), owner: Some(owner::<Health>), accepts: accept::numeric, write: write_health, read: read_health },
     Field { key: Cow::Borrowed("id"), owner: None, accepts: accept::string, write: write_id, read: read_id },
 ];
 
@@ -430,6 +435,19 @@ fn read_air(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
+/// `NumericTag.shortValue` as `CompoundTag.getShortOr` reads it: an integer cut to 16 bits, a float or double floored to an int first.
+pub fn short_of(t: &Tag) -> Option<i16> {
+    Some(match t {
+        Tag::Byte(v) => i16::from(*v),
+        Tag::Short(v) => *v,
+        Tag::Int(v) => *v as i16,
+        Tag::Long(v) => *v as i16,
+        Tag::Float(b) => f64::from(f32::from_bits(*b)).floor() as i32 as i16,
+        Tag::Double(b) => f64::from_bits(*b).floor() as i32 as i16,
+        _ => return None,
+    })
+}
+
 fn write_health(w: &World, e: Entity, c: &mut Compound) {
     if let Some(h) = w.get::<Health>(e) {
         // An object (a dropped stack, an orb) saves its health as a short (`ItemEntity`, `ExperienceOrb`).
@@ -439,7 +457,12 @@ fn write_health(w: &World, e: Entity, c: &mut Compound) {
 }
 
 fn read_health(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let object = w.get::<crate::cow::Body>(e).is_some_and(|b| b.object);
     let health = match t {
+        _ if object => match short_of(t) {
+            Some(v) => f32::from(v),
+            None => return false,
+        },
         Tag::Float(bits) => f32::from_bits(*bits),
         Tag::Short(v) => f32::from(*v),
         _ => return false,

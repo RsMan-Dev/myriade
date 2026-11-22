@@ -66,8 +66,10 @@ impl EcsWorld {
     }
 
     /// The motives the paintings are chosen from: each name with its footprint in cells (the host's `PaintingVariants`).
-    pub fn set_motives(&mut self, motives: Vec<(Box<str>, Size)>) {
+    /// The first `placeable` of them are the ones drawn from (`#minecraft:placeable`); a name finds any.
+    pub fn set_motives(&mut self, motives: Vec<(Box<str>, Size)>, placeable: usize) {
         self.world_mut().insert_resource(Motives(motives));
+        self.world_mut().insert_resource(painting::Placeable(placeable));
     }
 
     /// `/item` on the frame `e`: the stack takes its slot (`frame_item::set_item`). False when `e` is not a frame.

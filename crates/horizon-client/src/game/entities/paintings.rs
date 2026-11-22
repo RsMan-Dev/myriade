@@ -19,8 +19,41 @@ pub(super) struct Variant {
 #[derive(Default)]
 pub(super) struct PaintingVariants {
     pub all: Vec<Variant>,
+    /// The names `#minecraft:placeable` lists, in tag order.
+    pub placeable: Vec<Arc<str>>,
 }
 impl PaintingVariants {
+    /// The registry's variants (`data/minecraft/painting_variant`, by file name) and the `#placeable` tag, read from `resources`.
+    pub fn load(resources: &std::path::Path) -> Self {
+        let data = resources.join("data/minecraft");
+        let mut files: Vec<_> = std::fs::read_dir(data.join("painting_variant")).into_iter().flatten().flatten().map(|f| f.path()).collect();
+        files.sort();
+        let all: Vec<Variant> = files
+            .iter()
+            .filter_map(|p| {
+                let json: serde_json::Value = serde_json::from_slice(&std::fs::read(p).ok()?).ok()?;
+                let size = |k: &str| json.get(k).and_then(|v| v.as_i64()).map(|v| v as i32);
+                Some(Variant { id: format!("minecraft:{}", p.file_stem()?.to_str()?).into(), width: size("width")?, height: size("height")? })
+            })
+            .collect();
+        let tag = std::fs::read(data.join("tags/painting_variant/placeable.json")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok());
+        let placeable = tag
+            .iter()
+            .flat_map(|t| t["values"].as_array().into_iter().flatten())
+            .filter_map(|v| v.as_str())
+            .filter(|n| all.iter().any(|v| &*v.id == *n))
+            .map(Arc::from)
+            .collect();
+        Self { all, placeable }
+    }
+    /// The table the ECS hangs paintings from: the placeable variants first, then the others, and how many are placeable.
+    pub fn motives(&self) -> (Vec<(Box<str>, horizon_ecs_proto::hanging::Size)>, usize) {
+        let size = |v: &Variant| horizon_ecs_proto::hanging::Size { width: v.width as u8, height: v.height as u8 };
+        let first = self.placeable.iter().filter_map(|n| self.get(n));
+        let rest = self.all.iter().filter(|v| !self.placeable.contains(&v.id));
+        let table: Vec<_> = first.chain(rest).map(|v| (Box::from(&*v.id), size(v))).collect();
+        (table, self.placeable.len())
+    }
     pub fn get(&self, id: &str) -> Option<&Variant> {
         self.all.iter().find(|v| &*v.id == id)
     }

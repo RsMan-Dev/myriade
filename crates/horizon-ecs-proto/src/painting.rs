@@ -16,6 +16,10 @@ use horizon_core::nbt::{Compound, JavaString, Tag};
 #[derive(Resource, Default)]
 pub struct Motives(pub Vec<(Box<str>, Size)>);
 
+/// How many of the first `Motives` are `#minecraft:placeable`: the only ones `Painting.create` draws from (all when unset).
+#[derive(Resource, Default)]
+pub struct Placeable(pub usize);
+
 /// The horizontal Direction id (`Direction.LEGACY_ID_CODEC_2D`: south, west, north, east) of each face of the 3D order.
 const FACE_OF_2D: [u8; 4] = [3, 4, 2, 5];
 const FACING_2D: [u8; 6] = [0, 0, 2, 0, 1, 3];
@@ -86,7 +90,8 @@ pub fn place_drawn(w: &mut World, pos: [i32; 3], face: u8, who: Option<Who>, dra
     let fitting: Vec<(u16, Size)> = {
         let w = &*w;
         let table = &w.get_resource::<Motives>()?.0;
-        table.iter().enumerate().filter(|(_, m)| fits(w, pos, face, m.1)).map(|(i, m)| (i as u16, m.1)).collect()
+        let drawn = w.get_resource::<Placeable>().map_or(table.len(), |p| p.0.min(table.len()));
+        table.iter().enumerate().take(drawn).filter(|(_, m)| fits(w, pos, face, m.1)).map(|(i, m)| (i as u16, m.1)).collect()
     };
     let area = |s: &Size| usize::from(s.width) * usize::from(s.height);
     let max = fitting.iter().map(|(_, s)| area(s)).max()?;

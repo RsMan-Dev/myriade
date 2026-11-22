@@ -42,9 +42,9 @@ fn view_of(w: &World, e: Entity) -> Option<ItemView> {
     Some(ItemView {
         id: it.id,
         stack: it.stack.clone(),
-        age: now.saturating_sub(it.age_base) as u32,
+        age: horizon_ecs_proto::item::age_of(it, now).max(0) as u32,
         ticks: now.saturating_sub(it.born) as u32,
-        pickup_delay: it.ready_at.map_or(i64::from(i16::MAX), |r| r.saturating_sub(now) as i64),
+        pickup_delay: horizon_ecs_proto::item::delay_of(it, now),
         target: it.target,
         thrower: w.get::<Thrower>(e).map(|t| t.0),
         position: w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0),
@@ -107,7 +107,7 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         let Some(w) = self.world_mut() else { return false };
         let now = now_of(w, e);
-        w.get_mut::<Item>(e).map(|mut it| it.age_base = now.saturating_sub(u64::from(age))).is_some()
+        w.get_mut::<Item>(e).map(|mut it| it.age_base = horizon_ecs_proto::item::base_for(now, age as i32)).is_some()
     }
     /// The position of the item `id`, replaced by `at`; false when it is not an item.
     pub fn set_item_position(&mut self, id: u32, at: Vec3) -> bool {
@@ -144,6 +144,6 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         let Some(w) = self.world_mut() else { return false };
         let now = now_of(w, e);
-        w.get_mut::<Item>(e).map(|mut it| it.ready_at = pickup_ready(delay).map(|d| now + d)).is_some()
+        w.get_mut::<Item>(e).map(|mut it| { it.ready_at = pickup_ready(delay).map(|d| now + d); it.neg_delay = if delay < 0 { delay as i16 } else { 0 }; }).is_some()
     }
 }

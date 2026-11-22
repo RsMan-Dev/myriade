@@ -11,11 +11,15 @@ impl Game<'_> {
         entity: EntityRef,
         direction: Direction,
     ) -> bool {
-        let id = match self.native_entity_target(entity) {
-            Some(Target::Frame(id)) => id,
-            Some(Target::Painting(id)) if data_2d(direction).is_some() => id,
-            _ => return false,
+        let Some(Target::Mob(id) | Target::Frame(id) | Target::Painting(id)) =
+            self.native_entity_target(entity)
+        else {
+            return false;
         };
+        let frame = self.ecs_frames().iter().any(|f| f.id == id);
+        if !frame && !(self.ecs_paintings().iter().any(|p| p.id == id) && data_2d(direction).is_some()) {
+            return false;
+        }
         let Some(pos) = self.ecs_hanging_pos(id) else {
             return false;
         };
@@ -33,9 +37,12 @@ impl Game<'_> {
         entity: EntityRef,
         rotation: u8,
     ) -> bool {
-        let Some(Target::Frame(id)) = self.native_entity_target(entity) else {
+        let Some(Target::Mob(id) | Target::Frame(id)) = self.native_entity_target(entity) else {
             return false;
         };
+        if !self.ecs_frames().iter().any(|f| f.id == id) {
+            return false;
+        }
         if !self.ecs_with_mw(|ecs, mw| ecs.set_frame_rotation(mw, id, rotation)) {
             return false;
         }

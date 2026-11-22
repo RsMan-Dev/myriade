@@ -48,7 +48,7 @@ fn a_dropped_item_saves_its_age_pickup_delay_and_owner_and_restores_them() {
     let now = now_of(w, e);
     {
         let mut it = w.get_mut::<Item>(e).unwrap();
-        it.age_base = now - 40;
+        it.age_base = now as i64 - 40;
         it.target = Some([1, 2, 3, 4]);
     }
     let c = saved(w, e);

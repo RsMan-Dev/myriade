@@ -162,7 +162,7 @@ fn loaded_item_lifetime_counters_tick_with_signed_sentinels() {
 #[ignore = "daily"]
 fn unknown_fields_survive() {
     let (mut game, _) = ecs_game_with("minecraft:cow", [0.0, 64.0, 0.0]);
-    let c = item_compound("CustomName:'\"x\"'");
+    let c = item_compound("CustomName:\"x\"");
     let saved = ecs_roundtrip(&mut game, &c).expect("the item is made");
     assert_eq!(at(&saved, "CustomName"), Some(Tag::String("x".into())));
     assert_eq!(at(&saved, "Health"), Some(Tag::Short(5)));

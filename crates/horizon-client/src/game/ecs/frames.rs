@@ -113,7 +113,7 @@ impl Game<'_> {
         };
         Some(ItemFrame {
             attachment_lifetime: Default::default(),
-            join: Default::default(),
+            join: self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)).map_or_else(Default::default, |j| j.0),
             id,
             pos,
             facing: byte("Facing")?.clamp(0, 5) as u8,
@@ -139,7 +139,7 @@ impl Game<'_> {
         let variant = self.painting_variants.get(&name.to_string_lossy())?;
         Some(Painting {
             attachment_lifetime: Default::default(),
-            join: Default::default(),
+            join: self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)).map_or_else(Default::default, |j| j.0),
             id,
             pos,
             facing: (*facing).clamp(0, 3) as u8,

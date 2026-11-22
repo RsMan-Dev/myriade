@@ -28,6 +28,13 @@ impl EcsLevel {
         Some(self.id_for(e, alloc))
     }
 
+    /// The painting variants as the registry gives them: the first `placeable` are drawn from (`EcsWorld::set_motives`).
+    pub fn set_motives(&mut self, motives: Vec<(Box<str>, horizon_ecs_proto::hanging::Size)>, placeable: usize) {
+        if let Some(w) = self.ecs_mut() {
+            w.set_motives(motives, placeable);
+        }
+    }
+
     /// `ItemFrame.interact` by `who` with `stack` in hand; true when the frame answered.
     pub fn frame_use(&mut self, mw: &MobWorld<'_>, id: u32, who: Who, stack: Option<ItemStack>) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

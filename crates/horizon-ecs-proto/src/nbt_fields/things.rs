@@ -27,8 +27,8 @@ use std::borrow::Cow;
 /// The keys of the things, in the origin's order of writing.
 pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Item"), write: write_item, read: read_item, accepts: compound, owner: Some(owner::<Item>) },
-    Field { key: Cow::Borrowed("Age"), write: write_item_age, read: read_item_age, accepts: accept::short, owner: Some(owner::<Item>) },
-    Field { key: Cow::Borrowed("PickupDelay"), write: write_pickup_delay, read: read_pickup_delay, accepts: accept::short, owner: Some(owner::<Item>) },
+    Field { key: Cow::Borrowed("Age"), write: write_item_age, read: read_item_age, accepts: accept::numeric, owner: Some(owner::<Item>) },
+    Field { key: Cow::Borrowed("PickupDelay"), write: write_pickup_delay, read: read_pickup_delay, accepts: accept::numeric, owner: Some(owner::<Item>) },
     Field { key: Cow::Borrowed("Owner"), write: owners::write_owner, read: owners::read_owner, accepts: owners::uuid_tag, owner: None },
     Field { key: Cow::Borrowed("Value"), write: write_value, read: read_value, accepts: accept::short, owner: Some(owner::<Orb>) },
     Field { key: Cow::Borrowed("Count"), write: write_count, read: read_count, accepts: accept::int, owner: Some(owner::<Orb>) },
@@ -71,6 +71,9 @@ pub fn builders() -> &'static [(&'static str, crate::nbt::Builder)] {
         (crate::species::armor_stand::ITEM, build_stand),
         (crate::species::lists::TRIDENT, build_trident),
         (crate::species::lists::OMINOUS_ITEM_SPAWNER, build_ominous),
+        (crate::species::lists::ITEM_FRAME, build_frame),
+        (crate::species::lists::GLOW_ITEM_FRAME, build_frame),
+        (crate::species::lists::PAINTING, build_painting),
     ]
 }
 
@@ -99,37 +102,36 @@ fn read_item(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `ItemEntity.age = now - age_base`, a short clamped to its range.
+/// `ItemEntity.age`: a signed int saved narrowed to a short (`-32768` is the frozen sentinel).
 fn write_item_age(w: &World, e: Entity, c: &mut Compound) {
     if let Some(it) = w.get::<Item>(e) {
-        let age = now_of(w, e).saturating_sub(it.age_base);
-        c.insert("Age".into(), Tag::Short(age.min(i16::MAX as u64) as i16));
+        c.insert("Age".into(), Tag::Short(crate::item::age_of(it, now_of(w, e)) as i16));
     }
 }
 
 fn read_item_age(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Short(v) = t else { return false };
+    let Some(v) = crate::nbt::short_of(t) else { return false };
     let now = now_of(w, e);
     let Some(mut it) = w.get_mut::<Item>(e) else { return false };
-    it.age_base = now.saturating_sub(i64::from(*v).max(0) as u64);
+    it.age_base = crate::item::base_for(now, i32::from(v));
     drop(it);
     rearm_expiry(w, e);
     true
 }
 
-/// The ticks left before the pickup (`ItemEntity.pickupDelay`): 32767 when it is never picked up (no `ready_at`).
+/// The ticks left before the pickup (`ItemEntity.pickupDelay`): 32767 when it is never picked up (no `ready_at`), a negative one as read.
 fn write_pickup_delay(w: &World, e: Entity, c: &mut Compound) {
     if let Some(it) = w.get::<Item>(e) {
-        let delay = it.ready_at.map_or(i16::MAX as u64, |r| r.saturating_sub(now_of(w, e)).min(i16::MAX as u64));
-        c.insert("PickupDelay".into(), Tag::Short(delay as i16));
+        c.insert("PickupDelay".into(), Tag::Short(crate::item::delay_of(it, now_of(w, e)) as i16));
     }
 }
 
 fn read_pickup_delay(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Short(v) = t else { return false };
+    let Some(v) = crate::nbt::short_of(t) else { return false };
     let now = now_of(w, e);
     let Some(mut it) = w.get_mut::<Item>(e) else { return false };
-    it.ready_at = (*v != i16::MAX).then(|| now + i64::from(*v).max(0) as u64);
+    it.ready_at = (v != i16::MAX).then(|| now + i64::from(v).max(0) as u64);
+    it.neg_delay = if v < 0 { v } else { 0 };
     true
 }
 
@@ -538,6 +540,34 @@ fn build_tnt(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let fuse = match tag(c, "fuse") { Some(Tag::Short(f)) => i32::from(*f), None => 80, _ => return None };
     let power = match tag(c, "explosion_power") { Some(Tag::Float(p)) => f32::from_bits(*p), None => 4.0, _ => return None };
     Some(spawn_primed(w, at, Vec3::ZERO, fuse, power))
+}
+
+/// The compound with a `block_pos` (a summoned frame or painting has none: it hangs in the block `at` is in, as `HangingEntity` does).
+fn with_block_pos(at: Vec3, c: &Compound) -> Compound {
+    let mut c = c.clone();
+    if !matches!(c.get(&JavaString::from("block_pos")), Some(Tag::IntArray(_))) {
+        c.insert("block_pos".into(), Tag::IntArray(vec![at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32]));
+    }
+    c
+}
+
+/// An item frame or a glow frame hung on its saved face (`frame_item::load`).
+fn build_frame(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    crate::frame_item::load(w, &with_block_pos(at, c))
+}
+
+/// A painting hung on its saved face with its saved variant (`painting::load`).
+fn build_painting(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    // `Painting`'s constructor takes a variant of the registry and `readAdditionalSaveData` defaults the facing to south.
+    let mut c = with_block_pos(at, c);
+    if !c.contains_key(&JavaString::from("facing")) {
+        c.insert("facing".into(), Tag::Byte(0));
+    }
+    if !c.contains_key(&JavaString::from("variant")) {
+        let first = w.get_resource::<crate::painting::Motives>()?.0.first()?.0.to_string();
+        c.insert("variant".into(), Tag::String(first.as_str().into()));
+    }
+    crate::painting::load(w, &c)
 }
 
 fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {

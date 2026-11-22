@@ -26,8 +26,28 @@ pub(crate) fn uuid_tag(t: &Tag) -> bool {
 }
 
 fn words_tag(t: &Tag) -> Option<[i32; 4]> {
-    let Tag::IntArray(v) = t else { return None };
-    <[i32; 4]>::try_from(v.as_slice()).ok()
+    // `UUIDUtil.CODEC` reads a numeric stream and keeps the first four words (`Util.fixedSize`): an int array, a long array (low 32 bits),
+    // a byte array, or a list of numbers (floats cut toward zero, longs to their low 32 bits).
+    let words: Vec<i32> = match t {
+        Tag::IntArray(v) => v.iter().copied().take(4).collect(),
+        Tag::LongArray(v) => v.iter().map(|&x| x as i32).take(4).collect(),
+        Tag::ByteArray(v) => v.iter().map(|&x| i32::from(x as i8)).take(4).collect(),
+        Tag::List(l) => l
+            .iter()
+            .map(|x| match x {
+                Tag::Byte(v) => Some(i32::from(*v)),
+                Tag::Short(v) => Some(i32::from(*v)),
+                Tag::Int(v) => Some(*v),
+                Tag::Long(v) => Some(*v as i32),
+                Tag::Float(b) => Some(f32::from_bits(*b) as i32),
+                Tag::Double(b) => Some(f64::from_bits(*b) as i32),
+                _ => None,
+            })
+            .take(4)
+            .collect::<Option<Vec<_>>>()?,
+        _ => return None,
+    };
+    <[i32; 4]>::try_from(words.as_slice()).ok()
 }
 
 /// The four words of the uuid of `who`: a player's from the table, an entity's from its uuid; None while either is unknown.

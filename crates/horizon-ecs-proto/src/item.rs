@@ -28,7 +28,9 @@ pub struct Item {
     /// `Entity.tickCount = now - born`.
     pub born: u64,
     /// `ItemEntity.age = now - age_base` (a merge takes the smaller age).
-    pub age_base: u64,
+    pub age_base: i64,
+    /// A negative pickup delay is kept as read (`ItemEntity` only counts a positive one down); `ready_at` is then `Some(0)`.
+    pub neg_delay: i16,
     /// Own time when the item can be picked up (`None`: never, `ItemEntity.setNeverPickUp`).
     pub ready_at: Option<u64>,
     /// `ItemEntity.target`: the only player who may pick it up.
@@ -187,7 +189,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     ));
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
-    world.entity_mut(e).insert(Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
+    world.entity_mut(e).insert(Item { stack, born: now, age_base: now as i64, neg_delay: 0, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
     set_resists(world, e, resists);
     crate::nbt::mark_saved(world, e, crate::species::lists::ITEM);
     world.resource_mut::<ItemIndex>().add(e, cell);
@@ -213,6 +215,20 @@ pub fn set_resists(world: &mut World, e: Entity, resists: u8) {
         }
     }
 }
+/// The age a frozen item holds (`Short.MIN_VALUE`: `ItemEntity.tick` never counts it up).
+pub const FROZEN_AGE: i64 = i64::MAX / 2;
+/// `ItemEntity.age` at `now`: signed, the sentinel `-32768` when frozen.
+pub fn age_of(it: &Item, now: u64) -> i32 {
+    if it.age_base == FROZEN_AGE { i32::from(i16::MIN) } else { (now as i64 - it.age_base).clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32 }
+}
+/// The age base that gives `age` at `now`.
+pub fn base_for(now: u64, age: i32) -> i64 {
+    if age == i32::from(i16::MIN) { FROZEN_AGE } else { now as i64 - i64::from(age) }
+}
+/// `ItemEntity.pickupDelay` at `now`: 32767 never, a negative one as read.
+pub fn delay_of(it: &Item, now: u64) -> i64 {
+    if it.neg_delay != 0 { i64::from(it.neg_delay) } else { it.ready_at.map_or(i64::from(i16::MAX), |r| r.saturating_sub(now) as i64) }
+}
 fn arm_expire(world: &mut World, e: Entity) {
     let now = now_of(world, e);
     let token = world.resource_mut::<ItemIndex>().token();
@@ -230,7 +246,7 @@ pub fn expire_due(world: &mut World, e: Entity, token: u32) {
     if it.expire != token || world.get::<Expiring>(e).is_some() {
         return;
     }
-    if now_of(world, e) < it.age_base + LIFE {
+    if (now_of(world, e) as i64) < it.age_base.saturating_add(LIFE as i64) {
         arm_expire(world, e);
         return;
     }
@@ -252,7 +268,9 @@ pub fn extend_life(world: &mut World, e: Entity, ticks: u32) {
     }
     let now = now_of(world, e);
     let Some(mut it) = world.get_mut::<Item>(e) else { return };
-    it.age_base = (it.age_base + u64::from(ticks)).min(now);
+    if it.age_base != FROZEN_AGE {
+        it.age_base = (it.age_base + i64::from(ticks)).min(now as i64);
+    }
     world.entity_mut(e).remove::<Expiring>();
     arm_expire(world, e);
 }
@@ -383,8 +401,9 @@ fn merge(world: &mut World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'
         if (c.stack.count, c.age, c.pickup_delay) != before[k] {
             let mut it = world.get_mut::<Item>(o).unwrap();
             it.stack.count = c.stack.count;
-            it.age_base = now.saturating_sub(c.age.max(0) as u64);
+            it.age_base = base_for(now, c.age);
             it.ready_at = pickup_ready(c.pickup_delay).map(|d| now + d);
+            it.neg_delay = if c.pickup_delay < 0 { c.pickup_delay as i16 } else { 0 };
             arm_expire(world, o);
         }
     }
@@ -393,7 +412,7 @@ fn merge(world: &mut World, e: Entity, mw: &horizon_client_lib::mobs::MobWorld<'
 fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
     let it = world.get::<Item>(e).unwrap();
     let at = world.get::<Pos>(e).unwrap().0;
-    let delay = it.ready_at.map_or(i64::from(i16::MAX), |r| r.saturating_sub(now) as i64);
+    let delay = delay_of(it, now);
     ItemEntity {
         random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(i64::from(it.id))),
         attachment_lifetime: Default::default(),
@@ -410,7 +429,7 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
         velocity: Vec3::ZERO,
         on_ground: true,
         fall_distance: 0.0,
-        age: (now - it.age_base) as i32,
+        age: age_of(it, now),
         pickup_delay: delay,
         bob_offset: 0.0,
         ticks: (now - it.born) as u32,
