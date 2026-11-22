@@ -85,6 +85,21 @@ fn named_stack() -> ItemStack {
     stack
 }
 
+/// The only cushion of the game, as its saved state gives it.
+fn only_cushion(game: &Game<'_>) -> horizon_client::entities::Cushion {
+    let ids = game.cushion_ids();
+    assert_eq!(ids.len(), 1, "one cushion");
+    game.cushion_saved(ids[0]).unwrap()
+}
+
+/// Removes every cushion of the game from its ECS.
+fn clear_cushions(game: &mut Game<'_>) {
+    for id in game.cushion_ids() {
+        let e = game.ecs.entity_of(id).unwrap();
+        game.ecs.despawn(e);
+    }
+}
+
 fn capture() {
     super::super::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
@@ -101,26 +116,23 @@ fn a_placed_cushion_keeps_its_stacks_custom_name() {
     let mut game = game();
     game.creative = true;
     assert!(game.place_cushion(&top_hit(), &named_stack()));
-    assert_eq!(game.cushions.len(), 1);
-    assert_eq!(game.cushions[0].position, Vec3::new(AT[0], AT[1], AT[2]));
+    let cushion = only_cushion(&game);
+    assert_eq!(cushion.position, Vec3::new(AT[0], AT[1], AT[2]));
     assert_eq!(
-        game.cushions[0].custom_name,
+        cushion.custom_name,
         Some(Tag::String("Seat".into())),
         "the placed cushion is named after its stack"
     );
     assert_eq!(
-        game.cushions[0]
-            .item_stack_with_data()
-            .custom_name()
-            .as_deref(),
+        cushion.item_stack_with_data().custom_name().as_deref(),
         Some("Seat"),
         "and `getCushionItemStackWithData` hands the name back"
     );
     // An unnamed stack names nothing.
     let plain = ItemStack::new("minecraft:white_cushion", 1);
-    game.cushions.clear();
+    clear_cushions(&mut game);
     assert!(game.place_cushion(&top_hit(), &plain));
-    assert_eq!(game.cushions[0].custom_name, None);
+    assert_eq!(only_cushion(&game).custom_name, None);
 }
 
 /// `Cushion.dropItem` drops nothing when the cause is a player with infinite
@@ -145,7 +157,7 @@ fn a_creative_blast_leaves_no_cushion_item() {
         (true, true, Some(7), 0),
     ] {
         game.creative = creative;
-        game.cushions.clear();
+        clear_cushions(&mut game);
         game.ecs_clear_items();
         assert!(game.place_cushion(&top_hit(), &named_stack()));
         // `Explosion.getIndirectSourceEntity` of a player's TNT is the player.
@@ -166,7 +178,7 @@ fn a_creative_blast_leaves_no_cushion_item() {
         )
         .unwrap();
         game.lan_acting = None;
-        assert!(game.cushions.is_empty(), "the blast breaks the cushion");
+        assert!(game.cushion_ids().is_empty(), "the blast breaks the cushion");
         assert_eq!(
             game.ecs.item_ids().len(),
             dropped,
@@ -193,7 +205,8 @@ fn a_cushion_that_loses_its_support_is_discarded_silently() {
     game.creative = true;
     assert!(game.place_cushion(&top_hit(), &named_stack()));
     capture();
-    game.break_cushion(0, true);
+    let id = game.cushion_ids()[0];
+    game.break_cushion_id(id, Some(crate::game::commands::Target::Player), true);
     assert_eq!(
         events(),
         vec![("minecraft:entity_die", AT, Some(Who::Player))],
@@ -204,10 +217,11 @@ fn a_cushion_that_loses_its_support_is_discarded_silently() {
     assert!(game.place_cushion(&top_hit(), &named_stack()));
     assert!(game.run_command("setblock 4 199 4 air strict"));
     // The next check (100 ticks) finds the anchor gone.
-    game.cushions[0].check_interval = 100;
     capture();
-    game.tick_cushions();
-    assert!(game.cushions.is_empty(), "the cushion is gone");
+    for _ in 0..100 {
+        game.tick_ecs().unwrap();
+    }
+    assert!(game.cushion_ids().is_empty(), "the cushion is gone");
     assert_eq!(events(), [], "a discarded cushion posts no game event");
     assert_eq!(game.ecs.item_ids().len(), 1, "it still drops its item");
     assert_eq!(game.ecs.item_views()[0].stack.custom_name().as_deref(), Some("Seat"));

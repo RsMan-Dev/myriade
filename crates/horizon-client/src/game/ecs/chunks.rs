@@ -39,11 +39,19 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_load_chunk(&mut self, cx: i32, cz: i32, entities: &[Compound]) {
         self.ecs_with(|ecs, mw| ecs.chunk_loaded(mw, cx, cz));
         if self.ecs.save_chunk(cx, cz).is_empty() {
-            self.ecs_with(|ecs, mw| {
-                for c in entities {
-                    ecs.load_entity(mw, c);
-                }
+            let seed = self.level.seed;
+            let tops = self.ecs_with(|ecs, mw| {
+                let loaded: Vec<_> = entities.iter().filter_map(|c| ecs.load_entity(mw, c)).collect();
+                let Some(w) = ecs.ecs().map(|w| w.world()) else { return 0 };
+                loaded
+                    .into_iter()
+                    .filter(|&e| {
+                        w.get::<horizon_ecs_proto::end_crystal::EndCrystal>(e).is_some()
+                            && w.get::<horizon_ecs_proto::cow::Pos>(e).is_some_and(|p| crate::game::dragon::crystal::spike_top(seed, p.0))
+                    })
+                    .count()
             });
+            self.fight.alive_crystals += tops as i32;
             self.ecs_resolve_pending_leashes();
         }
     }

@@ -1637,21 +1637,6 @@ impl Game<'_> {
                 } => self.hurt_mob_armor(mob, amount, &source),
                 MobEvent::GliderWear { mob, slot } => self.wear_mob_glider(mob, slot),
                 MobEvent::EntityEvent { mob, event, at } => {
-                    // Ravager.roar (event 69 ends it): with the raw mob_griefing rule (not
-                    // canEntityGrief), ROAR_TARGET_WITH_GRIEFING also takes the armor stands.
-                    if event == 69
-                        && self
-                            .session
-                            .rules
-                            .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING)
-                        && let Some(area) = self
-                            .remote_entities
-                            .iter()
-                            .find(|m| m.id == mob && m.species() == Species::Ravager)
-                            .map(|m| m.bounds().inflate(Vec3::new(4.0, 4.0, 4.0)))
-                    {
-                        self.roar_pushes_armor_stands(area, at);
-                    }
                     self.lan_entity_event(mob as i32, event, at)
                 }
                 MobEvent::LevelParticles {

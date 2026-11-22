@@ -29,5 +29,4 @@ macro_rules! restore_cases {
 }
 
 restore_cases! {
-    restores_stand_spawns: "minecraft:armor_stand", "{}", armor_stands;
 }

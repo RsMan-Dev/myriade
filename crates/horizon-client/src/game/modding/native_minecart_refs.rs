@@ -274,7 +274,7 @@ mod tests {
             let tnt = carts[3];
             let hopper = carts[4];
             let command = carts[5];
-            game.armor_stands.push(ArmorStand::new(99, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 99, &ArmorStand::new(99, Vec3::ZERO, 0.0));
             assert!(game.minecart(game.entity(99).unwrap()).is_none());
 
             assert_eq!(rideable.flipped(game), Some(false));

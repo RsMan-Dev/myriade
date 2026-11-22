@@ -201,7 +201,7 @@ fn a_guest_cannot_knock_a_decoration_off_inside_spawn_protection() {
         // stand: two blocks from each.
         ([6.5, 200.0, 10.5], game.ecs_paintings()[0].id as i32),
         ([8.5, 200.0, 10.5], game.ecs_frames()[0].id as i32),
-        ([10.5, 200.0, 11.5], game.armor_stands[0].id as i32),
+        ([10.5, 200.0, 11.5], game.armor_stand_list()[0].id as i32),
     ];
 
     // Inside the radius: `mayInteract` refuses the hit, so nothing is knocked
@@ -211,7 +211,7 @@ fn a_guest_cannot_knock_a_decoration_off_inside_spawn_protection() {
     }
     assert_eq!(game.ecs_paintings().len(), 1, "the painting stays on the wall");
     assert_eq!(game.ecs_frames().len(), 1, "the frame stays on the wall");
-    assert_eq!(game.armor_stands.len(), 1, "the stand stays put");
+    assert_eq!(game.armor_stand_list().len(), 1, "the stand stays put");
     assert!(game.ecs.item_ids().is_empty(), "nothing was knocked off");
 
     // `spawn-protection=0`: the same punches knock all three off.
@@ -222,7 +222,7 @@ fn a_guest_cannot_knock_a_decoration_off_inside_spawn_protection() {
     assert!(game.ecs_paintings().is_empty(), "the painting breaks unprotected");
     assert!(game.ecs_frames().is_empty(), "the frame breaks unprotected");
     assert!(
-        game.armor_stands.is_empty(),
+        game.armor_stand_list().is_empty(),
         "the creative guest breaks the stand unprotected"
     );
 }

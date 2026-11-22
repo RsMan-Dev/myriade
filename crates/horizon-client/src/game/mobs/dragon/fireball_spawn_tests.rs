@@ -107,7 +107,7 @@ fn the_dragons_fireball_first_world_tick() {
     eprintln!(
         "H127 after one End tick: fireballs {}, breath clouds {}, dim end {}",
         dragon_fireballs(&game).len(),
-        game.breath_clouds.len(),
+        game.breath_clouds().len(),
         game.dimension_type().has_ender_dragon_fight
     );
     let v = Vec3::new(0.06, 0.0, 0.08);

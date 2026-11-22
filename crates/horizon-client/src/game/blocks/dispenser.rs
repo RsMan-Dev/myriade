@@ -144,7 +144,7 @@ enum Target {
     /// A server player, by connection: the integrated owner and every guest.
     Guest(u32),
     Mob(usize),
-    Stand(usize),
+    Stand(u32),
     /// An entity of the ECS level, by network id.
     Ecs(u32),
 }
@@ -748,11 +748,10 @@ impl Game<'_> {
             );
         }
         found.extend(
-            self.armor_stands
+            self.armor_stand_list()
                 .iter()
-                .enumerate()
-                .filter(|(_, s)| overlaps(s.bounds(), block))
-                .map(|(i, s)| (key(s.position, s.id), Target::Stand(i))),
+                .filter(|s| overlaps(s.bounds(), block))
+                .map(|s| (key(s.position, s.id), Target::Stand(s.id))),
         );
         // `ServerLevel.getEntities`: every player placed in this level, the
         // integrated owner included (a server has no player of its own), its
@@ -984,7 +983,7 @@ impl Game<'_> {
                         .hub
                         .guest(*conn)
                         .map(|guest| guest.entity_id as u32),
-                    Target::Stand(i) => Some(self.armor_stands[*i].id),
+                    Target::Stand(i) => Some(*i),
                     Target::Mob(i) => Some(self.remote_entities[*i].id),
                     Target::Ecs(id) => Some(*id),
                 })
@@ -1027,7 +1026,7 @@ impl Game<'_> {
                 }),
             // ArmorStand.canUseSlot: not a locked slot, and a hand needs arms.
             Target::Stand(i) => slot.stand_index().is_some_and(|s| {
-                let stand = &self.armor_stands[i];
+                let Some(stand) = self.armor_stand_saved(i) else { return false };
                 allows(stand.id, "minecraft:armor_stand")
                     && !stand.is_disabled(s)
                     && stand.equipment[s].is_none()
@@ -1061,7 +1060,7 @@ impl Game<'_> {
                 .as_ref()
                 .and_then(|lan| lan.hub.guest(conn))
                 .map(|guest| guest.entity_id as u32),
-            Target::Stand(i) => Some(self.armor_stands[i].id),
+            Target::Stand(i) => Some(i),
             Target::Mob(i) => Some(self.remote_entities[i].id),
             Target::Ecs(id) => Some(id),
         };
@@ -1118,11 +1117,11 @@ impl Game<'_> {
             }
             Target::Stand(i) => {
                 let sound = self.mod_equip_sound(&hook_stack, slot.name(), sound);
-                let stand = &mut self.armor_stands[i];
+                let position = self.armor_stand_saved(i).map(|a| a.position);
                 if let Some(s) = slot.stand_index() {
-                    stand.equipment[s] = Some(one);
+                    self.armor_stand_edit(i, |a| a.equipment[s] = Some(one));
                 }
-                (Some(stand.position), sound)
+                (position, sound)
             }
             Target::Mob(i) => {
                 let m = &mut self.remote_entities[i];
@@ -1434,17 +1433,21 @@ impl Game<'_> {
         );
         // EntityType.create rolls a yaw from the level random before the stack config turns it.
         let _ = self.world.random.next_float();
-        self.next_entity += 1;
         let (_, uuid) = horizon_client::mobs::living_random();
-        self.persist.uuids.insert(self.next_entity, uuid);
-        let stand =
-            horizon_client::entities::ArmorStand::new(self.next_entity, foot, y_rot(facing));
+        let stand = horizon_client::entities::ArmorStand::new(0, foot, y_rot(facing));
+        let horizon_core::nbt::Tag::Compound(mut saved) = horizon_client::entity_nbt::armor_stand_to_nbt(&stand, [0; 4], None) else {
+            return (Some(stack), FAIL);
+        };
+        saved.remove(&"UUID".into());
+        let Some(id) = self.ecs_load(&saved) else {
+            return (Some(stack), FAIL);
+        };
+        self.persist.uuids.insert(id, uuid);
         self.world.modified.insert((front.0 >> 4, front.2 >> 4));
-        self.armor_stands.push(stand);
         // EntityType.appendDefaultStackConfig: the dispenser's yaw first, then
         // the item's createDefaultStackConfig with no user.
         self.apply_item_stack_config(
-            super::commands::Target::Stand(self.next_entity),
+            super::commands::Target::Stand(id),
             "minecraft:armor_stand",
             &stack,
             false,
@@ -2887,15 +2890,14 @@ mod tests {
         let mut zombie = horizon_client::mobs::Mob::new(10 + row, kind, at, 0.0);
         zombie.extra.pick_up_loot = true;
         game.remote_entities.push(zombie);
-        game.armor_stands
-            .push(horizon_client::entities::ArmorStand::new(20 + row, at, 0.0));
+        crate::game::ecs::test_support::place_test_stand(game, 20 + row, &horizon_client::entities::ArmorStand::new(20 + row, at, 0.0));
         let mut stack = stack;
         let done = game.dispense_equipment((5, 64, z), Direction::East, &mut stack);
         let zombie = game.remote_entities.iter().find(|m| m.id == 10 + row).unwrap();
         let worn = [Slot::Head, Slot::Chest, Slot::Legs, Slot::Feet]
             .into_iter()
             .find(|slot| mob_slot_item(zombie, *slot).is_some());
-        let stand = game.armor_stands.iter().find(|s| s.id == 20 + row).unwrap();
+        let stand = game.armor_stand_saved(20 + row).unwrap();
         (
             done,
             worn,
@@ -3349,21 +3351,23 @@ mod tests {
             s
         });
         stands[0].show_arms = true;
-        game.armor_stands.clear();
-        game.armor_stands.extend(stands.iter().cloned());
+        crate::game::ecs::test_support::clear_test_stands(&mut game);
+        for s in &stands {
+            crate::game::ecs::test_support::place_test_stand(&mut game, s.id, s);
+        }
         // The head-locked first stand is skipped for a helmet; the second wears it.
         let mut stack = ItemStack::new("minecraft:iron_helmet", 1);
         assert!(game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
-        assert!(game.armor_stands[0].equipment[5].is_none());
-        assert!(game.armor_stands[1].equipment[5].is_some());
+        assert!(game.armor_stand_list()[0].equipment[5].is_none());
+        assert!(game.armor_stand_list()[1].equipment[5].is_some());
         // The same stand takes chest armour: only its head is locked.
         let mut stack = ItemStack::new("minecraft:iron_chestplate", 1);
         assert!(game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
-        assert!(game.armor_stands[0].equipment[4].is_some());
+        assert!(game.armor_stand_list()[0].equipment[4].is_some());
         // Every stand locked for that slot: nothing takes it (the dispenser ejects it).
-        game.armor_stands[0].disabled_slots = 1 << 4;
-        game.armor_stands[1].disabled_slots = 1 << 4;
-        game.armor_stands[1].equipment[5] = None;
+        game.armor_stand_edit(game.armor_stand_ids()[0], |a| a.disabled_slots = 1 << 4);
+        game.armor_stand_edit(game.armor_stand_ids()[1], |a| a.disabled_slots = 1 << 4);
+        game.armor_stand_edit(game.armor_stand_ids()[1], |a| a.equipment[5] = None);
         let mut stack = ItemStack::new("minecraft:iron_helmet", 1);
         assert!(!game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
         assert_eq!(stack.count, 1);
@@ -3408,8 +3412,9 @@ mod tests {
                 .hub
                 .guests
                 .update(0, |g| g.entity_id = guest_id);
-            game.armor_stands.clear();
-            game.armor_stands.extend(vec![stand_at(stand_id, 8.5, 8.5)]);
+            crate::game::ecs::test_support::clear_test_stands(&mut game);
+            let s = stand_at(stand_id, 8.5, 8.5);
+            crate::game::ecs::test_support::place_test_stand(&mut game, stand_id, &s);
             let (done, _) = dispense_at_guest(&mut game, "minecraft:iron_helmet");
             assert!(done);
             let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap();
@@ -3418,7 +3423,7 @@ mod tests {
                 guest_first,
                 "stand {stand_id}, guest {guest_id}"
             );
-            assert_eq!(game.armor_stands[0].equipment[5].is_some(), !guest_first);
+            assert_eq!(game.armor_stand_list()[0].equipment[5].is_some(), !guest_first);
         }
     }
 
@@ -3432,13 +3437,13 @@ mod tests {
         let mut game = server_with_guest(&mut resources);
         game.lan.as_mut().unwrap().hub.guests.clear();
         // Stand boxes are 0.5 wide: x 16.2 spans 15.95..16.45.
-        game.armor_stands.clear();
-        game.armor_stands
+        crate::game::ecs::test_support::clear_test_stands(&mut game);
+        game.armor_stand_list()
             .extend(vec![stand_at(1, 16.2, 8.5), stand_at(2, 15.5, 8.5)]);
         let mut stack = ItemStack::new("minecraft:iron_helmet", 1);
         assert!(game.dispense_equipment((15, 201, 8), Direction::Down, &mut stack));
-        assert!(game.armor_stands[0].equipment[5].is_none());
-        assert!(game.armor_stands[1].equipment[5].is_some());
+        assert!(game.armor_stand_list()[0].equipment[5].is_none());
+        assert!(game.armor_stand_list()[1].equipment[5].is_some());
     }
 
     /// `SectionPos.asLong` packs z (22 bits) over y (20 bits) under a fixed x,

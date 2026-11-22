@@ -153,11 +153,11 @@ impl Game<'_> {
             let (lo, hi) = corners(self.ecs.bounds(id)?);
             return Some((lo, hi, self.ecs.position(id)?));
         }
-        if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+        if let Some(a) = self.armor_stand_saved(id) {
             let (lo, hi) = corners(a.bounds());
             return Some((lo, hi, at(a.position)));
         }
-        if let Some(c) = self.cushions.iter().find(|c| c.id == id) {
+        if let Some(c) = self.cushion_saved(id) {
             let (lo, hi) = corners(Aabb::new(
                 Vec3::new(c.position.x - 0.5, c.position.y, c.position.z - 0.5),
                 Vec3::new(c.position.x + 0.5, c.position.y + 0.25, c.position.z + 0.5),
@@ -223,7 +223,7 @@ impl Game<'_> {
         let boat = self.ecs.boat_status(vehicle).is_some();
         let cart = self.ecs.cart_kind(vehicle).is_some();
         let mount = self.mob_exists(vehicle);
-        let cushion = self.cushions.iter().any(|c| c.id == vehicle);
+        let cushion = self.cushion_ids().contains(&vehicle);
         let seat = self.seat(vehicle).is_some();
         // ServerGamePacketListenerImpl.tick: the vehicle's last good position
         // is where it is now, so a move the server made (a piston, a push)
@@ -257,12 +257,12 @@ impl Game<'_> {
         let seat = self.as_guest(conn, |game| {
             // A cushion does not move: the rider sits on it until it sneaks
             // (`Cushion.removePassenger` plays the get-up sound).
-            if game.cushions.iter().any(|c| Some(c.id) == game.riding) {
+            if game.riding.is_some_and(|id| game.cushion_ids().contains(&id)) {
                 if keys.shift {
                     game.tick_cushion_riding(keys);
                     return None;
                 }
-                let c = game.cushions.iter().find(|c| Some(c.id) == game.riding)?;
+                let c = game.riding.and_then(|id| game.cushion_saved(id))?;
                 let p = c.seat();
                 return Some([p.x, p.y, p.z]);
             }
@@ -335,10 +335,7 @@ impl Game<'_> {
                 Some((p, p.add_vector(Vec3::new(0.0, SEAT, 0.0))))
             })
             .or_else(|| {
-                self.cushions
-                    .iter()
-                    .find(|c| c.id == vehicle)
-                    .map(|c| (c.position, c.seat()))
+                self.cushion_saved(vehicle).map(|c| (c.position, c.seat()))
             })
             .or_else(|| self.seat(vehicle).map(|s| (s.position, s.player_seat())));
         if let Some((p, seat)) = at {

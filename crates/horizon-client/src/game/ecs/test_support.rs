@@ -65,6 +65,27 @@ pub(in crate::game) fn hang_test_frame(game: &mut Game<'_>, at: [i32; 3], face: 
     id
 }
 
+/// Places a white cushion on the block `at` in the test game's ECS, numbered `id`; its id, 0 when the level is inert.
+pub(in crate::game) fn place_test_cushion(game: &mut Game<'_>, at: [i32; 3], id: u32) -> u32 {
+    let centre = [f64::from(at[0]) + 0.5, f64::from(at[1]) + 1.0, f64::from(at[2]) + 0.5];
+    game.ecs_with(|ecs, mw| ecs.place_cushion(mw, at, centre, 0, 0.0, None, &mut || id))
+}
+
+/// Places the armor stand `stand` in the test game's ECS, numbered `id`; its id, 0 when the level is inert.
+pub(in crate::game) fn place_test_stand(game: &mut Game<'_>, id: u32, stand: &horizon_client::entities::ArmorStand) -> u32 {
+    game.next_entity = id - 1;
+    let horizon_core::nbt::Tag::Compound(mut saved) = horizon_client::entity_nbt::armor_stand_to_nbt(stand, [0; 4], None) else { return 0 };
+    saved.remove(&"UUID".into());
+    game.ecs_load(&saved).unwrap_or(0)
+}
+
+/// Removes every armor stand of the test game's ECS.
+pub(in crate::game) fn clear_test_stands(game: &mut Game<'_>) {
+    for id in game.armor_stand_ids() {
+        game.armor_stand_remove(id);
+    }
+}
+
 /// Hangs the painting `variant` on `face` of `at` in the test game's ECS; its id, None when the variant is unknown or the wall does not hold.
 pub(in crate::game) fn hang_test_painting(game: &mut Game<'_>, at: [i32; 3], face: u8, variant: &str) -> Option<u32> {
     let mut next = game.next_entity;

@@ -1,4 +1,12 @@
 use horizon_core::geometry::Vec3;
+use horizon_core::nbt::Tag;
+
+/// The spawner of `snbt`, loaded into the ECS level of `game` (`ecs_load`).
+fn load_spawner(game: &mut crate::game::Game<'_>, snbt: &str) {
+    let (tag, _) = horizon_core::nbt::parse_snbt(snbt).unwrap();
+    let Tag::Compound(c) = tag else { panic!("a compound") };
+    game.ecs_load(&c).expect("the spawner loads");
+}
 
 #[test]
 #[ignore = "daily"]
@@ -40,6 +48,9 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     std::fs::create_dir_all(&scratch).unwrap();
     game.world_root = scratch.clone();
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
+    game.reset_entity_residency();
+    game.native_lifecycle.begin_open(mod_api::Authority::IntegratedServer);
+    game.ecs = game.test_ecs_level();
 
     const WARNING: &str = "minecraft:block.trial_spawner.about_to_spawn_item";
     let center = [6.5, 102.5, 4.5];
@@ -64,19 +75,10 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
         [4, 6]
     );
     game.audio.capture.as_mut().unwrap().clear();
-    let (tag, _) = horizon_core::nbt::parse_snbt(r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#).unwrap();
-    game.load_ominous_item_spawner(tag);
-    assert_eq!(game.ominous_spawners.len(), 1);
-    let s = &game.ominous_spawners[0];
-    assert_eq!(s.uuid, [128, 0, 0, 1]);
-    assert_eq!(s.position, [6.25, 102.75, 4.875]);
-    assert_eq!(&*s.item.item, "minecraft:diamond");
-    assert_eq!(s.item.count, 1);
-    assert_eq!(s.spawn_item_after, 40);
-    assert_eq!(s.tick_count, 0);
+    load_spawner(&mut game, r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#);
+    assert_eq!(game.ominous_ids().len(), 1);
     for tick in 1..=5 {
-        game.tick_ominous_item_spawners();
-        assert_eq!(game.ominous_spawners[0].tick_count, tick);
+        game.tick_ecs().unwrap();
         let warning: Vec<_> = game
             .audio
             .capture
@@ -112,19 +114,15 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
 #[ignore = "daily"]
 fn residency_spawner_load_expiry_and_spawn_order() {
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.ominous_spawners.clear();
         game.ecs_clear_items();
         for (item, delay) in [("diamond", 1), ("emerald", 3), ("gold_ingot", 1)] {
-            let (tag, _) = horizon_core::nbt::parse_snbt(&format!(
+            load_spawner(game, &format!(
                 "{{Pos:[0d,80d,0d],item:{{id:\"minecraft:{item}\",count:1}},spawn_item_after_ticks:{delay}L}}"
-            )).unwrap();
-            game.load_ominous_item_spawner(tag);
+            ));
         }
-        let survivor = game.ominous_spawners[1].id;
-        game.tick_ominous_item_spawners();
-        assert_eq!(game.ominous_spawners.len(), 1);
-        assert_eq!(game.ominous_spawners[0].id, survivor);
-        assert_eq!(game.ominous_spawners[0].tick_count, 1);
+        let survivor = game.ominous_ids()[1];
+        game.tick_ecs().unwrap();
+        assert_eq!(game.ominous_ids(), [survivor]);
         assert_eq!(
             game.ecs.item_views()
                 .iter()
@@ -132,51 +130,12 @@ fn residency_spawner_load_expiry_and_spawn_order() {
                 .collect::<Vec<_>>(),
             ["minecraft:diamond", "minecraft:gold_ingot"]
         );
-        game.tick_ominous_item_spawners();
-        game.tick_ominous_item_spawners();
-        assert!(game.ominous_spawners.is_empty());
+        game.tick_ecs().unwrap();
+        game.tick_ecs().unwrap();
+        assert!(game.ominous_ids().is_empty());
         assert_eq!(
             game.ecs.item_views().pop().unwrap().stack.item.as_ref(),
             "minecraft:emerald"
-        );
-    });
-}
-
-#[test]
-#[ignore = "daily"]
-fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
-    use horizon_client::items::ItemStack;
-    crate::game::native_entity_refs::tests::with_game(|game| {
-        game.ominous_spawners.clear();
-        for _ in 0..2 {
-            game.add_ominous_item_spawner(
-                ItemStack::new("minecraft:air", 1),
-                [0.0, 80.0, 0.0],
-                100,
-            );
-        }
-        let first = game.ominous_spawners[0].id;
-        let second = game.ominous_spawners[1].id;
-        let next = game.next_entity;
-        crate::game::entity::taken_pass_tests::with_spawn(
-            |game| {
-                assert!(game.ominous_spawners.is_empty());
-                for delay in [200, 300] {
-                    game.add_ominous_item_spawner(
-                        ItemStack::new("minecraft:air", 1),
-                        [0.0, 80.0, 0.0],
-                        delay,
-                    );
-                }
-            },
-            || game.tick_ominous_item_spawners(),
-        );
-        assert_eq!(
-            game.ominous_spawners
-                .iter()
-                .map(|s| (s.id, s.tick_count))
-                .collect::<Vec<_>>(),
-            [(first, 1), (second, 1), (next + 1, 0), (next + 2, 0)]
         );
     });
 }

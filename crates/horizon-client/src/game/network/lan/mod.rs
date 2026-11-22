@@ -1250,7 +1250,6 @@ impl Game<'_> {
         self.lan_events.clear();
         self.lan_songs.clear();
         self.lan_critical_hits.clear();
-        self.lan_cushion_breaks.clear();
         self.streaming.extra.clear();
         if announce {
             self.system_message(Text::translate(
@@ -3066,33 +3065,6 @@ impl Game<'_> {
         };
         let critical_hits = std::mem::take(&mut self.lan_critical_hits);
         let kinetic_hits = std::mem::take(&mut self.lan_kinetic_hits);
-        for (state, at) in std::mem::take(&mut self.lan_cushion_breaks) {
-            if let Some(id) = host
-                .hub
-                .registry_id("minecraft:particle_type", "minecraft:block")
-            {
-                host.hub.broadcast_near(
-                    at,
-                    32.0,
-                    &C::LevelParticles(play::LevelParticles {
-                        particle: horizon_protocol::entity_data::Particle {
-                            id,
-                            data: Some(horizon_protocol::entity_data::ParticleData::State(
-                                state.0 as i32,
-                            )),
-                        },
-                        override_limiter: false,
-                        always_show: false,
-                        pos: at,
-                        dist: [0.25, 0.0625, 0.25],
-                        max_speed: [0.05; 3],
-                        count: 10,
-                        randomization: 0,
-                    }),
-                    None,
-                );
-            }
-        }
         for super::QueuedLevelEvent {
             kind,
             pos,

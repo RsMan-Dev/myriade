@@ -214,7 +214,7 @@ impl Game<'_> {
         }
         for t in pending {
             match t {
-                Target::Crystal(id) => self.crystals.retain(|c| c.id != id),
+                Target::Crystal(id) => self.remove_crystal(id),
                 Target::Dragon(id) => {
                     if self.dragon.as_ref().is_some_and(|d| d.id == id) {
                         self.discard_resident_dragon();

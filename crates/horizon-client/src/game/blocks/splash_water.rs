@@ -196,13 +196,13 @@ impl Game<'_> {
             self.for_each_player(|g| g.extinguish_player_in_splash(reach, at));
             // Armor stands are living entities too.
             let mut put_out = Vec::new();
-            for stand in self.armor_stands.iter_mut() {
+            for stand in self.armor_stand_list() {
                 if stand.fire_ticks > 0
                     && stand.health > 0.5
                     && reach.intersects(stand.bounds())
                     && near(stand.position)
                 {
-                    stand.fire_ticks = 0;
+                    self.armor_stand_edit(stand.id, |a| a.fire_ticks = 0);
                     put_out.push([stand.position.x, stand.position.y, stand.position.z]);
                 }
             }

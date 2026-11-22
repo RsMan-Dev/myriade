@@ -1312,8 +1312,8 @@ impl Game<'_> {
     /// `LivingEntity.onChangedBlock`, landing and `collectEquipmentChanges`
     /// for an armor stand: run location effects before travel (including a
     /// piston push), on landing, and for newly equipped items.
-    pub(super) fn armor_stand_location_effects(&mut self, index: usize, landed: bool) {
-        let stand = &mut self.armor_stands[index];
+    pub(super) fn armor_stand_location_effects(&mut self, id: u32, landed: bool) {
+        let Some(mut stand) = self.armor_stand_saved(id) else { return };
         let block = BlockPos::containing(stand.position);
         let moved = !landed && stand.enchantment_block.replace(block) != Some(block);
         // `collectEquipmentChanges` walks every `EquipmentSlot`, body and
@@ -1336,6 +1336,10 @@ impl Game<'_> {
             })
             .collect();
         stand.enchantment_equipment.clone_from(&stand.equipment);
+        self.armor_stand_edit(id, |a| {
+            a.enchantment_block = stand.enchantment_block;
+            a.enchantment_equipment.clone_from(&stand.enchantment_equipment);
+        });
         {
             for (slot, from, to) in told {
                 self.native_living_equipment_change(
@@ -1347,7 +1351,6 @@ impl Game<'_> {
                 );
             }
         }
-        let stand = &self.armor_stands[index];
         let at = [stand.position.x, stand.position.y, stand.position.z];
         let who = Who::Mob(stand.id);
         let equipment = stand

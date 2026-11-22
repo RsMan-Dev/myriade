@@ -80,12 +80,12 @@ impl Game<'_> {
             let (lo, hi) = painting.bounds();
             listed(painting.id, lo, hi, entities);
         }
-        for cushion in self.cushions.iter() {
+        for cushion in self.cushion_list() {
             let (lo, hi) = cushion.bounds();
             listed(cushion.id, lo, hi, entities);
         }
-        for crystal in self.crystals.iter() {
-            let bounds = crystal.bounds();
+        for crystal in self.crystals() {
+            let bounds = crate::game::dragon::crystal::crystal_box(crystal.position);
             let lo = [
                 bounds.min(horizon_core::geometry::Axis::X),
                 bounds.min(horizon_core::geometry::Axis::Y),
@@ -107,9 +107,6 @@ impl Game<'_> {
     pub(in crate::game) fn blast_handle(&self, id: u32) -> Option<EntityHandle> {
         if let Some(i) = self.remote_entities.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Mob(i));
-        }
-        if let Some(i) = self.armor_stands.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::ArmorStand(i));
         }
         None
     }
@@ -133,25 +130,12 @@ mod tests {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("noop", Box::new(Noop))].into();
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
-                for (id, x) in [(940, 8.0), (941, 7.99)] {
-                    game.crystals.push(crate::game::dragon::Crystal {
-                        attachment_lifetime: Default::default(),
-                        join: Default::default(),
-                        id,
-                        position: Vec3::new(x, 1.0, 0.0),
-                        show_bottom: false,
-                        time: 0,
-                        beam: None,
-                        invulnerable: false,
-                        fall: (false, 0.0),
-                        motion: Vec3::ZERO,
-                        rotation: [0.0, 0.0],
-                    });
-                }
+                let far = game.spawn_crystal(Vec3::new(8.0, 1.0, 0.0), false);
+                let near = game.spawn_crystal(Vec3::new(7.99, 1.0, 0.0), false);
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut Vec::new());
                 let listed = game.combat.blast_hit_list.as_ref().unwrap();
-                assert!(!listed.contains(&940));
-                assert!(listed.contains(&941));
+                assert!(!listed.contains(&far));
+                assert!(listed.contains(&near));
             })
         });
     }

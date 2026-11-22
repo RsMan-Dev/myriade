@@ -34,9 +34,7 @@ impl Game<'_> {
             Target::Orb(id) => self.ecs.orb(id).map(|o| [o.position.x, o.position.y, o.position.z]),
             Target::Projectile(id) => self.ecs_view(id).map(|v| v.position),
             Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)
+                .armor_stand_saved(id)
                 .map(|a| [a.position.x, a.position.y, a.position.z]),
             Target::Frame(id) => self.ecs_frames().into_iter().find(|f| f.id == id).map(|f| {
                 let (lo, hi) = f.bounds();
@@ -58,35 +56,25 @@ impl Game<'_> {
             Target::Cart(id) => self.ecs_view(id).map(|v| v.position),
             Target::Other(id) => self.ecs.position(id),
             Target::Crystal(id) => self
-                .crystals
-                .iter()
-                .find(|c| c.id == id)
+                .crystal(id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::Dragon(id) => self
                 .dragon
                 .as_ref()
                 .filter(|d| d.id == id)
                 .map(|d| [d.position.x, d.position.y, d.position.z]),
-            Target::Cushion(id) => self
-                .cushions
-                .iter()
-                .find(|c| c.id == id)
-                .map(|c| [c.position.x, c.position.y, c.position.z]),
+            Target::Cushion(id) => self.cushion_saved(id).map(|c| [c.position.x, c.position.y, c.position.z]),
             Target::DragonPart(id) => self.resident_dragon_part(id).map(|(d, i)| {
                 let p = d.parts[i].0;
                 [p.x, p.y, p.z]
             }),
             Target::Tnt(id) | Target::Falling(id) => self.ecs.position(id),
             Target::Rocket(id) => self.ecs.position(id),
-            Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
+            Target::Cloud(id) => self.breath_cloud(id).map(|c| c.at),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| [p.x, p.y, p.z]),
             Target::Trident(id) => self.ecs.position(id),
             Target::Fangs(id) => self.ecs.position(id),
-            Target::Spawner(id) => self
-                .ominous_spawners
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| s.position),
+            Target::Spawner(id) => self.ecs.position(id),
             Target::Knot(id) => self.natural_knot(id).map(|fence| {
                 let p = horizon_client::mobs::leash::knot_state(fence).position;
                 [p.x, p.y, p.z]

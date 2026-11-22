@@ -7,7 +7,7 @@ mod cloud_particle;
 use horizon_ecs_proto::{effect_cloud::CloudSpec, effects, targeting};
 use super::{
     Game,
-    dragon::{Breath, FightWho},
+    dragon::{FightWho, breath::CloudView},
     splash_water::thrown_block_hit,
 };
 use horizon_client::health::DamageLevel;
@@ -98,89 +98,6 @@ fn thrown_left_owner(ridden: &[Aabb], position: Vec3, velocity: Vec3) -> bool {
 pub(super) const LINGERING_WAIT: i32 = 10;
 /// `AreaEffectCloud.DEFAULT_REAPPLICATION_DELAY`.
 const REAPPLICATION_DELAY: i32 = 20;
-/// `AreaEffectCloud.addAdditionalSaveData`: the lifetime, radius and use
-/// settings with the effects the cloud applies, as `custom_effects` with the
-/// colour they were drawn in. The client keeps no potion id, so a cloud that
-/// came from a named potion is written effect by effect; the custom particle
-/// and the owner have no counterpart here.
-pub(super) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
-    use horizon_core::nbt::Compound;
-    let Some(potion) = &c.potion else {
-        return Tag::End;
-    };
-    let at = Vec3::new(c.at[0], c.at[1], c.at[2]);
-    let motion = Vec3::new(c.motion[0], c.motion[1], c.motion[2]);
-    // A loaded cloud keeps the Rotation it was saved with (`Entity.load`);
-    // the model has no slot for it, so the saved compound supplies it.
-    let rotation = raw.map_or([0.0; 2], horizon_client::entity_nbt::loaded_rotation);
-    let mut tag = horizon_client::entity_nbt::entity_base_tag(
-        "minecraft:area_effect_cloud",
-        at,
-        motion,
-        rotation,
-        uuid,
-        raw,
-    );
-    let custom: Vec<Tag> = potion
-        .effects
-        .iter()
-        .map(|(id, duration, amplifier)| {
-            let mut effect = Compound::new();
-            effect.insert("id".into(), Tag::String(brewing::namespaced(id).into()));
-            effect.insert("duration".into(), Tag::Int(*duration));
-            effect.insert("amplifier".into(), Tag::Int(*amplifier));
-            if potion.hidden.contains(id) {
-                effect.insert("show_particles".into(), Tag::Byte(0));
-            }
-            if potion.ambient.contains(id) {
-                effect.insert("ambient".into(), Tag::Byte(1));
-            }
-            Tag::Compound(effect)
-        })
-        .collect();
-    let mut contents = Compound::new();
-    contents.insert("custom_effects".into(), Tag::List(custom));
-    contents.insert("custom_color".into(), Tag::Int(potion.color as i32));
-    let Tag::Compound(map) = &mut tag else {
-        return tag;
-    };
-    map.insert("Age".into(), Tag::Int(c.age));
-    map.insert("Duration".into(), Tag::Int(c.duration));
-    map.insert("Radius".into(), Tag::Float(c.radius.to_bits()));
-    map.insert(
-        "RadiusPerTick".into(),
-        Tag::Float(potion.radius_per_tick.to_bits()),
-    );
-    if let Some(particle) = &potion.custom_particle {
-        map.insert("custom_particle".into(), particle.clone());
-    }
-    map.insert("WaitTime".into(), Tag::Int(potion.settings.wait_time));
-    map.insert(
-        "ReapplicationDelay".into(),
-        Tag::Int(potion.settings.reapplication_delay),
-    );
-    map.insert(
-        "RadiusOnUse".into(),
-        Tag::Float(potion.settings.radius_on_use.to_bits()),
-    );
-    map.insert(
-        "DurationOnUse".into(),
-        Tag::Int(potion.settings.duration_on_use),
-    );
-    map.insert(
-        "potion_duration_scale".into(),
-        Tag::Float(potion.settings.duration_scale.to_bits()),
-    );
-    // Vanilla writes the key only while the contents differ from
-    // PotionContents.EMPTY: no effects and the default water colour.
-    if !(potion.effects.is_empty()
-        && potion.color == horizon_client_core::potions::BASE_POTION_COLOR)
-    {
-        map.insert("potion_contents".into(), Tag::Compound(contents));
-    }
-    tag
-}
-
 pub(in crate::game) use cloud_particle::particle_options;
 /// An entity a cloud has affected (`AreaEffectCloud.victims`).
 #[derive(Clone, Copy, PartialEq)]
@@ -568,12 +485,11 @@ fn thrown_kind(stack: &ItemStack) -> &'static str {
 /// the cloud's position when one was found.
 pub(super) fn collect_dragon_breath(
     player_box: Aabb,
-    clouds: &mut horizon_client::join_seq::ResidentList<super::dragon::Breath>,
-) -> Option<[f64; 3]> {
+    clouds: &[CloudView],
+) -> Option<CloudView> {
     let search_box = player_box.inflate(Vec3::new(2.0, 2.0, 2.0));
-    if let Some(i) = clouds.iter().position(|c| {
-        if !c.from_dragon || c.potion.is_some() || super::dragon::breath_expired(c.age, c.duration)
-        {
+    clouds.iter().copied().find(|c| {
+        if c.age - horizon_ecs_proto::cloud_tick::WAIT >= c.duration {
             return false;
         }
         let r = f64::from(c.radius);
@@ -582,13 +498,7 @@ pub(super) fn collect_dragon_breath(
             Vec3::new(c.at[0] + r, c.at[1] + 0.5, c.at[2] + r),
         );
         search_box.intersects(cloud_box)
-    }) {
-        let at = clouds[i].at;
-        clouds.update(i, |c| c.radius = (c.radius - 0.5).max(0.0));
-        Some(at)
-    } else {
-        None
-    }
+    })
 }
 
 impl Game<'_> {
@@ -648,9 +558,10 @@ impl Game<'_> {
                 // GameEvent.FLUID_PICKUP, fires PLAYER_INTERACTED_WITH_ENTITY on the
                 // cloud, and turns one bottle into dragon_breath.
                 if let Some(player) = self.player.as_ref()
-                    && let Some(cloud_at) =
-                        collect_dragon_breath(player.bounds(), &mut self.breath_clouds)
+                    && let Some(cloud) = collect_dragon_breath(player.bounds(), &self.breath_clouds())
                 {
+                    let cloud_at = cloud.at;
+                    self.ecs.shrink_breath_cloud(cloud.id, 0.5);
                     let player_pos = [player.position.x, player.position.y, player.position.z];
                     self.audio.play(
                         "minecraft:item.bottle.fill_dragonbreath",
@@ -2326,25 +2237,14 @@ mod tests {
     #[test]
     fn glass_bottle_collects_dragon_breath_from_dragon_cloud() {
         let player_box = Aabb::new(Vec3::new(-0.3, 64.0, -0.3), Vec3::new(0.3, 65.8, 0.3));
-        let mut clouds = [super::super::dragon::Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
+        let clouds = [CloudView {
             id: 1,
             at: [1.0, 64.0, 0.0],
-            motion: [0.0; 3],
             radius: 5.0,
             age: 0,
             duration: 200,
-            from_dragon: true,
-            victims: Vec::new(),
-            potion: None,
-        }]
-        .into_iter()
-        .collect();
-        assert!(collect_dragon_breath(player_box, &mut clouds).is_some());
-        assert_eq!(clouds[0].radius, 4.5);
-        assert!(collect_dragon_breath(player_box, &mut clouds).is_some());
-        assert_eq!(clouds[0].radius, 4.0);
+        }];
+        assert_eq!(collect_dragon_breath(player_box, &clouds).map(|c| c.id), Some(1));
     }
 
 }

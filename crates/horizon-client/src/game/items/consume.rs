@@ -458,7 +458,7 @@ impl Game<'_> {
             self.dismount_boat(id);
         } else if self.ecs.cart_kind(id).is_some() {
             self.dismount_cart(id);
-        } else if let Some(c) = self.cushions.iter().find(|c| c.id == id).cloned() {
+        } else if let Some(c) = self.cushion_saved(id) {
             self.get_up_from_cushion(&c);
         } else if self.seat(id).is_some() {
             self.get_off_seat();

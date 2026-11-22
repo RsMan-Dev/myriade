@@ -324,7 +324,6 @@ macro_rules! entity_lists {
         $crate::game::entity::$then! {
             ($($args)*)
             Mob(Mob) mobs: remote_entities,
-            ArmorStand(ArmorStand) armor_stands: armor_stands,
             General(GeneralRow) general: resident_entities.general.rows,
         }
     };
@@ -804,14 +803,13 @@ impl Game<'_> {
 
     /// The ids of the entities that are not on the walk of `entity_lists!`.
     pub(super) fn entity_ids_off_walk(&self) -> impl Iterator<Item = u32> + '_ {
-        self.cushions
-            .iter()
-            .map(|e| e.id)
+        self.cushion_ids()
+            .into_iter()
             .chain(self.ecs_frames().into_iter().map(|e| e.id))
             .chain(self.ecs_paintings().into_iter().map(|e| e.id))
-            .chain(self.breath_clouds.iter().map(|e| e.id))
+            .chain(self.breath_clouds().into_iter().map(|e| e.id))
             .chain(self.fang_ids())
-            .chain(self.crystals.iter().map(|e| e.id))
+            .chain(self.crystals().into_iter().map(|e| e.id))
             .chain(self.dragon.iter().map(|e| e.id))
             .chain(
                 self.dragon
@@ -822,7 +820,6 @@ impl Game<'_> {
                             .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
                     }),
             )
-            .chain(self.ominous_spawners.iter().map(|e| e.id))
             // Cast hooks live with their players, not in the saveable lists.
             // Keep both their identities and attachment holders until they leave.
             .chain(self.fishing_hooks_here().map(|(id, _)| id))
@@ -1149,163 +1146,6 @@ impl Entity for Minecart {
     }
 }
 
-/// Width and height `EntityType.ARMOR_STAND` gives a stand.
-fn armor_stand_size(stand: &ArmorStand) -> (f64, f64) {
-    if stand.marker {
-        (0.0, 0.0)
-    } else if stand.small {
-        (0.25, f64::from(0.9875f32))
-    } else {
-        (0.5, f64::from(1.975f32))
-    }
-}
-
-impl Entity for ArmorStand {
-    fn reset_fall_distance(&mut self) {
-        self.enchantment_fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.previous_yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-    }
-    fn fluid_eye_y(&self) -> f64 {
-        ArmorStand::fluid_eye_y(self)
-    }
-    fn native_type(&self) -> Cow<'static, str> {
-        super::armor_stands::TYPE_ID.into()
-    }
-    fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        game.save_armor_stand(index, keys)
-    }
-    fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        _player_uuid: Option<[i32; 4]>,
-        tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Result<(), Tag> {
-        if !(kind == "minecraft:armor_stand") {
-            return Err(tag);
-        }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_armor_stand,
-            load_armor_stand_transferred,
-            tag,
-            uuid
-        );
-        Ok(())
-    }
-    stored_motion!();
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Stand(self.id))
-    }
-    /// `ArmorStand.ignoreExplosion`: a visible stand feels only a burst that
-    /// affects block-like entities (`items_ignore` is that flag, negated).
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        self.invisible || blast.items_ignore
-    }
-    /// `EntityType.ARMOR_STAND`'s size, halved when small; a marker has none.
-    fn explosion_box(&self) -> Aabb {
-        let (w, h) = armor_stand_size(self);
-        let half = w / 2.0;
-        let p = self.position;
-        Aabb::new(
-            Vec3::new(p.x - half, p.y, p.z - half),
-            Vec3::new(p.x + half, p.y + h, p.z + half),
-        )
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        if self.marker {
-            0.0
-        } else if self.small {
-            f64::from(0.9875f32)
-        } else {
-            f64::from(1.7775f32)
-        }
-    }
-    /// A burst of wind pushes a stand that a blast only breaks.
-    fn pushed_by_wind(&self) -> bool {
-        true
-    }
-    fn bounds(&self) -> Aabb {
-        ArmorStand::bounds(self)
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// A living entity's own flag too: keeping the old support flag would run
-    /// Frost Walker while the stand is moving over open water.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    /// `ArmorStand.isIgnoringBlockTriggers`.
-    fn is_ignoring_block_triggers(&self) -> bool {
-        self.marker
-    }
-    /// A NoGravity stand is not swept for the blocks it stands in (plates,
-    /// fire): measured beside the real server, it never presses a plate nor
-    /// catches fire, and does again once `NoGravity` is cleared. A marker is
-    /// not either: `ArmorStand.hasPhysics` is false for it too, so
-    /// `noPhysics` keeps it out of `applyEffectsFromBlocks`.
-    fn sweeps_blocks_inside(&self) -> bool {
-        !self.marker && !self.no_gravity
-    }
-    fn pushed_by_explosion(&self) -> bool {
-        false
-    }
-    /// `Entity.noPhysics`: `Marker` or `NoGravity` unless a mod wrote it,
-    /// recomputed from them on load because `readAdditionalSaveData` does.
-    /// Its own field is the write's store, so `stored` is None for a stand.
-    fn no_physics(&self, _stored: Option<bool>) -> bool {
-        self.no_physics.unwrap_or(self.marker || self.no_gravity)
-    }
-    /// `ArmorStand.getPistonPushReaction`: a marker is ignored.
-    fn get_piston_push_reaction(&self) -> PushReaction {
-        if self.marker {
-            PushReaction::IgnoreEntity
-        } else {
-            PushReaction::PushPull
-        }
-    }
-    /// `ArmorStand.getDefaultDimensions`: the box a portal sweep follows, and
-    /// the size its exit is placed by. `ArmorStand.readAdditionalSaveData`
-    /// makes a stand without `hasPhysics` (a marker or a `NoGravity` one)
-    /// `noPhysics`, so `Entity.isAffectedByBlocks` never runs its sweep and it
-    /// enters no portal; a marker's box is `MARKER_DIMENSIONS`, 0 by 0, too.
-    fn portal_size(&self) -> Option<(f32, f32)> {
-        if self.marker || self.no_gravity {
-            return None;
-        }
-        let (width, height) = armor_stand_size(self);
-        Some((width as f32, height as f32))
-    }
-}
-
 impl Entity for PrimedTnt {
     fn reset_fall_distance(&mut self) {
         // Primed TNT keeps no fall distance here.
@@ -1598,20 +1438,6 @@ mod no_gravity_stand_tests {
     use super::Entity as _;
     use horizon_client::entities::ArmorStand;
     use horizon_core::geometry::Vec3;
-
-    #[test]
-    fn a_no_gravity_stand_is_not_swept_for_the_blocks_it_is_in() {
-        let mut stand = ArmorStand::new(1, Vec3::new(0.5, 100.0, 0.5), 0.0);
-        // A resting stand presses a plate (measured beside the real server)...
-        assert!(stand.sweeps_blocks_inside() && stand.triggers_blocks());
-        // ...a NoGravity one does not, nor does a marker.
-        stand.no_gravity = true;
-        assert!(!stand.sweeps_blocks_inside());
-        stand.no_gravity = false;
-        stand.marker = true;
-        assert!(!stand.sweeps_blocks_inside());
-        assert!(!stand.triggers_blocks());
-    }
 }
 
 #[cfg(test)]

@@ -5,6 +5,8 @@ impl Game<'_> {
     /// `tickDeath`: rising for 200 ticks, explosions, experience, then the
     /// exit portal, the egg and a gateway.
     pub(in crate::game) fn tick_dragon_death(&mut self) {
+        // The dying dragon's breath clouds go with it.
+        self.ecs_with(|ecs, mw| ecs.end_flames(mw));
         let Some(d) = self.dragon.as_mut() else {
             return;
         };

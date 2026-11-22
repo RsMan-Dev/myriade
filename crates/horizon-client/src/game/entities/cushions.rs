@@ -111,24 +111,38 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    /// The cushion under the crosshair, its distance and the hit point.
-    pub(super) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+    /// The cushions the ECS holds, read from their saved compounds.
+    pub(in crate::game) fn cushion_list(&self) -> Vec<Cushion> {
+        self.cushion_ids().into_iter().filter_map(|id| self.cushion_saved(id)).collect()
+    }
+
+    /// The network ids of the cushions the ECS holds.
+    pub(in crate::game) fn cushion_ids(&self) -> Vec<u32> {
+        self.ecs.species_ids("minecraft:cushion")
+    }
+
+    /// The cushion `id` as its saved NBT gives it.
+    pub(in crate::game) fn cushion_saved(&self, id: u32) -> Option<Cushion> {
+        let e = self.ecs.entity_of(id)?;
+        let mut c = horizon_client::entity_nbt::cushion_from_nbt(&horizon_core::nbt::Tag::Compound(self.ecs.entity_nbt(e)?), id)?;
+        c.join = self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)).map_or_else(Default::default, |j| j.0);
+        Some(c)
+    }
+
+    /// The cushion under the crosshair, its id, its distance and the hit point.
+    pub(super) fn cushion_hit(&self) -> Option<(u32, f64, [f64; 3])> {
         let (eye, dir) = self.aim()?;
         let reach: f64 = self.entity_reach;
-        let mut best: Option<(usize, f64, [f64; 3])> = None;
-        for (i, c) in self.cushions.iter().enumerate() {
+        let mut best: Option<(u32, f64, [f64; 3])> = None;
+        for c in self.cushion_list() {
             let Some(d) = ray_box(eye, dir, reach, aabb(c.bounds())) else {
                 continue;
             };
             if best.is_none_or(|b| d < b.1) {
-                best = Some((i, d, std::array::from_fn(|k| eye[k] + dir[k] * d)));
+                best = Some((c.id, d, std::array::from_fn(|k| eye[k] + dir[k] * d)));
             }
         }
         best
-    }
-
-    pub(super) fn cushion_survives(&self, c: &Cushion) -> bool {
-        horizon_client::cushion::survives(&PlacementWorld(self), aabb(c.bounds()))
     }
 
     /// `Cushion.destroyIfInFire`: a fire-tagged block inside the deflated box.
@@ -220,41 +234,36 @@ impl Game<'_> {
             return false;
         };
         // `getEntitiesOfClass(Cushion.class, spawnAABB).isEmpty()`.
-        if self
-            .cushions
-            .iter()
-            .any(|c| overlaps(aabb(c.bounds()), bounds))
-        {
+        if self.cushion_list().iter().any(|c| overlaps(aabb(c.bounds()), bounds)) {
             return false;
         }
-        self.next_entity += 1;
-        let id = self.next_entity;
         // `BlockAttachedEntity.setPos`: `BlockPos.containing(position)`.
         let attached = [
             position.x.floor() as i32,
             position.y.floor() as i32,
             position.z.floor() as i32,
         ];
-        self.cushions.push(Cushion {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            position,
-            pos: attached,
-            yaw: snap_yaw(self.yaw),
-            color,
-            check_interval: 0,
-            // `EntityType.createDefaultStackConfig`: `Entity.applyImplicitComponents`
-            // copies the stack's `CUSTOM_NAME` onto the placed cushion.
-            custom_name: stack.data().and_then(|d| d.custom_name.clone()),
+        // `EntityType.createDefaultStackConfig`: `Entity.applyImplicitComponents`
+        // copies the stack's `CUSTOM_NAME` onto the placed cushion.
+        let name = stack.data().and_then(|d| d.custom_name.clone()).map(Box::new);
+        let yaw = snap_yaw(self.yaw);
+        let mut next = self.next_entity;
+        let id = self.ecs_with(|ecs, mw| {
+            ecs.place_cushion(mw, attached, [position.x, position.y, position.z], color, yaw, name, &mut || {
+                next += 1;
+                next
+            })
         });
+        self.next_entity = next;
+        if id == 0 {
+            return false;
+        }
         self.world
             .modified
             .insert((attached[0] >> 4, attached[2] >> 4));
         // `destroyIfInFire`: placed into fire, it breaks at once.
-        let placed = self.cushions.len() - 1;
-        if self.cushion_in_fire(&self.cushions[placed]) {
-            self.break_cushion(placed, false);
+        if self.cushion_saved(id).is_some_and(|c| self.cushion_in_fire(&c)) {
+            self.break_cushion_id(id, None, false);
         }
         self.audio.play(
             "minecraft:entity.cushion.place",
@@ -279,11 +288,9 @@ impl Game<'_> {
     /// `Cushion.interact`: sit down unless sneaking or already occupied. The
     /// cushion under the crosshair, or the one a guest's interact packet named.
     pub(super) fn interact_cushion(&mut self, target: Option<InteractTarget>) -> bool {
-        let Some((i, d, _)) = (match target {
-            Some(t) => {
-                Self::named_entity(&self.cushions, t.id, |c| c.id).map(|i| (i, 0.0, [0.0; 3]))
-            }
-            None => self.cushion_hit(),
+        let Some((id, d)) = (match target {
+            Some(t) => self.cushion_list().iter().find(|c| c.id as i32 == t.id).map(|c| (c.id, 0.0)),
+            None => self.cushion_hit().map(|(id, d, _)| (id, d)),
         }) else {
             return false;
         };
@@ -295,7 +302,6 @@ impl Game<'_> {
         if self.sneak_held {
             return false;
         }
-        let id = self.cushions[i].id;
         let occupied = self.riding == Some(id)
             || self
                 .lan
@@ -317,11 +323,10 @@ impl Game<'_> {
             return true;
         }
         // The hooks above had `&mut self`: find the cushion again by id.
-        let Some(i) = self.cushions.iter().position(|c| c.id == id) else {
+        let Some(p) = self.cushion_saved(id).map(|c| c.position) else {
             return true;
         };
         self.start_riding(id);
-        let p = self.cushions[i].position;
         self.audio.play(
             "minecraft:entity.cushion.sit",
             Some([p.x, p.y, p.z]),
@@ -334,7 +339,7 @@ impl Game<'_> {
 
     /// `Cushion.hurtServer` from a player: killed, then the item dropped.
     pub(super) fn attack_cushion(&mut self) -> bool {
-        let Some((i, d, _)) = self.cushion_hit() else {
+        let Some((id, d, _)) = self.cushion_hit() else {
             return false;
         };
         if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
@@ -346,64 +351,38 @@ impl Game<'_> {
             self.attack_ticks = 0;
             return true;
         }
-        self.break_cushion(i, true);
+        self.break_cushion_id(id, Some(super::commands::Target::Player), true);
         true
     }
 
-    /// `BlockAttachedEntity.hurtServer`: `kill` (the `entity_die` event), then
-    /// `Cushion.dropItem`.
-    pub(super) fn break_cushion(&mut self, index: usize, by_player: bool) {
-        self.break_cushion_by(index, by_player.then_some(super::commands::Target::Player))
-    }
-    pub(super) fn break_cushion_by(
-        &mut self,
-        index: usize,
-        source: Option<super::commands::Target>,
-    ) {
-        self.remove_cushion(index, source, true);
-    }
-    /// `BlockAttachedEntity.tick` on lost support: `discard()` and then
-    /// `dropItem(level, null)`, which posts no game event.
-    pub(super) fn discard_cushion(&mut self, index: usize) {
-        self.remove_cushion(index, None, false);
-    }
-    /// The removal both paths share; `killed` posts `BlockAttachedEntity.kill`'s
-    /// `entity_die` event before `dropItem`'s sound and drop.
-    fn remove_cushion(
-        &mut self,
-        index: usize,
-        source: Option<super::commands::Target>,
-        killed: bool,
-    ) {
-        let c = self.cushions.remove(index);
+    /// `BlockAttachedEntity.hurtServer`: the ECS breaks the cushion `id` (its
+    /// sound, wool particles and drop); `killed` posts `entity_die` first. A
+    /// player's or guest's break keeps the infinite materials check.
+    pub(super) fn break_cushion_id(&mut self, id: u32, source: Option<super::commands::Target>, killed: bool) {
+        use super::commands::Target;
+        use horizon_ecs_proto::species::cushion::Source;
+        let Some(c) = self.cushion_saved(id) else {
+            return;
+        };
         let p = c.position;
         self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
+        if self.riding == Some(id) {
             self.dismount_removed_vehicle(p.y);
         }
         if killed {
             // BlockAttachedEntity.kill, before dropItem.
-            self.entity_killed_event_by([p.x, p.y, p.z], source);
+            self.entity_killed_event_by([p.x, p.y, p.z], source.clone());
         }
-        self.audio.play(
-            "minecraft:entity.cushion.break",
-            Some([p.x, p.y, p.z]),
-            1.0,
-            1.0,
-        );
-        self.cushion_break_particles(&c);
-        // `Cushion.dropItem`: the item unless drops are off or the cause is a
-        // player with infinite materials (the TNT's owner for a blast).
-        if !self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::ENTITY_DROPS)
-            || self.infinite_materials(source.as_ref())
-        {
-            return;
-        }
-        let stack = c.item_stack_with_data();
-        self.spawn_item(stack, [p.x, p.y, p.z], [0.0; 3], 10);
+        let cause = match source {
+            None => Source::Environment,
+            Some(Target::Player | Target::Guest(_)) => Source::Player {
+                may_build: true,
+                may_interact: true,
+                creative: self.infinite_materials(source.as_ref()),
+            },
+            Some(_) => Source::Entity,
+        };
+        self.ecs_with(|ecs, mw| ecs.hurt_cushion(mw, id, cause));
     }
     /// `Player.hasInfiniteMaterials` of a hurt's cause: the mode of the body in
     /// place, or of the guest the blast names.
@@ -421,93 +400,16 @@ impl Game<'_> {
 
     /// `Entity.kill` of a cushion (`/kill`): gone with no drop, its rider let go.
     pub(super) fn kill_cushion(&mut self, id: u32) {
-        let Some(i) = self.cushions.iter().position(|c| c.id == id) else {
+        let Some(c) = self.cushion_saved(id) else {
             return;
         };
-        let c = self.cushions.remove(i);
         self.world.modified.insert((c.pos[0] >> 4, c.pos[2] >> 4));
-        if self.riding == Some(c.id) {
+        if self.riding == Some(id) {
             self.dismount_removed_vehicle(c.position.y);
         }
-    }
-
-    /// `Cushion.showBreakingParticles`: ten of the matching wool block.
-    fn cushion_break_particles(&mut self, c: &Cushion) {
-        let name = format!("minecraft:{}_wool", c.color_name());
-        let Some(state) = self.pack.assets.registry.default_state(&name) else {
-            return;
-        };
-        let p = c.position;
-        // Entity.getY(2/3) is relative to the cushion's quarter-block height.
-        let particle_at = [p.x, p.y + 0.25 * (2.0 / 3.0), p.z];
-        // Guest actions temporarily take self.lan; flush once the hub is back.
-        if self.audio.capture.is_some() {
-            self.lan_cushion_breaks.push((state, particle_at));
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.despawn(e);
         }
-    }
-
-    /// `BlockAttachedEntity.tick`: survive and burn checks after the post-increment reaches 100.
-    pub(super) fn tick_cushions(&mut self) {
-        let ticking = self.entity_ticking_area();
-        let mut i = 0;
-        while i < self.cushions.len() {
-            let p = self.cushions[i].position;
-            if !ticking(p.x.floor() as i32, p.z.floor() as i32) {
-                i += 1;
-                continue;
-            }
-            let previous = self.cushions[i].check_interval;
-            self.cushions[i].check_interval += 1;
-            if previous < 100 {
-                i += 1;
-                continue;
-            }
-            self.cushions[i].check_interval = 0;
-            if !self.check_cushion(i) {
-                i += 1;
-            }
-        }
-    }
-
-    /// `Cushion.tickAtCheckInterval` plus the survive check; true when the cushion broke.
-    fn check_cushion(&mut self, i: usize) -> bool {
-        let c = self.cushions[i].clone();
-        let p = c.position;
-        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-        // collidedWithFluid: the fluid box of the cushion's own block against its box.
-        if let Some((height, _)) =
-            self.fluid_height_of(x, y, z, Some(horizon_client::blocks::Fluid::Lava))
-        {
-            let fluid = Aabb::new(
-                Vec3::new(f64::from(x), f64::from(y), f64::from(z)),
-                Vec3::new(
-                    f64::from(x) + 1.0,
-                    f64::from(y) + f64::from(height),
-                    f64::from(z) + 1.0,
-                ),
-            );
-            if aabb(c.bounds())
-                .deflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7))
-                .intersects(fluid)
-            {
-                // LAVA_IGNITE's lavaHurt deals 4 damage, which breaks the cushion.
-                self.break_cushion(i, false);
-                self.lava_hurt_sound([p.x, p.y, p.z]);
-                return true;
-            }
-        }
-        // `destroyIfInFire` hurts the cushion (`kill`), so it is removed before
-        // the survive check below.
-        if self.cushion_in_fire(&c) {
-            self.break_cushion(i, false);
-            return true;
-        }
-        // BlockAttachedEntity.tick: `discard()` then `dropItem(level, null)`.
-        if !self.cushion_survives(&c) {
-            self.discard_cushion(i);
-            return true;
-        }
-        false
     }
 
     /// `LivingEntity.stopRiding` off a cushion: `dismountVehicle` beside it,
@@ -610,7 +512,7 @@ impl Game<'_> {
     /// vehicle attachment. A server sends no position for a passenger, so
     /// every client seats it here.
     pub(super) fn seat_cushion_mobs(&mut self, riding: &super::passengers::Riders) {
-        for c in &self.cushions {
+        for c in self.cushion_list() {
             let Some(js) = riding.get(&c.id) else {
                 continue;
             };
@@ -632,12 +534,7 @@ impl Game<'_> {
 
     /// `Player.rideTick` on a cushion: hold the seat, and get up on sneak.
     pub(super) fn tick_cushion_riding(&mut self, keys: Keys) -> bool {
-        let Some(c) = self
-            .cushions
-            .iter()
-            .find(|c| Some(c.id) == self.riding)
-            .cloned()
-        else {
+        let Some(c) = self.riding.and_then(|id| self.cushion_saved(id)) else {
             return false;
         };
         if keys.shift {

@@ -459,8 +459,7 @@ mod tests {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
-            game.armor_stands
-                .push(horizon_client::entities::ArmorStand::new(
+            crate::game::ecs::test_support::place_test_stand(game, 14, &horizon_client::entities::ArmorStand::new(
                     14,
                     Vec3::ZERO,
                     0.0,
@@ -630,8 +629,7 @@ mod tests {
         use horizon_client::entities::ArmorStand;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.armor_stands
-                .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let stand = game.entity(14).unwrap();
             assert!(game.entity_set_invulnerable_time(stand, 20));
             // Entity.baseTick, over the saved tag.
@@ -689,22 +687,21 @@ mod tests {
     fn a_saved_stand_refuses_the_punch_that_would_break_it() {
         use horizon_client::entities::ArmorStand;
         with_game(|game| {
-            game.armor_stands
-                .push(ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let stand = game.entity(14).unwrap();
             // The window refuses even the first hit's wobble.
             assert!(game.entity_set_invulnerable_time(stand, 5));
             assert!(!game.punch_armor_stand(0));
-            assert_eq!(game.armor_stands.len(), 1);
+            assert_eq!(game.armor_stand_list().len(), 1);
             // The flag holds the breaking second hit back in survival.
             assert!(game.entity_set_invulnerable(stand, true));
             assert!(!game.punch_armor_stand(0));
             assert!(!game.punch_armor_stand(0));
-            assert_eq!(game.armor_stands.len(), 1, "still standing");
+            assert_eq!(game.armor_stand_list().len(), 1, "still standing");
             // A creative player's hit passes the flag.
             game.creative = true;
             assert!(game.punch_armor_stand(0));
-            assert_eq!(game.armor_stands.len(), 0);
+            assert_eq!(game.armor_stand_list().len(), 0);
         });
     }
 

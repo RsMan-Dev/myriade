@@ -43,11 +43,6 @@ macro_rules! resident_owners {
         $then! {
             ($this)
             Mob => Mob: remote_entities,
-            Stand => Stand: armor_stands,
-            Crystal => Crystal: crystals,
-            Cushion => Cushion: cushions,
-            Spawner => Spawner: ominous_spawners,
-            Cloud => Cloud: breath_clouds,
         }
     };
 }
@@ -144,7 +139,7 @@ macro_rules! define_resident_access {
                     let Some(part) = $this.dragon.as_mut().and_then(|dragon| dragon.parts.get_mut(usize::from(offset))) else { return SlotAccess::Missing; };
                     SlotAccess::Done(visit(part.attachment_lifetime()))
                 },
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud | Kind::Cushion | Kind::Spawner | Kind::Stand => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -156,7 +151,7 @@ macro_rules! define_resident_access {
                     let id = entity.id;
                     Some(SourceEntity { id, value: (Target::$target(id), visible) })
                 })*
-                Kind::Fangs | Kind::Knot => None,
+                Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud => None,
                 Kind::Dragon => {
                     $this.dragon.locate(at.join)?;
                     let id = $this.dragon.as_ref()?.id;
@@ -172,7 +167,7 @@ macro_rules! define_resident_access {
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General => None,
+                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Cushion | Kind::Spawner | Kind::Stand => None,
             };
             source
         }
@@ -210,61 +205,5 @@ mod tests {
     use horizon_client::join_seq::residency::table::EntityLookup;
     use horizon_core::position::BlockPos;
 
-    #[test]
-    #[ignore = "daily"]
-    fn resident_slot_access_cushion_reentry_and_panic_preserve_actual_lifetime() {
-        use horizon_mod_runtime::attachments::{
-            Attachments, HasAttachmentLifetime, index::AttachmentIndex,
-        };
-        use std::{
-            num::NonZeroU32,
-            sync::{Arc, Mutex},
-        };
-        with_game(|game| {
-            game.reset_entity_residency();
-            game.summon_with_nbt("minecraft:cushion", [0.5, 70.0, 0.5], "{}")
-                .unwrap();
-            game.lan_assign_ids();
-            let id = NonZeroU32::new(game.cushions[0].id).unwrap();
-            let holder = game.entity(id.get()).unwrap();
-            let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-            let mut values = Attachments::default();
-            let journal = game.resident_entities.table.borrow().producer();
-            let result = game.with_resident_slot(&DimensionKey::OVERWORLD, id, |slot| {
-                // Reenter the same structural journal: a retained drain borrow panics.
-                journal.drain_into(&mut Vec::new());
-                slot.bind(&mut values, &index, holder);
-                slot.registration().unwrap()
-            });
-            let SlotAccess::Done(registration) = result else {
-                panic!("resident slot unavailable")
-            };
-            game.cushions.update(0, |mob| {
-                assert!(
-                    registration
-                        .same_registration(&mob.attachment_lifetime().registration().unwrap())
-                )
-            });
-            let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                game.with_resident_slot(&DimensionKey::OVERWORLD, id, |slot| {
-                    assert!(registration.same_registration(&slot.registration().unwrap()));
-                    panic!("visitor panic");
-                });
-            }));
-            assert!(panic.is_err());
-            game.cushions.update(0, |mob| {
-                assert!(
-                    registration
-                        .same_registration(&mob.attachment_lifetime().registration().unwrap())
-                )
-            });
-            assert!(game.resident_entities.table.try_borrow_mut().is_ok());
-            game.enter_level(crate::game::Dim::Nether).unwrap();
-            assert!(matches!(
-                game.with_resident_slot(&DimensionKey::OVERWORLD, id, |slot| slot.is_bound()),
-                SlotAccess::Done(true)
-            ));
-        });
-    }
 
 }

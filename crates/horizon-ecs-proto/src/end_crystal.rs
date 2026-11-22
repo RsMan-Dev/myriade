@@ -1,6 +1,6 @@
-//! `EndCrystal` (`boss/enderdragon/EndCrystal`): a box that stands still and takes hits, with no tick of its own. The fire at its
-//! feet is set once at its first tick (`after`) and again when a block changes there (`block_changed`): a crystal at rest costs nothing.
-//! Its time (the spin and bob) is not kept: the client draws its own and nothing of it is saved or sent.
+//! `EndCrystal` (`boss/enderdragon/EndCrystal`): a box that stands still and takes hits. Its tick sets the fire at its feet in the
+//! End (`fire_tick`, every tick, as the jar does). Its time, fall and motion are not kept: `EndCrystal.time` is neither saved nor
+//! synced, and a crystal never moves.
 use crate::blocks::{set_state, world_of};
 use crate::cow::{after, Bounds, OwnTime, Pos};
 use crate::projectile::Blast;
@@ -35,16 +35,6 @@ pub struct CrystalCells(pub HashMap<[i32; 3], Entity>);
 #[derive(Resource, Default)]
 pub struct EndFire(pub bool);
 
-/// A crystal is gone (`EndCrystal.onDestroyedBy`): where, and the one behind the blow. The fight reads it.
-#[derive(Clone, Copy, Debug)]
-pub struct Gone {
-    pub at: Vec3,
-    pub by: Option<Who>,
-}
-
-#[derive(Resource, Default)]
-pub struct CrystalEvents(pub Vec<Gone>);
-
 /// A blow on a crystal: fire is refused, a dragon's blow too; an explosion removes it without a blast of its own.
 #[derive(Clone, Copy, Debug)]
 pub struct Blow {
@@ -55,10 +45,28 @@ pub struct Blow {
     pub dragon: bool,
 }
 
+/// A crystal that went, where and by whom (the fight's record, kept whether or not a fight runs).
+#[derive(Clone, Copy, Debug)]
+pub struct Gone {
+    pub at: Vec3,
+    pub by: Option<Who>,
+}
+
+/// The crystals gone since the host last read them.
+#[derive(Resource, Default)]
+pub struct CrystalEvents(pub Vec<Gone>);
+
 pub fn insert_resources(w: &mut World) {
     w.init_resource::<CrystalCells>();
     w.init_resource::<EndFire>();
     w.init_resource::<CrystalEvents>();
+}
+
+/// A block changed at `c` (the host's block events, read at the start of a tick): a crystal standing there sets its fire again.
+pub fn block_changed(w: &mut World, c: [i32; 3]) {
+    if w.resource::<CrystalCells>().0.contains_key(&c) {
+        fire_at(w, c);
+    }
 }
 
 /// The crystal's box: 2 by 2, from its feet up 2 (`EndCrystal` is `EntityType.END_CRYSTAL`).
@@ -79,11 +87,11 @@ fn index_remove(mut world: DeferredWorld, ctx: HookContext) {
     }
 }
 
-/// A crystal at `at` (feet). Its first tick is armed now: the fire under it is checked then, and nothing runs in between.
+/// A crystal at `at` (feet), with its save fields and its join. Its first tick is armed now: the fire under it is checked then.
 pub fn spawn(w: &mut World, at: Vec3, show_bottom: bool) -> Entity {
     insert_resources(w);
-    let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }))
-.id();
+    let joined = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    let e = w.spawn((Pos(at), Bounds(bounds(at)), OwnTime, EndCrystal { show_bottom }, joined)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::END_CRYSTAL);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::END_CRYSTAL));
     after(w, e, 1, first_tick);
@@ -107,13 +115,6 @@ fn fire_at(w: &mut World, c: [i32; 3]) {
     }
 }
 
-/// A block changed at `c` (the host's block events, read at the start of a tick): a crystal standing there sets its fire again.
-pub fn block_changed(w: &mut World, c: [i32; 3]) {
-    if w.resource::<CrystalCells>().0.contains_key(&c) {
-        fire_at(w, c);
-    }
-}
-
 /// A blow (`EndCrystal.hurtServer`). Refused: fire, a dragon's blow, a shielded crystal's blow unless creative. Otherwise it
 /// goes at once, a blast of 6 unless the blow is an explosion, and the fight hears of it.
 pub fn hurt(w: &mut World, e: Entity, blow: Blow) -> bool {
@@ -125,7 +126,6 @@ pub fn hurt(w: &mut World, e: Entity, blow: Blow) -> bool {
     if !blow.explosion {
         explode_at(w, at, blow.by);
     }
-    w.resource_mut::<CrystalEvents>().0.push(Gone { at, by: blow.by });
     tell_fight(w, e, at, blow.by);
     true
 }
@@ -134,12 +134,21 @@ pub fn hurt(w: &mut World, e: Entity, blow: Blow) -> bool {
 pub fn kill(w: &mut World, e: Entity) {
     let Some(at) = w.get::<Pos>(e).map(|p| p.0) else { return };
     w.despawn(e);
-    w.resource_mut::<CrystalEvents>().0.push(Gone { at, by: None });
     tell_fight(w, e, at, None);
+}
+
+/// `setPermanentlyInvulnerable`: the shield on or off.
+pub fn set_shield(w: &mut World, e: Entity, on: bool) {
+    if on {
+        w.entity_mut(e).insert(Shielded);
+    } else {
+        w.entity_mut(e).remove::<Shielded>();
+    }
 }
 
 /// A fight in this world hears of every crystal that goes (`EnderDragonFight.onCrystalDestroyed`), whoever removed it.
 fn tell_fight(w: &mut World, e: Entity, at: Vec3, by: Option<Who>) {
+    w.get_resource_or_insert_with(CrystalEvents::default).0.push(Gone { at, by });
     if w.contains_resource::<crate::dragon::fight::EndFight>() {
         crate::dragon::crystals::gone(w, e, at, by.and_then(|b| if let Who::Player(p) = b { Some(p) } else { None }));
     }

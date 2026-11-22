@@ -83,14 +83,6 @@ impl Game<'_> {
         Some((self.dragon.as_ref()?, usize::from(offset)))
     }
 
-    pub(super) fn assign_resident_crystal_ids(&mut self) {
-        crate::game::entity_residency::assign_resident_ids!(
-            self.crystals,
-            c,
-            &mut self.next_entity,
-            None
-        );
-    }
 }
 
 impl Game<'_> {
@@ -103,7 +95,7 @@ impl Game<'_> {
         {
             return Some(d.part_box((id - d.id - 1) as usize));
         }
-        let i = self.crystals.iter().position(|c| c.id == id)?;
+        let i = self.crystals().iter().position(|c| c.id == id)?;
         self.special_targets()
             .into_iter()
             .find(|(s, _)| *s == CRYSTAL_IDS + i as u32)

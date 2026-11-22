@@ -2231,7 +2231,7 @@ impl Game<'_> {
         } else if let Some(p) = self.ecs.position(id) {
             return Some(p);
         } else {
-            self.cushions.iter().find(|c| c.id == id)?.position
+            self.cushion_saved(id)?.position
         };
         Some([p.x, p.y, p.z])
     }

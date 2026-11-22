@@ -158,8 +158,8 @@ impl Game<'_> {
                     }
                 }
             });
-            for crystal in level.crystals {
-                touch(crystal.bounds());
+            for bounds in level.ecs.species_bounds("minecraft:end_crystal") {
+                touch(bounds);
             }
             for &bounds in &level.trigger_extras {
                 touch(bounds);

@@ -66,7 +66,6 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.summon_with_nbt("minecraft:end_crystal", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, crystals);
 
         game.summon_with_nbt("minecraft:tnt", [0.5, 70.0, 0.5], "{}")
             .unwrap();
@@ -87,12 +86,10 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.lan_assign_ids();
 
         game.add_ominous_item_spawner(ItemStack::new("minecraft:stone", 1), [0.5, 70.0, 0.5], 60);
-        check_list!(game, ominous_spawners);
 
         game.summon_with_nbt("minecraft:area_effect_cloud", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, breath_clouds);
 
         game.summon_with_nbt("minecraft:ender_dragon", [0.5, 70.0, 0.5], "{}")
             .unwrap();

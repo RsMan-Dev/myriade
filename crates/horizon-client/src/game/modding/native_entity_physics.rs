@@ -36,7 +36,7 @@ impl Game<'_> {
                 Some(self.stored_no_physics(id))
             }
             Target::Stand(id) => {
-                let stand = self.armor_stands.iter().find(|s| s.id == id)?;
+                let stand = self.armor_stand_saved(id)?;
                 Some(stand.no_physics.unwrap_or(stand.marker || stand.no_gravity))
             }
             Target::Other(id) => Some(
@@ -94,14 +94,7 @@ impl Game<'_> {
                 self.persist.no_physics.insert(id, no_physics);
                 true
             }
-            Some(Target::Stand(id)) => self
-                .armor_stands
-                .iter_mut()
-                .find(|s| s.id == id)
-                .is_some_and(|s| {
-                    s.no_physics = Some(no_physics);
-                    true
-                }),
+            Some(Target::Stand(id)) => self.armor_stand_edit(id, |s| s.no_physics = Some(no_physics)),
             // No `others` list: nothing of this kind is held to flag.
             Some(Target::Other(_)) => false,
             _ => false,
@@ -120,41 +113,10 @@ impl Game<'_> {
     /// A command drops an ominous item spawner: its stored `noPhysics` write
     /// leaves with it.
     pub(super) fn remove_ominous_spawner(&mut self, id: u32) {
-        self.ominous_spawners.retain(|s| s.id != id);
-        self.forget_entity(id);
-    }
-
-    /// A command drops one breath cloud: its stored `noPhysics` write leaves
-    /// with it.
-    pub(super) fn remove_breath_cloud(&mut self, id: u32) {
-        self.breath_clouds.retain(|c| c.id != id);
-        self.forget_entity(id);
-    }
-
-    /// Drop every breath cloud the predicate rejects and forget each one's
-    /// stored `noPhysics` write (the dragon's flame going).
-    pub(super) fn retain_breath_clouds(
-        &mut self,
-        mut keep: impl FnMut(&super::dragon::Breath) -> bool,
-    ) {
-        let mut gone = Vec::new();
-        self.breath_clouds.retain(|c| {
-            let kept = keep(c);
-            if !kept {
-                gone.push(c.id);
-            }
-            kept
-        });
-        for id in gone {
-            self.forget_entity(id);
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.despawn(e);
         }
-    }
-
-    /// A breath cloud expiring inside a `retain_mut`: forget its stored
-    /// `noPhysics` write and refuse it, in one call.
-    pub(super) fn forget_expired_cloud(&mut self, id: u32) -> bool {
         self.forget_entity(id);
-        false
     }
 
     /// An ominous item spawner finishing inside a `retain_mut`: forget its
@@ -181,13 +143,13 @@ mod tests {
 
         with_game(|game| {
             game.add_ominous_item_spawner(ItemStack::new("minecraft:air", 1), [4.5, 200.0, 4.5], 1);
-            let id = game.ominous_spawners[0].id;
+            let id = game.ominous_ids()[0];
             game.persist.no_physics.insert(id, false);
             assert!(game.persist.no_physics.contains_key(&id));
 
-            game.tick_ominous_item_spawners();
+            game.tick_ecs().unwrap();
             assert!(
-                !game.ominous_spawners.iter().any(|s| s.id == id),
+                !game.ominous_ids().contains(&id),
                 "the spawner finished"
             );
             assert!(
@@ -197,86 +159,6 @@ mod tests {
         });
     }
 
-    /// A breath cloud that runs out of time is taken away by `tick_breath`,
-    /// not by a command: its entry goes with it.
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_entry_is_cleared_when_a_breath_cloud_expires() {
-        use super::super::dragon::Breath;
-        use super::super::native_entity_refs::tests::with_game;
-
-        with_game(|game| {
-            let id = game.take_entity_id();
-            game.breath_clouds.push(Breath {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id,
-                at: [0.0, 80.0, 0.0],
-                motion: [0.0; 3],
-                radius: 3.0,
-                age: 20,
-                duration: 1,
-                from_dragon: false,
-                victims: Vec::new(),
-                potion: None,
-            });
-            game.persist.no_physics.insert(id, false);
-            assert!(game.persist.no_physics.contains_key(&id));
-
-            game.tick_breath();
-            assert!(
-                !game.breath_clouds.iter().any(|c| c.id == id),
-                "the cloud expired"
-            );
-            assert!(
-                !game.persist.no_physics.contains_key(&id),
-                "the entry left with the cloud that expired"
-            );
-        });
-    }
-
-    /// Leaving the flaming phase removes the dragon's flame cloud
-    /// (`end_dragon_flame`): its entry leaves with it too.
-    #[test]
-    #[ignore = "daily"]
-    fn no_physics_entry_is_cleared_when_the_dragons_flame_is_removed() {
-        use super::super::dragon::{Breath, Dragon};
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_core::geometry::Vec3;
-
-        with_game(|game| {
-            let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = game.take_entity_id();
-            game.dragon.replace(dragon);
-            let id = game.take_entity_id();
-            game.breath_clouds.push(Breath {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id,
-                at: [0.0, 80.0, 0.0],
-                motion: [0.0; 3],
-                radius: 3.0,
-                age: 0,
-                duration: 600,
-                from_dragon: true,
-                victims: Vec::new(),
-                potion: None,
-            });
-            game.persist.no_physics.insert(id, false);
-            assert!(game.persist.no_physics.contains_key(&id));
-
-            game.dragon.as_mut().unwrap().flame_ended = true;
-            game.tick_breath();
-            assert!(
-                !game.breath_clouds.iter().any(|c| c.id == id),
-                "the flame cloud is gone"
-            );
-            assert!(
-                !game.persist.no_physics.contains_key(&id),
-                "the entry left with the flame cloud"
-            );
-        });
-    }
 
     #[test]
     #[ignore = "daily"]

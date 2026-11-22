@@ -223,13 +223,8 @@ impl Game<'_> {
             | Target::Fangs(id)
             | Target::Cloud(id)
             | Target::General(id)
-            | Target::Hook(id) => Some(uuid_text(self.uuid_for(id))),
-            // It keeps its UUID with itself.
-            Target::Spawner(id) => self
-                .ominous_spawners
-                .iter()
-                .find(|s| s.id == id)
-                .map(|s| uuid_text(s.uuid)),
+            | Target::Hook(id)
+            | Target::Spawner(id) => Some(uuid_text(self.uuid_for(id))),
             // An orb's registered identity, as its saved UUID reads.
             Target::Orb(id) => Some(uuid_text(self.uuid_for(id))),
             // Projectiles have no UUID here.
@@ -289,16 +284,12 @@ impl Game<'_> {
             | Target::Other(id)
             | Target::Fangs(id)
             | Target::Cloud(id)
+            | Target::Spawner(id)
             | Target::Hook(id) => self.persist.raw.get(&id),
             Target::DragonPart(_) => None,
             Target::Player => self.level.player_extra.as_ref(),
             // A server's player: the saved compound the guest's file is written from.
             Target::Guest(conn) => self.command_guest(conn).and_then(|g| g.saved.as_ref()),
-            Target::Spawner(id) => self
-                .ominous_spawners
-                .iter()
-                .find(|s| s.id == id)
-                .and_then(|s| s.raw.as_deref()),
             // A natural knot keeps no saved compound: it has no tags.
             Target::Knot(_) => None,
         };

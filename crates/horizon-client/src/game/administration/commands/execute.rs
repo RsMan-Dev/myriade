@@ -133,9 +133,7 @@ impl Game<'_> {
                 .find(|m| m.id == id)
                 .map_or([0.0; 2], |m| [m.yaw, m.head_pitch]),
             Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)
+                .armor_stand_saved(id)
                 .map_or([0.0; 2], |a| [a.yaw, 0.0]),
             Target::Boat(id) | Target::Cart(id) => self.ecs_view(id).map_or([0.0; 2], |v| [v.yaw, 0.0]),
             Target::Fangs(id) => self.ecs.rotation(id).map_or([0.0; 2], |r| [r[0], 0.0]),
@@ -165,7 +163,7 @@ impl Game<'_> {
                 .map_or(0.0, |m| m.eye_y() - m.position.y),
             // ArmorStand.getDefaultDimensions: a marker's are empty, a small
             // stand's are BABY_DIMENSIONS, whose eye height is 0.9875F.
-            Target::Stand(id) => match self.armor_stands.iter().find(|a| a.id == id) {
+            Target::Stand(id) => match self.armor_stand_saved(id) {
                 Some(a) if a.marker => 0.0,
                 Some(a) if a.small => f64::from(0.9875f32),
                 _ => self.type_eye_height(&self.target_type(t)),

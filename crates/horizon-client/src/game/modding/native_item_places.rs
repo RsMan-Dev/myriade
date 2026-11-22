@@ -151,7 +151,7 @@ impl Game<'_> {
         }
         (self.ecs.exists(entity)
             || self.remote_entities.iter().any(|m| m.id == entity && !m.removed)
-            || self.armor_stands.iter().any(|a| a.id == entity))
+            || self.armor_stand_list().iter().any(|a| a.id == entity))
         .then_some(7)
     }
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
@@ -448,7 +448,7 @@ impl Game<'_> {
         if let Some(mob) = self.remote_entities.iter().find(|m| m.id == entity && !m.removed) {
             return Some(mob.equipment_stacks().get(slot as usize).cloned());
         }
-        let stand = self.armor_stands.iter().find(|a| a.id == entity)?;
+        let stand = self.armor_stand_saved(entity)?;
         Some(stand.equipment.get(slot as usize).cloned())
     }
     /// The equipment write `set_equipment` makes (arismoko/horizon#932), deferred: whether it
@@ -1723,10 +1723,10 @@ pub(super) mod tests {
         use horizon_core::geometry::Vec3;
         use mod_api::EquipmentSlot;
         with_game(|game| {
-            game.armor_stands.push(ArmorStand::new(40, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(41, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 40, &ArmorStand::new(40, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 41, &ArmorStand::new(41, Vec3::ZERO, 0.0));
             let stand_slot =
-                |game: &super::Game<'_>, id: usize| game.armor_stands[id].equipment.get(4).cloned();
+                |game: &super::Game<'_>, id: usize| game.armor_stand_list()[id].equipment.get(4).cloned();
             let chestplate = ItemResource::of(
                 &ItemStack::new("minecraft:diamond_chestplate", 1)
                     .try_into_api()

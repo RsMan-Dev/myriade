@@ -80,7 +80,7 @@ impl Game<'_> {
             // ArmorStand.getDefaultDimensions ignores the pose: a marker's
             // box is empty, a small stand's BABY_DIMENSIONS, else the type's.
             Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                let a = self.armor_stand_saved(id)?;
                 let dims = if a.marker {
                     (0.0, 0.0, 0.0)
                 } else {
@@ -209,8 +209,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn pose_regression_sleeping_stand() {
         with_game(|game| {
-            game.armor_stands
-                .push(horizon_client::entities::ArmorStand::new(
+            crate::game::ecs::test_support::place_test_stand(game, 55, &horizon_client::entities::ArmorStand::new(
                     55,
                     Vec3::ZERO,
                     0.0,
@@ -260,8 +259,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn pose_regression_scaled_stand() {
         with_game(|game| {
-            game.armor_stands
-                .push(horizon_client::entities::ArmorStand::new(
+            crate::game::ecs::test_support::place_test_stand(game, 55, &horizon_client::entities::ArmorStand::new(
                     55,
                     Vec3::ZERO,
                     0.0,
@@ -272,12 +270,12 @@ pub(in crate::game) mod tests {
                 living.dimensions_for_pose(game, Pose::Standing),
                 Some([1.0, f64::from(3.95_f32), f64::from(3.555_f32)])
             );
-            game.armor_stands[0].small = true;
+            game.armor_stand_edit(game.armor_stand_ids()[0], |a| a.small = true);
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Standing),
                 Some([0.5, f64::from(1.975_f32), f64::from(1.975_f32)])
             );
-            game.armor_stands[0].marker = true;
+            game.armor_stand_edit(game.armor_stand_ids()[0], |a| a.marker = true);
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Standing),
                 Some([0.0; 3])

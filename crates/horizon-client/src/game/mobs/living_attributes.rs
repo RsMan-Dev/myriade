@@ -74,19 +74,6 @@ impl Game<'_> {
     pub(super) fn tick_equipment_attributes(&mut self) {
         let catalog = self.motion.attributes.clone();
         let items = world_items!(self);
-        for a in self.armor_stands.iter_mut() {
-            if a.equipment.is_empty() && !a.live.has_worn() {
-                continue;
-            }
-            let changed = a.live.collect_equipment_changes(
-                &catalog,
-                "minecraft:armor_stand",
-                &a.equipment,
-                items,
-                Vec::new,
-            );
-            warn_failed(a.id, "minecraft:armor_stand", changed);
-        }
         if let Some(d) = self.dragon.as_mut()
             && !(d.equipment.is_empty() && !d.live.has_worn())
         {
@@ -395,12 +382,6 @@ impl Game<'_> {
                 };
                 (&mut m.extra.live, m.kind.id.clone(), seed)
             }
-            Target::Stand(id) => {
-                let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) else {
-                    return;
-                };
-                (&mut a.live, "minecraft:armor_stand".to_owned(), Vec::new())
-            }
             _ => return,
         };
         let record = write.transient_record().map(|(id, m)| (id.to_owned(), m));
@@ -465,7 +446,7 @@ mod tests {
     /// not hold yet), ids 12, 13 and 14.
     fn spawn(game: &mut Game<'_>) {
         spawn_id(game, 12, "minecraft:zombie");
-        game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+        crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
         let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 14;
         game.dragon.replace(dragon);
@@ -780,7 +761,7 @@ mod tests {
         with_game(|game| {
             spawn(game);
             let armor = "minecraft:armor";
-            game.armor_stands[0]
+            game.armor_stand_list()[0]
                 .equipment
                 .set(HEAD, stack("minecraft:diamond_helmet"));
             game.dragon
@@ -791,7 +772,7 @@ mod tests {
             game.tick_equipment_attributes();
             assert_eq!(read(game, 13, armor), (Some(3.0), Some(0.0)));
             assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
-            game.armor_stands[0].equipment.set(HEAD, None);
+            game.armor_stand_edit(game.armor_stand_ids()[0], |a| { a.equipment.set(HEAD, None); });
             game.tick_equipment_attributes();
             assert_eq!(read(game, 13, armor), (Some(0.0), Some(0.0)));
             assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
@@ -833,13 +814,15 @@ mod tests {
                     ])]),
                 ),
             ])]);
-            game.armor_stands[0].live.load(Some(&saved), |_| true);
+            game.armor_stand_edit(game.armor_stand_ids()[0], |a| {
+                a.live.load(Some(&saved), |_| true);
+            });
             assert_eq!(
                 read(game, 13, "minecraft:max_health"),
                 (Some(60.0), Some(40.0))
             );
             let mut list = Vec::new();
-            game.armor_stands[0].live.save_into(&mut list);
+            game.armor_stand_list()[0].live.save_into(&mut list);
             assert_eq!(Tag::List(list), saved);
         });
     }

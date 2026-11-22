@@ -16,7 +16,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
     with_game(|game| {
         game.build_registries();
         game.session.registries.permission = 4;
-        game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));
+        crate::game::ecs::test_support::place_test_stand(game, 16, &ArmorStand::new(16, Vec3::ZERO, 0.0));
         let mut dragon = super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 17;
         game.dragon.replace(dragon);
@@ -26,7 +26,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
             game.run_command(&format!("item replace entity {who} {slot} with {item}"));
         };
         let stand_slot =
-            |game: &super::Game<'_>, slot| game.armor_stands[0].equipment[slot].clone();
+            |game: &super::Game<'_>, slot| game.armor_stand_list()[0].equipment[slot].clone();
         let dragon_slot =
             |game: &super::Game<'_>, slot| game.dragon.as_ref().unwrap().equipment[slot].clone();
 
@@ -34,7 +34,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         replace(game, stand, "armor.body", "minecraft:diamond_horse_armor");
         replace(game, stand, "saddle", "minecraft:saddle");
         replace(game, stand, "armor.legs", "minecraft:iron_chestplate");
-        assert!(game.armor_stands[0].equipment.is_empty());
+        assert!(game.armor_stand_list()[0].equipment.is_empty());
         replace(game, stand, "armor.chest", "minecraft:iron_chestplate");
         assert_eq!(
             stand_slot(game, CHEST),

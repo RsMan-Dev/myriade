@@ -812,10 +812,16 @@ impl Game<'_> {
                 }
             }
             "minecraft:ominous_item_spawner" => {
-                if let Some(state) = transferred.take() {
-                    self.load_ominous_item_spawner_transferred(tag, Some(state));
-                } else {
-                    self.load_ominous_item_spawner(tag);
+                let id = match &tag {
+                    Tag::Compound(c) => self.ecs_load(c),
+                    _ => None,
+                };
+                if let Some(id) = id {
+                    if let Some(state) = transferred.take() {
+                        self.adopt_transferred_entity_state(id, state);
+                    }
+                    let uuid = with_constructor_uuid(uuid);
+                    self.remember(id, uuid, tag);
                 }
             }
             "minecraft:ender_dragon" => {
@@ -825,18 +831,17 @@ impl Game<'_> {
                     self.load_dragon(tag, uuid);
                 }
             }
-            "minecraft:end_crystal" => {
-                if let Some(state) = transferred.take() {
-                    self.load_crystal_transferred(tag, uuid, Some(state));
-                } else {
-                    self.load_crystal(tag, uuid);
-                }
-            }
-            "minecraft:cushion" => {
-                if let Some(state) = transferred.take() {
-                    self.load_cushion_transferred(tag, uuid, Some(state));
-                } else {
-                    self.load_cushion(tag, uuid);
+            "minecraft:cushion" | "minecraft:end_crystal" | "minecraft:armor_stand" => {
+                let id = match &tag {
+                    Tag::Compound(c) => self.ecs_load(c),
+                    _ => None,
+                };
+                if let Some(id) = id {
+                    if let Some(state) = transferred.take() {
+                        self.adopt_transferred_entity_state(id, state);
+                    }
+                    let uuid = with_constructor_uuid(uuid);
+                    self.remember(id, uuid, tag);
                 }
             }
             _ => return Err(tag),
@@ -909,29 +914,6 @@ impl Game<'_> {
         self.load_boat_transferred(tag, uuid, k, None);
     }
 
-    /// A saved armor stand.
-    pub(super) fn load_armor_stand(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_armor_stand_transferred(tag, uuid, None)
-    }
-    pub(super) fn load_armor_stand_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        self.next_entity += 1;
-        if let Some(mut a) = entity_nbt::armor_stand_from_nbt(&tag, self.next_entity) {
-            a.live
-                .retain_supplier(&self.motion.attributes, "minecraft:armor_stand");
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(a.id, state);
-            }
-            self.remember(a.id, uuid, tag);
-            self.bind_saved_entity_attachments(a.id, &mut a.attachment_lifetime);
-            self.armor_stands.push(a);
-        }
-    }
-
     /// The saved ender dragon.
     pub(super) fn load_dragon(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
         self.load_dragon_transferred(tag, uuid, None)
@@ -961,52 +943,6 @@ impl Game<'_> {
             self.remember_uuid(d.id, uuid, &tag);
             d.join = horizon_client::join_seq::JoinSeq::next();
             assert!(self.dragon.install(d).is_ok());
-        }
-    }
-
-    /// A saved end crystal.
-    pub(super) fn load_crystal(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_crystal_transferred(tag, uuid, None)
-    }
-    pub(super) fn load_crystal_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        let drawn = self.world.random.next_int_bound(100_000).unwrap_or(0);
-        if let Some(mut c) = super::dragon::Crystal::from_nbt(&tag, drawn) {
-            c.time = super::dragon::Crystal::start_time(c.position, drawn, self.clock.still());
-            // EndCrystal's constructor takes an id from the
-            // entity counter.
-            self.next_entity += 1;
-            c.id = self.next_entity;
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(c.id, state);
-            }
-            self.remember_tags(c.id, &tag);
-            self.remember_uuid(c.id, uuid, &tag);
-            self.crystals.push(c);
-        }
-    }
-
-    /// A saved cushion.
-    pub(super) fn load_cushion(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_cushion_transferred(tag, uuid, None)
-    }
-    pub(super) fn load_cushion_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        self.next_entity += 1;
-        if let Some(c) = entity_nbt::cushion_from_nbt(&tag, self.next_entity) {
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(c.id, state);
-            }
-            self.remember(c.id, uuid, tag);
-            self.cushions.push(c);
         }
     }
 
@@ -1443,19 +1379,6 @@ impl Game<'_> {
             .get(&anon_key(kind, p))
             .map(|(_, raw)| raw)
     }
-    /// `Entity.applyEffectsFromBlocks` on a fire-immune entity that is not
-    /// burning (`EndCrystal.tick`): the loaded `Fire` is reset to
-    /// `-getFireImmuneTicks()`, which is 0.
-    pub(super) fn clear_crystal_fire(&mut self) {
-        for c in &self.crystals {
-            let key = anon_key("minecraft:end_crystal", c.position);
-            if let Some((_, Tag::Compound(raw))) = self.persist.anon.get_mut(&key)
-                && let Some(fire) = raw.get_mut(&"Fire".into())
-            {
-                *fire = Tag::Short(0);
-            }
-        }
-    }
     /// The compound an entity was loaded with (and commands have edited).
     pub(super) fn persist_raw(&self, id: u32) -> Option<&Tag> {
         self.persist.raw.get(&id)
@@ -1603,72 +1526,6 @@ impl Game<'_> {
                 .entry(chunk_of(d.position))
                 .or_default()
                 .push((d.id, d.join_seq(), tag));
-        }
-        for c in &self.crystals {
-            if keys.contains(&chunk_of(c.position)) {
-                let raw = anon_raw(&self.persist, "minecraft:end_crystal", c.position);
-                let uuid = saved_uuid(&self.persist, c.id);
-                let mut tag = with_raw(c.to_nbt(uuid, raw.as_ref()), self.persist.raw.get(&c.id));
-                write_attachments(&mut tag, c.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
-            }
-        }
-        for s in &self.ominous_spawners {
-            let at = Vec3::new(s.position[0], s.position[1], s.position[2]);
-            if keys.contains(&chunk_of(at)) {
-                let mut tag = entity_nbt::ominous_item_spawner_to_nbt(
-                    &s.item,
-                    at,
-                    s.spawn_item_after,
-                    self.persist.uuids.get(&s.id).copied().unwrap_or(s.uuid),
-                    s.raw.as_deref(),
-                );
-                write_attachments(&mut tag, s.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((s.id, s.join_seq(), tag));
-            }
-        }
-        for c in &self.cushions {
-            if keys.contains(&chunk_of(c.position)) {
-                let uuid = self
-                    .persist
-                    .uuids
-                    .get(&c.id)
-                    .copied()
-                    .unwrap_or_else(random_uuid);
-                let mut tag = entity_nbt::cushion_to_nbt(c, uuid, self.persist.raw.get(&c.id));
-                write_attachments(&mut tag, c.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(c.position))
-                    .or_default()
-                    .push((c.id, c.join_seq(), tag));
-            }
-        }
-        // `AreaEffectCloud.addAdditionalSaveData`: a lingering potion's cloud is
-        // an entity of its chunk. A dragon's own breath carries no potion and
-        // is not written.
-        for c in &self.breath_clouds {
-            let at = Vec3::new(c.at[0], c.at[1], c.at[2]);
-            if c.potion.is_none() || !keys.contains(&chunk_of(at)) {
-                continue;
-            }
-            let uuid = self
-                .persist
-                .uuids
-                .get(&c.id)
-                .copied()
-                .unwrap_or_else(random_uuid);
-            let mut tag = super::potions::potion_cloud_to_nbt(c, uuid, self.persist.raw.get(&c.id));
-            write_attachments(&mut tag, c.id, &self.entity_attachments);
-            roots
-                .entry(chunk_of(at))
-                .or_default()
-                .push((c.id, c.join_seq(), tag));
         }
         // `PersistentEntitySectionManager.storeChunkSections`: section by
         // section, each in the order its entities joined it. An entity not
@@ -1945,18 +1802,6 @@ impl Game<'_> {
     ) -> Option<(ChunkKey, Tag)> {
         // Boats are saved by the ECS (`save_chunk`): no host boat is left to save.
         None
-    }
-    pub(super) fn save_armor_stand(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let a = &self.armor_stands[i];
-        keys.contains(&chunk_of(a.position)).then(|| {
-            let uuid = self.saved_uuid_or_random(a.id);
-            let tag = entity_nbt::armor_stand_to_nbt(a, uuid, self.persist.raw.get(&a.id));
-            (chunk_of(a.position), tag)
-        })
     }
     /// The UUID kept for `id`, or a new one that is not remembered (what a
     /// saved vehicle or stand gets when it never had one).

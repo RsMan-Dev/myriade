@@ -452,13 +452,6 @@ impl Game<'_> {
                 });
             )*};
         }
-        apart!(
-            self.crystals,
-            self.cushions,
-            self.breath_clouds,
-            // RESTE: les crocs sont dans l'ECS, leur sortie de la transaction n'est pas encore faite.
-            self.ominous_spawners,
-        );
         if let Some(id) = (self.dragon.as_ref())
             .filter(|dragon| added(dragon.id, dragon.join_seq()))
             .map(|dragon| dragon.id)

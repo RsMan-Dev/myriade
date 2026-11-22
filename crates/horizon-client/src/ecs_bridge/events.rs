@@ -139,6 +139,7 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         HostEvent::BossBar { .. }
         | HostEvent::PushPlayer { .. }
         | HostEvent::Cloud { .. }
+        | HostEvent::CloudHit { .. }
         | HostEvent::DisplayUpdate { .. }
         | HostEvent::GameEvent { .. }
         | HostEvent::GameEventBy { .. }

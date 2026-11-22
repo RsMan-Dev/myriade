@@ -125,8 +125,9 @@ impl Game<'_> {
         } else if id < CRYSTAL_IDS {
             self.dragon.as_ref().map_or(0, |d| d.id)
         } else {
-            self.crystals
-                .get((id - CRYSTAL_IDS) as usize)
+            self.crystals()
+                .into_iter()
+                .nth((id - CRYSTAL_IDS) as usize)
                 .map_or(0, |c| c.id)
         }
     }

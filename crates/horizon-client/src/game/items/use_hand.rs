@@ -508,8 +508,7 @@ impl Game<'_> {
                 || self.use_knowledge_book(&stack)
                 // Block items (heads, carved pumpkins) aimed at a block are
                 // placed first (useItemOn before useItem).
-                || (!(info.block.is_some() && block_hit.is_some())
-                    && self.equip_from_hand(&stack)))
+                )
         {
             return Ok(true);
         }

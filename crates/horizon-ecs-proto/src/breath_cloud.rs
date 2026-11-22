@@ -23,15 +23,37 @@ pub fn spawn(w: &mut World, spec: CloudSpec, at: [f64; 3]) -> Entity {
 }
 
 /// `spawn` for a cloud made before the tick's cloud step (the dragon's flame: Horizon ages it on the tick it is made): its
-/// timers come `lead` ticks sooner.
+/// timers come `lead` ticks sooner. Saved as an `area_effect_cloud` (`nbt_fields::breath_cloud`).
 pub fn spawn_led(w: &mut World, spec: CloudSpec, at: [f64; 3], lead: i32) -> Entity {
     let c = spec.cloud(at);
     let (radius, duration) = (c.radius, c.duration);
     let e = w.spawn((Pos(Vec3::new(at[0], at[1], at[2])), c, OwnTime)).id();
+    crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
     w.resource_mut::<Events>().host.cloud(at, radius, duration);
     after(w, e, WAIT - lead, wake);
     after(w, e, WAIT + duration - lead, gone);
     e
+}
+
+/// A cloud the save kept (an `area_effect_cloud` with no potion): its keys then set its shape and age. None for a potion cloud.
+pub fn build(w: &mut World, at: Vec3, c: &horizon_core::nbt::Compound) -> Option<Entity> {
+    if c.get(&horizon_core::nbt::JavaString::from("potion_contents")).is_some() {
+        return None;
+    }
+    let e = w.spawn((Pos(at), breath::FLAME.cloud([at.x, at.y, at.z]), OwnTime)).id();
+    crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
+    Some(e)
+}
+
+/// A loaded cloud of total age `age`: it waits what its wait leaves of that age, then lasts what its duration leaves.
+pub fn resume(w: &mut World, e: Entity, age: i32) {
+    let Some(duration) = w.get::<Cloud>(e).map(|c| c.duration) else { return };
+    if age < WAIT {
+        after(w, e, WAIT - age, wake);
+    } else if let Ok(mut m) = w.get_entity_mut(e) {
+        m.insert(Live);
+    }
+    after(w, e, (WAIT + duration - age).max(1), gone);
 }
 
 /// The wait is over, on the tick `WAIT` after the spawn: the age is `WAIT - 1`, so the step that follows is the tick `WAIT`, as
@@ -43,7 +65,8 @@ fn wake(w: &mut World, e: Entity) {
     w.entity_mut(e).insert(Live);
 }
 
-fn gone(w: &mut World, e: Entity) {
+/// The cloud's end: it is removed.
+pub fn gone(w: &mut World, e: Entity) {
     w.despawn(e);
 }
 
@@ -52,7 +75,7 @@ fn gone(w: &mut World, e: Entity) {
 pub struct CloudVisits(pub u64);
 
 /// The live clouds, one step each per tick, against the players and creatures their box meets. Players they harm take the
-/// instant damage. Not done: the creatures' effect (`breath_affect_mob`) and the damage source `indirect_magic`.
+/// victims go out as `HostEvent::CloudHit`: the host applies the damage (`indirect_magic`) and the creatures' effect.
 pub fn tick_live(w: &mut World) {
     if !crate::goals::sparse_any::<Live>(w) {
         return;
@@ -78,17 +101,22 @@ pub fn tick_live(w: &mut World) {
                 cands.push((who, i.bounds, i.pos));
             }
         }
-        let amount = breath::harm(c.amplifier);
+        let (amount, at, amplifier) = (breath::harm(c.amplifier), c.at, c.amplifier);
         match breath::step(&mut c, &cands) {
             Step::Gone => {
                 w.despawn(e);
             }
             Step::Live(hit) => {
                 *w.get_mut::<Cloud>(e).expect("cloud") = c;
+                let (mut players, mut mobs) = (Vec::new(), Vec::new());
                 for who in hit {
-                    if let Who::Player(id) = who {
-                        area::hurt_player(w, id, amount, e);
+                    match who {
+                        Who::Player(id) => players.push(id),
+                        Who::Entity(m) => mobs.push(m),
                     }
+                }
+                if !players.is_empty() || !mobs.is_empty() {
+                    w.resource_mut::<Events>().host.cloud_hit(at, amount, amplifier, players, mobs);
                 }
             }
         }

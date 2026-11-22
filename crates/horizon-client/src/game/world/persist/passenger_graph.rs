@@ -116,9 +116,7 @@ impl Game<'_> {
     }
 
     pub(in crate::game) fn unlink_passenger(&mut self, id: u32) {
-        if let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-            stand.vehicle = None;
-        }
+        self.armor_stand_edit(id, |a| a.vehicle = None);
         for slots in self.persist.passenger_slots.values_mut() {
             slots.retain(|s| !matches!(s, PassengerSlot::Live(rider) if *rider == id));
         }
@@ -229,9 +227,7 @@ impl Game<'_> {
             // The object id keeps load order, including refused resident copies.
             m.extra.vehicle_order = i64::from(m.id);
         }
-        if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-            a.vehicle = Some(vehicle);
-        }
+        self.armor_stand_edit(id, |a| a.vehicle = Some(vehicle));
         if let Some(m) = self.mob_object_mut(vehicle) {
             m.extra.rider.get_or_insert(id);
         }
@@ -289,13 +285,19 @@ impl Game<'_> {
                 self.ecs.despawn(e);
             }
         }
-        self.cushions.retain(|e| !gone.contains(&e.id));
         for id in self.fang_ids().into_iter().filter(|id| gone.contains(id)) {
             self.kill_fang(id);
         }
-        self.crystals.retain(|e| !gone.contains(&e.id));
-        self.breath_clouds.retain(|e| !gone.contains(&e.id));
-        self.ominous_spawners.retain(|e| !gone.contains(&e.id));
+        for c in self.crystals() {
+            if gone.contains(&c.id) {
+                self.remove_crystal(c.id);
+            }
+        }
+        for c in self.breath_clouds() {
+            if gone.contains(&c.id) {
+                self.remove_breath_cloud(c.id);
+            }
+        }
         if self.dragon.as_ref().is_some_and(|e| gone.contains(&e.id)) {
             self.dragon.discard();
         }

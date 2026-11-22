@@ -99,7 +99,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
             format!("execute in minecraft:the_nether run tp @e[type={ty},limit=1] {x} 64 0.5");
         assert!(game.run_command(&command), "{command}");
     }
-    assert!(game.armor_stands.is_empty(), "the stand left the overworld");
+    assert!(game.armor_stand_list().is_empty(), "the stand left the overworld");
     assert!(game.ecs.item_ids().is_empty(), "the item left the overworld");
     assert!(game.ecs_frames().is_empty(), "the frame left the overworld");
     assert!(
@@ -109,7 +109,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
     assert_eq!(game.ecs.species_count("minecraft:tnt"), 0, "the tnt left the overworld");
     let back = game.enter_command_level(Dim::Nether);
     assert_eq!(game.dim, Dim::Nether);
-    let stand = game.armor_stands.iter().next().expect("stand crossed");
+    let stand = game.armor_stand_list().into_iter().next().expect("stand crossed");
     assert_eq!(
         [stand.position.x, stand.position.y, stand.position.z],
         [10.5, 64.0, 0.5]

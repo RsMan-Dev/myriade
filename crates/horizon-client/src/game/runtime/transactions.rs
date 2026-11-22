@@ -880,6 +880,7 @@ impl Game<'_> {
     /// Keeps mob `id`'s equipment as it is, if a transaction is open and hasn't yet (arismoko/horizon#932):
     /// an abort puts every slot back and makes the attribute map over again.
     pub(super) fn journal_equipment(&mut self, id: u32) {
+        let stand = self.armor_stand_saved(id);
         let Some(level) = self.transactions.last_mut() else {
             return;
         };
@@ -890,7 +891,7 @@ impl Game<'_> {
             KeptEquipment::Ecs(slots)
         } else if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id && !m.removed) {
             KeptEquipment::Mob(mob.equipment_stacks().iter().cloned().collect())
-        } else if let Some(stand) = self.armor_stands.iter().find(|a| a.id == id) {
+        } else if let Some(stand) = stand {
             KeptEquipment::Stand(stand.equipment.iter().cloned().collect())
         } else {
             return;
@@ -1116,12 +1117,11 @@ impl Game<'_> {
                 // An armor stand keeps no live attribute map of its gear; the
                 // plain write puts its slots back as they were.
                 KeptEquipment::Stand(stacks) => {
-                    let Some(stand) = self.armor_stands.iter_mut().find(|a| a.id == id) else {
-                        continue;
-                    };
-                    for (slot, stack) in stacks.into_iter().enumerate() {
-                        stand.equipment.set(slot, stack);
-                    }
+                    self.armor_stand_edit(id, |stand| {
+                        for (slot, stack) in stacks.into_iter().enumerate() {
+                            stand.equipment.set(slot, stack);
+                        }
+                    });
                 }
             }
         }
@@ -1781,8 +1781,8 @@ mod mod_capability_tests {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::ZERO, 0.0));
             let guest = 0x5eed_u128;
             let config = horizon_client::lan::hub::HubConfig {
                 default_game_mode: 0,

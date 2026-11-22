@@ -198,7 +198,7 @@ mod tests {
                 BlockEntity::Mod(Box::new(ModBlockEntity::new("test:battery".into(), fields))),
             );
             for id in [13, 14] {
-                game.armor_stands.push(ArmorStand::new(id, Vec3::ZERO, 0.0));
+                crate::game::ecs::test_support::place_test_stand(game, id, &ArmorStand::new(id, Vec3::ZERO, 0.0));
             }
             let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.remote_entities.push(Mob::new(15, pig, Vec3::ZERO, 0.0));

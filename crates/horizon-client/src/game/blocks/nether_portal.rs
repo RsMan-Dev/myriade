@@ -1231,17 +1231,27 @@ impl Game<'_> {
             let state = self.take_transferred_entity_state(id);
             // Remove only the resident body: no death, drops, or discard effects.
             match target {
-                Target::Stand(_) => self.armor_stands.retain(|e| e.id != id),
+                Target::Stand(_) => {
+                    self.armor_stand_remove(id);
+                }
                 Target::Frame(_) | Target::Painting(_) => {
                     self.ecs_remove_hanging(id);
                 }
-                Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
+                Target::Cushion(_) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
                 Target::Other(_) => {}
                 Target::Fangs(_) => self.kill_fang(id),
-                Target::Crystal(_) => self.crystals.retain(|e| e.id != id),
+                Target::Crystal(_) => self.remove_crystal(id),
                 Target::Dragon(_) => self.discard_resident_dragon(),
-                Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),
-                Target::Cloud(_) => self.breath_clouds.retain(|e| e.id != id),
+                Target::Spawner(_) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
+                Target::Cloud(_) => self.remove_breath_cloud(id),
                 Target::Falling(_) | Target::Trident(_) | Target::Rocket(_) | Target::Orb(_) => {
                     if let Some(e) = self.ecs.entity_of(id) {
                         self.ecs.despawn(e);
@@ -1277,7 +1287,7 @@ impl Game<'_> {
         // restoreFrom copies to the arriving entity.
         let cooldown = self.dimension_changing_delay(id);
         if let Some((at, width, height)) = self.lone_traveller_box(id) {
-            let living = self.armor_stands.iter().any(|stand| stand.id == id);
+            let living = self.armor_stand_list().iter().any(|stand| stand.id == id);
             let plan = self.entity_plan(entry, at, width, height, living);
             if !self.may_travel_through(id, &plan) {
                 return;

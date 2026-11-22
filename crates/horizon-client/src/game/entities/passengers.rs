@@ -173,8 +173,8 @@ impl Game<'_> {
         // start of the tick too (`commonTick` runs before `rideTick`), so the
         // stand is drawn between the two even while the level is frozen and
         // its vehicle is not.
-        for i in 0..self.armor_stands.len() {
-            let Some(vehicle) = self.armor_stands[i].vehicle else {
+        for stand in self.armor_stand_list() {
+            let Some(vehicle) = stand.vehicle else {
                 continue;
             };
             let Some(at) = self.passenger_riding_position(vehicle, me, own_seat, &index) else {
@@ -191,12 +191,13 @@ impl Game<'_> {
                         v.previous_yaw,
                     )
                 })
-                .unwrap_or(self.armor_stands[i].previous);
+                .unwrap_or(stand.previous);
             let at = Vec3::new(at.x, at.y, at.z);
-            let stand = &mut self.armor_stands[i];
-            stand.position = at;
-            stand.previous = before;
-            stand.velocity = Vec3::ZERO;
+            self.armor_stand_edit(stand.id, |a| {
+                a.position = at;
+                a.previous = before;
+                a.velocity = Vec3::ZERO;
+            });
         }
     }
 
@@ -232,7 +233,7 @@ impl Game<'_> {
         self.ecs.boat_status(vehicle).is_some()
             || self.is_boat_id(vehicle)
             || self.ecs.cart_kind(vehicle).is_some()
-            || self.cushions.iter().any(|c| c.id == vehicle)
+            || self.cushion_ids().contains(&vehicle)
             || self.ecs.species(vehicle) == Some("minecraft:tnt")
     }
 
@@ -305,7 +306,7 @@ impl Game<'_> {
                 return Some(glam::DVec3::new(at.x, at.y, at.z));
             }
         }
-        if let Some(a) = self.armor_stands.iter().find(|a| a.id == vehicle) {
+        if let Some(a) = self.armor_stand_saved(vehicle) {
             // ArmorStand.getDefaultDimensions: a marker has no box to sit on.
             // The passenger point is the float height widened to double.
             let height = if a.marker {

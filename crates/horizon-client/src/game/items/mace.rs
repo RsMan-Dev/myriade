@@ -587,12 +587,8 @@ impl Game<'_> {
             let resistance = m.knockback_resistance();
             smash_push(center, heavy, m.position, &mut m.velocity, resistance);
         }
-        for s in self
-            .armor_stands
-            .iter_mut()
-            .filter(|s| !s.marker && target != Spared::Stand(s.id))
-        {
-            smash_push(center, heavy, s.position, &mut s.velocity, 0.0);
+        for s in self.armor_stand_list().into_iter().filter(|s| !s.marker && target != Spared::Stand(s.id)) {
+            self.armor_stand_edit(s.id, |a| smash_push(center, heavy, a.position, &mut a.velocity, 0.0));
         }
         // The ECS entities within the radius, from the spatial index: the push is added to their velocity through P.
         let own = self.own_entity_id() as u32;
@@ -727,7 +723,7 @@ impl Game<'_> {
                 victims.push((section(m.position), m.id, false));
             }
         }
-        for s in &self.armor_stands {
+        for s in &self.armor_stand_list() {
             if !s.marker
                 && spared != Spared::Stand(s.id)
                 && s.bounds().intersects(area)
@@ -739,12 +735,9 @@ impl Game<'_> {
         victims.sort_by_key(|&(key, id, _)| (key, id));
         for (_, id, is_stand) in victims {
             if is_stand {
-                let Some(i) = self.armor_stands.iter().position(|s| s.id == id) else {
-                    continue;
-                };
                 // knockback(0.4F, ..) follows a hurtServer that landed, on a
                 // stand that is still there (LivingEntity.knockback).
-                if !self.punch_armor_stand(i) {
+                if !self.punch_armor_stand(id) {
                     continue;
                 }
                 let mut knock = horizon_client::health::Knock {
@@ -774,17 +767,7 @@ impl Game<'_> {
                     kz = (r.next_double() - r.next_double()) * 0.01;
                 }
                 let len = (kx * kx + kz * kz).sqrt();
-                if let Some(s) = self.armor_stands.iter_mut().find(|s| s.id == id) {
-                    s.velocity = Vec3::new(
-                        s.velocity.x / 2.0 - kx / len * knock.strength,
-                        if s.on_ground {
-                            (s.velocity.y / 2.0 + knock.strength).min(0.4)
-                        } else {
-                            s.velocity.y
-                        },
-                        s.velocity.z / 2.0 - kz / len * knock.strength,
-                    );
-                }
+                self.ecs.knockback(id, knock.strength, kx / len, kz / len);
                 continue;
             }
             let Some(i) = self.remote_entities.iter().position(|m| m.id == id) else {

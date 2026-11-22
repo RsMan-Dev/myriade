@@ -12,14 +12,11 @@ impl Game<'_> {
         let gone = |p: Vec3| keys.contains(&chunk_of(p));
         let mut removed: Vec<u32> = Vec::new();
         let riding = self.riding;
-        self.crystals.retain(|c| !gone(c.position));
-        self.ominous_spawners.retain(|s| {
-            let keep = !gone(Vec3::new(s.position[0], s.position[1], s.position[2]));
-            if !keep {
-                removed.push(s.id);
+        for c in self.crystals() {
+            if gone(c.position) {
+                self.remove_crystal(c.id);
             }
-            keep
-        });
+        }
         if self.dragon.as_ref().is_some_and(|d| gone(d.position)) {
             self.discard_resident_dragon();
         }
@@ -30,29 +27,12 @@ impl Game<'_> {
                 self.kill_fang(id);
             }
         }
-        self.armor_stands.retain(|a| {
-            let keep = !gone(a.position);
-            if !keep {
+        for a in self.armor_stand_list() {
+            if gone(a.position) {
                 removed.push(a.id);
+                self.armor_stand_remove(a.id);
             }
-            keep
-        });
-        self.cushions.retain(|c| {
-            let keep = !gone(c.position);
-            if !keep {
-                removed.push(c.id);
-            }
-            keep
-        });
-        // The potion clouds written above leave with their chunk; a
-        // dragon's breath (no potion) was not written and stays.
-        self.breath_clouds.retain(|c| {
-            let keep = c.potion.is_none() || !gone(Vec3::new(c.at[0], c.at[1], c.at[2]));
-            if !keep {
-                removed.push(c.id);
-            }
-            keep
-        });
+        }
         // Riders leave with their root vehicle, a boat's with the boat.
         let leaving: HashSet<u32> = self
             .mob_object_slots()

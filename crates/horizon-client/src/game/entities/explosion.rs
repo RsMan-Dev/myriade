@@ -1306,15 +1306,13 @@ impl Game<'_> {
         let cause = self.blast_attacker().map(|(id, _)| id);
         let damage_type = self.blast_damage_type();
         let causing = cause.unwrap_or(0);
-        let mut i = 0;
-        while i < self.armor_stands.len() {
-            let a = &self.armor_stands[i];
+        for id in self.armor_stand_ids() {
+            let Some(a) = self.armor_stand_saved(id) else { continue };
             let p = a.position;
-            if !super::armor_stands::spared_by_blast(a)
+            if !super::armor_stands::spared_by_blast(&a)
                 && self.combat.visits(a.id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
-                let id = a.id;
                 let source = horizon_client::health::HurtSource {
                     damage_type,
                     causing: causing as i32,
@@ -1327,12 +1325,11 @@ impl Game<'_> {
                     horizon_client::health::Hurting::ArmorStand(id as i32, source),
                     vanilla,
                 ) {
-                    i += 1;
                     continue;
                 }
-                self.break_armor_stand_by_anything(i, damage_type, causing);
-            } else {
-                i += 1;
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.break_armor_stand_by_anything(e, id, causing);
+                }
             }
         }
     }
@@ -1351,15 +1348,10 @@ impl Game<'_> {
     }
     /// Cushions in reach (`BlockAttachedEntity.hurtServer`). Paintings are broken by the ECS (`hanging_more`), not here.
     fn explosion_breaks_hanging(&mut self, center: [f64; 3], diameter: f64) {
-        let mut i = 0;
-        while i < self.cushions.len() {
-            let p = self.cushions[i].position;
-            if self.combat.visits(self.cushions[i].id)
-                && blast_reaches(center, diameter, [p.x, p.y, p.z])
-            {
-                self.break_cushion_by(i, self.explosion_kill_credit());
-            } else {
-                i += 1;
+        for c in self.cushion_list() {
+            let p = c.position;
+            if self.combat.visits(c.id) && blast_reaches(center, diameter, [p.x, p.y, p.z]) {
+                self.break_cushion_id(c.id, self.explosion_kill_credit(), true);
             }
         }
     }

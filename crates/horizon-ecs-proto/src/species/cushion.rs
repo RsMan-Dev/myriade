@@ -117,7 +117,8 @@ pub fn place(w: &mut World, block: [i32; 3], at: Vec3, color: u8, yaw: f32, name
     if w.get_resource::<CushionHost>().is_some_and(|h| !(h.can_place)(w, at)) {
         return None;
     }
-    let e = w.spawn((Pos(at), OwnTime, Cushion { block, born: 0, color: color.min(15), yaw })).id();
+    let joined = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+    let e = w.spawn((Pos(at), OwnTime, Cushion { block, born: 0, color: color.min(15), yaw }, joined)).id();
     let born = now_of(w, e);
     w.get_mut::<Cushion>(e).expect("just spawned").born = born;
     if let Some(n) = name {

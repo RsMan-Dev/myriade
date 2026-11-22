@@ -452,9 +452,7 @@ impl Game<'_> {
                 self.ecs.equipment_stack(*id, mob_slot(key)?)
             }
             Slot::Stand(id, i) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == *id)?
+                .armor_stand_saved(*id)?
                 .equipment
                 .get(*i)
                 .cloned(),
@@ -570,7 +568,7 @@ impl Game<'_> {
     fn equipment_slot_accepts(&self, slot: &Slot, stack: &Option<ItemStack>) -> bool {
         use horizon_items::equipment::{BODY, CHEST, FEET, LEGS, MAINHAND, SADDLE};
         let (index, stand) = match slot {
-            Slot::Stand(id, i) => (*i, self.armor_stands.iter().find(|a| a.id == *id)),
+            Slot::Stand(id, i) => (*i, self.armor_stand_saved(*id)),
             Slot::Dragon(_, i) => (*i, None),
             Slot::Guest(_, inner) => return self.equipment_slot_accepts(inner, stack),
             Slot::Armor(i @ 1..=3) => ([CHEST, LEGS, FEET][*i - 1], None),
@@ -749,7 +747,7 @@ impl Game<'_> {
                                 .get(&s.item)
                                 .is_some_and(|i| i.equip_slot.is_some()))
                 });
-                let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == *id) else {
+                let Some(a) = self.armor_stand_saved(*id) else {
                     return false;
                 };
                 let same = match (a.equipment.get(*i), stack.as_ref()) {
@@ -759,7 +757,9 @@ impl Game<'_> {
                 };
                 let emit = !a.first_tick && !same;
                 let at = a.position;
-                if !a.equipment.set(*i, stack) {
+                let mut set = false;
+                self.armor_stand_edit(*id, |a| set = a.equipment.set(*i, stack));
+                if !set {
                     return false;
                 }
                 if effects && emit {
@@ -1851,10 +1851,10 @@ mod stand_equip_event_tests {
             .unwrap();
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("summon armor_stand 6.5 200 10.5 {UUID:[I;130,0,0,1],NoGravity:1b,attributes:[{id:\"minecraft:movement_speed\",base:0.1d}]}"));
-        let id = game.armor_stands[0].id;
+        let id = game.armor_stand_list()[0].id;
         assert_eq!(game.uuid_for(id), [130, 0, 0, 1]);
         assert!(
-            game.armor_stands[0].speed_instance,
+            game.armor_stand_list()[0].speed_instance,
             "a loaded attribute is not firstTick"
         );
         game.sculk_prepare();
@@ -1865,7 +1865,6 @@ mod stand_equip_event_tests {
             assert!(game.run_command(&format!("{prefix}armor.head with {item}")));
             assert!(candidate(&game).is_none(), "first-tick suppression");
         }
-        game.tick_armor_stands().unwrap();
         assert!(
             game.run_command(
                 "data merge entity 00000082-0000-0000-0000-000000000001 {ShowArms:1b}"

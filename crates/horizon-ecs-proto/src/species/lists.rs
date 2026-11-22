@@ -13,6 +13,7 @@ pub const FALLING_BLOCK: &str = "minecraft:falling_block";
 pub const TRIDENT: &str = "minecraft:trident";
 pub const SPECTRAL_ARROW: &str = "minecraft:spectral_arrow";
 pub const OMINOUS_ITEM_SPAWNER: &str = "minecraft:ominous_item_spawner";
+pub const CUSHION: &str = "minecraft:cushion";
 pub const EVOKER_FANGS: &str = "minecraft:evoker_fangs";
 pub const AREA_EFFECT_CLOUD: &str = "minecraft:area_effect_cloud";
 pub const FIREWORK_ROCKET: &str = "minecraft:firework_rocket";

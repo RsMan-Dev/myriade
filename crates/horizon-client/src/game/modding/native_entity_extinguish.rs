@@ -41,10 +41,9 @@ impl Game<'_> {
                 true
             }
             Some(Target::Stand(id)) => {
-                let Some(index) = self.armor_stands.iter().position(|stand| stand.id == id) else {
+                let Some(stand) = self.armor_stand_saved(id) else {
                     return false;
                 };
-                let stand = &self.armor_stands[index];
                 let ticks = stand.fire_ticks;
                 let at = [stand.position.x, stand.position.y, stand.position.z];
                 if ticks > 0 {
@@ -57,7 +56,7 @@ impl Game<'_> {
                         pitch,
                     );
                 }
-                self.armor_stands[index].fire_ticks = ticks.min(0);
+                self.armor_stand_edit(id, |a| a.fire_ticks = ticks.min(0));
                 true
             }
             Some(Target::Item(id)) => {

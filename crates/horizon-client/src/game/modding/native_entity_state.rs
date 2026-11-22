@@ -171,7 +171,7 @@ impl Game<'_> {
             Body::Mob(m) => Some(m.fire_ticks),
             Body::Ecs(id) => self.ecs_number(id, "Fire"),
             Body::Other(Target::Stand(id)) => {
-                Some(self.armor_stands.iter().find(|s| s.id == id)?.fire_ticks)
+                Some(self.armor_stand_saved(id)?.fire_ticks)
             }
             Body::Other(Target::Item(id)) => {
                 Some(self.ecs.item(id)?.fire_ticks)
@@ -270,14 +270,7 @@ impl Game<'_> {
                 m.needs_sync = true;
                 true
             }),
-            Some(Target::Stand(id)) => self
-                .armor_stands
-                .iter_mut()
-                .find(|s| s.id == id)
-                .is_some_and(|s| {
-                    s.fire_ticks = ticks;
-                    true
-                }),
+            Some(Target::Stand(id)) => self.armor_stand_edit(id, |s| s.fire_ticks = ticks),
             Some(Target::Item(id)) => self.ecs_put(id, "Fire", Tag::Short(ticks as i16)),
             _ => false,
         }
@@ -384,7 +377,7 @@ impl Game<'_> {
                 let m = self.remote_entities.iter().find(|m| m.id == id)?;
                 Some(m.is_invisible())
             }
-            Target::Stand(id) => Some(self.armor_stands.iter().find(|s| s.id == id)?.invisible),
+            Target::Stand(id) => Some(self.armor_stand_saved(id)?.invisible),
             _ => None,
         }
     }
@@ -485,14 +478,7 @@ impl Game<'_> {
                 m.needs_sync = true;
                 true
             }),
-            Some(Target::Stand(id)) => self
-                .armor_stands
-                .iter_mut()
-                .find(|s| s.id == id)
-                .is_some_and(|s| {
-                    s.invisible = invisible;
-                    true
-                }),
+            Some(Target::Stand(id)) => self.armor_stand_edit(id, |s| s.invisible = invisible),
             _ => false,
         }
     }
@@ -653,8 +639,8 @@ mod tests {
             let mob = game.entity(42).unwrap();
             assert_eq!(mob.fire_ticks(game), Some(37));
 
-            game.armor_stands.push(ArmorStand::new(43, Vec3::ZERO, 0.0));
-            game.armor_stands[0].fire_ticks = 23;
+            crate::game::ecs::test_support::place_test_stand(game, 43, &ArmorStand::new(43, Vec3::ZERO, 0.0));
+            game.armor_stand_edit(game.armor_stand_ids()[0], |a| a.fire_ticks = 23);
             let stand = game.entity(43).unwrap();
             assert_eq!(stand.fire_ticks(game), Some(23));
 
@@ -841,7 +827,7 @@ mod tests {
             assert_eq!(falling.portal_cooldown(game), Some(25));
 
             // No portal cooldown: an armor stand, a wind charge, a stale handle, a parked level.
-            game.armor_stands.push(ArmorStand::new(46, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 46, &ArmorStand::new(46, Vec3::ZERO, 0.0));
             let stand = game.entity(46).unwrap();
             assert_eq!(stand.portal_cooldown(game), None);
             game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:breeze_wind_charge", [0.0; 3], [0.0; 3], None, &mut || 50));

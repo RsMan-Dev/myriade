@@ -370,13 +370,9 @@ impl Game<'_> {
             .intersects(area)
         };
         // Paintings and frames broken by a piston: not yet bridged (the ECS keeps them).
-        let mut i = 0;
-        while i < self.cushions.len() {
-            let c = &self.cushions[i];
-            if root == Some(c.id) || !meets(c.bounds()) {
-                i += 1;
-            } else {
-                self.break_cushion_by(i, None);
+        for c in self.cushion_list() {
+            if root != Some(c.id) && meets(c.bounds()) {
+                self.break_cushion_id(c.id, None, true);
             }
         }
     }
@@ -422,11 +418,6 @@ impl Game<'_> {
     ) {
         if target == MoveWho::Player {
             self.shulker_push_player(lid.mover(), movement);
-            return;
-        }
-        // Armor stands arm their gate in their own collided shove.
-        if let MoveWho::Entity(EntityHandle::ArmorStand(i)) = target {
-            self.lid_shoves_armor_stand(i, lid.shulker(), movement);
             return;
         }
         let mut gate = self.entity_move(target, lid.mover(), movement);

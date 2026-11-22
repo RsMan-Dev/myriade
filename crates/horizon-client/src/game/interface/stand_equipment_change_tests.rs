@@ -46,19 +46,21 @@ fn a_stands_body_and_saddle_writes_are_told_once_each() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 16, &ArmorStand::new(16, Vec3::ZERO, 0.0));
             let body = ItemStack::new("minecraft:diamond_horse_armor", 1);
             let saddle = ItemStack::new("minecraft:saddle", 1);
             let helmet = ItemStack::new("minecraft:iron_helmet", 1);
-            let stand = &mut game.armor_stands[0];
-            stand.equipment[BODY] = Some(body.clone());
-            stand.equipment[SADDLE] = Some(saddle.clone());
-            stand.equipment[HEAD] = Some(helmet.clone());
-            game.armor_stand_location_effects(0, false);
+            let id = game.armor_stand_ids()[0];
+            game.armor_stand_edit(id, |stand| {
+                stand.equipment[BODY] = Some(body.clone());
+                stand.equipment[SADDLE] = Some(saddle.clone());
+                stand.equipment[HEAD] = Some(helmet.clone());
+            });
+            game.armor_stand_location_effects(id, false);
             // Moving or landing later copies nothing unreported.
-            game.armor_stand_location_effects(0, true);
-            game.armor_stands[0].equipment[BODY] = None;
-            game.armor_stand_location_effects(0, false);
+            game.armor_stand_location_effects(id, true);
+            game.armor_stand_edit(id, |a| a.equipment[BODY] = None);
+            game.armor_stand_location_effects(id, false);
             let heard = heard.lock().unwrap();
             let told: Vec<_> = heard
                 .iter()

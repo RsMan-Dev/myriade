@@ -18,7 +18,7 @@ fn a_teleported_cloud_reads_back_the_rotation_the_teleport_set() {
             "{Rotation:[75f,20f]}",
         )
         .unwrap();
-        let cloud = Target::Cloud(game.breath_clouds[0].id);
+        let cloud = Target::Cloud(game.breath_clouds()[0].id);
         assert!(game.run_command("tp @e[type=area_effect_cloud,limit=1] 9.5 70 0.5 30 -10"));
         let tag = game.command_target_nbt(cloud).unwrap();
         let Some(Tag::List(rotation)) = tag.get("Rotation") else {
@@ -48,7 +48,7 @@ fn a_teleported_cushion_keeps_the_pitch_the_teleport_set() {
             "{Rotation:[75f,20f]}",
         )
         .unwrap();
-        let cushion = Target::Cushion(game.cushions[0].id);
+        let cushion = Target::Cushion(game.cushion_ids()[0]);
         assert!(game.run_command("tp @e[type=cushion,limit=1] 9.5 70 0.5 30 -10"));
         let tag = game.command_target_nbt(cushion).unwrap();
         let Some(Tag::List(rotation)) = tag.get("Rotation") else {

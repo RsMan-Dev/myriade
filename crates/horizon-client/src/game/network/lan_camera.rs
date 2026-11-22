@@ -100,7 +100,7 @@ impl Game<'_> {
             ),
             // LivingEntity: not removed. ArmorStand: not a marker.
             Some(Target::Mob(_)) => self.camera_state(id).is_some(),
-            Some(Target::Stand(s)) => self.armor_stands.iter().any(|a| a.id == s && !a.marker),
+            Some(Target::Stand(s)) => self.armor_stand_list().iter().any(|a| a.id == s && !a.marker),
             // BlockAttachedEntity, minecarts, boats, end crystals.
             Some(Target::Frame(_) | Target::Painting(_) | Target::Boat(_) | Target::Cart(_))
             | Some(Target::Crystal(_)) => true,

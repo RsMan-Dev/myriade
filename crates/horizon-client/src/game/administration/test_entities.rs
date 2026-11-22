@@ -80,7 +80,7 @@ impl Game<'_> {
         for id in self.ecs.projectiles_in(bounds.0, bounds.1) {
             self.remove_projectile(id);
         }
-        self.armor_stands.retain(|a| {
+        for a in self.armor_stand_list() {
             // ArmorStand.getDimensions: a marker has none, a small one is
             // half scale.
             let (w, h) = match (a.marker, a.small) {
@@ -88,8 +88,10 @@ impl Game<'_> {
                 (_, true) => (0.25, 0.9875),
                 _ => (0.5, 1.975),
             };
-            !intersects(standing(at(a.position), w, h), bounds)
-        });
+            if intersects(standing(at(a.position), w, h), bounds) {
+                self.armor_stand_remove(a.id);
+            }
+        }
         for f in self.ecs_frames().into_iter().filter(|f| intersects(f.bounds(), bounds)) {
             if let Some(e) = self.ecs.entity_of(f.id) {
                 self.ecs.despawn(e);
@@ -129,8 +131,11 @@ impl Game<'_> {
             }
         }
         // EntityType.END_CRYSTAL is 2 by 2.
-        self.crystals
-            .retain(|c| !intersects(standing(at(c.position), 2.0, 2.0), bounds));
+        for c in self.crystals() {
+            if intersects(standing(at(c.position), 2.0, 2.0), bounds) {
+                self.remove_crystal(c.id);
+            }
+        }
     }
 
     /// `ServerLevel.setChunkForced(x, z, true)` for the chunks of `area`

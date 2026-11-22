@@ -210,7 +210,6 @@ fn world_tick(g: &mut Game<'_>) {
         p.health.advance_clock();
     }
     g.tick_dragon();
-    g.tick_breath();
     g.tick_ecs().unwrap();
 }
 
@@ -238,12 +237,9 @@ fn frame(g: &Game<'_>, name: &str, t: usize) -> String {
     let mut fb: Vec<String> = fireball_positions(g).into_iter().map(bits).collect();
     fb.sort();
     let mut cl: Vec<String> = g
-        .breath_clouds
+        .breath_clouds()
         .iter()
-        .map(|c| {
-            let y = if c.from_dragon { format!("{:016x}", c.at[1].to_bits()) } else { "~".to_string() };
-            format!("{:016x}/{y}/{:016x}/{:08x}/{}/{}", c.at[0].to_bits(), c.at[2].to_bits(), c.radius.to_bits(), c.age, c.victims.len())
-        })
+        .map(|c| format!("{:016x}/{:016x}/{:016x}/{:016x}/{:08x}", c.at[0].to_bits(), c.at[1].to_bits(), c.at[2].to_bits(), c.radius.to_bits(), c.age))
         .collect();
     cl.sort();
     format!(
@@ -301,7 +297,7 @@ fn lines_combat(g: &mut Game<'_>) -> (String, String) {
         for e in g.ecs.select(&fireball_select()) {
             g.ecs.despawn(e);
         }
-        g.breath_clouds.clear();
+        g.clear_breath_clouds();
     }
     (out, rng)
 }
@@ -360,14 +356,13 @@ fn lines_crystals(g: &mut Game<'_>) -> String {
     for (i, s) in spikes.iter().enumerate() {
         writeln!(out, "spike {i} {} {} {}", s.center_x, s.center_z, s.height).unwrap();
     }
-    g.crystals = spikes
-        .iter()
-        .enumerate()
-        .map(|(i, s)| Crystal::new(1000 + i as u32, Vec3::new(f64::from(s.center_x) + 0.5, f64::from(s.height + 1), f64::from(s.center_z) + 0.5), true, 0))
-        .collect();
-    g.count_crystals();
+    g.clear_crystals();
+    for s in spikes.iter() {
+        g.spawn_crystal(Vec3::new(f64::from(s.center_x) + 0.5, f64::from(s.height + 1), f64::from(s.center_z) + 0.5), true);
+    }
+    g.fight.alive_crystals = spikes.len() as i32;
     fresh(g, 10, 100.0);
-    let near = |g: &Game<'_>| g.dragon.as_ref().unwrap().nearest_crystal.map_or("none".to_string(), |i| bits(g.crystals[i].position));
+    let near = |g: &Game<'_>| g.dragon.as_ref().unwrap().nearest_crystal.map_or("none".to_string(), |id| bits(g.crystal(id).unwrap().position));
     let line = |g: &Game<'_>, name: &str, t: usize| format!("{name} {t} {} alive{} near {}", snap(g), g.fight.alive_crystals, near(g));
     for t in 0..400 {
         g.tick_dragon();
@@ -375,11 +370,11 @@ fn lines_crystals(g: &mut Game<'_>) -> String {
     }
     for (round, name) in ["nearest", "other"].into_iter().enumerate() {
         let n = g.dragon.as_ref().unwrap().nearest_crystal;
-        let Some(i) = (if round == 0 { n } else { (0..g.crystals.len()).find(|&i| Some(i) != n) }) else {
+        let Some(i) = (if round == 0 { n } else { g.crystals().iter().map(|c| c.id).find(|&id| Some(id) != n) }) else {
             writeln!(out, "{name} none").unwrap();
             continue;
         };
-        writeln!(out, "{name} {}", bits(g.crystals[i].position)).unwrap();
+        writeln!(out, "{name} {}", bits(g.crystal(i).unwrap().position)).unwrap();
         g.destroy_crystal(i, Some(FightWho::Host), CrystalDamage::Explosion);
         for t in 0..60 {
             g.tick_dragon();
@@ -394,22 +389,22 @@ fn lines_crystals(g: &mut Game<'_>) -> String {
 fn lines_respawn(g: &mut Game<'_>) -> String {
     let mut out = String::new();
     g.dragon.discard();
-    g.crystals.clear();
+    g.clear_crystals();
     // The egg of the earlier death in this same game stays out of the respawn's blocks.
     let air = g.pack.assets.registry.default_state("minecraft:air").expect("air");
     let _ = g.level_set([0, 65, 0], air);
     g.load_fight();
     g.fight.killed = true;
     g.fight.exit_portal = Some([0, 61, 0]);
-    for (i, d) in [[0, -1], [0, 1], [-1, 0], [1, 0]].into_iter().enumerate() {
+    for d in [[0, -1], [0, 1], [-1, 0], [1, 0]] {
         let at = Vec3::new(f64::from(d[0] * 3) + 0.5, 62.0, f64::from(d[1] * 3) + 0.5);
-        g.crystals.push(Crystal::new(2000 + i as u32, at, true, 0));
+        g.spawn_crystal(at, true);
     }
     g.try_respawn();
     writeln!(out, "started {:?}", g.fight.respawn).unwrap();
     for t in 0..800 {
         g.tick_respawn();
-        writeln!(out, "respawn {t} {:?} crystals{} dragon{}", g.fight.respawn, g.crystals.len(), g.dragon.is_some()).unwrap();
+        writeln!(out, "respawn {t} {:?} crystals{} dragon{}", g.fight.respawn, g.crystals().len(), g.dragon.is_some()).unwrap();
     }
     for (i, s) in horizon_world::worldgen::end_spike::spikes_for_seed(g.level.seed).iter().enumerate() {
         let (mut obsidian, mut bars) = (0, 0);

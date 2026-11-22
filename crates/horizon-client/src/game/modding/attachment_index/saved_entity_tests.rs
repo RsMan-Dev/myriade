@@ -157,7 +157,10 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
                 ),
             ]);
             match kind {
-                "armor_stand" => game.load_armor_stand(tag, Some(uuid)),
+                "armor_stand" => {
+                    let Tag::Compound(saved) = &tag else { unreachable!() };
+                    game.ecs_load(saved);
+                }
                 "oak_boat" => game.load_boat(tag, Some(uuid), "minecraft:oak_boat"),
                 "arrow" => game.load_arrow(tag, Some(uuid), None),
                 "small_fireball" => game.load_fireball(tag, Some(uuid), None),

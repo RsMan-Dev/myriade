@@ -868,21 +868,16 @@ impl Game<'_> {
         });
         candidates.extend(self.ecs_frames().into_iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.ecs_paintings().into_iter().map(|p| Target::Painting(p.id)));
-        candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
+        candidates.extend(self.cushion_ids().into_iter().map(Target::Cushion));
         candidates.extend(self.fang_ids().into_iter().map(Target::Fangs));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
-        candidates.extend(self.crystals.iter().map(|c| Target::Crystal(c.id)));
+        candidates.extend(self.crystals().iter().map(|c| Target::Crystal(c.id)));
         if let Some(d) = self.dragon.as_ref() {
             candidates.push(Target::Dragon(d.id));
         }
-        candidates.extend(self.ominous_spawners.iter().map(|s| Target::Spawner(s.id)));
-        candidates.extend(
-            self.breath_clouds
-                .iter()
-                .filter(|c| c.id != 0)
-                .map(|c| Target::Cloud(c.id)),
-        );
+        candidates.extend(self.ominous_ids().into_iter().map(Target::Spawner));
+        candidates.extend(self.breath_clouds().into_iter().map(|c| Target::Cloud(c.id)));
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
         candidates.retain(|t| !self.target_removed(t));
@@ -1638,16 +1633,17 @@ impl Game<'_> {
             // An item is one too: its place is written by the ECS teleport above.
             Target::Item(_) => {}
             Target::Stand(id) => {
-                if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
+                self.armor_stand_edit(id, |a| {
                     a.position = v;
                     a.previous = v;
                     // Entity.teleport's stopRiding(), as for a mob: a stand a
                     // server seats on a vehicle (a name tag hologram) leaves it.
                     a.vehicle = None;
                     if let Some(r) = rotation {
-                        Entity::set_rotation(a, r);
+                        a.yaw = r[0];
+                        a.pitch = r[1];
                     }
-                }
+                });
             }
             Target::Boat(id) | Target::Cart(id) => {
                 if let Some(e) = self.ecs.entity_of(id) {
@@ -1665,8 +1661,9 @@ impl Game<'_> {
             // No `others` list: an entity of this kind lives in the ECS.
             Target::Other(_) => {}
             Target::Crystal(id) => {
-                if let Some(c) = self.crystals.iter_mut().find(|c| c.id == id) {
-                    (c.position, c.fall.0) = (v, true); // performTeleport: setOnGround(true)
+                if let Some(e) = self.ecs.entity_of(id) {
+                    let at = [v.x, v.y, v.z];
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));
                 }
             }
             Target::Dragon(id) => {
@@ -1687,13 +1684,11 @@ impl Game<'_> {
             }
             Target::Cushion(id) => {
                 // BlockAttachedEntity.setPos: the block it rests on follows the position.
-                if let Some(c) = self.cushions.iter_mut().find(|c| c.id == id) {
-                    c.position = v;
-                    c.pos = [v.x.floor() as i32, v.y.floor() as i32, v.z.floor() as i32];
+                if let Some(e) = self.ecs.entity_of(id) {
+                    let at = [v.x, v.y, v.z];
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));
                     if let Some(r) = rotation {
-                        c.yaw = r[0];
-                        // The cushion keeps its pitch in its saved compound, which a save writes back.
-                        self.write_raw_rotation(id, r);
+                        self.ecs.set_rotation(e, r[0], r[1]);
                     }
                 }
             }
@@ -1707,17 +1702,14 @@ impl Game<'_> {
                 }
             }
             Target::Spawner(id) => {
-                if let Some(i) = self.ominous_spawners.iter().position(|e| e.id == id) {
-                    self.ominous_spawners.update(i, |s| {
-                        s.position = [v.x, v.y, v.z];
-                    });
+                if let Some(e) = self.ecs.entity_of(id) {
+                    let at = [v.x, v.y, v.z];
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));
                 }
             }
             Target::Cloud(id) => {
-                if let Some(i) = self.breath_clouds.iter().position(|e| e.id == id) {
-                    self.breath_clouds.update(i, |c| {
-                        c.at = pos;
-                    });
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, pos));
                     // The cloud keeps its rotation in its saved compound: a teleport that sets one
                     // writes it there, where `/data get` and the save read it.
                     if let Some(r) = rotation {
@@ -2109,7 +2101,9 @@ impl Game<'_> {
                 self.ecs_remove_item(id);
             }
             Target::Projectile(id) => self.remove_projectile(id),
-            Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
+            Target::Stand(id) => {
+                self.armor_stand_remove(id);
+            }
             Target::Frame(id) => {
                 // ItemFrame.onKilled.
                 if let Some(frame) = self.ecs_frames().into_iter().find(|f| f.id == id) {
@@ -2248,14 +2242,11 @@ impl Game<'_> {
                 "end_crystal" => {
                     // EndCrystal's constructor takes an id from the entity
                     // counter, and the crystal is shown with its base.
-                    self.next_entity += 1;
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
-                    let drawn = self.world.random.next_int_bound(100_000).unwrap_or(0);
-                    let time = super::dragon::Crystal::start_time(at, drawn, self.clock.still());
-                    let crystal = super::dragon::Crystal::new(self.next_entity, at, true, time);
-                    self.crystals.push(crystal);
+                    let _ = self.world.random.next_int_bound(100_000);
+                    let id = self.spawn_crystal(at, true);
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
-                    if !self.native_joins_flush(false, self.next_entity) {
+                    if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
                     name = Text::translate("entity.minecraft.end_crystal", &[]);
@@ -4594,8 +4585,7 @@ mod selector_bounds_tests {
                 .len(),
             1
         );
-        game.armor_stands
-            .push(ArmorStand::new(31, Vec3::new(30.5, 220.0, 10.5), 0.0));
+        crate::game::ecs::test_support::place_test_stand(&mut game, 31, &ArmorStand::new(31, Vec3::new(30.5, 220.0, 10.5), 0.0));
         selector.delta = [Some(0.0); 3];
         for (x, count) in [(29.5, 1), (29.25, 0), (30.75, 0), (29.250000000000004, 1)] {
             assert_eq!(
@@ -5452,9 +5442,7 @@ mod global_selector_order_tests {
                 let join = match target {
                     Target::Mob(id) => game.remote_entities.iter().find(|m| m.id == id).unwrap().join_seq(),
                     Target::Stand(id) => game
-                        .armor_stands
-                        .iter()
-                        .find(|m| m.id == id)
+                        .armor_stand_saved(id)
                         .unwrap()
                         .join_seq(),
                     _ => panic!("actual admitted family"),

@@ -66,6 +66,7 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_load(&mut self, c: &Compound) -> Option<u32> {
         let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
         let id = self.ecs_link(e);
+        self.count_loaded_crystal(id);
         self.restore_portal_cooldown_of(id, c.get(&JavaString::from("PortalCooldown")));
         Some(id)
     }

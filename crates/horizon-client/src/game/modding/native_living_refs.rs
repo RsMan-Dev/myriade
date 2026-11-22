@@ -356,7 +356,7 @@ impl Game<'_> {
                     .map(attribute_modifiers);
             }
             Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                let a = self.armor_stand_saved(id)?;
                 return a
                     .live
                     .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
@@ -414,7 +414,7 @@ impl Game<'_> {
                 });
             }
             Target::Stand(id) => {
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
+                let a = self.armor_stand_saved(id)?;
                 return a
                     .live
                     .read(catalog, "minecraft:armor_stand", name, kind, Vec::new);
@@ -555,9 +555,7 @@ impl Game<'_> {
             // An armor stand carries the fixed 20 the game gives it: lava
             // does not hurt it and splash water reads the very field.
             Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)
+                .armor_stand_saved(id)
                 .map(|a| a.health),
             Target::Dragon(id) => self
                 .dragon
@@ -792,9 +790,7 @@ impl Game<'_> {
                 self.remote_mob_any(id)?.equipment_stacks()[slot as usize].clone()
             }
             Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|a| a.id == id)?
+                .armor_stand_saved(id)?
                 .equipment
                 .get(slot as usize)
                 .cloned(),
@@ -841,11 +837,11 @@ impl Game<'_> {
                     .set_equipment_stack(slot as usize, updated);
             }
             Target::Stand(id) => {
-                self.armor_stands
-                    .iter_mut()
-                    .find(|stand| stand.id == id)?
-                    .equipment
-                    .set(slot as usize, updated);
+                if !self.armor_stand_edit(id, |stand| {
+                    stand.equipment.set(slot as usize, updated);
+                }) {
+                    return None;
+                }
             }
             Target::Dragon(id) => {
                 self.dragon
@@ -1051,7 +1047,7 @@ impl Game<'_> {
         // `LivingEntity.onEquipItem` for the entities that keep no equip state
         // of their own: the stand and the dragon (not silent, never spectators).
         let (old, at, first_tick) = match t {
-            Target::Stand(id) => self.armor_stands.iter().find(|a| a.id == id).map(|a| {
+            Target::Stand(id) => self.armor_stand_saved(id).map(|a| {
                 (
                     a.equipment.get(slot as usize).cloned(),
                     a.position,
@@ -1464,7 +1460,7 @@ mod tests {
                 .unwrap()
                 .clone();
             game.remote_entities.push(Mob::new(12, zombie_kind, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let stand = game.living(game.entity(13).unwrap()).unwrap();
 
@@ -1530,7 +1526,7 @@ mod tests {
             );
 
             // A worn helmet's modifier is read off the stand's live map.
-            game.armor_stands[0]
+            game.armor_stand_list()[0]
                 .equipment
                 .set(HEAD, Some(ItemStack::new("minecraft:diamond_helmet", 1)));
             game.tick_equipment_attributes();
@@ -1559,7 +1555,7 @@ mod tests {
 
             // A stale handle reads None.
             game.remote_entities.clear();
-            game.armor_stands.clear();
+            crate::game::ecs::test_support::clear_test_stands(game);
             assert_eq!(zombie.attributes(game), None);
             assert_eq!(zombie.attribute_modifiers(game, speed), None);
             assert_eq!(stand.attribute_modifiers(game, "minecraft:armor"), None);
@@ -1581,7 +1577,7 @@ mod tests {
                 .unwrap()
                 .clone();
             game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             // The eight dragon parts must not overlap the player at ID 20.
             dragon.id = 40;
@@ -1611,7 +1607,7 @@ mod tests {
             game.lan_acting_uuid = None;
             game.lan_acting_entity = None;
             game.remote_entities[0].removed = true;
-            game.armor_stands.clear();
+            crate::game::ecs::test_support::clear_test_stands(game);
             game.dragon.discard();
             for id in [20u32, 12, 13, 40] {
                 let handle = game.entity(id).and_then(|er| game.living(er));
@@ -2134,8 +2130,7 @@ mod tests {
             // The dragon and an armor stand store all eight slots, full
             // stacks included, and save them through the real codecs.
             let mut stand = horizon_client::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
-            stand.id = 16;
-            game.armor_stands.push(stand);
+            crate::game::ecs::test_support::place_test_stand(game, 16, &stand);
             let stand = game.living(game.entity(16).unwrap()).unwrap();
             for living in [dragon, stand] {
                 for slot in EquipmentSlot::ALL {
@@ -2150,8 +2145,8 @@ mod tests {
             let saved = game.dragon.as_ref().unwrap().to_nbt([0; 4], None);
             let loaded = super::super::dragon::Dragon::from_nbt(&saved, 0).unwrap();
             assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
-            let stored = game.armor_stands.last().unwrap();
-            let saved = horizon_client::entity_nbt::armor_stand_to_nbt(stored, [0; 4], None);
+            let stored = game.armor_stand_list().into_iter().last().unwrap();
+            let saved = horizon_client::entity_nbt::armor_stand_to_nbt(&stored, [0; 4], None);
             let loaded = horizon_client::entity_nbt::armor_stand_from_nbt(&saved, 16).unwrap();
             assert_eq!(loaded.equipment, stored.equipment);
             for living in [dragon, stand] {
@@ -2322,8 +2317,7 @@ mod tests {
             assert_eq!(game.ecs.item_views().pop().unwrap().velocity.y, f64::from(0.2f32));
             assert_eq!(game.ecs.item_views().pop().unwrap().thrower, None);
 
-            game.armor_stands
-                .push(ArmorStand::new(90, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 90, &ArmorStand::new(90, Vec3::new(0.5, 64.0, 0.5), 0.0));
             let stand = game.living(game.entity(90).unwrap()).unwrap();
             assert_eq!(game.living_is_tamed(stand), None);
             let apple = ItemStack::new("minecraft:apple", 1);
@@ -2456,8 +2450,7 @@ mod tests {
     #[ignore = "daily"]
     fn armor_stand_drop_does_not_swing() {
         super::super::native_entity_refs::tests::with_game(|game| {
-            game.armor_stands
-                .push(horizon_client::entities::ArmorStand::new(
+            crate::game::ecs::test_support::place_test_stand(game, 90, &horizon_client::entities::ArmorStand::new(
                     90,
                     horizon_core::geometry::Vec3::ZERO,
                     0.0,

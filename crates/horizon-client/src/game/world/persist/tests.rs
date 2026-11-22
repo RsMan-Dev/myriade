@@ -483,12 +483,7 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
             Tag::compound([("potion", Tag::String("minecraft:poison".into()))]),
         ),
     ]);
-    let clouds = |game: &Game| {
-        game.breath_clouds
-            .iter()
-            .filter(|c| c.potion.is_some())
-            .count()
-    };
+    let clouds = |game: &Game| game.ecs.species_count("minecraft:area_effect_cloud");
     game.world.queue_entity_nbt((0, 0), vec![cloud]);
     game.spawn_loaded_entities();
     assert_eq!(clouds(&game), 1, "the cloud loads");

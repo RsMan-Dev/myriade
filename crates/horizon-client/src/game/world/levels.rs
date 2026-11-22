@@ -85,18 +85,15 @@ macro_rules! entity_count_view {
                 ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
                 ("minecraft:painting", $level.ecs.species_count("minecraft:painting")),
                 ("minecraft:item_frame", $level.ecs.species_count("minecraft:item_frame") + $level.ecs.species_count("minecraft:glow_item_frame")),
-                ("minecraft:armor_stand", $level.armor_stands.len()),
+                ("minecraft:armor_stand", $level.ecs.species_count("minecraft:armor_stand")),
                 ("minecraft:trident", $level.ecs.species_count("minecraft:trident")),
                 ("minecraft:firework_rocket", $level.ecs.species_count("minecraft:firework_rocket")),
                 ("minecraft:tnt", $level.ecs.species_count("minecraft:tnt")),
-                ("minecraft:end_crystal", $level.crystals.len()),
+                ("minecraft:end_crystal", $level.ecs.species_count("minecraft:end_crystal")),
                 ("minecraft:leash_knot", $level.ecs.species_count("minecraft:leash_knot")),
-                (
-                    "minecraft:ominous_item_spawner",
-                    $level.ominous_spawners.len(),
-                ),
-                ("minecraft:cushion", $level.cushions.len()),
-                ("minecraft:area_effect_cloud", $level.breath_clouds.len()),
+                ("minecraft:ominous_item_spawner", $level.ecs.species_count("minecraft:ominous_item_spawner")),
+                ("minecraft:cushion", $level.ecs.species_count("minecraft:cushion")),
+                ("minecraft:area_effect_cloud", $level.ecs.species_count("minecraft:area_effect_cloud")),
                 ("minecraft:evoker_fangs", $level.ecs.species_count("minecraft:evoker_fangs")),
                 // Multipart hitboxes are not independently admitted world entities.
                 (
@@ -134,14 +131,8 @@ pub(super) struct Parked {
     pub(super) portal_sections: horizon_client::portal_sections::PortalSections,
     paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
-    armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
-    cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
-    breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
-    ominous_spawners:
-        horizon_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
     pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
@@ -606,8 +597,8 @@ impl Levels {
                 + l.ecs.species_count("minecraft:falling_block")
                 + l.paintings.len()
                 + l.item_frames.len()
-                + l.armor_stands.len()
-                + l.cushions.len()
+                + l.ecs.species_count("minecraft:armor_stand")
+                + l.ecs.species_count("minecraft:cushion")
                 + l.ecs.species_count("minecraft:trident")
                 + l.ecs.species_count("minecraft:firework_rocket")
                 + l.ecs.species_count("minecraft:tnt"),
@@ -712,13 +703,8 @@ impl Game<'_> {
             portal_sections: Default::default(),
             paintings: Default::default(),
             item_frames: Default::default(),
-            armor_stands: Default::default(),
-            cushions: Default::default(),
             jukebox_sounds: HashMap::new(),
-            crystals: Default::default(),
             dragon: Default::default(),
-            breath_clouds: Default::default(),
-            ominous_spawners: Default::default(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
             remote_entities: Default::default(),
@@ -845,13 +831,8 @@ impl Game<'_> {
         swap(&mut self.level_events, &mut p.level_events);
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.portals.sections, &mut p.portal_sections);
-        swap(&mut self.armor_stands, &mut p.armor_stands);
-        swap(&mut self.cushions, &mut p.cushions);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
-        swap(&mut self.crystals, &mut p.crystals);
         swap(&mut self.dragon, &mut p.dragon);
-        swap(&mut self.breath_clouds, &mut p.breath_clouds);
-        swap(&mut self.ominous_spawners, &mut p.ominous_spawners);
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.remote_entities, &mut p.remote_entities);
         swap(&mut self.ecs, &mut p.ecs);

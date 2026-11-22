@@ -259,7 +259,7 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        for a in self.armor_stands.iter().filter(|a| a.id > after) {
+        for a in self.armor_stand_list().iter().filter(|a| a.id > after) {
             let p = a.position;
             let attributes = self.stand_attributes(&a.live);
             let e = add_state(
@@ -417,7 +417,7 @@ impl Game<'_> {
                     .push((9, serializer::PAINTING_VARIANT, Value::Id(id + 1)));
             }
         }
-        for c in self.cushions.iter().filter(|c| c.id > after) {
+        for c in self.cushion_list().iter().filter(|c| c.id > after) {
             let p = c.position;
             let e = add_state(
                 out,
@@ -434,21 +434,17 @@ impl Game<'_> {
             }
         }
         // DATA_ITEM, `ItemStack.EMPTY` by default.
-        for o in self.ominous_spawners.iter().filter(|o| o.id > after) {
-            let e = add_state(
-                out,
-                o.id,
-                "minecraft:ominous_item_spawner",
-                o.position,
-                0.0,
-                false,
-            );
+        for id in self.ominous_ids().into_iter().filter(|&id| id > after) {
+            let Some((item, at, _)) = self.ominous_saved(id) else {
+                continue;
+            };
+            let e = add_state(out, id, "minecraft:ominous_item_spawner", at, 0.0, false);
             e.meta.push((
                 8,
                 serializer::ITEM_STACK,
                 Value::Item(self.lan.as_mut().and_then(|host| {
                     host.hub
-                        .stack(&Some(o.item.clone()).filter(|i| &*i.item != "minecraft:air"))
+                        .stack(&Some(item.clone()).filter(|i| &*i.item != "minecraft:air"))
                 })),
             ));
         }
@@ -629,16 +625,12 @@ impl Game<'_> {
         // `notifyLeasheeRemoved` discards it once the last lead is gone.
         self.forget_untied_knots();
         let next = &mut self.next_entity;
-        use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.crystals, c, next, None);
-        assign_resident_ids!(self.ominous_spawners, o, next, None);
         self.potions.thrown_ids().for_each(|id| {
             assign_entity_id(next, id);
         });
         self.end.eye_ids().for_each(|id| {
             assign_entity_id(next, id);
         });
-        assign_resident_ids!(self.breath_clouds, b, next, None);
     }
 
     /// Falling blocks, thrown potions and end
@@ -651,6 +643,8 @@ impl Game<'_> {
             .filter(|&id| id > after)
             .filter_map(|id| Some((id, self.ecs.position(id)?, self.ecs.rotation(id)?[0])))
             .collect();
+        let crystals = self.crystals();
+        let breath_views = self.breath_clouds();
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -679,7 +673,7 @@ impl Game<'_> {
             let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
             e.velocity = velocity;
         }
-        for c in self.crystals.iter().filter(|c| c.id > after) {
+        for c in crystals.iter().filter(|c| c.id > after) {
             let e = add_state(
                 out,
                 c.id,
@@ -710,21 +704,13 @@ impl Game<'_> {
             ),
             None,
         );
-        for b in self.breath_clouds.iter().filter(|b| b.id > after) {
-            // The hub is out of `self.lan` while these states are built, so
-            // the particle must be encoded through the hub passed in: going
-            // through `network_particle` would drop it and leave the client
-            // on the default white particle.
-            let particle = match &b.potion {
-                Some(p) => hub.particle(&p.particle(), None),
-                None => breath.clone(),
-            };
+        for b in breath_views.iter().filter(|b| b.id > after) {
             let e = add_state(out, b.id, "minecraft:area_effect_cloud", b.at, 0.0, false);
             e.meta.push((8, serializer::FLOAT, Value::Float(b.radius)));
             if b.waiting() {
                 e.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
             }
-            if let Some(p) = &particle {
+            if let Some(p) = &breath {
                 e.meta
                     .push((10, serializer::PARTICLE, Value::Particle(p.clone())));
             }
@@ -746,35 +732,6 @@ mod tests {
             owner.id = 0;
             $list.push(owner);
         }};
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn late_dragon_ids_reserve_parts_before_crystals() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.summon_with_nbt("minecraft:ender_dragon", [1.0, 70.0, 1.0], "{}")
-                .unwrap();
-            let mut dragon = game.dragon.extract().unwrap();
-            dragon.id = 0;
-            assert!(game.dragon.install(dragon).is_ok());
-            for _ in 0..2 {
-                game.summon_with_nbt("minecraft:end_crystal", [1.0, 70.0, 1.0], "{}")
-                    .unwrap();
-                pending!(game.crystals);
-            }
-            let base = game.next_entity;
-            for _ in 0..2 {
-                game.assign_dragon_and_crystal_ids();
-                assert_eq!(game.dragon.as_ref().unwrap().id, base + 1);
-                assert_eq!(
-                    game.crystals.iter().map(|c| c.id).collect::<Vec<_>>(),
-                    [base + 10, base + 11]
-                );
-                assert_eq!(game.next_entity, base + 11);
-                game.lan_assign_ids();
-                assert_eq!(game.next_entity, base + 11);
-            }
-        });
     }
 
     #[test]

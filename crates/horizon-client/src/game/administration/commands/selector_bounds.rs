@@ -35,11 +35,7 @@ impl Game<'_> {
             Target::Mob(id) | Target::Orb(id) => self.ecs.bounds(id),
             Target::Item(id) => self.ecs.bounds(id),
             Target::Projectile(id) => self.ecs.entity_of(id).and_then(|e| self.ecs.bounds_of(e)),
-            Target::Stand(id) => self
-                .armor_stands
-                .iter()
-                .find(|e| e.id == id)
-                .map(Entity::bounds),
+            Target::Stand(id) => self.ecs.bounds(id),
             Target::Boat(id) => self.ecs.bounds(id),
             Target::Cart(id) => self.ecs.bounds(id),
             Target::Tnt(id) | Target::Falling(id) => self.ecs.bounds(id),
@@ -54,16 +50,10 @@ impl Game<'_> {
                 .into_iter()
                 .find(|e| e.id == id)
                 .map(|e| extents(e.bounds())),
-            Target::Cushion(id) => self
-                .cushions
-                .iter()
-                .find(|e| e.id == id)
-                .map(|e| extents(e.bounds())),
+            Target::Cushion(id) => self.cushion_saved(id).map(|e| extents(e.bounds())),
             Target::Crystal(id) => self
-                .crystals
-                .iter()
-                .find(|e| e.id == id)
-                .map(|e| e.bounds()),
+                .crystal(id)
+                .map(|c| crate::game::dragon::crystal::crystal_box(c.position)),
             Target::Other(_)
             | Target::Fangs(_)
             | Target::Dragon(_)

@@ -283,7 +283,7 @@ fn a_player_attack_from_damage_wobbles_then_breaks_the_stand() {
     assert!(said.starts_with("Applied"), "{said}");
     assert!(game.run_command(&format!("execute if entity {STAND}")));
     assert_eq!(items(&mut game), "Test failed");
-    assert_eq!(game.armor_stands[0].last_hit, game.world.game_time);
+    assert_eq!(game.armor_stand_list()[0].last_hit, game.world.game_time);
     // A second hit within five ticks breaks it (brokenByPlayer): the stand
     // item and its helmet drop.
     assert!(game.run_command(&format!(

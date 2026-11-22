@@ -150,9 +150,6 @@ impl LifecycleFixture {
                         }
                     };
                 }
-                // RESTE: les crocs sont dans l'ECS, plus de liste à `lookup!`.
-                lookup!(game.ominous_spawners);
-                lookup!(game.breath_clouds);
                 if let Some(dragon) = game.dragon.as_ref() {
                     assert!(dragon.join.is_joined());
                     assert!(dragon.join < horizon_client::join_seq::JoinSeq::upcoming());
@@ -248,12 +245,15 @@ fn lifecycle_scratch_is_removed_when_an_assertion_unwinds() {
 fn lifecycle_fixture_walks_fangs_owners() {
     LifecycleFixture {
         seed: |game, entries| {
-            // RESTE: la fixture suit une liste de crocs ; les ids viennent maintenant de l'ECS, pas de `entries`.
-            for &(_, at) in entries {
-                game.add_fangs(at, 0.0, 0, 0);
+            for &(id, at) in entries {
+                game.load_other_as(id, "minecraft:evoker_fangs", at);
             }
         },
-        ids: |game| game.fang_ids(),
+        ids: |game| {
+            let mut ids = game.fang_ids();
+            ids.sort_unstable();
+            ids
+        },
         target: crate::game::commands::Target::Fangs,
         unloads_with_chunk: true,
         remote: None,

@@ -71,9 +71,11 @@ pub fn builders() -> &'static [(&'static str, crate::nbt::Builder)] {
         (crate::species::armor_stand::ITEM, build_stand),
         (crate::species::lists::TRIDENT, build_trident),
         (crate::species::lists::OMINOUS_ITEM_SPAWNER, build_ominous),
+        (crate::species::lists::CUSHION, build_cushion),
         (crate::species::lists::ITEM_FRAME, build_frame),
         (crate::species::lists::GLOW_ITEM_FRAME, build_frame),
         (crate::species::lists::PAINTING, build_painting),
+        (crate::species::lists::AREA_EFFECT_CLOUD, build_breath_cloud),
     ]
 }
 
@@ -575,6 +577,10 @@ fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     Some(end_crystal::spawn(w, at, *show != 0))
 }
 
+fn build_breath_cloud(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    crate::breath_cloud::build(w, at, c)
+}
+
 /// The block state is read against the registry; the cell is the block `at` is in.
 fn build_falling_block(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let state = world_of(w).registry.saved_state_id(tag(c, "BlockState")?)?;
@@ -599,4 +605,25 @@ fn build_ominous(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let item = item_from_nbt(tag(c, "item")?)?;
     let Some(Tag::Long(after)) = tag(c, "spawn_item_after_ticks") else { return None };
     Some(ominous_spawner::spawn(w, item, at, u32::try_from(*after).ok()?))
+}
+
+/// A cushion put back on its saved block (`block_pos`), with its `color`, its `Rotation` yaw and its `CustomName`.
+fn build_cushion(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    let block = match tag(c, "block_pos") {
+        Some(Tag::IntArray(v)) if v.len() == 3 => [v[0], v[1], v[2]],
+        _ => [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32],
+    };
+    let color = match tag(c, "color") {
+        Some(Tag::String(s)) => crate::species::cushion::DYES.iter().position(|d| *d == s.to_string_lossy()).unwrap_or(0),
+        _ => 0,
+    };
+    let yaw = match tag(c, "Rotation") {
+        Some(Tag::List(l)) => match l.as_slice() {
+            [Tag::Float(y), _] => f32::from_bits(*y),
+            _ => 0.0,
+        },
+        _ => 0.0,
+    };
+    let name = tag(c, "CustomName").cloned().map(Box::new);
+    crate::bridge::misc::make_cushion(w, block, at, color as u8, yaw, name)
 }

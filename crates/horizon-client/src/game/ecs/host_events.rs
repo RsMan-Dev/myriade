@@ -34,12 +34,6 @@ impl Game<'_> {
                 HostEvent::EntityEvent { entity, code } => {
                     let id = self.entity_id(entity);
                     if let Some(at) = self.ecs.position(id) {
-                        // Ravager.roar (event 69) also pushes the armor stands in reach, with mob griefing on. The box is the
-                        // ravager's (1.95 wide, 2.2 high) inflated by 4, from its position: an approximation of its bounds.
-                        if code == 69 && self.session.rules.bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING) {
-                            let (min, max) = (Vec3::new(at[0] - 4.975, at[1] - 4.0, at[2] - 4.975), Vec3::new(at[0] + 4.975, at[1] + 6.2, at[2] + 4.975));
-                            self.roar_pushes_armor_stands(Aabb::new(min, max), at);
-                        }
                         self.lan_entity_event(id as i32, code as i8, at);
                     }
                 }
@@ -58,7 +52,11 @@ impl Game<'_> {
                     self.parrot_to_shoulder(id)
                 }
                 // The effects and colour of the cloud are not in the event: not wired yet (gap).
-                HostEvent::Cloud { .. } => log::warn!("ecs: area effect cloud event not wired yet"),
+                HostEvent::Cloud { .. } => {}
+                HostEvent::CloudHit { at, amount, amplifier, players, mobs } => {
+                    let mobs: Vec<u32> = mobs.into_iter().map(|m| self.entity_id(m)).collect();
+                    self.ecs_cloud_hit(at, amount, amplifier, players, mobs)
+                }
                 // `display::set` (horizon-ecs-proto display.rs:106) emits this, but `Modified` is pushed only when a `NetId` is added
                 // (bridge/ids.rs:33), so `drain_modified` does not return the entity: the resend is not wired (gap).
                 HostEvent::DisplayUpdate { .. } => log::warn!("ecs: display update not wired yet"),

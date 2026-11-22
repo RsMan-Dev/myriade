@@ -108,8 +108,8 @@ impl Game<'_> {
 /// The entities the walk does not hold: Horizon keeps these in lists of their own.
 #[derive(Clone, Copy)]
 enum Apart {
-    Crystal(usize),
-    Cushion(usize),
+    Crystal(u32),
+    Cushion(u32),
     Painting(u32),
     Frame(u32),
     Dragon,
@@ -279,11 +279,11 @@ impl Game<'_> {
             let (id, seq) = super::entity::with_entity!(self, handle, e => (e.id(), e.join_seq()));
             offer(Slot::Walk(handle), id, seq);
         }
-        for (i, c) in self.crystals.iter().enumerate() {
-            offer(Slot::Apart(Apart::Crystal(i)), c.id, c.join);
+        for c in self.crystals() {
+            offer(Slot::Apart(Apart::Crystal(c.id)), c.id, c.join);
         }
-        for (i, c) in self.cushions.iter().enumerate() {
-            offer(Slot::Apart(Apart::Cushion(i)), c.id, c.join);
+        for c in self.cushion_list() {
+            offer(Slot::Apart(Apart::Cushion(c.id)), c.id, c.join);
         }
         for p in self.ecs_paintings() {
             offer(Slot::Apart(Apart::Painting(p.id)), p.id, p.join);
@@ -320,11 +320,11 @@ impl Game<'_> {
             Slot::Walk(h) => {
                 super::entity::with_entity!(self, h, e => (e.native_type(), e.position()))
             }
-            Slot::Apart(Apart::Crystal(i)) => {
-                ("minecraft:end_crystal".into(), self.crystals[i].position)
+            Slot::Apart(Apart::Crystal(id)) => {
+                ("minecraft:end_crystal".into(), self.crystal(id).map_or(Vec3::ZERO, |c| c.position))
             }
-            Slot::Apart(Apart::Cushion(i)) => {
-                ("minecraft:cushion".into(), self.cushions[i].position)
+            Slot::Apart(Apart::Cushion(id)) => {
+                ("minecraft:cushion".into(), self.cushion_saved(id).map_or(Vec3::ZERO, |c| c.position))
             }
             Slot::Apart(Apart::Painting(id)) => {
                 let pos = self.ecs_paintings().into_iter().find(|p| p.id == id).map_or([0; 3], |p| p.pos);
@@ -349,8 +349,12 @@ impl Game<'_> {
     fn discard_slot(&mut self, slot: Slot) {
         match slot {
             Slot::Walk(h) => self.discard_entity(h),
-            Slot::Apart(Apart::Crystal(i)) => drop(self.crystals.remove(i)),
-            Slot::Apart(Apart::Cushion(i)) => drop(self.cushions.remove(i)),
+            Slot::Apart(Apart::Crystal(id)) => self.remove_crystal(id),
+            Slot::Apart(Apart::Cushion(id)) => {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
             Slot::Apart(Apart::Painting(id) | Apart::Frame(id)) => {
                 self.ecs_remove_hanging(id);
             }
@@ -424,6 +428,8 @@ impl Game<'_> {
         for l in &mut self.persist.live {
             l.2 = false;
         }
+        let cushions = self.cushion_ids();
+        let crystal_ids: Vec<u32> = self.crystals().into_iter().map(|c| c.id).collect();
         let live = &mut self.persist.live;
         let mut seen = |id: u32| {
             if let Ok(i) = live.binary_search_by_key(&id, |l| l.0) {
@@ -433,8 +439,8 @@ impl Game<'_> {
         super::entity::for_each_entity!(super::entity::entity_lists_of!(self), e => {
             seen(e.id());
         });
-        self.crystals.iter().for_each(|c| seen(c.id));
-        self.cushions.iter().for_each(|c| seen(c.id));
+        crystal_ids.into_iter().for_each(|id| seen(id));
+        cushions.into_iter().for_each(|id| seen(id));
         hanging.into_iter().for_each(|id| seen(id));
         if let Some(d) = self.dragon.as_ref() {
             seen(d.id);
@@ -533,33 +539,11 @@ mod tests {
                     Some(&(base + 3, "minecraft:sheep".into(), true))
                 );
 
-                game.crystals.push(super::super::dragon::Crystal {
-                    fall: Default::default(),
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 4,
-                    position: Vec3::ZERO,
-                    show_bottom: true,
-                    time: 0,
-                    beam: None,
-                    invulnerable: false,
-                    motion: Vec3::ZERO,
-                    rotation: [0.0; 2],
-                });
-                game.cushions.push(horizon_client::entities::Cushion {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 5,
-                    position: Vec3::ZERO,
-                    pos: [0; 3],
-                    yaw: 0.0,
-                    color: 0,
-                    check_interval: 0,
-                    custom_name: None,
-                });
-                // A painting and a frame of the ECS, placed after the cushion (ids base + 6 and base + 7).
+                // A crystal, a cushion, a painting and a frame of the ECS (ids base + 4 to base + 7).
                 game.ecs = game.test_ecs_level();
+                assert_eq!(game.spawn_crystal(Vec3::ZERO, true), base + 4);
                 game.next_entity = base + 5;
+                assert_eq!(crate::game::ecs::test_support::place_test_cushion(game, [0, 0, 0], base + 5), base + 5);
                 assert_eq!(crate::game::ecs::test_support::hang_test_painting(game, [0, 0, 4], 3, "minecraft:kebab"), Some(base + 6));
                 assert_eq!(crate::game::ecs::test_support::hang_test_frame(game, [0, 0, 0], 3, false), Some(base + 7));
                 let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);

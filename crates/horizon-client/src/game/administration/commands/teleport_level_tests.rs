@@ -96,17 +96,17 @@ fn a_mod_sends_an_armor_stand_to_another_level() {
         game.summon_with_nbt("minecraft:armor_stand", [0.5, 80.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        let stand = game.entity(game.armor_stands[0].id).unwrap();
+        let stand = game.entity(game.armor_stand_list()[0].id).unwrap();
         assert!(game.entity_teleport_to_level(
             stand,
             "minecraft:the_nether",
             [3.5, 70.0, -2.5],
             None
         ));
-        assert!(game.armor_stands.is_empty());
+        assert!(game.armor_stand_list().is_empty());
         game.enter_level(Dim::Nether).unwrap();
-        assert_eq!(game.armor_stands.len(), 1);
-        assert_eq!(game.armor_stands[0].position, Vec3::new(3.5, 70.0, -2.5));
+        assert_eq!(game.armor_stand_list().len(), 1);
+        assert_eq!(game.armor_stand_list()[0].position, Vec3::new(3.5, 70.0, -2.5));
     });
 }
 

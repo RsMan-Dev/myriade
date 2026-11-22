@@ -48,11 +48,11 @@ impl Game<'_> {
             kind.into()
         } else if let Some(vehicle) = self.persist.removed_vehicles.get(&id) {
             vehicle.kind()
-        } else if self.cushions.iter().any(|c| c.id == id) {
+        } else if self.cushion_ids().contains(&id) {
             "minecraft:cushion".into()
         } else if let Some(m) = self.mob_object(id) {
             mob_kind(m)
-        } else if self.armor_stands.iter().any(|a| a.id == id) {
+        } else if self.armor_stand_list().iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
         } else {
             String::new()

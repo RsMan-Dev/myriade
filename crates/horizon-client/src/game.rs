@@ -327,8 +327,6 @@ struct GameLevel<'w> {
     ecs: &'w mut horizon_client::ecs_bridge::EcsLevel,
     /// Every entity on the walk; see `entity::for_each_entity`.
     other_entities: entity::EntityLists<'w>,
-    /// End crystals, which aren't on the walk yet.
-    crystals: &'w [dragon::Crystal],
     /// The lightning bolts here: none ignores block triggers
     /// (`Entity.isIgnoringBlockTriggers`).
     trigger_extras: Vec<Aabb>,
@@ -466,14 +464,9 @@ impl GameLevel<'_> {
             .map(boxed)
             .chain(self.ecs.cart_bounds_in(zone))
             .chain(b.mobs.iter().filter(|m| !m.removed).map(Mob::bounds))
-            .chain(
-                b.armor_stands
-                    .iter()
-                    .filter(|s| !s.marker)
-                    .map(|s| s.bounds()),
-            )
+            .chain(self.ecs.species_bounds(crate::game::armor_stands::TYPE_ID))
             .chain(self.ecs.boat_bounds_in(zone))
-            .chain(self.crystals.iter().map(dragon::Crystal::bounds))
+            .chain(self.ecs.species_bounds("minecraft:end_crystal"))
             .chain(self.ecs.species_bounds("minecraft:tnt"))
             .chain(self.ecs.species_bounds("minecraft:falling_block"))
             .collect()
@@ -1043,11 +1036,8 @@ struct Game<'a> {
     random_tick_sections: horizon_client::random_tick_sections::RandomTickSections,
     level_events: Vec<LevelEvent>,
     painting_variants: paintings::PaintingVariants,
-    armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
     /// Worn armor as of the last equipment check (frost walker).
     location_armor: [Option<ItemStack>; 4],
-    /// `Cushion` decoration entities (game/entities/cushions.rs).
-    cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
     /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
     /// none when it drew from vanilla's.
     posed_rotation: Option<(f32, f32)>,
@@ -1069,8 +1059,6 @@ struct Game<'a> {
     /// The ender dragon fight (game/mobs/dragon.rs).
     fight: dragon::Fight,
     dragon: native_entity_refs::dragon_parts_table::DragonSlot,
-    crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
-    breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
     text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
     /// The fence knots a server tracks to this client, by entity id, at their
@@ -1107,9 +1095,6 @@ struct Game<'a> {
     recipe_ui: recipe_book::RecipeUi,
     /// The player's fishing hook.
     hook: horizon_client::join_seq::ResidentSlot<fishing::Hook>,
-    /// Ominous trial spawners' item spawners.
-    ominous_spawners:
-        horizon_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
     creaking: creaking::CreakingState,
     /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
     spawners: spawner::SpawnerState,
@@ -1266,7 +1251,6 @@ struct Game<'a> {
     /// Jukebox level events 1010 (song name) and 1011 (`None`) for the guests;
     /// the song's network id is only known once the hub is in hand.
     lan_songs: Vec<([i32; 3], Option<String>)>,
-    lan_cushion_breaks: Vec<(horizon_world::registry::BlockStateId, [f64; 3])>,
     /// Block events (position, b0, b1, state) and entity events (id, event) for the guests.
     lan_block_events: Vec<([i32; 3], i32, i32, u32)>,
     lan_entity_events: Vec<(i32, i8)>,
@@ -2033,7 +2017,6 @@ impl Game<'_> {
                 .any(|feature| feature == "minecraft:redstone_experiments"),
             ecs: &mut self.ecs,
             other_entities,
-            crystals: &self.crystals,
             trigger_extras,
             world: &mut self.world,
             facts: self.res.facts(),
@@ -3393,8 +3376,6 @@ impl Game<'_> {
             span("save_chunks_eagerly", || self.save_chunks_eagerly());
         }
         if running {
-            horizon_client::spans::time("tick_armor_stands", || self.tick_armor_stands())?;
-            horizon_client::spans::time("tick_cushions", || self.tick_cushions());
             // ServerLevel.tick: the arrivals of this server tick are in the level
             // (`addDuringTeleport`), and each vehicle handles its portal as its
             // own tick opens.
@@ -3407,9 +3388,6 @@ impl Game<'_> {
             horizon_client::spans::time("tick_lecterns", || self.tick_lecterns());
             horizon_client::spans::time("tick_maps", || self.tick_maps());
             self.tick_lodestone_compasses();
-            horizon_client::spans::time("tick_ominous_item_spawners", || {
-                self.tick_ominous_item_spawners()
-            });
         }
         if running {
             horizon_client::spans::time("entity_portals", || {
@@ -3922,11 +3900,9 @@ impl Game<'_> {
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
-        self.armor_stands.clear();
-        self.cushions.clear();
         self.dragon.discard();
-        self.crystals.clear();
-        self.breath_clouds.clear();
+        self.clear_crystals();
+        self.clear_breath_clouds();
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();
@@ -5444,9 +5420,7 @@ impl<'a> Game<'a> {
             random_tick_sections: Default::default(),
             level_events: Vec::new(),
             painting_variants: paintings::PaintingVariants::load(&root),
-            armor_stands: Default::default(),
             location_armor: Default::default(),
-            cushions: Default::default(),
             posed_rotation: None,
             posed_roll: 0.0,
             post_effects: Vec::new(),
@@ -5456,8 +5430,6 @@ impl<'a> Game<'a> {
             maps: maps::Maps::default(),
             fight: dragon::Fight::default(),
             dragon: Default::default(),
-            crystals: Default::default(),
-            breath_clouds: Default::default(),
             text_displays: Default::default(),
             interactions: Default::default(),
             remote_knots: Default::default(),
@@ -5474,7 +5446,6 @@ impl<'a> Game<'a> {
             spill: Default::default(),
             recipe_ui: Default::default(),
             hook: Default::default(),
-            ominous_spawners: Default::default(),
             creaking: Default::default(),
             spawners: Default::default(),
             spawn_scratch: Default::default(),
@@ -5553,7 +5524,6 @@ impl<'a> Game<'a> {
             block_use_original: Vec::new(),
             lan_events: Vec::new(),
             lan_songs: Vec::new(),
-            lan_cushion_breaks: Vec::new(),
             lan_block_events: Vec::new(),
             lan_entity_events: Vec::new(),
             lan_critical_hits: Vec::new(),

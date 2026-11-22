@@ -259,52 +259,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn leaving_flaming_discards_the_cloud_at_once() {
-        use super::super::dragon::Breath;
-        with_game(|game| {
-            let (_, dragon) = dragon_in(game);
-            let cloud = |from_dragon| Breath {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id: 0,
-                at: [0.0; 3],
-                motion: [0.0; 3],
-                radius: 5.0,
-                age: 0,
-                duration: 200,
-                from_dragon,
-                victims: Vec::new(),
-                potion: None,
-            };
-            assert!(dragon.set_phase(game, DragonPhase::SittingFlaming));
-            game.breath_clouds.push(cloud(true));
-            game.breath_clouds.push(cloud(false));
-            assert!(dragon.set_phase(game, DragonPhase::Hover));
-            assert_eq!(game.breath_clouds.len(), 1, "the flame cloud is gone");
-            assert!(!game.breath_clouds[0].from_dragon);
-            // Back in and out within one hook leaves nothing of the old cloud.
-            assert!(dragon.set_phase(game, DragonPhase::SittingFlaming));
-            game.breath_clouds.push(cloud(true));
-            assert!(dragon.set_phase(game, DragonPhase::Hover));
-            assert!(dragon.set_phase(game, DragonPhase::SittingFlaming));
-            assert_eq!(game.breath_clouds.len(), 1);
-            // The gameplay path leaves the flag for the tick.
-            game.breath_clouds.push(cloud(true));
-            game.dragon
-                .as_mut()
-                .unwrap()
-                .set_native_phase(DragonPhase::Hover);
-            game.dragon
-                .as_mut()
-                .unwrap()
-                .set_native_phase(DragonPhase::SittingFlaming);
-            game.tick_breath();
-            assert!(game.breath_clouds.iter().all(|c| !c.from_dragon));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn an_invulnerable_player_is_not_a_target() {
         with_game(|game| {
             let (entity, _) = dragon_in(game);

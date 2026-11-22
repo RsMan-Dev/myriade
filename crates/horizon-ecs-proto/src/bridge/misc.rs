@@ -38,6 +38,34 @@ impl EcsWorld {
         self.lent(mw, |w| end_crystal_tick::hurt(w, e, blow))
     }
 
+    /// A crystal's `ShowBottom`, its beam, and whether it is shielded.
+    pub fn crystal_state(&self, e: Entity) -> Option<(bool, Option<[i32; 3]>, bool)> {
+        let (show, beam) = crate::end_crystal::saved(self.world(), e)?;
+        Some((show, beam, self.world().get::<crate::end_crystal::Shielded>(e).is_some()))
+    }
+
+    /// `setBeamTarget` on a crystal, or none.
+    pub fn set_crystal_beam(&mut self, e: Entity, to: Option<[i32; 3]>) {
+        crate::end_crystal::set_beam(self.world_mut(), e, to);
+    }
+
+    /// `BottleItem.use` on a dragon's breath cloud: its radius shrinks by `by`, not below zero.
+    pub fn shrink_breath_cloud(&mut self, e: Entity, by: f32) {
+        if let Some(mut c) = self.world_mut().get_mut::<crate::dragon::breath::Cloud>(e) {
+            c.radius = (c.radius - by).max(0.0);
+        }
+    }
+
+    /// Whether the fire goes under the crystals: the dimension has a dragon fight (`getDragonFight() != null`).
+    pub fn set_end_fire(&mut self, on: bool) {
+        self.world_mut().resource_mut::<crate::end_crystal::EndFire>().0 = on;
+    }
+
+    /// `setPermanentlyInvulnerable` on a crystal.
+    pub fn set_crystal_shield(&mut self, e: Entity, on: bool) {
+        crate::end_crystal::set_shield(self.world_mut(), e, on);
+    }
+
     /// Evoker fangs at `at`, biting after `warmup` ticks for `owner`.
     pub fn spawn_fangs(&mut self, mw: &MobWorld<'_>, at: [f64; 3], yaw: f32, warmup: i32, owner: Option<Who>) -> Entity {
         self.lent(mw, |w| fangs_tick::spawn(w, at_of(at), yaw, warmup, owner))
@@ -46,6 +74,16 @@ impl EcsWorld {
     /// A potion cloud at `at`, from its `CloudSpec` (`CloudSpec::new`, the jar's defaults, and the fields the caller changes).
     pub fn spawn_cloud(&mut self, mw: &MobWorld<'_>, at: [f64; 3], spec: CloudSpec) -> Entity {
         self.lent(mw, |w| cloud_tick::spawn(w, at_of(at), spec))
+    }
+
+    /// The dragon's flame cloud at `at` (`Phase::Flaming`): a breath cloud, asleep until its wait is over.
+    pub fn spawn_flame(&mut self, mw: &MobWorld<'_>, at: [f64; 3]) -> Entity {
+        self.lent(mw, |w| crate::dragon::breath::spawn_flame(w, at))
+    }
+
+    /// `DragonSittingFlamingPhase.end`: the dragon's flame clouds go.
+    pub fn end_flames(&mut self, mw: &MobWorld<'_>) {
+        self.lent(mw, crate::dragon::breath::end_flames);
     }
 
     /// The host's answer to `MiscEvent::BeeEnterHive` when the hive is gone or full: the bee forgets it (`hivePos = null`).
@@ -103,4 +141,27 @@ impl EcsWorld {
             })
             .collect()
     }
+
+    /// A cushion on `block` at `at` (its bottom centre), see `make_cushion`; None when the host refuses the place.
+    pub fn place_cushion(&mut self, mw: &MobWorld<'_>, block: [i32; 3], at: [f64; 3], color: u8, yaw: f32, name: Option<Box<horizon_core::nbt::Tag>>) -> Option<Entity> {
+        self.lent(mw, |w| make_cushion(w, block, at_of(at), color, yaw, name))
+    }
+
+    /// `cushion::hurt` on `e` for `source` (sound, wool particles, the drop); false when `e` is no cushion or the player may not break it.
+    pub fn hurt_cushion(&mut self, mw: &MobWorld<'_>, e: Entity, source: crate::species::cushion::Source) -> bool {
+        self.lent(mw, |w| crate::species::cushion::hurt(w, e, source))
+    }
+
+    /// An ominous item spawner at `at`, dropping `item` after `after` ticks (`ominous_spawner::spawn`).
+    pub fn spawn_ominous(&mut self, mw: &MobWorld<'_>, at: [f64; 3], item: horizon_client_lib::items::ItemStack, after: u32) -> Entity {
+        self.lent(mw, |w| crate::ominous_spawner::spawn(w, item, at_of(at), after))
+    }
+}
+
+/// A cushion made as the species' placement makes it, saved and typed as the species (`place` alone does neither).
+pub(crate) fn make_cushion(w: &mut bevy_ecs::world::World, block: [i32; 3], at: Vec3, color: u8, yaw: f32, name: Option<Box<horizon_core::nbt::Tag>>) -> Option<Entity> {
+    let e = crate::species::cushion::place(w, block, at, color, yaw, name)?;
+    crate::nbt::mark_saved(w, e, crate::species::cushion::DEF.name);
+    w.entity_mut(e).insert(crate::cow::TypeName(crate::species::cushion::DEF.name));
+    Some(e)
 }

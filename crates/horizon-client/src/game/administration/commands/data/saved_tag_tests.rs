@@ -237,10 +237,10 @@ fn the_last_tag_leaves_no_key_and_a_spawner_keeps_its_tags() {
             .cloned()
             .expect("the spawner's saved entity");
         assert_eq!(saved.get("Tags"), Some(&tag_list(&["audit"])));
-        let before = game.ominous_spawners.len();
-        game.load_ominous_item_spawner(saved);
-        assert_eq!(game.ominous_spawners.len(), before + 1);
-        let reloaded = game.ominous_spawners.last().unwrap().id;
+        let before = game.ominous_ids().len();
+        let Tag::Compound(saved) = &saved else { panic!("the spawner is a compound") };
+        let reloaded = game.ecs_load(saved).expect("the spawner loads");
+        assert_eq!(game.ominous_ids().len(), before + 1);
         assert_eq!(game.tags_of(Target::Spawner(reloaded)), ["audit"]);
     });
 }

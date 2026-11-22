@@ -1506,7 +1506,7 @@ mod tests {
             game.remote_entities
                 .push(Mob::new(12, zombie.clone(), Vec3::ZERO, 0.0));
             game.remote_entities.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
-            game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::ZERO, 0.0));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
             dragon.id = 40;

@@ -9,7 +9,7 @@ use horizon_core::geometry::Vec3;
 use std::sync::Arc;
 
 fn identity(game: &mut Game<'_>) -> Identity {
-    game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+    crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
     let holder = game.entity(13).expect("fixture holder");
     Identity {
         side: Side::Server,

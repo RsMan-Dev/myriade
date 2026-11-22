@@ -32,14 +32,13 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
     put_portal(&mut game, 4, 4);
     put_portal(&mut game, 8, 8);
     put_portal(&mut game, 12, 12);
-    game.armor_stands
-        .push(ArmorStand::new(1, Vec3::new(4.5, 64.0, 4.5), 0.0));
+    crate::game::ecs::test_support::place_test_stand(&mut game, 1, &ArmorStand::new(1, Vec3::new(4.5, 64.0, 4.5), 0.0));
     let mut marker = ArmorStand::new(2, Vec3::new(8.5, 64.0, 8.5), 0.0);
     marker.marker = true;
-    game.armor_stands.push(marker);
+    crate::game::ecs::test_support::place_test_stand(&mut game, 2, &marker);
     let mut floating = ArmorStand::new(3, Vec3::new(12.5, 64.0, 12.5), 0.0);
     floating.no_gravity = true;
-    game.armor_stands.push(floating);
+    crate::game::ecs::test_support::place_test_stand(&mut game, 3, &floating);
     game.update_chunk_tickets();
     assert!(
         game.entity_ticking_area()(4, 4),
@@ -52,7 +51,7 @@ fn armor_stands_in_a_nether_portal_go_through_and_cool_down() {
         game.find_entity_portals();
     }
     assert_eq!(
-        game.armor_stands.iter().map(|a| a.id).collect::<Vec<_>>(),
+        game.armor_stand_list().iter().map(|a| a.id).collect::<Vec<_>>(),
         vec![2, 3],
         "the stand in the portal crossed, the marker and the NoGravity stand did not"
     );

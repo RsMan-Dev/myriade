@@ -249,7 +249,7 @@ impl Game<'_> {
             .chain(self.lan_block_trigger_boxes().into_iter().map(boxed))
             .chain(self.ecs_frames().into_iter().map(|f| boxed(f.bounds())))
             .chain(self.ecs_paintings().into_iter().map(|p| boxed(p.bounds())))
-            .chain(self.crystals.iter().map(super::dragon::Crystal::bounds))
+            .chain(self.crystal_boxes())
             .chain(self.fishing_hooks_here().filter_map(|(id, _)| self.fishing_hook_box(id)))
             .any(|b| b.intersects(area))
     }

@@ -71,9 +71,9 @@ impl Game<'_> {
             name
         } else if let Some(k) = self.cart_genre(id) {
             k.item().to_owned()
-        } else if self.armor_stands.iter().any(|a| a.id == id) {
+        } else if self.armor_stand_list().iter().any(|a| a.id == id) {
             "minecraft:armor_stand".to_owned()
-        } else if let Some(c) = self.cushions.iter().find(|c| c.id == id) {
+        } else if let Some(c) = self.cushion_saved(id) {
             c.item()
         } else if let Some(f) = self.ecs_frames().into_iter().find(|f| f.id == id) {
             // ItemFrame.getPickResult: what it frames, else the frame itself.
@@ -84,7 +84,7 @@ impl Game<'_> {
             );
         } else if self.ecs_paintings().into_iter().any(|p| p.id == id) {
             "minecraft:painting".to_owned()
-        } else if self.crystals.iter().any(|c| c.id == id) {
+        } else if self.crystal(id).is_some() {
             "minecraft:end_crystal".to_owned()
         } else {
             return None;

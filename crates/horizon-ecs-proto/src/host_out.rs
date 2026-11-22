@@ -23,6 +23,8 @@ pub enum HostEvent {
     ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
     /// An area effect cloud appeared (`radius`, `duration` in ticks).
     Cloud { at: [f64; 3], radius: f32, duration: i32 },
+    /// A breath cloud's victims this tick: the players and creatures it harms (`amount` instant damage, `amplifier` of its effect).
+    CloudHit { at: [f64; 3], amount: f32, amplifier: u32, players: Vec<u32>, mobs: Vec<bevy_ecs::entity::Entity> },
     /// A display's data changed: the host resends it to the players tracking it.
     DisplayUpdate { entity: bevy_ecs::entity::Entity },
     /// A world event (`LevelEvent`: sound and particle codes played by the client).
@@ -178,6 +180,9 @@ impl HostOut {
     }
     pub fn cloud(&mut self, at: [f64; 3], radius: f32, duration: i32) {
         self.out.push(HostEvent::Cloud { at, radius, duration });
+    }
+    pub fn cloud_hit(&mut self, at: [f64; 3], amount: f32, amplifier: u32, players: Vec<u32>, mobs: Vec<bevy_ecs::entity::Entity>) {
+        self.out.push(HostEvent::CloudHit { at, amount, amplifier, players, mobs });
     }
     pub fn display_update(&mut self, entity: bevy_ecs::entity::Entity) {
         self.out.push(HostEvent::DisplayUpdate { entity });

@@ -1013,9 +1013,9 @@ impl LevelAccess for GameLevel<'_> {
         };
         let carts = || self.ecs.cart_bounds_in(area).len();
         let others = || {
-            self.crystals
-                .iter()
-                .map(dragon::Crystal::bounds)
+            self.ecs
+                .species_bounds("minecraft:end_crystal")
+                .into_iter()
                 .chain(self.trigger_extras.iter().copied())
                 .filter(|b| area.intersects(*b))
                 .count()

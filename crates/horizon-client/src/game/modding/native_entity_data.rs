@@ -112,8 +112,8 @@ impl Game<'_> {
         if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.custom_name = name.as_ref().map(Text::plain);
             m.custom_name_text = name;
-        } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-            a.custom_name = name;
+        } else {
+            self.armor_stand_edit(id, |a| a.custom_name = name);
         }
         self.put_saved(id, "CustomName", saved);
         true
@@ -129,7 +129,7 @@ impl Game<'_> {
             Target::Mob(_) if self.ecs_has(id) => self.ecs_flag(id, "CustomNameVisible").unwrap_or(false),
             Target::Mob(_) => self.remote_entities.iter().any(|m| m.id == id && m.name_visible),
             Target::Stand(_) => self
-                .armor_stands
+                .armor_stand_list()
                 .iter()
                 .any(|a| a.id == id && a.name_visible),
             _ => self
@@ -153,8 +153,8 @@ impl Game<'_> {
         }
         if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
             m.name_visible = visible;
-        } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
-            a.name_visible = visible;
+        } else {
+            self.armor_stand_edit(id, |a| a.name_visible = visible);
         }
         // `Entity.saveWithoutId` writes the flag only when set.
         let flag = visible.then_some(Tag::Byte(1));
@@ -303,7 +303,7 @@ mod tests {
             assert_eq!(mob.custom_name_visible(game), Some(true));
 
             // An armor stand keeps its name in its own field.
-            game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
             let stand = game.entity(13).unwrap();
             assert!(
                 stand
@@ -360,7 +360,7 @@ mod tests {
                 let mob = push_mob(game, id, kind);
                 assert_eq!(mob.classification(game), Some(category), "{kind}");
             }
-            game.armor_stands.push(ArmorStand::new(27, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_stand(game, 27, &ArmorStand::new(27, Vec3::ZERO, 0.0));
             let stand = game.entity(27).unwrap();
             assert_eq!(stand.classification(game), Some(MobCategory::Misc));
             let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);

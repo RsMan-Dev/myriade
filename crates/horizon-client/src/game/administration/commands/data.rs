@@ -173,8 +173,8 @@ impl Game<'_> {
             }
             Target::Stand(id) => {
                 let uuid = self.uuid_for(id);
-                let a = self.armor_stands.iter().find(|a| a.id == id)?;
-                entity_nbt::armor_stand_to_nbt(a, uuid, self.persist.raw.get(&id))
+                let a = self.armor_stand_saved(id)?;
+                entity_nbt::armor_stand_to_nbt(&a, uuid, self.persist.raw.get(&id))
             }
             Target::Frame(id) => {
                 let uuid = self.uuid_for(id);
@@ -194,13 +194,7 @@ impl Game<'_> {
             }
             Target::Fangs(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Other(_) => return None,
-            Target::Crystal(id) => {
-                let c = self.crystals.iter().find(|c| c.id == id)?;
-                let raw = self.persist_anon("minecraft:end_crystal", c.position);
-                let uuid = self.persist.uuids.get(&id).copied();
-                let tag = c.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
-            }
+            Target::Crystal(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Dragon(id) => {
                 let d = self.dragon.as_ref().filter(|d| d.id == id)?;
                 let raw = self.persist_anon("minecraft:ender_dragon", d.position);
@@ -213,86 +207,13 @@ impl Game<'_> {
             }
             Target::Cushion(id) => {
                 let uuid = self.uuid_for(id);
-                let c = self.cushions.iter().find(|c| c.id == id)?;
-                entity_nbt::cushion_to_nbt(c, uuid, self.persist.raw.get(&id))
+                let c = self.cushion_saved(id)?;
+                entity_nbt::cushion_to_nbt(&c, uuid, self.persist.raw.get(&id))
             }
-            Target::Cloud(id) => {
-                let uuid = self.uuid_for(id);
-                let c = self.breath_clouds.iter().find(|c| c.id == id)?;
-                let [x, y, z] = c.at;
-                let [yaw, pitch] = self
-                    .persist
-                    .raw
-                    .get(&id)
-                    .map_or([0.0; 2], horizon_client::entity_nbt::loaded_rotation);
-                // Read the live cloud, including its current radius and age;
-                // the raw compound alone does not contain generated clouds.
-                let mut tag = self.other_to_nbt(
-                    &super::OtherEntity {
-                        attachment_lifetime: Default::default(),
-                        join: Default::default(),
-                        id,
-                        kind: "minecraft:area_effect_cloud".into(),
-                        item_transformation: None,
-                        interaction: None,
-                        knot_check: None,
-                        eye: None,
-                        position: horizon_core::geometry::Vec3::new(x, y, z),
-                        yaw,
-                        pitch,
-                    },
-                    uuid,
-                );
-                // Entity.saveWithoutId's common fields, also for a cloud never saved.
-                crate::game::persist::write_static_entity_fields(&mut tag);
-                set_key(&mut tag, "Age", Tag::Int(c.age));
-                set_key(&mut tag, "Duration", Tag::Int(c.duration));
-                set_key(&mut tag, "Radius", Tag::Float(c.radius.to_bits()));
-                let wait = c.potion.as_ref().map_or(20, |p| p.settings.wait_time);
-                set_key(&mut tag, "WaitTime", Tag::Int(wait));
-                if let Some(p) = &c.potion {
-                    set_key(
-                        &mut tag,
-                        "ReapplicationDelay",
-                        Tag::Int(p.settings.reapplication_delay),
-                    );
-                    set_key(
-                        &mut tag,
-                        "DurationOnUse",
-                        Tag::Int(p.settings.duration_on_use),
-                    );
-                    set_key(
-                        &mut tag,
-                        "RadiusOnUse",
-                        Tag::Float(p.settings.radius_on_use.to_bits()),
-                    );
-                    set_key(
-                        &mut tag,
-                        "RadiusPerTick",
-                        Tag::Float(p.radius_per_tick.to_bits()),
-                    );
-                    if p.settings.duration_scale != 1.0 {
-                        set_key(
-                            &mut tag,
-                            "potion_duration_scale",
-                            Tag::Float(p.settings.duration_scale.to_bits()),
-                        );
-                    } else if let Tag::Compound(c) = &mut tag {
-                        c.remove(&"potion_duration_scale".into());
-                    }
-                }
-                tag
-            }
+            Target::Cloud(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Spawner(id) => {
-                let s = self.ominous_spawners.iter().find(|s| s.id == id)?;
-                let [x, y, z] = s.position;
-                entity_nbt::ominous_item_spawner_to_nbt(
-                    &s.item,
-                    horizon_core::geometry::Vec3::new(x, y, z),
-                    s.spawn_item_after,
-                    s.uuid,
-                    s.raw.as_deref(),
-                )
+                let e = self.ecs.entity_of(id)?;
+                Tag::Compound(self.ecs.entity_nbt(e)?)
             }
             // LeashFenceKnotEntity saves nothing of its own: the common
             // entity fields, as an explicitly summoned knot's.
@@ -488,13 +409,13 @@ impl Game<'_> {
             }
             Target::Stand(id) => {
                 let mut new = entity_nbt::armor_stand_from_nbt(&tag, id).ok_or_else(stale)?;
-                if let Some(slot) = self.armor_stands.iter_mut().find(|a| a.id == id) {
+                if let Some(slot) = self.armor_stand_saved(id) {
                     // Entity.load keeps the existing entity's firstTick state
                     // and its place in the level's join order.
                     new.first_tick = slot.first_tick;
                     new.join = slot.join;
                     new.vehicle = slot.vehicle;
-                    horizon_client::join_seq::store_back(slot, new);
+                    self.armor_stand_edit(id, |a| *a = new);
                 }
             }
             Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) | Target::Frame(id) | Target::Painting(id) => {
@@ -624,6 +545,7 @@ impl Game<'_> {
             | Target::Dragon(id)
             | Target::Other(id)
             | Target::Fangs(id)
+            | Target::Spawner(id)
             | Target::Cloud(id) => Some(self.persist.raw.entry(id).or_insert_with(empty)),
             // `tags_of` reads these two from the same map and a falling
             // block from its saved compound; without these arms `/tag`
@@ -641,30 +563,6 @@ impl Game<'_> {
             && self.ecs.is_active()
         {
             return self.ecs_set_mob_tags(id, tags);
-        }
-        if let Target::Spawner(id) = t {
-            let Some(i) = self.ominous_spawners.iter().position(|s| s.id == id) else {
-                return false;
-            };
-            self.ominous_spawners.update(i, |spawner| {
-                let raw = &mut **spawner.raw.get_or_insert_with(|| Box::new(empty()));
-                if tags.is_empty() {
-                    if let Tag::Compound(map) = raw {
-                        map.remove(&"Tags".into());
-                    }
-                } else {
-                    set_key(
-                        raw,
-                        "Tags",
-                        Tag::List(
-                            tags.iter()
-                                .map(|s| Tag::String(s.as_str().into()))
-                                .collect(),
-                        ),
-                    );
-                }
-            });
-            return true;
         }
         let Some(raw) = self.raw_mut(t) else {
             return false;
@@ -1124,7 +1022,7 @@ impl Game<'_> {
             Some(Target::Mob(id))
         } else if self.ecs.item(id).is_some() {
             Some(Target::Item(id))
-        } else if self.armor_stands.iter().any(|a| a.id == id) {
+        } else if self.armor_stand_list().iter().any(|a| a.id == id) {
             Some(Target::Stand(id))
         } else if self.ecs_frames().into_iter().any(|f| f.id == id) {
             Some(Target::Frame(id))
@@ -1136,9 +1034,9 @@ impl Game<'_> {
             Some(Target::Cart(id))
         } else if self.ecs.species(id) == Some("minecraft:tnt") {
             Some(Target::Tnt(id))
-        } else if self.crystals.iter().any(|c| c.id == id) {
+        } else if self.crystal(id).is_some() {
             Some(Target::Crystal(id))
-        } else if self.cushions.iter().any(|c| c.id == id) {
+        } else if self.cushion_ids().contains(&id) {
             Some(Target::Cushion(id))
         } else if self.ecs.species(id) == Some("minecraft:falling_block") {
             Some(Target::Falling(id))
@@ -1146,7 +1044,7 @@ impl Game<'_> {
             Some(Target::Rocket(id))
         } else if self.ecs.species(id) == Some("minecraft:trident") {
             Some(Target::Trident(id))
-        } else if self.ominous_spawners.iter().any(|s| s.id == id) {
+        } else if self.ominous_ids().contains(&id) {
             Some(Target::Spawner(id))
         } else {
             None

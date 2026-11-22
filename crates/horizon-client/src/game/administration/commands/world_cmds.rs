@@ -1431,7 +1431,7 @@ impl Game<'_> {
             Target::Boat(id)
         } else if self.ecs.cart_kind(id).is_some() {
             Target::Cart(id)
-        } else if self.armor_stands.iter().any(|a| a.id == id) {
+        } else if self.armor_stand_list().iter().any(|a| a.id == id) {
             Target::Stand(id)
         } else {
             Target::Mob(id)

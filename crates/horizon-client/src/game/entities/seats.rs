@@ -62,7 +62,7 @@ fn other_height(kind: &str, tag: Option<&Tag>) -> (f64, f32) {
 impl Game<'_> {
     /// The armor stand or kept entity `id` as a vehicle, if it is one.
     pub(super) fn seat(&self, id: u32) -> Option<Seat> {
-        if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
+        if let Some(a) = self.armor_stand_saved(id) {
             // ArmorStand: sized(0.5F, 1.975F), half that when small, nothing as a
             // marker; the passenger point is the float height widened to double.
             let (height, width) = if a.marker {

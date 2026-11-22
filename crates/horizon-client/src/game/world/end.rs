@@ -370,9 +370,8 @@ impl Game<'_> {
         self.end.gateway_cooldown = self.end.gateway_cooldown.saturating_sub(1);
         if self.dimension_type().has_ender_dragon_fight {
             self.tick_fight();
-            // The fireballs fly with the other projectiles; the breath
-            // clouds tick here, once.
-            self.tick_breath();
+            // The breath clouds tick in the ECS; the flame ends when its phase is left.
+            self.end_dragon_flame();
         } else {
             // `/summon ender_dragon` outside the End: no fight, but the dragon flies.
             self.tick_fight();
@@ -383,8 +382,7 @@ impl Game<'_> {
         // The spikes' crystals (placed above) join before they light a fire:
         // a mod that cancels one keeps its fire out too.
         self.native_joins_flush(false, 0);
-        self.tick_crystals();
-        self.clear_crystal_fire();
+        self.ecs_end_fire();
         self.tick_eyes();
         if self.dimension_type().has_ender_dragon_fight {
             self.ensure_exit_portal()?;

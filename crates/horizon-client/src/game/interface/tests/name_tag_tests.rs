@@ -167,8 +167,7 @@ fn game() -> Game<'static> {
 #[ignore = "daily"]
 fn a_creative_player_keeps_the_tag_it_names_a_stand_with() {
     let mut game = game();
-    game.armor_stands
-        .push(ArmorStand::new(9, Vec3::new(0.5, 64.0, 0.5), 0.0));
+    crate::game::ecs::test_support::place_test_stand(game, 9, &ArmorStand::new(9, Vec3::new(0.5, 64.0, 0.5), 0.0));
     let mut tag = ItemStack::new("minecraft:name_tag", 2);
     tag.data_mut().custom_name = Some(Tag::compound([("text", Tag::String("Bob".into()))]));
     game.inventory[0] = Some(tag);
@@ -185,7 +184,7 @@ fn a_creative_player_keeps_the_tag_it_names_a_stand_with() {
         Some(2),
         "a creative player keeps the tag"
     );
-    let named = game.armor_stands[0]
+    let named = game.armor_stand_list()[0]
         .custom_name
         .as_ref()
         .map(horizon_client::text::Text::plain);
