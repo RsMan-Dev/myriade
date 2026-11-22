@@ -49,8 +49,11 @@ impl Game<'_> {
         match ev {
             TntEvent::Fuse { entity } => {
                 let id = self.ecs_id_of(entity);
+                // The one who lit it is kept on the TNT: the event is heard at the step after the click, when no actor stands any more.
+                let owner = self.ecs.world().and_then(|w| w.get::<horizon_ecs_proto::tnt::Primed>(entity)).and_then(|p| p.owner);
+                let owner = owner.map(|o| self.host_who(o));
                 if let Some(v) = self.ecs_view(id) {
-                    self.tnt_fuse_lit(v.position);
+                    self.tnt_fuse_lit(v.position, owner);
                 }
             }
             TntEvent::Explode { at, power, owner, used_portal } => {

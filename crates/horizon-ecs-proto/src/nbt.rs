@@ -724,6 +724,23 @@ pub fn restore(w: &mut World, c: &Compound) -> Option<Entity> {
     made
 }
 
+/// The entity of a sort with a bespoke constructor (`nbt_fields::things::builders`: the item, the orb, the falling block...) made at `at`
+/// from the keys `nbt` holds, as `restore` makes it: a species entity alone would lack the sort's own components. None when `kind` is
+/// not such a sort; Some(None) when its constructor refused the keys.
+pub fn builds(kind: &str) -> bool {
+    crate::nbt_fields::things::builders().iter().any(|(id, _)| *id == kind)
+}
+
+pub fn spawn_built(w: &mut World, kind: &str, at: Vec3, nbt: Option<&Compound>) -> Option<Option<Entity>> {
+    if !crate::nbt_fields::things::builders().iter().any(|(id, _)| *id == kind) {
+        return None;
+    }
+    let mut c = nbt.cloned().unwrap_or_default();
+    c.insert("id".into(), Tag::String(kind.into()));
+    c.insert("Pos".into(), Tag::List(vec![Tag::Double(at.x.to_bits()), Tag::Double(at.y.to_bits()), Tag::Double(at.z.to_bits())]));
+    Some(restore(w, &c))
+}
+
 /// The entities a `restore_tree` is making, one slot per compound met in the order of the NBT (the root, then each rider and its own
 /// riders); a slot stays None when its compound made nothing.
 #[derive(Resource, Default)]

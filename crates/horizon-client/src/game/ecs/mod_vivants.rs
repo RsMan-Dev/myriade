@@ -53,6 +53,6 @@ impl Game<'_> {
     /// `LivingEntity.getMaxHealth` of the mob `id` on the ECS: the `MaxHealth` component.
     pub(in crate::game) fn ecs_living_max_health(&self, id: u32) -> Option<f32> {
         let (w, e) = self.ecs_living(id)?;
-        w.get::<MaxHealth>(e).map(|h| h.0)
+        w.get::<MaxHealth>(e).map(|h| h.0).or_else(|| w.get::<horizon_ecs_proto::cow::SpeciesId>(e).is_some().then(|| horizon_ecs_proto::cow::max_health(w, e)))
     }
 }

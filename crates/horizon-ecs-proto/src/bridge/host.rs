@@ -234,14 +234,27 @@ impl EcsWorld {
     fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>) -> Option<Entity> {
         let natural = reason == crate::spawn_reason::SpawnReason::Natural;
         let table = species_table();
-        let sp = table.0.iter().find(|s| s.name == kind)?;
+        // A sort with a constructor of its own (the falling block, the TNT...) has no row among the species.
+        let sp = table.0.iter().find(|s| s.name == kind);
+        if sp.is_none() && !nbt::builds(kind) {
+            return None;
+        }
         // `Mob.checkDespawn`: a creature of a `notInPeaceful` type is discarded at once in peaceful, so it is not made.
-        if sp.not_in_peaceful && crate::effects::difficulty(&self.world) == 0 {
+        if sp.is_some_and(|s| s.not_in_peaceful) && crate::effects::difficulty(&self.world) == 0 {
             return None;
         }
         self.spawned += 1;
         let seed = self.spawned;
         self.lent(mw, |w| {
+            // A sort with a constructor of its own (an item, an orb, a falling block) is made by it, with its keys.
+            if let Some(made) = nbt::spawn_built(w, kind, Vec3::new(at[0], at[1], at[2]), nbt) {
+                let e = made?;
+                zone::admit(w, &[e]);
+                view::mark(w, e);
+                crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
+                return Some(e);
+            }
+            let sp = sp?;
             let e = spawn_armed(w, sp, at[0], at[2], seed);
             // The place asked for, box and movement included: a creature summoned in the air falls (`cow::teleport` raises `Moving`).
             w.get::<Pos>(e)?;

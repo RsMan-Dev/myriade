@@ -30,7 +30,9 @@ impl Game<'_> {
     /// back the block the fire or signal had already taken out.
     pub(super) fn prime_tnt_event(&mut self, pos: BlockPos, rot: f64) {
         if self.tnt_prime_allowed(pos) {
-            self.add_primed_tnt(pos, rot, 80, None, None);
+            // `TntBlock.prime(level, pos, igniter)`: whoever acts at this moment lit it and answers for its blast.
+            let igniter = self.sculk_actor();
+            self.add_primed_tnt(pos, rot, 80, igniter, None);
             return;
         }
         // Refused: the level queued the fuse sound and the game event right
@@ -73,8 +75,8 @@ impl Game<'_> {
         id
     }
     /// `TntEvent::Fuse`: the hiss and the `prime_fuse` game event of a TNT the ECS lit at `at`.
-    pub(in crate::game) fn tnt_fuse_lit(&mut self, at: [f64; 3]) {
-        let who = self.sculk_actor();
+    pub(in crate::game) fn tnt_fuse_lit(&mut self, at: [f64; 3], owner: Option<Who>) {
+        let who = owner.or_else(|| self.sculk_actor());
         let block = [at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32];
         self.post_block_game_event("minecraft:prime_fuse", block, who, None);
         self.audio.play("minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);

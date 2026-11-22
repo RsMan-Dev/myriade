@@ -42,9 +42,9 @@ pub fn fits_stack(theirs: u32, mine: u32, max: u32) -> bool {
     theirs < max && theirs + mine <= max
 }
 
-/// The largest stack of an item (64 when the data has none).
+/// `ItemStack.getMaxStackSize`: the stack's own `max_stack_size` component, else its item's (64 when the data has none).
 pub fn max_stack(mw: &MobWorld<'static>, s: &ItemStack) -> u32 {
-    mw.items.and_then(|i| i.get(&s.item)).map_or(64, |i| i.max_stack).max(1)
+    s.own_max_stack_size().unwrap_or_else(|| mw.items.and_then(|i| i.get(&s.item)).map_or(64, |i| i.max_stack)).max(1)
 }
 
 /// The velocity an item is thrown with: `nextDouble() * 0.2 - 0.1` sideways, 0.2 up (`ItemEntity`'s constructor).

@@ -126,7 +126,7 @@ impl Game<'_> {
             .into_iter()
             .filter(|&e| {
                 Some(e) != bearer
-                    && self.ecs.kind_of(e).is_some_and(|k| k.trim_start_matches("minecraft:") == "slime")
+                    && self.ecs.id_of(e).and_then(|id| self.ecs.kind(id)).is_some_and(|k| k.trim_start_matches("minecraft:") == "slime")
                     && self.ecs.bounds_of(e).is_some_and(|b| b.intersects(near))
             })
             .count()

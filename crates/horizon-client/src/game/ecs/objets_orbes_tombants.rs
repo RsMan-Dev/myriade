@@ -184,7 +184,13 @@ mod tests {
         with_game(|game| {
             game.ecs = level(game);
             let at = [0.5, 64.0, 0.5];
-            let (a, b) = (game.ecs_orb_moving(3, at, [0.0; 3]).unwrap(), game.ecs_orb_moving(4, at, [0.0; 3]).unwrap());
+            let a = game.ecs_orb_moving(3, at, [0.0; 3]).unwrap();
+            // `ExperienceOrb.canMerge`: the same value and ids a multiple of 40 apart; 39 others stand between the two.
+            for _ in 0..39 {
+                game.ecs_orb_moving(9, [100.5, 64.0, 100.5], [0.0; 3]).unwrap();
+            }
+            let b = game.ecs_orb_moving(3, at, [0.0; 3]).unwrap();
+            assert_eq!((b - a) % 40, 0, "ids {a} and {b}");
             for _ in 0..40 {
                 game.ecs_with(|ecs, mw| ecs.step(mw));
             }
@@ -208,6 +214,45 @@ mod tests {
             game.ecs_with(|ecs, mw| ecs.spawn(mw, "minecraft:falling_block", [0.5, 80.0, 0.5], Some(&c))).unwrap();
             let events: Vec<HostEvent> = (0..800).flat_map(|_| game.ecs_with(|ecs, mw| ecs.step(mw))).collect();
             assert!(events.iter().any(|e| matches!(e, HostEvent::SetBlock { .. })));
+        });
+    }
+
+    fn compound(entries: Vec<(&str, Tag)>) -> Tag {
+        Tag::compound(entries)
+    }
+
+    fn stack_of(id: &str, count: i32) -> Tag {
+        compound(vec![("id", Tag::String(id.into())), ("count", Tag::Int(count))])
+    }
+
+    /// A shulker box holding two stacks, named: the components the old `save_item` wrote beside the stack's own fields.
+    fn full_shulker_box() -> ItemStack {
+        let slots = Tag::List(vec![
+            compound(vec![("slot", Tag::Int(0)), ("item", stack_of("minecraft:diamond", 3))]),
+            compound(vec![("slot", Tag::Int(5)), ("item", stack_of("minecraft:stone", 64))]),
+        ]);
+        let components = compound(vec![("minecraft:container", slots), ("minecraft:custom_name", Tag::String("Boxy".into()))]);
+        let tag = compound(vec![("id", Tag::String("minecraft:shulker_box".into())), ("count", Tag::Int(1)), ("components", components)]);
+        horizon_items::item_nbt::item_from_nbt(&tag).expect("a shulker box")
+    }
+
+    #[test]
+    fn a_dropped_shulker_box_keeps_its_contents_through_the_chunk_save_and_load() {
+        with_game(|game| {
+            game.ecs = level(game);
+            let before = full_shulker_box();
+            let wrote = format!("{:?}", horizon_items::item_nbt::item_to_nbt(&before));
+            assert!(wrote.len() > 300, "the stack encodes its contents: {wrote}");
+            game.ecs_drop_after(before.clone(), [0.5, 64.0, 0.5], [0.0; 3], 0).unwrap();
+            game.ecs_with(|ecs, mw| ecs.step(mw));
+            let saved = game.ecs_save_chunk(0, 0, Vec::new());
+            assert_eq!(saved.len(), 1, "the chunk saves the item: {saved:?}");
+            game.ecs = level(game);
+            game.ecs_with(|ecs, mw| ecs.load_entity(mw, &saved[0])).expect("the item loads again");
+            let views = game.ecs.item_views();
+            assert_eq!(views.len(), 1);
+            let after = format!("{:?}", horizon_items::item_nbt::item_to_nbt(&views[0].stack));
+            assert_eq!(after, wrote, "the reloaded stack keeps the box's contents");
         });
     }
 }

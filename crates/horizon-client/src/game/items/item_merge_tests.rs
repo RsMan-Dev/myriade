@@ -44,7 +44,9 @@ fn items_merge_only_up_to_their_own_max_stack_size() {
             }
         }
         *ids = stacks.iter().map(|s| game.ecs_drop_after(s.clone(), at, [0.0; 3], 0).unwrap()).collect();
-        for _ in 0..6 {
+        // `ItemEntity.tick` looks for a partner every 2 ticks while the stack changes block (every 40 at rest): a stack falling from
+        // y = 70 crosses its second block at the tenth tick, so twelve ticks hold a look.
+        for _ in 0..12 {
             game.ecs_with(|ecs, mw| ecs.step(mw));
         }
     };

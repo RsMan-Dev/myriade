@@ -57,6 +57,8 @@ fn click(game: &mut crate::game::Game<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>)
     game.forced_hit = Some(hit);
     crate::game::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
     let consumed = game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
+    // The ECS hands the fuse event over at its next tick (vanilla posts it in the same one).
+    game.tick_ecs().unwrap();
     game.forced_hit = None;
     let events =
         crate::game::sculk::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
