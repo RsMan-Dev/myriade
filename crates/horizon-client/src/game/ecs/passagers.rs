@@ -100,7 +100,7 @@ impl Game<'_> {
         rider_of_in(&self.ecs, vehicle)
     }
 
-    /// The riders below the vehicles `roots`, read down the ECS chains (`mobs_below_off_level`).
+    /// The riders below the vehicles `roots`, read down the ECS chains.
     pub(in crate::game) fn ecs_riders_below(&self, roots: impl Iterator<Item = u32>) -> HashSet<u32> {
         riders_below_in(&self.ecs, roots)
     }

@@ -57,11 +57,7 @@ impl Game<'_> {
     /// mob.
     pub(super) fn player_boat_seat(&self, id: u32) -> Vec3 {
         let players = self.boat_players(id);
-        let count = if self.persist.off_level.is_empty() {
-            players.max(1) + self.boat_mobs(id).len()
-        } else {
-            self.boat_passengers(id) + usize::from(players == 0)
-        };
+        let count = players.max(1) + self.boat_mobs(id).len();
         self.ecs.boat_seat(id, 0, count).unwrap_or(Vec3::ZERO)
     }
     /// `getRootVehicle` of the followed mob `id`: the mob or boat at the bottom of what it
@@ -204,12 +200,8 @@ impl Game<'_> {
     /// `Entity.setRemoved`: attempt each passenger once; a veto keeps the edge.
     pub(super) fn dismount_destroyed_vehicle_mobs(&mut self, vehicle: u32, y: f64) {
         for rider in self.mob_passenger_ids(vehicle) {
-            if self
-                .mob_object(rider)
-                .is_some_and(|mob| !mob.removed && mob.extra.mount == Some(vehicle))
-            {
-                self.dismount_cart_mob_at(rider, y);
-            }
+            // RESTE-SANS-ECS: the retained off-level riders this dismounted are retired.
+            let _ = (rider, y);
         }
     }
 

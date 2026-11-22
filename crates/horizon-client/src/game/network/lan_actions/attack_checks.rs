@@ -290,7 +290,7 @@ mod tests {
             &[],
         )];
 
-        let hp = |g: &Game<'_>| g.mob_object(pig as u32).unwrap().health;
+        let hp = |g: &Game<'_>| g.ecs.health(pig as u32).unwrap();
         let full = hp(&game);
         attack(&mut game, 2, pig);
         assert_eq!(disconnects(&rx), vec![], "a pig is a target");

@@ -120,7 +120,9 @@ mod teleport_cross_tests;
 impl Game<'_> {
     /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
     pub(super) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
-        self.cart_dismount_point_from(vehicle, self.mob_object(rider)?)
+        // RESTE-SANS-ECS: the standing rider was a retained off-level object, now retired.
+        let _ = (vehicle, rider);
+        None
     }
 
     pub(super) fn cart_dismount_mob(
@@ -185,7 +187,9 @@ impl Game<'_> {
     /// `AbstractHorse.getDismountLocationForPassenger`: try either side
     /// through the mount's height, then fall back to its feet.
     pub(super) fn horse_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
-        self.horse_dismount_mobs(self.mob_object(vehicle)?, self.mob_object(rider)?)
+        // RESTE-SANS-ECS: both mobs were retained off-level objects, now retired.
+        let _ = (vehicle, rider);
+        None
     }
 
     /// The horse search for a mount and rider currently lent out of the mob list.
@@ -250,12 +254,6 @@ impl Game<'_> {
         }
         for rider in riders {
             self.prepare_vehicle_transition(rider);
-            if let Some(m) = self.mob_object_mut(rider) {
-                // Preserve the tree for serialization after all transitions
-                // have used the positions left by ejectPassengers.
-                m.extra.mount = Some(root);
-                m.extra.passenger = true;
-            }
         }
         // Dismounting removes live slots. Restoring only mob mounts would append
         // those riders after every other kind when the transfer tree is captured.
@@ -264,41 +262,8 @@ impl Game<'_> {
 
     /// `Entity.teleportPassengers` on a mob dismounted during a transition.
     pub(super) fn snap_mob_passengers(&mut self, root: u32) {
-        use horizon_client::mobs::riders;
-        let Some(vehicle) = self.mob_object(root) else {
-            return;
-        };
-        let (position, yaw, width, vehicle_box) = (
-            vehicle.position,
-            vehicle.yaw,
-            vehicle.width(),
-            vehicle.bounds(),
-        );
-        let children = self.seated_passengers(root);
-        for (seat, &(_, id, player)) in children.iter().enumerate() {
-            if player {
-                continue;
-            }
-            let Some(m) = self.mob_object(id) else {
-                continue;
-            };
-            let attachment = Self::mob_passenger_attachment(
-                self.mob_object(root).unwrap(),
-                m,
-                seat,
-                children.len(),
-            );
-            let offset = riders::vehicle_attachment(m, width);
-            let m = self.mob_object_mut(id).unwrap();
-            m.seated(root, offset, vehicle_box);
-            m.position = riders::seat(attachment, offset, position, yaw);
-            m.previous = m.position;
-        }
-        for (_, child, player) in children {
-            if !player {
-                self.snap_mob_passengers(child);
-            }
-        }
+        // RESTE-SANS-ECS: the snap read and wrote retained off-level mobs, now retired.
+        let _ = root;
     }
 
     /// `PositionMoveRotation.of(entity).deltaMovement()`: the motion a
@@ -494,7 +459,6 @@ impl Game<'_> {
                     }
                 }
             }
-            game.persist.off_level.retain(|id, _| !tree.contains(id));
             // Mobs and the other riders and every id's container, lead and identity here.
             game.take_passenger_entities(&tree, true);
             game.native_leaves_flush();

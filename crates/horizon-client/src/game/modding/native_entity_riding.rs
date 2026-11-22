@@ -63,7 +63,8 @@ impl Game<'_> {
             Target::Player => self.riding,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle,
             Target::Mob(id) if self.ecs.exists(id) => self.ecs_vehicle_of(id),
-            Target::Mob(id) => self.mob_object(id).filter(|m| !m.removed)?.extra.mount,
+            // RESTE-SANS-ECS: a mob outside the ECS was a retained off-level object, now retired.
+            Target::Mob(_) => None,
             // A general row rides the row its tree loaded with; a row queued
             // for removal rides nothing, as a removed mob does not.
             Target::General(id) => self
@@ -107,7 +108,7 @@ impl Game<'_> {
     pub(super) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
         let mut root = id;
         let mut next = self.native_vehicle_id(target);
-        for _ in 0..=self.ecs.entity_count() + self.persist.off_level.len() + 1 {
+        for _ in 0..=self.ecs.entity_count() + 1 {
             let Some(vehicle) = next else {
                 return Some(root);
             };
@@ -119,8 +120,7 @@ impl Game<'_> {
     /// A live portal root carries a direct or indirect mount through complete objects.
     pub(super) fn vehicle_tree_contains_mount(&self, root: u32, mount: u32) -> bool {
         self.entity(root).is_some()
-            && (self.mob_object(mount).is_some_and(|mob| !mob.removed)
-                || self.entity(mount).is_some())
+            && self.entity(mount).is_some()
             && self.native_root_vehicle_id(mount, Target::Mob(mount)) == Some(root)
     }
 
@@ -143,7 +143,7 @@ impl Game<'_> {
         let mut all: Vec<EntityRef> = Vec::new();
         // This vector allocates only when a retained, unrepresentable object is
         // actually encountered; ordinary resident-only trees keep two buffers.
-        let mut visited_off_level = Vec::new();
+        let mut visited_absent = Vec::new();
         let mut next: Vec<u32> = self
             .seated_passengers(entity.id())
             .into_iter()
@@ -153,14 +153,14 @@ impl Game<'_> {
         while let Some(passenger) = next.pop() {
             if passenger == entity.id()
                 || all.iter().any(|r| r.id() == passenger)
-                || visited_off_level.contains(&passenger)
+                || visited_absent.contains(&passenger)
             {
                 continue;
             }
             if let Some(handle) = self.entity(passenger) {
                 all.push(handle);
             } else {
-                visited_off_level.push(passenger);
+                visited_absent.push(passenger);
             }
             next.extend(
                 self.seated_passengers(passenger)
@@ -512,7 +512,7 @@ impl Game<'_> {
         // Intermediate vehicles can be retained objects, not ordinary handles.
         let mut current = Some(vehicle_id);
         // The ECS chains are bounded by their own limit (64), beside the host's lists.
-        for _ in 0..=self.persist.off_level.len() + 64 {
+        for _ in 0..=64 {
             let Some(id) = current else { break };
             if rider == Target::Mob(id) {
                 return None;
@@ -631,11 +631,7 @@ impl Game<'_> {
             }
             _ => return false,
         }
-        let stopped = self.native_vehicle_id(t).is_none();
-        if stopped {
-            self.release_removed_vehicle(vehicle);
-        }
-        stopped
+        self.native_vehicle_id(t).is_none()
     }
     /// Gets every passenger off the entity (`Entity.ejectPassengers`), last
     /// first as vanilla walks the list, so `mob_ride` hears them in its

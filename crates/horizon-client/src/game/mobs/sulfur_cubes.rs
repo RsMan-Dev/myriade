@@ -124,7 +124,8 @@ impl Game<'_> {
         }
         // Vanilla calls primeWhenOnPoweredPosition from SulfurCube.tick,
         // not from a block-change callback. Frozen descendants never poll power.
-        let blocked = self.mobs_below_off_level();
+        // RESTE-SANS-ECS: riders below refused objects are no longer kept; nothing is blocked by them.
+        let blocked = std::collections::HashSet::<u32>::new();
         for id in self.ecs.species_ids(SULFUR_CUBE) {
             if blocked.contains(&id)
                 || !self.ecs.alive(id)

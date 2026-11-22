@@ -931,9 +931,8 @@ impl Game<'_> {
             }
             None => self.resident_entities.local_player.put_back(),
         }
-        if let Some(vehicle) = released_vehicle {
-            self.release_removed_vehicle(vehicle);
-        }
+        // RESTE-SANS-ECS: removed vehicles are no longer kept, so there is nothing to release.
+        let _ = released_vehicle;
         for event in turn_events {
             match event {
                 MotionEvent::Health(horizon_client::health::HealthEvent::DamageBroadcast {

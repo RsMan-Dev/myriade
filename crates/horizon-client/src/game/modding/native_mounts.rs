@@ -42,16 +42,10 @@ impl Game<'_> {
 
     /// The type of the vehicle with entity id `id`.
     fn native_vehicle_kind(&self, id: u32) -> String {
-        if let Some(b) = self.boat_object(id) {
-            b.entity_type()
-        } else if let Some(kind) = self.ecs.kind(id) {
+        if let Some(kind) = self.ecs.kind(id) {
             kind.into()
-        } else if let Some(vehicle) = self.persist.removed_vehicles.get(&id) {
-            vehicle.kind()
         } else if self.cushion_ids().contains(&id) {
             "minecraft:cushion".into()
-        } else if let Some(m) = self.mob_object(id) {
-            mob_kind(m)
         } else if self.armor_stand_list().iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
         } else {
@@ -75,7 +69,8 @@ impl Game<'_> {
             return false;
         }
         let kind = match rider {
-            Some(id) => self.mob_object(id).map_or_else(String::new, mob_kind),
+            // RESTE-SANS-ECS: only a retained off-level mob had its kind read here, now retired.
+            Some(_) => String::new(),
             None => "minecraft:player".into(),
         };
         let vehicle_kind = self.native_vehicle_kind(vehicle);

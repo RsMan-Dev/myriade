@@ -40,42 +40,7 @@ impl Game<'_> {
                 self.armor_stand_remove(a.id);
             }
         }
-        // Riders leave with their root vehicle, a boat's with the boat.
-        let leaving: HashSet<u32> = self
-            .mob_object_slots()
-            .filter(|&object| {
-                let root = self.mob_at(self.mob_root(object));
-                match root.extra.mount {
-                    Some(v) if removed.contains(&v) => true,
-                    Some(v) if self.ecs.boat_status(v).is_some() => false,
-                    _ => gone(root.position),
-                }
-            })
-            .map(|object| self.mob_at(object).id)
-            .collect();
-        self.persist.off_level.retain(|id, _| {
-            let keep = !leaving.contains(id);
-            if !keep {
-                removed.push(*id);
-            }
-            keep
-        });
-        if !self.persist.off_level.is_empty() {
-            // A retained boat or cart root is in no section and never saved:
-            // it lives only while a passenger or player still rides it.
-            let ridden: HashSet<u32> = self
-                .mob_objects()
-                .filter_map(|m| m.extra.mount)
-                .chain(riding)
-                .collect();
-            self.persist.off_level.retain(|id, object| {
-                let keep = object.as_mob().is_some() || ridden.contains(id);
-                if !keep {
-                    removed.push(*id);
-                }
-                keep
-            });
-        }
+        // RESTE-SANS-ECS: riders kept off the level with their root are no longer held here; the ECS unloads its own mobs.
         for item in self.ecs.item_views() {
             if gone(item.position) {
                 removed.push(item.id);

@@ -10,26 +10,6 @@ use horizon_core::geometry::Vec3;
 use std::collections::HashMap;
 
 impl Game<'_> {
-    pub(super) fn release_removed_vehicle(&mut self, id: u32) {
-        if self.persist.removed_vehicles.contains_key(&id)
-            && self.riding != Some(id)
-            && !self.ridden_by_guest(id)
-            && !self.mob_objects().any(|mob| mob.extra.mount == Some(id))
-        {
-            self.persist.removed_vehicles.remove(&id);
-            self.forget_entity(id);
-        }
-    }
-
-    /// Resident passengers below an object that never joined cannot be reached
-    /// by ServerLevel's recursive passenger tick. Empty on the normal path.
-    pub(super) fn mobs_below_off_level(&self) -> std::collections::HashSet<u32> {
-        if self.persist.off_level.is_empty() {
-            return Default::default();
-        }
-        self.ecs_riders_below(self.persist.off_level.keys().copied())
-    }
-
     /// `Entity.startRiding` for two mobs.
     pub(super) fn mount_mob(&mut self, rider: u32, vehicle: u32) {
         self.try_mount_mob(rider, vehicle);

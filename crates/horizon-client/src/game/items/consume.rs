@@ -324,12 +324,8 @@ impl Game<'_> {
         let Some(id) = self.riding else {
             return;
         };
-        let removed_y = self
-            .persist
-            .removed_vehicles
-            .get(&id)
-            .map(|vehicle| vehicle.position().y)
-            .or_else(|| {
+        // RESTE-SANS-ECS: `removed_vehicles` is retired; a removed vehicle's last height is no longer kept.
+        let removed_y = None::<f64>.or_else(|| {
                 use super::commands::Target;
                 let boat = Target::Boat(id);
                 let cart = Target::Cart(id);
@@ -348,7 +344,6 @@ impl Game<'_> {
         if let Some(y) = removed_y {
             if self.native_may_leave(id) && self.riding == Some(id) {
                 self.dismount_removed_vehicle(y);
-                self.release_removed_vehicle(id);
             }
             return;
         }

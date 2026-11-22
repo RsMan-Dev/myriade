@@ -67,9 +67,7 @@ impl Game<'_> {
 
     /// Object ownership for persistence cleanup, never a level-query membership set.
     pub(super) fn retained_entity_ids(&self) -> std::collections::HashSet<u32> {
-        let mut retained = self.live_entity_ids();
-        retained.extend(self.persist.off_level.keys().copied());
-        retained
+        self.live_entity_ids()
     }
 
     /// The attachments of entities that left the level, dropped: each tick

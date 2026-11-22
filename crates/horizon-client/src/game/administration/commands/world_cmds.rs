@@ -1458,57 +1458,8 @@ impl Game<'_> {
         removed_y: Option<f64>,
         notified: bool,
     ) {
-        let Some(v) = self
-            .mob_object(rider)
-            .filter(|mob| !mob.removed)
-            .and_then(|mob| mob.extra.mount)
-        else {
-            return;
-        };
-        if !notified && !self.native_mob_may_ride(rider, v, false) {
-            return;
-        }
-        // A callback can remove or remount the rider. Do not overwrite its decision.
-        if self
-            .mob_object(rider)
-            .is_none_or(|mob| mob.removed || mob.extra.mount != Some(v))
-        {
-            return;
-        }
-        if let Some(mob) = self.mob_object_mut(rider) {
-            mob.extra.mount = None;
-        }
-        self.unlink_passenger(rider);
-        let remaining = self
-            .mob_objects()
-            .filter(|m| m.extra.mount == Some(v))
-            .min_by_key(|m| (m.extra.vehicle_order, m.id))
-            .map(|m| m.id);
-        if let Some(vehicle) = self.mob_object_mut(v) {
-            vehicle.extra.rider = remaining;
-        }
-        let at = if let Some(y) = removed_y {
-            self.mob_object(rider).map(|mob| {
-                self.removed_vehicle_dismount_point(
-                    mob.position,
-                    f64::from(mob.width()),
-                    f64::from(mob.height()),
-                    y,
-                )
-            })
-        } else {
-            self.mob_dismount_point(v, rider)
-        };
-        let Some(m) = self.mob_object_mut(rider) else {
-            return;
-        };
-        let at = at.unwrap_or(m.position);
-        m.extra.passenger = false;
-        m.extra.boarding_cooldown = super::super::boat_passengers::BOARDING_COOLDOWN;
-        m.position = at;
-        m.previous = at;
-        self.snap_mob_passengers(rider);
-        self.release_removed_vehicle(v);
+        // RESTE-SANS-ECS: it dismounted only riders retained off the level, now retired.
+        let _ = (rider, removed_y, notified);
     }
     /// Where `dismount_mob` sets object `rider` down off the vehicle `v`: None when
     /// `v` is no boat, cart or mob.
@@ -1517,53 +1468,9 @@ impl Game<'_> {
         v: u32,
         rider: u32,
     ) -> Option<horizon_core::geometry::Vec3> {
-        let mob = self.mob_object(rider)?;
-        if let Some(vehicle) = self.mob_object(v).filter(|vehicle| vehicle.removed) {
-            return Some(self.removed_vehicle_dismount_point(
-                mob.position,
-                f64::from(mob.width()),
-                f64::from(mob.height()),
-                vehicle.position.y,
-            ));
-        }
-        let removed_y = self
-            .persist
-            .removed_vehicles
-            .get(&v)
-            .map(|vehicle| vehicle.position().y)
-            .or_else(|| {
-                self.persist
-                    .removals
-                    .iter()
-                    .chain(self.persist.destroying_vehicles.iter())
-                    .find_map(|target| match *target {
-                        Target::Boat(id) if id == v => self.ecs.position(v).map(|p| p[1]),
-                        Target::Cart(id) if id == v => self.ecs_view(v).map(|c| c.position[1]),
-                        _ => None,
-                    })
-            });
-        if let Some(y) = removed_y {
-            return Some(self.removed_vehicle_dismount_point(
-                mob.position,
-                f64::from(mob.width()),
-                f64::from(mob.height()),
-                y,
-            ));
-        }
-        let (width, yaw) = (f64::from(mob.width()), mob.yaw);
-        if self.is_boat_id(v) {
-            return self.boat_dismount_target(v, width, yaw);
-        }
-        if let Some(b) = self.boat_object(v) {
-            return Some(self.boat_dismount_at(b.position.x, b.position.z, b.bounds().max_position().y, width, yaw));
-        }
-        self.horse_dismount_point(v, rider)
-            .or_else(|| self.cart_dismount_point(v, rider))
-            .or_else(|| {
-                // Entity.getDismountLocationForPassenger: on top of the vehicle.
-                let vehicle = self.mob_object(v)?;
-                Some(super::super::mounts::on_top(vehicle))
-            })
+        // RESTE-SANS-ECS: the rider and vehicle were retained off-level objects, now retired.
+        let _ = (v, rider);
+        None
     }
 
     // ---- /spreadplayers -----------------------------------------------------------------------

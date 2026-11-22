@@ -609,7 +609,8 @@ impl Game<'_> {
         // Portal handling runs only in entity-ticking chunks; retain frozen
         // states while their entities are outside the simulation distance.
         let entity_ticking = self.entity_ticking_area();
-        let frozen = self.mobs_below_off_level();
+        // RESTE-SANS-ECS: riders below refused objects are no longer kept; nothing is frozen by them.
+        let frozen = std::collections::HashSet::<u32>::new();
         let ecs_entries = if self.ecs.is_active() && !vehicles { self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) } else { Vec::new() };
         let tracked = &self.portals.entities;
         let mut present = std::collections::HashSet::new();
@@ -954,7 +955,8 @@ impl Game<'_> {
         // Only the entities that tick (in entity-ticking chunks) move, so only
         // they can have swept into a portal.
         let entity_ticking = self.entity_ticking_area();
-        let frozen = self.mobs_below_off_level();
+        // RESTE-SANS-ECS: riders below refused objects are no longer kept; nothing is frozen by them.
+        let frozen = std::collections::HashSet::<u32>::new();
         // The first portal block each entity's box swept through since the
         // start of its tick (a stuck arrow that did not move enters none).
         if self.ecs.is_active() {
@@ -1129,7 +1131,6 @@ impl Game<'_> {
                 self.ecs.despawn(e);
             }
         }
-        self.persist.off_level.retain(|id, _| !tree.contains(id));
         self.take_passenger_entities(&tree, true);
     }
     /// Where an entity that changes level alone stands, and the width and
@@ -1592,8 +1593,6 @@ mod tests {
             let new_child = game.mob_passenger_ids(new_root)[0];
             let new_leaf = game.mob_passenger_ids(new_child)[0];
             assert!(game.ecs.entity_of(new_child).is_some());
-            assert!(game.mobs_below_off_level().contains(&new_child));
-            assert!(game.mobs_below_off_level().contains(&new_leaf));
             assert_eq!(game.portals.entities[&new_root].cooldown, ENTITY_DELAY);
             assert!(
                 game.persist_raw(new_root)

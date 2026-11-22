@@ -213,12 +213,6 @@ impl Game<'_> {
         let Some(vehicle) = g.vehicle else {
             return;
         };
-        if self.persist.removed_vehicles.contains_key(&vehicle) {
-            // A canceled destruction dismount still owns the removed object.
-            // Retry in the player's tick, not by silently dropping the edge.
-            self.as_guest(conn, |game| game.stop_riding());
-            return;
-        }
         let (keys, dead) = (input_keys(g.input), g.dead || g.health <= 0.0);
         let boat = self.ecs.boat_status(vehicle).is_some();
         let cart = self.ecs.cart_kind(vehicle).is_some();

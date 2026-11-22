@@ -2,48 +2,9 @@
 use super::*;
 
 impl Game<'_> {
-    pub(super) fn mob_at(&self, object: u32) -> &Mob {
-        self.persist.off_level[&object]
-            .as_mob()
-            .expect("mob object slot")
-    }
-
-    pub(super) fn mob_at_mut(&mut self, object: u32) -> &mut Mob {
-        self.persist
-            .off_level
-            .get_mut(&object)
-            .and_then(OffLevel::as_mob_mut)
-            .expect("mob object slot")
-    }
-
-    /// Internal object lookup, including a passenger refused level residency.
-    /// This is deliberately separate from `level_entity` and native handle queries.
-    pub(in crate::game) fn mob_object(&self, id: u32) -> Option<&Mob> {
-        self.persist.off_level.get(&id).and_then(OffLevel::as_mob)
-    }
-
-    /// Mutate an extant mob object without making it resident.
-    pub(in crate::game) fn mob_object_mut(&mut self, id: u32) -> Option<&mut Mob> {
-        self.persist
-            .off_level
-            .get_mut(&id)
-            .and_then(OffLevel::as_mob_mut)
-    }
-
-    /// Whether `id` is a boat: resident in the ECS, or retained off the level by a passenger graph.
+    /// Whether `id` is a boat in the ECS.
     pub(in crate::game) fn is_boat(&self, id: u32) -> bool {
         self.ecs.boat_status(id).is_some()
-            || self.persist.off_level.get(&id).and_then(OffLevel::as_boat).is_some()
-    }
-    /// A retained boat object (off the level); the resident boats are the ECS's.
-    pub(in crate::game) fn boat_object(&self, id: u32) -> Option<&crate::game::boats::Boat> {
-        self.persist.off_level.get(&id).and_then(OffLevel::as_boat)
-    }
-
-    /// Internal topology only: the retained passengers. The ECS's residents are not `Mob` values;
-    /// their readers go by id.
-    pub(in crate::game) fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
-        self.persist.off_level.values().filter_map(OffLevel::as_mob)
     }
 
     /// Loads the saved projectile `tag` in the ECS level and gives it its id, which keeps its portal cooldown, its transferred state
@@ -202,39 +163,19 @@ impl Game<'_> {
             return None;
         }
         let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
-        if let Some((position, velocity, yaw)) = entity_nbt::boat_from_nbt(&tag) {
+        // RESTE-SANS-ECS: a refused boat is abandoned with its riders, nothing held off the level (Option A).
+        // `k` names the boat's wood for a host copy only, which is no longer kept.
+        let _ = k;
+        if refused {
+            return None;
+        }
+        if entity_nbt::boat_from_nbt(&tag).is_some() {
             let mut tag = tag;
             let riders = passenger_graph::take_passengers(&mut tag);
-            let id = if refused {
-                self.next_entity += 1;
-                self.next_entity
-            } else {
-                let Tag::Compound(c) = &tag else {
-                    return None;
-                };
-                self.ecs_load(c)?
+            let Tag::Compound(c) = &tag else {
+                return None;
             };
-            if refused {
-                let (wood, chest) = crate::game::boats::any_boat_wood(k).unwrap_or(("oak", false));
-                let mut b =
-                    crate::game::boats::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
-                b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
-                b.on_ground = entity_nbt::flag(&tag, "OnGround");
-                b.fire_ticks = crate::game::boats::saved_fire(&tag);
-                b.ticks_frozen = crate::game::boats::saved_ticks_frozen(&tag);
-                b.pitch = entity_nbt::rotation(&tag)[1];
-                (b.on_ground, b.fall_distance) = entity_nbt::ground_from_nbt(&tag);
-                if chest {
-                    b = b.with_chest();
-                    b.items = horizon_client::save::decode_items(
-                        tag.get("Items"),
-                        crate::game::boats::CHEST_SLOTS,
-                    );
-                }
-                b.velocity = velocity;
-                b.leash_pending = horizon_client::mobs::leash::pending_from_nbt(tag.get("leash"));
-                self.persist.off_level.insert(id, OffLevel::Boat(b));
-            }
+            let id = self.ecs_load(c)?;
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
             }
@@ -256,116 +197,26 @@ impl Game<'_> {
         })
     }
 
+    /// The saved mob `tag` loaded into the ECS, which keeps its riders; a transferred copy keeps its state.
+    /// Nothing is kept off the level: a refused copy is not held anywhere (`Option A`).
     pub(in crate::game) fn load_mob_transferred(
         &mut self,
         tag: Tag,
         mount: Option<u32>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
-        let uuid = entity_nbt::uuid(&tag);
-        // Only disk reconstruction coalesces the player's saved copy with a
-        // chunk copy. An explicit runtime token owns a distinct live object.
-        if transferred.is_none()
-            && let Some(id) = uuid.and_then(|u| self.restored_vehicle(u))
-        {
-            return Some(id);
-        }
-        self.next_entity += 1;
-        // Structure mobs that generation left to finish: saves from before
-        // they were finalized at placement, or a placement that could not.
-        let mut tag = tag;
-        Self::normalize_loaded_mob_tags(&mut tag);
-        let mut finalize = false;
-        if let Tag::Compound(c) = &mut tag {
-            finalize = c.remove(&"horizon:finalize".into()).is_some();
-        }
-        let riders = passenger_graph::take_passengers(&mut tag);
-        // The mob's own random makes its UUID, kept unless the tag has one.
-        let (own, fresh) = horizon_client::mobs::living_random();
-        let uuid = Some(uuid.unwrap_or(fresh));
-        let mut m = entity_nbt::mob_from_nbt_with_random(
-            &tag,
-            self.res.mob_types(),
-            self.next_entity,
-            Some(self.pack.assets.registry),
-            own,
-        )?;
-        self.resolve_loaded_profession(&mut m);
-        if horizon_client::mobs::camel::is_camel(m.species()) {
-            horizon_client::mobs::camel::finish_load(&mut m, self.world.game_time);
-        }
-        // `NeutralMob.readPersistentAngerSaveData`: the anger runs until its
-        // end time, and the mob is angry at the target again, through
-        // `Mob.setTarget` -> `asValidTarget`: a player the golem cannot attack
-        // (`IronGolem.canAttack`) comes back as no target.
-        m.extra.anger = horizon_client::mobs::anger_left(m.extra.anger_end, self.world.game_time);
-        let anger_uuid = match tag.get("angry_at") {
-            Some(Tag::IntArray(words)) if words.len() == 4 => {
-                Some([words[0], words[1], words[2], words[3]])
-            }
-            _ => None,
+        // RESTE-SANS-ECS: the mount is the ECS's `Passengers` tree, not a host `Mob.extra.mount`; the mob's
+        // anger target, dying body (`died`) and restored attachments are not re-applied at load.
+        let _ = mount;
+        let Tag::Compound(c) = &tag else {
+            return None;
         };
-        // These are the vanilla NeutralMob implementors; each calls
-        // readPersistentAngerSaveData, which invokes setTarget even when
-        // `angry_at` is absent or cannot resolve to a living entity.
-        let neutral = matches!(
-            m.species(),
-            horizon_client::mobs::Species::Wolf
-                | horizon_client::mobs::Species::IronGolem
-                | horizon_client::mobs::Species::Bee
-                | horizon_client::mobs::Species::PolarBear
-                | horizon_client::mobs::Species::Enderman
-                | horizon_client::mobs::Species::ZombifiedPiglin
-        );
-        // Restore on the server whether or not a mod listens. The saved UUID
-        // can name an unloaded entity, an online player, or another mob;
-        // substituting the local player when there is no listener both changes
-        // vanilla behavior and makes loading depend on mod subscriptions.
-        let restore_target =
-            neutral && self.is_logical_server() && self.native_lifecycle.epoch().is_some();
-        m.extra.mount = mount;
-        m.extra.passenger = mount.is_some();
-        // The object id preserves load order even when some passengers are
-        // retained in the off-level store rather than the resident list.
-        m.extra.vehicle_order = i64::from(m.id);
-        if finalize {
-            let at = [m.position.x, m.position.y, m.position.z];
-            let difficulty = self.local_difficulty(at);
-            self.finalize_plain(
-                &mut m,
-                &difficulty,
-                horizon_client::mobs::spawn_rules::Reason::Structure,
-            );
-            // `Shulker.finalizeSpawn` ends in yaw 0 here as on the other spawn paths.
-            horizon_client::mobs::shulker::finalize_spawn(&mut m);
-        }
-        horizon_client::mobs::armor::prepare(&m, &self.motion.attributes);
-        let id = m.id;
-        // PersistentEntitySectionManager.addEntityUuid refuses residency, not
-        // the already-constructed object or its passenger links. Descendants
-        // are still considered individually in preorder.
-        let refused = self.uuid_admission_refused(uuid);
-
-        if let Some(mut state) = transferred {
-            state.restore_mob(&mut m);
+        let uuid = entity_nbt::uuid(&tag);
+        let id = self.ecs_load(c)?;
+        if let Some(state) = transferred {
             self.adopt_transferred_entity_state(id, state);
-        } else if m.health <= 0.0 {
-            // A saved dying body has already passed die; loading only resumes tickDeath.
-            self.died.insert(id);
         }
         self.remember(id, uuid, tag);
-        // RESTE-SANS-ECS: a non-refused legacy load is kept off the level, since the
-        // resident list is gone; the ECS loads these entities itself.
-        if !refused {
-            self.bind_saved_entity_attachments(id, &mut m.attachment_lifetime);
-        }
-        self.persist.off_level.insert(id, OffLevel::Mob(m));
-        if !refused && restore_target {
-            self.native_restore_loaded_target(id, anger_uuid);
-        }
-        if let Some(riders) = riders {
-            self.load_passengers(id, riders);
-        }
         Some(id)
     }
 
@@ -373,35 +224,12 @@ impl Game<'_> {
     /// `Passengers`, after the passengers it kept from loading. Discarded
     /// passengers cannot save even before their list entry is swept.
     pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<u32> {
-        let mut riders: Vec<(i64, u32, u32)> = self
-            .persist
-            .off_level
-            .iter()
-            .filter_map(|(&object_id, object)| {
-                let mob = object.as_mob()?;
-                (mob.extra.mount == Some(id) && !mob.removed).then_some((
-                    mob.extra.vehicle_order,
-                    mob.id,
-                    object_id,
-                ))
-            })
-            .collect();
-        riders.sort_by_key(|&(order, id, _)| (order, id));
-        if let Some(driver) = self.mob_object(id).and_then(|mob| mob.extra.rider)
-            && let Some(position) = riders.iter().position(|&(_, id, _)| id == driver)
-            && position != 0
-        {
-            let driver = riders.remove(position);
-            riders.insert(0, driver);
-        }
-        riders.into_iter().map(|(_, _, object)| object).collect()
+        // RESTE-SANS-ECS: the ECS's chain (`Mount.rider`) is the only source; a rider refused residency is not kept.
+        self.ecs_rider_of(id).into_iter().collect()
     }
 
     pub(in crate::game) fn mob_passenger_ids(&self, root: u32) -> Vec<u32> {
         self.mob_passenger_objects(root)
-            .into_iter()
-            .map(|object| self.mob_at(object).id)
-            .collect()
     }
 
     /// `Entity.teleportCrossDimension`: pair each serialized node with that
@@ -410,14 +238,8 @@ impl Game<'_> {
         &mut self,
         root: u32,
     ) -> Option<(Tag, TransferredVehicleTree)> {
-        let (kind, mut tag) = if let Some(object) = self.mob_object_slot(root) {
-            (VehicleTreeKind::Mob, self.mob_object_nbt(object))
-        } else if self.is_boat(root) {
-            let uuid = self.boat_object(root).is_some().then(|| self.uuid_for(root));
-            let mut tag = match uuid.zip(self.boat_object(root)) {
-                Some((uuid, b)) => b.to_nbt(uuid, self.persist.raw.get(&root)),
-                None => Tag::Compound(self.ecs_mob_tree(root)?),
-            };
+        let (kind, mut tag) = if self.is_boat(root) {
+            let mut tag = Tag::Compound(self.ecs_mob_tree(root)?);
             self.save_portal_cooldown(root, &mut tag);
             (VehicleTreeKind::Boat, tag)
         } else if let Some(c) = self.ecs.is_active().then(|| self.ecs_mob_tree(root)).flatten() {
@@ -591,196 +413,11 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn mob_object_slot(&self, id: u32) -> Option<u32> {
-        self.persist
-            .off_level
-            .get(&id)
-            .and_then(OffLevel::as_mob)
-            .map(|_| id)
-    }
-
-    pub(super) fn mob_object_slots(&self) -> impl Iterator<Item = u32> + '_ {
-        self.persist
-            .off_level
-            .iter()
-            .filter_map(|(&id, object)| object.as_mob().map(|_| id))
-    }
-
-    pub(super) fn mob_object_tree_nbt(&mut self, object: u32) -> Tag {
-        let id = self.mob_at(object).id;
-        let mut tag = self.mob_object_nbt(object);
+    /// The saved tree of the ECS mob `id` with its riders, as a vehicle's tree is written; None when the ECS does not hold it.
+    pub(super) fn mob_object_tree_nbt(&mut self, id: u32) -> Option<Tag> {
+        let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
         self.put_mob_passengers(&mut tag, id);
-        tag
+        Some(tag)
     }
 
-    pub(super) fn mob_object_nbt(&mut self, object: u32) -> Tag {
-        let id = self.mob_at(object).id;
-        let uuid = self.uuid_for(id);
-        // A warden's anger names each suspect by UUID. A mob that has never been
-        // loaded or saved has no UUID yet, so give it one, or the save would
-        // drop the anger at it (`who_uuid` writes nothing for a mob the map does
-        // not know).
-        let suspects: Vec<u32> = self
-            .mob_at(object)
-            .extra
-            .warden
-            .as_ref()
-            .map(|st| {
-                st.anger
-                    .suspects()
-                    .iter()
-                    .filter_map(|who| match who {
-                        Who::Mob(id) => Some(*id),
-                        Who::Player => None,
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        for suspect in suspects {
-            self.uuid_for(suspect);
-        }
-        // `NeutralMob.addPersistentAngerSaveData`: the anger ends at an
-        // absolute game time, so it goes on while the chunk is unloaded, and
-        // the target is the entity the mob is angry at (`settle_anger_end`).
-        let anger = self.mob_at(object).extra.anger;
-        if horizon_client::mobs::persistent_anger(self.mob_at(object).species()) {
-            let game_time = self.world.game_time;
-            horizon_client::mobs::settle_anger_end(self.mob_at_mut(object), game_time);
-        } else {
-            self.mob_at_mut(object).extra.anger_end = if anger > 0 {
-                self.world.game_time + i64::from(anger)
-            } else {
-                -1
-            };
-        }
-        self.mob_at_mut(object).extra.angry_at = if anger > 0 {
-            // A wolf and an iron golem keep their anger's target themselves,
-            // also once the target is gone (`tame::update_persistent_anger`).
-            if matches!(
-                self.mob_at(object).species(),
-                horizon_client::mobs::Species::Wolf | horizon_client::mobs::Species::IronGolem
-            ) {
-                self.mob_at(object).extra.angry_at
-            } else {
-                self.mob_at(object).ai.target
-            }
-        } else {
-            None
-        };
-        // A mob gets its UUID when it is first saved (`uuid_for`): the anger
-        // target still in the world gets it now, so `uuid_of` can name it.
-        if let Some(horizon_client::mobs::Who::Mob(target)) = self.mob_at(object).extra.angry_at
-            && target != 0
-            && self.ecs.exists(target)
-        {
-            self.uuid_for(target);
-        }
-        // The mob that last hurt it, still resident, gets its UUID now, as the
-        // anger target does, so `put_last_hurt_by_mob` can name it.
-        if let Some(horizon_client::mobs::Who::Mob(attacker)) = self.mob_at(object).ai.last_hurt_by
-            && self.ecs.exists(attacker)
-        {
-            self.uuid_for(attacker);
-        }
-        let mut tag = entity_nbt::mob_to_nbt(
-            self.mob_at(object),
-            uuid,
-            self.persist.raw.get(&id),
-            Some(self.pack.assets.registry),
-            |other| self.persist.uuid_of(other),
-        );
-        self.put_last_hurt_by_mob(self.mob_at(object), &mut tag);
-        if horizon_client::mobs::camel::is_camel(self.mob_at(object).species())
-            && let Tag::Compound(c) = &mut tag
-        {
-            let tick = horizon_client::mobs::camel::synced_pose_tick(
-                self.mob_at(object),
-                self.world.game_time,
-            );
-            c.insert("LastPoseTick".into(), Tag::Long(tick));
-        }
-        self.write_leash(&mut tag, id);
-        write_attachments(&mut tag, id, &self.entity_attachments);
-        // A mod's AI pause beside the mods' attachments, whose map would drop it.
-        entity_nbt::write_ai_paused(self.mob_at(object).ai.ai_paused, &mut tag);
-        tag
-    }
-
-    /// Trace only edges touching off-level objects. A rejected leaf is owned
-    /// by its resident vehicle; an orphaned rejected ancestor can instead be
-    /// owned by a resident descendant or a player riding it.
-    pub(super) fn retain_off_level_objects(&mut self, retained: &mut HashSet<u32>) {
-        let mut links: HashMap<u32, Vec<u32>> = HashMap::new();
-        for mob in self.mob_objects() {
-            if let Some(vehicle) = mob.extra.mount
-                && (self.persist.off_level.contains_key(&mob.id)
-                    || self.persist.off_level.contains_key(&vehicle)
-                    || self.persist.removed_vehicles.contains_key(&vehicle))
-            {
-                links.entry(mob.id).or_default().push(vehicle);
-                links.entry(vehicle).or_default().push(mob.id);
-            }
-        }
-        for (&vehicle, slots) in &self.persist.passenger_slots {
-            for slot in slots {
-                if let PassengerSlot::Live(id) = slot
-                    && self.passenger_object_vehicle(*id) == Some(vehicle)
-                    && (self.persist.off_level.contains_key(id)
-                        || self.persist.off_level.contains_key(&vehicle)
-                        || self.persist.removed_vehicles.contains_key(&vehicle))
-                {
-                    links.entry(*id).or_default().push(vehicle);
-                    links.entry(vehicle).or_default().push(*id);
-                }
-            }
-        }
-        for vehicle in self.riding.into_iter().chain(
-            self.lan
-                .iter()
-                .flat_map(|host| host.hub.guests.iter().filter_map(|guest| guest.vehicle)),
-        ) {
-            if self.persist.off_level.contains_key(&vehicle)
-                || self.persist.removed_vehicles.contains_key(&vehicle)
-            {
-                retained.insert(vehicle);
-            }
-        }
-        let mut pending: Vec<_> = links
-            .keys()
-            .copied()
-            .filter(|id| retained.contains(id))
-            .collect();
-        while let Some(id) = pending.pop() {
-            for &neighbor in links.get(&id).into_iter().flatten() {
-                if (self.persist.off_level.contains_key(&neighbor)
-                    || self.persist.removed_vehicles.contains_key(&neighbor))
-                    && retained.insert(neighbor)
-                {
-                    pending.push(neighbor);
-                }
-            }
-        }
-        let gone: Vec<_> = self
-            .persist
-            .off_level
-            .keys()
-            .copied()
-            .filter(|id| !retained.contains(id))
-            .collect();
-        for id in gone {
-            self.persist.off_level.remove(&id);
-            self.forget_entity(id);
-        }
-        let gone: Vec<_> = self
-            .persist
-            .removed_vehicles
-            .keys()
-            .copied()
-            .filter(|id| !retained.contains(id))
-            .collect();
-        for id in gone {
-            self.persist.removed_vehicles.remove(&id);
-            self.forget_entity(id);
-        }
-    }
 }

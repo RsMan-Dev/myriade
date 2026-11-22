@@ -367,62 +367,6 @@ fn passenger_record(kind: &str, uuid: i32, passengers: Vec<Tag>) -> Tag {
 
 #[test]
 #[ignore = "daily"]
-fn mixed_riders_keep_load_order_and_offlevel_descendants_through_chunk_reload() {
-    with_game(|game| {
-        game.spawn_loaded_entity((0, 0), passenger_record("cow", 982, vec![]), None);
-        let root = passenger_record(
-            "pig",
-            980,
-            vec![
-                passenger_record("armor_stand", 981, vec![]),
-                passenger_record(
-                    "cow",
-                    982,
-                    vec![passenger_record("armor_stand", 983, vec![])],
-                ),
-                passenger_record(
-                    "oak_boat",
-                    984,
-                    vec![passenger_record("cow", 985, vec![])],
-                ),
-                passenger_record("minecart", 986, vec![]),
-            ],
-        );
-        game.spawn_loaded_entity((0, 0), root, None);
-        for round in 0..2 {
-            let root = id(game, 980).unwrap();
-            let body = game.vehicle_tree_nbt(root).unwrap();
-            assert_eq!(child_uuids(&body), [981, 982, 984, 986]);
-            let Some(Tag::List(children)) = body.get("Passengers") else {
-                panic!("mixed riders must serialize")
-            };
-            assert_eq!(child_uuids(&children[1]), [983]);
-            assert_eq!(child_uuids(&children[2]), [985]);
-            let rejected = game.mob_passenger_ids(root)[0];
-            assert!(game.persist.off_level.contains_key(&rejected));
-            assert_eq!(game.mob_object(rejected).unwrap().extra.mount, Some(root));
-            assert_eq!(game.passenger_vehicle(id(game, 983).unwrap()), Some(rejected));
-            assert_eq!(game.passenger_tree(root).len(), 7, "no duplicate riders");
-            assert_eq!(
-                game.ordered_live_passengers(root)
-                    .into_iter()
-                    .map(|id| game.persist.uuid_of(id).unwrap()[3])
-                    .collect::<Vec<_>>(),
-                [981, 984, 986],
-            );
-            if round == 0 {
-                let chunks = game.entity_chunks(&HashSet::from([(0, 0)]), true);
-                for (key, tags) in chunks {
-                    game.world.queue_entity_nbt(key, tags);
-                }
-                game.spawn_loaded_entities();
-            }
-        }
-    });
-}
-
-#[test]
-#[ignore = "daily"]
 fn dismount_and_reboard_appends_a_loaded_mob_after_existing_mixed_riders() {
     with_game(|game| {
         let root = passenger_record(

@@ -58,79 +58,6 @@ pub(super) enum PassengerSlot {
     Saved(Tag),
 }
 
-/// An entity object retained by passenger links but refused level residency.
-/// Queries and tracking never visit this store; internal topology and saving do.
-/// Boats can also be retained as refused transferred riders.
-pub(super) enum OffLevel {
-    Mob(Mob),
-    Boat(super::boats::Boat),
-}
-
-/// Formerly resident vehicles kept solely by surviving passenger edges.
-pub(super) enum RemovedVehicle {
-    Boat(super::boats::Boat),
-    Cart(super::minecarts::Minecart),
-}
-
-impl RemovedVehicle {
-    pub(super) fn position(&self) -> Vec3 {
-        match self {
-            Self::Boat(boat) => boat.position,
-            Self::Cart(cart) => cart.position,
-        }
-    }
-
-    pub(super) fn retire_attachment_registration(&self) {
-        match self {
-            Self::Boat(boat) => {
-                boat.attachment_lifetime.retire();
-            }
-            Self::Cart(cart) => {
-                cart.attachment_lifetime.retire();
-            }
-        }
-    }
-
-    pub(super) fn kind(&self) -> String {
-        match self {
-            Self::Boat(boat) => boat.entity_type(),
-            Self::Cart(cart) => cart.kind.id().into(),
-        }
-    }
-}
-
-impl OffLevel {
-    pub(super) fn as_mob(&self) -> Option<&Mob> {
-        match self {
-            Self::Mob(mob) => Some(mob),
-            Self::Boat(_) => None,
-        }
-    }
-
-    fn as_mob_mut(&mut self) -> Option<&mut Mob> {
-        match self {
-            Self::Mob(mob) => Some(mob),
-            Self::Boat(_) => None,
-        }
-    }
-
-    fn as_boat(&self) -> Option<&super::boats::Boat> {
-        match self {
-            Self::Boat(boat) => Some(boat),
-            Self::Mob(_) => None,
-        }
-    }
-
-    /// Only a retained mob can be removed while dependents keep it: a boat or
-    /// cart is never selectable, so it leaves only with its passenger graph.
-    pub(super) fn is_removed(&self) -> bool {
-        match self {
-            Self::Mob(mob) => mob.removed,
-            Self::Boat(_) => false,
-        }
-    }
-}
-
 /// The UUID an entity loads with: the saved one, else the one its constructor made.
 /// `Entity.<init>` always draws it from the entity's own random, so the draw is taken
 /// whether or not the tag has a UUID (as `load_mob` does).
@@ -180,15 +107,10 @@ pub struct EntityMemory {
     pub(super) uuids: EntityUuids,
     /// The compound each mob or item entity was loaded with.
     pub(super) raw: HashMap<u32, Tag>,
-    /// Full rejected passenger objects, not resident entities or frozen NBT copies.
-    /// Kept with the level while any live object graph still refers to them.
-    pub(super) off_level: HashMap<u32, OffLevel>,
     /// Passengers that ride a vehicle, in load order: live entity IDs or unspawned tags.
     /// (`passenger_graph.rs`; mob riders also keep `extra.mount`, which stays authoritative
     /// for the mob objects above.)
     pub(super) passenger_slots: HashMap<u32, Vec<PassengerSlot>>,
-    /// Removed boat/cart objects are never part of level residency.
-    pub(super) removed_vehicles: HashMap<u32, RemovedVehicle>,
     /// Destruction callbacks already consumed for geometry retained after removal.
     score_destroyed: HashSet<u32>,
     /// Mount notifications currently on the callback stack, keyed by object IDs.
@@ -951,9 +873,10 @@ impl Game<'_> {
         for slot in self.ordered_passenger_slots(id) {
             match slot {
                 PassengerSlot::Live(rider_id) => {
-                    if let Some(object) = self.mob_object_slot(rider_id) {
-                        riders.push(self.mob_object_tree_nbt(object));
-                    } else if let Some(body) = self.saved_passenger_body(rider_id) {
+                    if let Some(body) = self
+                        .mob_object_tree_nbt(rider_id)
+                        .or_else(|| self.saved_passenger_body(rider_id))
+                    {
                         riders.push(body);
                     }
                 }
@@ -1106,14 +1029,11 @@ impl Game<'_> {
     }
     /// The root of a stack of riders (`Entity.getRootVehicle`).
     fn mob_root(&self, mut object: u32) -> u32 {
-        for _ in 0..self.persist.off_level.len() {
-            let Some(vehicle) = self.mob_at(object).extra.mount else {
+        for _ in 0..64 {
+            let Some(vehicle) = self.ecs_vehicle_of(object) else {
                 break;
             };
-            let Some(parent) = self.mob_object_slot(vehicle) else {
-                break;
-            };
-            object = parent;
+            object = vehicle;
         }
         object
     }
@@ -1121,38 +1041,20 @@ impl Game<'_> {
     /// `Entity.getVehicle` of entity `id`: the mob, boat or minecart a mob
     /// rides (only a mob rides another entity here).
     fn vehicle_of(&self, id: u32) -> Option<u32> {
-        // A mob rider: its mount, when the vehicle is still an object of the level (the
-        // object memory also holds riders refused residency).
-        if let Some(mob) = self.mob_object(id) {
-            let v = mob.extra.mount?;
-            let there = self.mob_objects().any(|m| m.id == v)
-                || self.is_boat(v)
-                || self.ecs.cart_kind(v).is_some()
-                || self.passenger_present(v);
-            return there.then_some(v);
+        // A mob rider: the vehicle the ECS seats it in.
+        if let Some(v) = self.ecs_vehicle_of(id) {
+            return Some(v);
         }
         // A rider of any other kind: the vehicle whose slots name it.
         self.passenger_vehicle(id)
     }
     /// The actual root, using the existing per-kind data writers.
     pub(super) fn vehicle_tree_nbt(&mut self, root: u32) -> Option<Tag> {
-        if let Some(object) = self.mob_object_slot(root) {
-            return Some(self.mob_object_tree_nbt(object));
-        }
         if self.is_boat(root) {
-            if !self.persist.off_level.contains_key(&root)
-                && !self.resident_source_target_visible(
-                    self.dim.key(),
-                    super::commands::Target::Boat(root),
-                )
-            {
+            if !self.resident_source_target_visible(self.dim.key(), super::commands::Target::Boat(root)) {
                 return None;
             }
-            let uuid = self.boat_object(root).is_some().then(|| self.uuid_for(root));
-            let mut tag = match uuid.zip(self.boat_object(root)) {
-                Some((uuid, b)) => b.to_nbt(uuid, self.persist.raw.get(&root)),
-                None => Tag::Compound(self.ecs_mob_tree(root)?),
-            };
+            let mut tag = Tag::Compound(self.ecs_mob_tree(root)?);
             self.put_mob_passengers(&mut tag, root);
             write_attachments(&mut tag, root, &self.entity_attachments);
             return Some(tag);
@@ -1182,13 +1084,8 @@ impl Game<'_> {
     /// `PlayerList.remove`: the root vehicle and its passengers leave the
     /// world with the player (`setRemoved(UNLOADED_WITH_PLAYER)`).
     pub(super) fn remove_vehicle_tree(&mut self, root: u32) {
-        // The mobs `put_mob_passengers` saves under each vehicle of the tree.
-        let mounts: Vec<(u32, Option<u32>)> = self
-            .mob_objects()
-            .filter(|m| !m.removed)
-            .map(|m| (m.id, m.extra.mount))
-            .collect();
-        let mut gone = vehicle_tree(root, &mounts);
+        // The ECS's mobs riding the root are listed below by `ecs_tree`.
+        let mut gone = vehicle_tree(root, &[]);
         // The ECS's creatures riding the root, all the way down (the host's lists are empty on a server).
         if self.ecs.is_active() {
             for id in self.ecs_tree(root) {
@@ -1208,7 +1105,6 @@ impl Game<'_> {
                 self.ecs.despawn(e);
             }
         }
-        self.persist.off_level.retain(|id, _| !gone.contains(id));
         for &id in &gone {
             self.release_vehicle_container(id);
         }
@@ -1369,15 +1265,10 @@ impl Game<'_> {
                 .and_then(|e| self.ecs.entity_nbt(e))
                 .is_some_and(|c| entity_nbt::flag(&Tag::Compound(c), "Silent"));
         }
-        self.mob_object(id).map_or_else(
-            || {
-                self.persist
-                    .raw
-                    .get(&id)
-                    .is_some_and(|tag| horizon_client::entity_nbt::flag(tag, "Silent"))
-            },
-            |m| m.silent,
-        )
+        self.persist
+            .raw
+            .get(&id)
+            .is_some_and(|tag| horizon_client::entity_nbt::flag(tag, "Silent"))
     }
     fn remember(&mut self, id: u32, uuid: Option<[i32; 4]>, mut tag: Tag) {
         self.restore_portal_cooldown(id, &tag);
@@ -1561,23 +1452,6 @@ impl Game<'_> {
     /// tick, so a command in the same tick still sees them; nothing to do
     /// while no entity holds a score or a team.
     pub(super) fn score_destroyed_entities(&mut self) {
-        if !self.persist.off_level.is_empty() {
-            for (&id, object) in &self.persist.off_level {
-                if object.is_removed()
-                    && self.persist.score_destroyed.insert(id)
-                    && let Some(uuid) = self.persist.uuids.get(&id)
-                {
-                    self.score.board.entity_removed(&uuid_text(*uuid));
-                }
-            }
-        }
-        for &id in self.persist.removed_vehicles.keys() {
-            if self.persist.score_destroyed.insert(id)
-                && let Some(uuid) = self.persist.uuids.get(&id)
-            {
-                self.score.board.entity_removed(&uuid_text(*uuid));
-            }
-        }
         let board = &self.score.board;
         let held: HashSet<[i32; 4]> = board
             .scores
@@ -1602,17 +1476,7 @@ impl Game<'_> {
         if candidates.is_empty() {
             return;
         }
-        let mut alive = self.live_entity_ids();
-        if !self.persist.off_level.is_empty() {
-            // Query residency is not destruction. Rejected objects still own
-            // their UUID state until removed, just like registered objects.
-            alive.extend(
-                self.persist
-                    .off_level
-                    .iter()
-                    .filter_map(|(&id, object)| (!object.is_removed()).then_some(id)),
-            );
-        }
+        let alive = self.live_entity_ids();
         for (id, uuid) in candidates {
             if !alive.contains(&id) {
                 self.score.board.entity_removed(&uuid_text(uuid));
@@ -1620,18 +1484,8 @@ impl Game<'_> {
         }
     }
     pub(super) fn prune_entity_memory(&mut self) {
-        if !self.persist.removed_vehicles.is_empty()
-            || self.persist.off_level.values().any(OffLevel::is_removed)
-        {
-            // Complete the former resident's destruction before graph GC can
-            // forget the UUID retained solely for dismount geometry.
-            self.score_destroyed_entities();
-        }
         // Forget entities that no longer exist.
-        let mut alive = self.live_entity_ids();
-        if !self.persist.off_level.is_empty() || !self.persist.removed_vehicles.is_empty() {
-            self.retain_off_level_objects(&mut alive);
-        }
+        let alive = self.live_entity_ids();
         for id in self.persist.uuids.keys() {
             if !alive.contains(id) {
                 self.entity_attachments.remove(id);

@@ -65,11 +65,8 @@ impl Game<'_> {
         {
             seats.push((i64::MIN, me, true));
         }
-        seats.extend(
-            self.mob_objects()
-                .filter(|m| m.extra.mount == Some(vehicle) && !m.removed)
-                .map(|m| (m.extra.vehicle_order, m.id, false)),
-        );
+        // RESTE-SANS-ECS: `Mob.extra.vehicle_order` has no ECS reader; the ECS's rider is placed at order 0.
+        seats.extend(self.ecs_rider_of(vehicle).map(|r| (0, r, false)));
         seats.sort_by_key(|&(place, ..)| place);
         seats
     }
@@ -86,14 +83,8 @@ impl Game<'_> {
     }
     /// `addPassenger` for the mob `id`, linked to its vehicle just now.
     pub(in crate::game) fn seat_mob(&mut self, id: u32) {
-        let mount = self.mob_object(id);
-        let Some(vehicle) = mount.and_then(|m| m.extra.mount) else {
-            return;
-        };
-        let order = self.boarding_order(vehicle, id, false);
-        if let Some(m) = self.mob_object_mut(id) {
-            m.extra.vehicle_order = order;
-        }
+        // RESTE-SANS-ECS: the place written to `Mob.extra.vehicle_order` has no ECS setter; the ECS seats the rider itself.
+        let _ = id;
     }
     /// `addPassenger` for the acting guest, now in `vehicle`.
     pub(in crate::game) fn seat_acting_player(&mut self, vehicle: u32) {

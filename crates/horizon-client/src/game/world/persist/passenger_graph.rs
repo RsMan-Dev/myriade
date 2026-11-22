@@ -31,17 +31,15 @@ impl Game<'_> {
     }
 
     pub(super) fn passenger_object_present(&self, id: u32) -> bool {
-        self.mob_object(id).is_some_and(|mob| !mob.removed)
-            || self.is_boat(id)
+        self.is_boat(id)
             || self.ecs.cart_kind(id).is_some()
             || self.passenger_present(id)
     }
 
     pub(super) fn passenger_object_vehicle(&self, id: u32) -> Option<u32> {
-        if let Some(mob) = self.mob_object(id) {
-            return (!mob.removed)
-                .then_some(mob.extra.mount)
-                .flatten()
+        if self.ecs.exists(id) {
+            return self
+                .ecs_vehicle_of(id)
                 .filter(|vehicle| self.passenger_object_present(*vehicle));
         }
         if !self.passenger_object_present(id) {
@@ -139,11 +137,7 @@ impl Game<'_> {
 
     pub(super) fn load_passengers(&mut self, vehicle: u32, passengers: Tag) {
         let Tag::List(list) = passengers else { return };
-        let kind = if let Some(mob) = self.mob_object(vehicle) {
-            mob.kind.id.to_string()
-        } else if let Some(boat) = self.boat_object(vehicle) {
-            boat.entity_type()
-        } else if let Some(kind) = self.ecs.kind(vehicle) {
+        let kind = if let Some(kind) = self.ecs.kind(vehicle) {
             kind.to_owned()
         } else if let Some(target) = self.level_entity(vehicle as i32) {
             self.target_type(target)
@@ -221,16 +215,7 @@ impl Game<'_> {
 
     pub(in crate::game) fn link_loaded_passenger(&mut self, id: u32, vehicle: u32) {
         self.unlink_passenger(id);
-        if let Some(m) = self.mob_object_mut(id) {
-            m.extra.mount = Some(vehicle);
-            m.extra.passenger = true;
-            // The object id keeps load order, including refused resident copies.
-            m.extra.vehicle_order = i64::from(m.id);
-        }
         self.armor_stand_edit(id, |a| a.vehicle = Some(vehicle));
-        if let Some(m) = self.mob_object_mut(vehicle) {
-            m.extra.rider.get_or_insert(id);
-        }
         self.persist
             .passenger_slots
             .entry(vehicle)
@@ -322,9 +307,6 @@ impl Game<'_> {
     }
 
     pub(super) fn saved_passenger_body(&mut self, id: u32) -> Option<Tag> {
-        if self.persist.off_level.contains_key(&id) && self.is_boat(id) {
-            return self.vehicle_tree_nbt(id);
-        }
         let target = self.level_entity(id as i32)?;
         if !self.passenger_present(id)
             || !crate::game::spawner::entity_type_saves(&self.target_type(target))

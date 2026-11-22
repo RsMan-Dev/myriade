@@ -185,9 +185,8 @@ impl Game<'_> {
         } else if let Some(map) = &mut attachments {
             map.unbind_index();
         }
-        let accepted_hit = self
-            .mob_object_mut(id)
-            .and_then(|mob| mob.accepted_hit.take());
+        // RESTE-SANS-ECS: `Mob.accepted_hit` has no ECS reader or setter; the transferred hit is not carried.
+        let accepted_hit = None;
         let died = self.died.remove(&id);
         TransferredEntityState {
             attachments,
