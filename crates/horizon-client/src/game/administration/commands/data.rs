@@ -1367,6 +1367,10 @@ impl Game<'_> {
             let Some(Tag::String(kind)) = tag.get("id") else { return None };
             let kind = kind.to_string_lossy();
             let Tag::Compound(c) = &tag else { return None };
+            // A species is made by the ECS's spawner; every other entity (boat, cart, TNT, arrow, stand, frame...) is what its compound loads.
+            if !self.res.mob_types().contains_key(&*kind) {
+                return self.ecs_load(c).map(Target::Mob);
+            }
             return self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob);
         }
         let key = {

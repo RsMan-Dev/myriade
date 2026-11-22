@@ -9,7 +9,9 @@ impl Game<'_> {
         let horizon_client::join_seq::residency::table::EntityLookup::Found { location, value } =
             self.server_resident_entity(entity.id())
         else {
-            return None;
+            // The ECS level is the one owner of every non-player entity of the level in place: it binds no residency row.
+            let target = Target::Mob(entity.id());
+            return (self.ecs.entity_of(entity.id()).is_some() && !self.target_removed(&target)).then_some(target);
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
