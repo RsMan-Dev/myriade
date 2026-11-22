@@ -207,10 +207,11 @@ mod tests {
             }
             let stone = game.pack.assets.registry.default_state("minecraft:stone").unwrap();
             game.world.set(0, 60, 0, stone).unwrap();
-            let mut state = Compound::new();
-            state.insert("Name".into(), Tag::String("minecraft:sand".into()));
+            // The state in the world's own NBT form (`BlockState.to_nbt`).
+            let reg = &game.pack.assets.registry;
+            let state = reg.state(reg.default_state("minecraft:sand").unwrap()).unwrap().to_nbt();
             let mut c = Compound::new();
-            c.insert("BlockState".into(), Tag::Compound(state));
+            c.insert("BlockState".into(), state);
             game.ecs_with(|ecs, mw| ecs.spawn(mw, "minecraft:falling_block", [0.5, 80.0, 0.5], Some(&c))).unwrap();
             let events: Vec<HostEvent> = (0..800).flat_map(|_| game.ecs_with(|ecs, mw| ecs.step(mw))).collect();
             assert!(events.iter().any(|e| matches!(e, HostEvent::SetBlock { .. })));
@@ -236,6 +237,8 @@ mod tests {
         horizon_items::item_nbt::item_from_nbt(&tag).expect("a shulker box")
     }
 
+    /// Far from the player at (0.5, 64, 0.5) (no pickup, no merge), in chunk (0, 0): an item, an orb and a cow are saved and
+    /// loaded again with their content.
     #[test]
     fn a_dropped_shulker_box_keeps_its_contents_through_the_chunk_save_and_load() {
         with_game(|game| {
@@ -243,16 +246,22 @@ mod tests {
             let before = full_shulker_box();
             let wrote = format!("{:?}", horizon_items::item_nbt::item_to_nbt(&before));
             assert!(wrote.len() > 300, "the stack encodes its contents: {wrote}");
-            game.ecs_drop_after(before.clone(), [0.5, 64.0, 0.5], [0.0; 3], 0).unwrap();
+            game.ecs_drop(before.clone(), [14.5, 64.0, 14.5], [0.0; 3]).unwrap();
+            game.ecs_orb_moving(7, [12.5, 64.0, 14.5], [0.0; 3]).unwrap();
+            game.ecs_with(|ecs, mw| ecs.spawn(mw, "minecraft:cow", [10.5, 64.0, 14.5], None)).expect("a cow");
             game.ecs_with(|ecs, mw| ecs.step(mw));
             let saved = game.ecs_save_chunk(0, 0, Vec::new());
-            assert_eq!(saved.len(), 1, "the chunk saves the item: {saved:?}");
+            let ids: Vec<_> = saved.iter().map(|c| format!("{:?}", c.get(&"id".into()))).collect();
+            assert_eq!(saved.len(), 3, "the chunk saves the item, the orb and the cow: {ids:?}");
             game.ecs = level(game);
-            game.ecs_with(|ecs, mw| ecs.load_entity(mw, &saved[0])).expect("the item loads again");
+            for c in &saved {
+                game.ecs_load(c).expect("the entity loads again");
+            }
             let views = game.ecs.item_views();
             assert_eq!(views.len(), 1);
             let after = format!("{:?}", horizon_items::item_nbt::item_to_nbt(&views[0].stack));
             assert_eq!(after, wrote, "the reloaded stack keeps the box's contents");
+            assert_eq!(game.ecs_save_chunk(0, 0, Vec::new()).len(), 3, "the three are back and saved again");
         });
     }
 }

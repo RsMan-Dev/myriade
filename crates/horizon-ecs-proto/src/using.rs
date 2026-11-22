@@ -37,7 +37,8 @@ pub struct Roaring;
 
 /// The use of `e` as (off hand, ticks left); None when it uses nothing.
 pub fn state(w: &World, e: Entity) -> Option<(bool, i32)> {
-    w.get::<UsingItem>(e).map(|u| (u.off_hand, u.remaining))
+    // `getUseItemRemainingTicks`: the ticks left now, from the deadline on the entity's clock (a use with none is held: 0).
+    w.get::<UsingItem>(e).map(|u| (u.off_hand, i32::try_from(u.until.saturating_sub(now_of(w, e))).unwrap_or(i32::MAX)))
 }
 
 /// Starts a use with the stack of the chosen hand. False when `e` is gone, already uses an item or the hand is empty. The ticks start at 0:

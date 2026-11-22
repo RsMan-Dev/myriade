@@ -534,8 +534,10 @@ fn build_orb(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 }
 
 fn build_tnt(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let (Some(Tag::Short(fuse)), Some(Tag::Float(power))) = (tag(c, "fuse"), tag(c, "explosion_power")) else { return None };
-    Some(spawn_primed(w, at, Vec3::ZERO, i32::from(*fuse), f32::from_bits(*power)))
+    // `PrimedTnt`: `DEFAULT_FUSE` 80 and `DEFAULT_EXPLOSION_POWER` 4.0 when the keys are absent (a summon without data).
+    let fuse = match tag(c, "fuse") { Some(Tag::Short(f)) => i32::from(*f), None => 80, _ => return None };
+    let power = match tag(c, "explosion_power") { Some(Tag::Float(p)) => f32::from_bits(*p), None => 4.0, _ => return None };
+    Some(spawn_primed(w, at, Vec3::ZERO, fuse, power))
 }
 
 fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {

@@ -47,7 +47,8 @@ pub fn view(world: &World, e: Entity) -> Option<EntityView> {
         return None;
     }
     let p = r.get::<Pos>()?.0;
-    let v = r.get::<Vel>()?.0;
+    // A display, a marker or an interaction has no movement: it is at rest.
+    let v = r.get::<Vel>().map_or(horizon_core::geometry::Vec3::ZERO, |v| v.0);
     let mount = r.get::<Mount>();
     Some(EntityView {
         position: [p.x, p.y, p.z],

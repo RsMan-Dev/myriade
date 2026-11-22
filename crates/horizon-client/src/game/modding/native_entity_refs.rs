@@ -3135,9 +3135,8 @@ pub(super) mod tests {
             game.enter_command_level(super::super::Dim::Overworld)
                 .unwrap();
             let saved_root = game.world_root.clone();
-            let scratch = std::env::current_dir()
-                .unwrap()
-                .join("target/fake-login-save-test");
+            let scratch = std::env::temp_dir()
+                .join(format!("horizon-fake-login-save-test-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&scratch);
             game.world_root = scratch.clone();
             let shared = &game.lan.as_ref().unwrap().hub.lan.shared;

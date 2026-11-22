@@ -416,42 +416,31 @@ impl Game<'_> {
         }
         let started = self.ecs_mob_free(id) && self.ecs_start_using(id, off_hand);
         if started {
+            // `startUsingItem`: `useItemRemaining` is the duration the mods left; the ECS keeps it as a deadline.
+            self.ecs_set_using(id, duration);
             self.ecs_mob_use_vibration(id, &stack, "minecraft:item_interact_start");
         }
         started
     }
-    /// `mob_item_use_remaining` for the ECS mob `id`.
+    /// `mob_item_use_remaining` for the ECS mob `id`: `getUseItemRemainingTicks`, the ticks left on the deadline.
     pub(super) fn mob_item_use_remaining_ecs(&self, id: u32) -> Option<i32> {
-        let (off_hand, counter) = self.ecs_using(id)?;
-        if counter == 0 {
-            return Some(0);
-        }
-        let stack = self.ecs_mob_hand_stack(id, off_hand);
-        Some(stack.map_or(0, |stack| ticks_left(self.use_duration(&stack), counter.unsigned_abs() - 1)))
+        self.ecs_using(id).map(|(_, left)| left)
     }
     /// `mob_set_item_use_remaining` for the ECS mob `id`.
     pub(super) fn mob_set_item_use_remaining_ecs(&mut self, id: u32, remaining: i32) -> bool {
-        let Some((off_hand, counter)) = self.ecs_using(id) else { return false };
-        if counter == 0 {
+        if self.ecs_using(id).is_none() {
             return false;
         }
-        let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else { return false };
-        let counter = use_counter_leaving(self.use_duration(&stack), remaining);
-        self.ecs_set_using(id, counter);
+        self.ecs_set_using(id, remaining);
         true
     }
     /// `release_mob_using_item` for the ECS mob `id`.
     pub(super) fn release_mob_using_item_ecs(&mut self, id: u32) -> bool {
-        let Some((off_hand, counter)) = self.ecs_using(id) else { return false };
-        if counter == 0 {
-            return false;
-        }
-        let ticks = counter.unsigned_abs() - 1;
+        let Some((off_hand, remaining)) = self.ecs_using(id) else { return false };
         self.ecs_stop_using(id);
         let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else {
             return true;
         };
-        let remaining = ticks_left(self.use_duration(&stack), ticks);
         let hand = if off_hand { Hand::Off } else { Hand::Main };
         let entity = Some(id as i32);
         let mut canceled = false;

@@ -15,7 +15,7 @@ impl Game<'_> {
         let ticks = match self.native_living_read_target(living)? {
             Target::Player => self.using.map(|(_, ticks)| ticks),
             Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t),
-            Target::Mob(id) if self.ecs.is_active() => self.ecs_using(id).filter(|(_, c)| *c != 0).map(|(_, c)| c.unsigned_abs() - 1),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs_using(id).and_then(|(off, left)| self.ecs_hand_stack(id, off).map(|s| u32::try_from(self.use_duration(&s).saturating_sub(left)).unwrap_or(0))),
             Target::Mob(id) => {
                 let mob = self.remote_mob_any(id)?;
                 spear_use::is_using_item(mob).then(|| mob.extra.using_item.unsigned_abs() - 1)

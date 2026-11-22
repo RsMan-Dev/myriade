@@ -63,7 +63,8 @@ impl Game<'_> {
     /// `EcsLevel::prime_tnt` at the block's bottom centre, credited to `owner`; the network id, 0 when the level is inert.
     pub(super) fn prime_tnt_ecs(&mut self, pos: BlockPos, fuse: i32, owner: Option<Who>) -> u32 {
         let at = [f64::from(pos.x) + 0.5, f64::from(pos.y), f64::from(pos.z) + 0.5];
-        let owner = owner.and_then(|w| self.ecs_who(w));
+        // A player with no entity of its own yet (a headless level) still answers for its TNT: the id 0 stands for it.
+        let owner = owner.and_then(|w| self.ecs_who(w).or_else(|| matches!(w, Who::Player).then(|| horizon_ecs_proto::targeting::Who::Player(u32::try_from(self.own_entity_id()).unwrap_or(0)))));
         let mut next = self.next_entity;
         let id = self.ecs_with(|ecs, mw| {
             ecs.prime_tnt(mw, at, fuse, owner, 4.0, &mut || {
