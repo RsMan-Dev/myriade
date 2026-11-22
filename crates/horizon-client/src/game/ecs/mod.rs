@@ -46,3 +46,7 @@ mod sorties;
 pub(in crate::game) mod test_support;
 #[cfg(test)]
 mod objets_sol_nbt_tests;
+#[cfg(test)]
+mod behaviour_measures;
+#[cfg(test)]
+mod behaviour_probe;
