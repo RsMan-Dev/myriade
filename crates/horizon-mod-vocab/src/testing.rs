@@ -917,8 +917,6 @@ crate::impl_backend_mut_areas!(
     except(entities, fluids_energy, items, levels, players)
 );
 
-impl crate::prelude::PlayersClientBackend for FakeHost {}
-
 /// Scope the controller lookup rows prepared by the API-owned registration fixture.
 // hidden: API-owned test setup uses this vocabulary fixture, not mod authoring code.
 #[doc(hidden)]

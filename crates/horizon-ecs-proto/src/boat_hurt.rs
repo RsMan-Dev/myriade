@@ -179,6 +179,7 @@ pub fn take_loot(w: &mut World, e: Entity) -> Option<(String, i64)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::boat_state;
     use crate::cow::{Clock, Index, Wheel};
     use crate::goals::{Events, Player};
     use crate::item::{insert_resources, Item};

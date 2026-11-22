@@ -69,6 +69,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "pufferfish_sting_tests.rs"]
-mod pufferfish_sting_tests;

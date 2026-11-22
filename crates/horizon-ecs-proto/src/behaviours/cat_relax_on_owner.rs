@@ -177,6 +177,7 @@ fn relax_step(w: &mut World, e: Entity) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::behaviours::cat_state::OwnerAsleep;
     use crate::behaviours::Entry;
     use crate::cow::{ActiveUntil, SpeciesTable, spawn_species};
     use crate::species::Config;

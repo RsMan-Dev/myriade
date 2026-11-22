@@ -132,6 +132,7 @@ fn stop(w: &mut World, e: Entity, _: Inst) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::blocks;
     use crate::species::Config;
 
     static ENTRIES: [Entry; 1] = [Entry::new(&MODULE, 1, &Params::DEFAULT)];

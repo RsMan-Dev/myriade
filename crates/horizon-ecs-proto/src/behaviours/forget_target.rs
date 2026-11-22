@@ -82,6 +82,7 @@ pub fn strength_roll(w: &World, target: Entity, u: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cow::{species, spawn_species, Herd};
     use crate::behaviours::avoid_entity;
     use crate::species::Config;
     use crate::targeting::{Target, Who};

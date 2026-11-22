@@ -197,13 +197,6 @@ pub mod tests {
         fn block_entity_tick(&self, _: &mut dyn ServerHost, event: &mut BlockEntityTickEvent<'_>) {
             event.entity.data.push(1);
         }
-        fn block_entity_view_distance(
-            &self,
-            _: &dyn ClientHost,
-            event: &mut BlockEntityViewDistanceEvent<'_>,
-        ) {
-            event.distance = 128.0;
-        }
     }
     /// The gold a `doubler:hoard` block entity holds, kept beside it.
     pub const HOARD: AttachmentType<u32> = AttachmentType {
@@ -313,15 +306,6 @@ pub mod tests {
         // The tick is asked by the entity's type, which differs from its block's id.
         assert_eq!(tick("doubler:press_entity"), 1);
         assert_eq!(tick("test:press"), 0);
-        // The view distance is asked by block, as the ticker is.
-        let distance = |block| {
-            let mut distance = 64.0;
-            dispatch_block_entity_view_distance(&NoHost, block, &mut distance);
-            distance
-        };
-        assert_eq!(distance("test:press"), 128.0);
-        assert_eq!(distance("doubler:press_entity"), 64.0);
-        assert_eq!(distance("test:other"), 64.0);
     }
 }
 

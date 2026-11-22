@@ -59,6 +59,7 @@ fn store(w: &mut World, e: Entity, found: Option<Who>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::brain::sensors::living;
     use crate::cow::{spawn_species, species_table, ActiveUntil, Herd, SpeciesTable};
 
     const CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Locomotion, Cap::Targets, Cap::Goals, Cap::Brain];

@@ -59,6 +59,7 @@ fn kill(w: &mut World, e: Entity) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::Item;
     use crate::cart_state;
     use crate::cart_variants::ignite_cart;
     use crate::cow::Herd;

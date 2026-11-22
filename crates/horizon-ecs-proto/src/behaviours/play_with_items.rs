@@ -99,6 +99,8 @@ pub fn throw(w: &mut World, e: Entity) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::item::Item;
+    use horizon_client_lib::items::ItemStack;
     use crate::behaviours::Entry;
     use crate::cow::{ActiveUntil, Herd, SpeciesTable, spawn_species};
     use crate::species::Config;
