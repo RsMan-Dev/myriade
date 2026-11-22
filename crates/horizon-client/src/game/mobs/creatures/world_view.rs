@@ -31,7 +31,7 @@ impl Game<'_> {
             player_selection: None,
             others,
             live_mobs: None,
-            dragon: self.dragon_target(),
+            dragon: None,
             others_grid: None,
             others_index: None,
             passenger_objects: &[],

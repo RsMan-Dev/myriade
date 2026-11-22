@@ -84,7 +84,7 @@ impl Game<'_> {
             );
         } else if self.ecs_paintings().into_iter().any(|p| p.id == id) {
             "minecraft:painting".to_owned()
-        } else if self.crystal(id).is_some() {
+        } else if self.ecs.kind(id) == Some("minecraft:end_crystal") {
             "minecraft:end_crystal".to_owned()
         } else {
             return None;
@@ -111,7 +111,7 @@ impl Game<'_> {
             .object_target(id)
             .map(|(lo, hi, _)| (lo, hi))
             .or_else(|| {
-                mob.or_else(|| self.tracked_special_box(id)).map(|b| {
+                mob.or_else(|| u32::try_from(id).ok().and_then(|i| self.ecs.bounds(i))).map(|b| {
                     let (lo, hi) = (b.min_position(), b.max_position());
                     ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z])
                 })

@@ -2,11 +2,7 @@
 //! `ProjectileImpactEvent`). The ECS flies the projectiles; a mod's impact reaches
 //! the host as `ArrowEvent::ModImpact` before it lands, and the host answers it
 //! with `resolve_impact`.
-use super::{
-    Game,
-    dragon::{CRYSTAL_IDS, SPECIAL},
-    native_hooks::mob_kind,
-};
+use super::Game;
 use horizon_client::{mobs::Who, projectiles::Hit};
 use horizon_core::geometry::Vec3;
 
@@ -117,38 +113,22 @@ impl Game<'_> {
         canceled
     }
 
-    /// The entity id a projectile's hit on the reserved or ordinary `id` stands for: a dragon
-    /// part is the dragon, an End crystal its own id. Allocates nothing.
+    /// The entity id a projectile's hit on `id` stands for: a dragon part (the
+    /// dragon's id + 1 + k) is the dragon, any other id its own. Allocates nothing.
     fn native_impact_entity_id(&self, id: u32) -> u32 {
-        if id < SPECIAL {
-            id
-        } else if id < CRYSTAL_IDS {
-            self.dragon.as_ref().map_or(0, |d| d.id)
-        } else {
-            self.crystals()
-                .into_iter()
-                .nth((id - CRYSTAL_IDS) as usize)
-                .map_or(0, |c| c.id)
-        }
+        self.ecs.dragon_views()
+            .into_iter()
+            .map(|(d, _)| d)
+            .find(|&d| (d + 1..=d + 8).contains(&id))
+            .unwrap_or(id)
     }
 
-    /// The entity id and type a projectile's hit on the reserved or ordinary
-    /// `id` stands for: a dragon part is the dragon, an End crystal its own id.
+    /// The entity id and type a projectile's hit on `id` stands for: a dragon
+    /// part is the dragon, an End crystal its own id.
     fn native_impact_entity(&self, id: u32) -> (u32, String) {
         let entity = self.native_impact_entity_id(id);
-        if id >= SPECIAL {
-            let kind = if id < CRYSTAL_IDS {
-                "minecraft:ender_dragon"
-            } else {
-                "minecraft:end_crystal"
-            };
-            return (entity, kind.into());
-        }
         if let Some(kind) = self.ecs.kind(id) {
-            return (id, kind.into());
-        }
-        if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id) {
-            return (id, mob_kind(mob));
+            return (entity, kind.into());
         }
         if let Some(k) = self.cart_genre(id) {
             return (id, k.id().into());
@@ -248,14 +228,20 @@ mod pearl_hit_tests {
     #[test]
     #[ignore = "daily"]
     fn a_pearl_names_the_dragon_for_a_part_and_the_local_player_by_its_own_id() {
-        use crate::game::dragon::Dragon;
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 225009;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| {
+                ecs.summon_dragon(
+                    mw,
+                    [0.0, 80.0, 0.0],
+                    0.0,
+                    0,
+                    horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                    &mut || 225009,
+                )
+            });
             let at = Vec3::new(1.5, 64.5, -0.5);
             let part = Hit::Entity {
-                who: Who::Mob(SPECIAL + 2),
+                who: Who::Mob(225009 + 1 + 2),
                 at,
             };
             assert_eq!(
@@ -276,7 +262,6 @@ mod pearl_hit_tests {
     #[test]
     #[ignore = "daily"]
     fn a_listening_mod_hears_the_pearls_hit_and_its_target_comes_back() {
-        use crate::game::dragon::Dragon;
         use mod_api::{EnderPearlTeleportEvent, Flow, Hooks, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
         type Heard = Arc<Mutex<Vec<(Option<u32>, [i32; 3])>>>;
@@ -302,12 +287,19 @@ mod pearl_hit_tests {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let _phase =
                     mod_api::__private::PhaseOwner::scope(mod_api::__private::ModPhase::World);
-                let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-                dragon.id = 225009;
-                game.dragon.replace(dragon);
+                game.ecs_with(|ecs, mw| {
+                    ecs.summon_dragon(
+                        mw,
+                        [0.0, 80.0, 0.0],
+                        0.0,
+                        0,
+                        horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                        &mut || 225009,
+                    )
+                });
                 let owner = mod_api::EntityRef::new(mod_api::WorldEpoch::new(1), 7);
                 let hit = Hit::Entity {
-                    who: Who::Mob(SPECIAL + 2),
+                    who: Who::Mob(225009 + 1 + 2),
                     at: Vec3::new(1.5, 64.5, -0.5),
                 };
                 let (target, damage, cancel) = game.native_pearl_teleport(

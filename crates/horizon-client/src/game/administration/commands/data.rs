@@ -194,14 +194,7 @@ impl Game<'_> {
             }
             Target::Fangs(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Other(_) => return None,
-            Target::Crystal(id) => Tag::Compound(self.ecs_mob_tree(id)?),
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                let raw = self.persist_anon("minecraft:ender_dragon", d.position);
-                let uuid = self.persist.uuids.get(&id).copied();
-                let tag = d.to_nbt(uuid.unwrap_or_else(random_uuid), raw);
-                crate::game::persist::with_raw(tag, self.persist.raw.get(&id))
-            }
+            Target::Crystal(id) | Target::Dragon(id) => Tag::Compound(self.ecs_mob_tree(id)?),
             Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
                 Tag::Compound(self.ecs_mob_tree(id)?)
             }
@@ -408,15 +401,10 @@ impl Game<'_> {
                 self.move_fang(id, [at.x, at.y, at.z], Some(entity_nbt::rotation(&tag)[0]));
             }
             Target::Stand(id) => {
-                let mut new = entity_nbt::armor_stand_from_nbt(&tag, id).ok_or_else(stale)?;
-                if let Some(slot) = self.armor_stand_saved(id) {
-                    // Entity.load keeps the existing entity's firstTick state
-                    // and its place in the level's join order.
-                    new.first_tick = slot.first_tick;
-                    new.join = slot.join;
-                    new.vehicle = slot.vehicle;
-                    self.armor_stand_edit(id, |a| *a = new);
-                }
+                // The merged compound goes whole onto the ECS entity: keys the struct does not model survive.
+                entity_nbt::armor_stand_from_nbt(&tag, id).ok_or_else(stale)?;
+                let Tag::Compound(full) = &tag else { return Err(stale()) };
+                self.ecs_merge_mob(id, full);
             }
             Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) | Target::Frame(id) | Target::Painting(id) => {
                 let uuid = self.uuid_for(id);
@@ -1034,7 +1022,7 @@ impl Game<'_> {
             Some(Target::Cart(id))
         } else if self.ecs.species(id) == Some("minecraft:tnt") {
             Some(Target::Tnt(id))
-        } else if self.crystal(id).is_some() {
+        } else if self.ecs.kind(id) == Some("minecraft:end_crystal") {
             Some(Target::Crystal(id))
         } else if self.cushion_ids().contains(&id) {
             Some(Target::Cushion(id))

@@ -113,6 +113,24 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return 0 };
         self.ecs().map_or(0, |w| w.last_hurt_by_player(e))
     }
+    /// `LivingEntity.setLastHurtByPlayer` on the entity `id` (`credit::record`); nothing when inert.
+    pub fn record_credit(&mut self, id: u32, by: Option<horizon_ecs_proto::targeting::Who>) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(w) = self.ecs_mut() {
+            w.record_credit(e, by);
+        }
+    }
+    /// The uuid of the player the entity `id` remembers as its last hurter, while remembered.
+    pub fn credited_uuid(&self, id: u32) -> Option<u128> {
+        self.ecs()?.credited_uuid(self.entity_of(id)?).map(crate::lan::playerdata::ints_uuid)
+    }
+    /// `Animal.setInLove(player)` on the entity `id`: the player's ECS id, None for no player.
+    pub fn set_love_cause(&mut self, id: u32, player: Option<u32>) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(w) = self.ecs_mut() {
+            w.set_love_cause(e, player);
+        }
+    }
     /// The combat tracker of `id` as the server's; None until its first hit. A hit whose type has no Horizon kind is left out.
     pub fn combat_tracker(&self, id: u32) -> Option<Tracker> {
         let w = self.ecs()?;

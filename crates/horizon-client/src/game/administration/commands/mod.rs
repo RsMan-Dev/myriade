@@ -872,12 +872,10 @@ impl Game<'_> {
         candidates.extend(self.fang_ids().into_iter().map(Target::Fangs));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
-        candidates.extend(self.crystals().iter().map(|c| Target::Crystal(c.id)));
-        if let Some(d) = self.dragon.as_ref() {
-            candidates.push(Target::Dragon(d.id));
-        }
+        candidates.extend(self.ecs.crystal_views().into_iter().map(|(id, _)| Target::Crystal(id)));
+        candidates.extend(self.ecs.dragon_views().into_iter().map(|(id, _)| Target::Dragon(id)));
         candidates.extend(self.ominous_ids().into_iter().map(Target::Spawner));
-        candidates.extend(self.breath_clouds().into_iter().map(|c| Target::Cloud(c.id)));
+        candidates.extend(self.ecs.species_ids("minecraft:area_effect_cloud").into_iter().map(Target::Cloud));
         candidates.extend(self.natural_knot_ids().into_iter().map(Target::Knot));
         // `isRemoved` from a mod's call on, though the sweep has not taken it out.
         candidates.retain(|t| !self.target_removed(t));
@@ -1404,12 +1402,6 @@ impl Game<'_> {
     pub(super) fn teleport_stops(&mut self, t: Target) {
         let _ = self.in_target_level(t, |g| {
             target_entity_mut!(g, t, e => *e.velocity_mut() = Vec3::ZERO);
-            // The dragon's flight builds on the motion it carries.
-            if let Target::Dragon(id) = t
-                && let Some(d) = g.dragon.as_mut().filter(|d| d.id == id)
-            {
-                d.teleport_motion([false; 3]);
-            }
         });
     }
     /// `TeleportCommand.performTeleport` after a successful `teleportTo` in
@@ -1660,16 +1652,10 @@ impl Game<'_> {
             }
             // No `others` list: an entity of this kind lives in the ECS.
             Target::Other(_) => {}
-            Target::Crystal(id) => {
+            Target::Crystal(id) | Target::Dragon(id) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     let at = [v.x, v.y, v.z];
                     self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));
-                }
-            }
-            Target::Dragon(id) => {
-                if let Some(d) = self.dragon.as_mut().filter(|d| d.id == id) {
-                    d.position = v;
-                    d.previous = v;
                 }
             }
             Target::Tnt(id) => {
@@ -1727,11 +1713,6 @@ impl Game<'_> {
                 let velocity = entity.velocity_mut();
                 *velocity = teleport_velocity(*velocity, relative, false);
             });
-            if let Target::Dragon(id) = t
-                && let Some(dragon) = self.dragon.as_mut().filter(|dragon| dragon.id == id)
-            {
-                dragon.teleport_motion(relative);
-            }
         }
         // Entity.teleportSameDimension: the riders go with their vehicle at
         // once, by the offset it took and the turn it was given.
@@ -2122,7 +2103,9 @@ impl Game<'_> {
             Target::Other(id) => self.forget_entity(id),
             Target::Fangs(id) => self.kill_fang(id),
             Target::Crystal(id) => self.kill_crystal(id),
-            Target::Dragon(id) => self.kill_dragon(id),
+            Target::Dragon(id) => {
+                self.ecs_with(|ecs, mw| ecs.kill(mw, id));
+            }
             Target::Tnt(id) | Target::Orb(id) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     self.ecs.despawn(e);
@@ -2135,7 +2118,11 @@ impl Game<'_> {
                 }
             }
             Target::Spawner(id) => self.remove_ominous_spawner(id),
-            Target::Cloud(id) => self.remove_breath_cloud(id),
+            Target::Cloud(id) => {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
             Target::Hook(id) => self.remove_fishing_hook(id),
             Target::Knot(_) => {}
             // No command names a part, and `kill` on one would not stop its dragon.
@@ -2244,7 +2231,14 @@ impl Game<'_> {
                     // counter, and the crystal is shown with its base.
                     let at = Vec3::new(pos[0], pos[1], pos[2]);
                     let _ = self.world.random.next_int_bound(100_000);
-                    let id = self.spawn_crystal(at, true);
+                    let mut next = self.next_entity;
+                    let id = self.ecs_with(|ecs, mw| {
+                        ecs.spawn_crystal(mw, [at.x, at.y, at.z], true, &mut || {
+                            next += 1;
+                            next
+                        })
+                    });
+                    self.next_entity = next;
                     // tryAddFreshEntityWithPassengers refused: ERROR_DUPLICATE_UUID.
                     if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));

@@ -82,9 +82,6 @@ impl Game<'_> {
             }
         }
         let gone = self.ecs.drain_removed();
-        for id in &gone {
-            self.ecs_effect_particles.remove(&(*id as u32));
-        }
         if changed.is_empty() && gone.is_empty() {
             return;
         }

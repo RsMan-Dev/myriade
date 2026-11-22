@@ -79,6 +79,12 @@ pub(in crate::game) fn place_test_stand(game: &mut Game<'_>, id: u32, stand: &ho
     game.ecs_load(&saved).unwrap_or(0)
 }
 
+/// Spawns a `kind` mob at `pos` in the test game's ECS, numbered `id`; its id, None when the level is inert or the kind is unknown.
+pub(in crate::game) fn place_test_mob(game: &mut Game<'_>, id: u32, kind: &str, pos: [f64; 3]) -> Option<u32> {
+    game.next_entity = id - 1;
+    game.ecs_spawn(kind, pos, None)
+}
+
 /// Removes every armor stand of the test game's ECS.
 pub(in crate::game) fn clear_test_stands(game: &mut Game<'_>) {
     for id in game.armor_stand_ids() {

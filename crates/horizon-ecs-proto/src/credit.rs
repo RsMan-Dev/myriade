@@ -78,6 +78,11 @@ pub fn killed_by_player(w: &World, e: Entity) -> bool {
 pub fn player_of(w: &World, e: Entity) -> Option<u32> {
     active(w, e)?.player
 }
+/// The uuid of the player credited while it is remembered, as the host keys it (its words, known or saved).
+pub fn credited_uuid(w: &World, e: Entity) -> Option<[i32; 4]> {
+    let k = active(w, e)?;
+    words(w, k.player).or(k.uuid)
+}
 
 /// The keys: both are written while the credit is remembered and both read pose it.
 pub const CREATORS: &[Field] = &[

@@ -191,6 +191,9 @@ impl Game<'_> {
         self.swing_arm();
         true
     }
+    fn equipment_slot(&self, stack: &ItemStack) -> usize {
+        stand_slot(self.res.items(), stack)
+    }
     /// The ECS stand under the crosshair: the nearest the ray meets within reach, by the box P keeps (`Bounds`), among the stands
     /// the spatial index holds near the eye. Markers and the camera are no target (`armor_stand_hit` on the level).
     pub(in crate::game) fn armor_stand_hit(&self) -> Option<(u32, f64, [f64; 3])> {
@@ -266,7 +269,7 @@ impl Game<'_> {
             return true;
         }
         let small = self.ecs.world().and_then(|w| w.get::<EcsStand>(e)).is_some_and(|s| s.flags & ecs_stand::SMALL != 0);
-        let held_slot = None;
+        let held_slot = held.as_ref().map(|h| self.equipment_slot(h));
         let rel_y = ((point[1] - pos[1]) / if small { 0.5 } else { 1.0 }) as f32;
         let Some(w) = self.ecs.world() else { return false };
         let slot = match ecs_stand::click_target(w, e, held.is_some(), held_slot, rel_y) {
@@ -450,6 +453,50 @@ impl Game<'_> {
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         self.ecs.despawn(e);
     }
+    /// `EnchantmentHelper.isImmuneToDamage` for the stand `id`: whether an
+    /// enchantment on an active equipment slot has a `minecraft:damage_immunity`
+    /// effect whose requirements hold for `damage_type` and `causing`.
+    fn stand_immune_to_damage(&mut self, id: u32, damage_type: &str, causing: Option<super::commands::Target>) -> bool {
+        use super::commands::Target;
+        let mut checks = Vec::new();
+        for (slot, name) in ArmorStand::SLOTS.iter().enumerate().take(6) {
+            let Some(stack) = self.ecs.equipment_stack(id, slot) else { continue };
+            let armor = matches!(*name, "head" | "chest" | "legs" | "feet");
+            let hand = matches!(*name, "mainhand" | "offhand");
+            for (ench, level) in stack.enchantments() {
+                let Some(def) = self.res.stations().enchantments.get(ench) else { continue };
+                if !def.slots.iter().any(|s| s == name || s == "any" || (s == "armor" && armor) || (s == "hand" && hand)) {
+                    continue;
+                }
+                for entry in def.effects["minecraft:damage_immunity"].as_array().into_iter().flatten() {
+                    checks.push((entry.get("requirements").cloned(), *level));
+                }
+            }
+        }
+        if checks.is_empty() {
+            return false;
+        }
+        let attacker = match causing {
+            Some(Target::Player | Target::Guest(_)) => Some("minecraft:player".to_owned()),
+            Some(Target::Mob(m_id)) if self.ecs.is_active() => self.fixed_kind(m_id),
+            Some(Target::Mob(m_id)) => self.remote_entities.iter().find(|m| m.id == m_id).map(|m| m.kind.id.clone()),
+            Some(Target::Stand(_)) => Some("minecraft:armor_stand".to_owned()),
+            _ => None,
+        };
+        let canonical = if damage_type.contains(':') { damage_type.to_owned() } else { format!("minecraft:{damage_type}") };
+        let ctx = horizon_client::enchant::EffectContext {
+            items: Some(self.res.items()),
+            damage_type: Some(&canonical),
+            is_direct: attacker.is_some(),
+            this: Some("minecraft:armor_stand"),
+            attacker: attacker.as_deref(),
+            direct_attacker: attacker.as_deref(),
+            ..Default::default()
+        };
+        let ench = &self.res.stations().enchantments;
+        let rng = &mut self.world.random;
+        checks.into_iter().any(|(req, level)| req.is_none_or(|r| ench.condition(&r, level, &ctx, rng)))
+    }
     /// `command_damage_stand` on the ECS level: the gates are the host's; the stand's flags, life and fire are P's.
     pub(in crate::game) fn command_damage_stand(&mut self, id: u32, damage_type: &str, causing: Option<super::commands::Target>) -> bool {
         use super::commands::Target;
@@ -477,7 +524,7 @@ impl Game<'_> {
             .world()
             .and_then(|w| w.get::<EcsStand>(e))
             .is_some_and(|s| s.flags & (ecs_stand::INVISIBLE | ecs_stand::MARKER) != 0);
-        let immune = false;
+        let immune = self.stand_immune_to_damage(id, damage_type, causing);
         if (invulnerable && !creative) || hidden || immune {
             return false;
         }
@@ -546,10 +593,140 @@ struct ArmorSwap {
     hand: Option<ItemStack>,
     to_inventory: Option<ItemStack>,
 }
+/// `Equippable.swapWithEquipmentSlot` after its checks. A single item swaps
+/// with the worn piece: the hand gets the worn piece (`copyAndClear`), or
+/// keeps the item in creative when nothing was worn; creative wears a copy
+/// (`copy` instead of `copyAndClear`). From a larger stack one item is worn
+/// (`consumeAndReturn`, which takes none in creative) and the worn piece goes
+/// to the inventory.
+fn swap_with_equipment_slot(
+    stack: &ItemStack,
+    current: Option<ItemStack>,
+    creative: bool,
+) -> ArmorSwap {
+    let one = ItemStack {
+        count: 1,
+        ..stack.clone()
+    };
+    if stack.count <= 1 {
+        let hand = match current {
+            Some(old) => Some(old),
+            None if creative => Some(stack.clone()),
+            None => None,
+        };
+        return ArmorSwap {
+            worn: one,
+            hand,
+            to_inventory: None,
+        };
+    }
+    let mut held = stack.clone();
+    if !creative {
+        held.count -= 1;
+    }
+    ArmorSwap {
+        worn: one,
+        hand: Some(held),
+        to_inventory: current,
+    }
+}
+/// `Equippable.swapWithEquipmentSlot`'s armour slot for `stack`: the stack's
+/// own `equippable` component (a saved one, or the server's patch), else its
+/// item's, and only while it is swappable.
+pub(super) fn hand_equip_slot(
+    stack: &ItemStack,
+    items: &crate::items::Items,
+) -> Option<(usize, &'static str)> {
+    let equippable = horizon_client::item_sync::equippable(stack, items)?;
+    let actual = stack
+        .data()
+        .and_then(|data| data.other("minecraft:equippable"));
+    // Only adopt the default-allowed shape here. Restricted or otherwise
+    // shaped overrides keep their existing admission until supported.
+    let supported = actual.is_none_or(|tag| {
+        matches!(tag, horizon_core::nbt::Tag::Compound(map)
+            if map.keys().all(|key| matches!(key.to_string_lossy().as_str(), "slot" | "swappable")))
+            && matches!(tag.get("slot"), Some(horizon_core::nbt::Tag::String(_)))
+            && tag.get("swappable").is_none_or(|flag| {
+                horizon_client::item_data::component_bool(flag).is_some()
+            })
+    });
+    let (slot, swappable) = if supported {
+        (equippable.slot.as_str(), equippable.swappable)
+    } else {
+        let info = items.get(&stack.item)?;
+        (info.equip_slot.as_deref()?, info.swappable)
+    };
+    if !swappable {
+        return None;
+    }
+    Some(match slot {
+        "head" => (0, "head"),
+        "chest" => (1, "chest"),
+        "legs" => (2, "legs"),
+        "feet" => (3, "feet"),
+        _ => return None,
+    })
+}
 
 impl Game<'_> {
+    /// `Equippable.swapWithEquipmentSlot`: right-clicking armor swaps it into
+    /// its slot (the worn piece comes back to the hand). It runs on a client
+    /// too (`Item.use`), as the prediction the server's slot packets confirm.
+    pub(super) fn equip_from_hand(&mut self, stack: &ItemStack) -> bool {
+        let Some((index, slot)) = hand_equip_slot(stack, self.items()) else {
+            return false;
+        };
+        let current = self.armor[index].clone();
+        // PREVENT_ARMOR_CHANGE (Curse of Binding) outside creative, or the same item.
+        if current.as_ref().is_some_and(|c| {
+            (world_stations!(self).enchantments.prevents_armor_change(c) && !self.creative)
+                || c.same_item_same_components(stack)
+        }) {
+            return true;
+        }
+        // Counted on the server only, before the swap.
+        {
+            self.award_stat("used", &stack.item, 1);
+        }
+        let swap = swap_with_equipment_slot(stack, current, self.creative);
+        self.armor[index] = Some(swap.worn.clone());
+        // Player.setItemSlot: onEquipItem plays the equip sound.
+        self.player_equipped(slot, Some(&swap.worn));
+        *self.held_mut() = swap.hand;
+        // Inventory.add, else Player.drop (in creative a full inventory
+        // takes it anyway: hasInfiniteMaterials empties the stack).
+        if let Some(old) = swap.to_inventory
+            && let Some(rest) = self.add_stack_to_inventory(old)
+            && !self.creative
+            // Player.drop is the server's on a client: it spawns the item.
+
+            && let Some(eye) = self.eye_position()
+        {
+            // Player.drop(stack, false): thrown from the eyes, no thrower.
+            self.throw_from_eyes(rest, eye, false, false);
+        }
+        // The attribute modifiers of a worn piece come from the server's
+        // ClientboundUpdateAttributesPacket on a client.
+        {
+            self.apply_equipment();
+        }
+        self.swing_arm();
+        true
+    }
 }
-impl Game<'_> {
+
+/// The `ArmorStand.equipment` index `ArmorStand.interact` puts `stack` in:
+/// the stack's own `equippable` slot, else the main hand.
+fn stand_slot(items: &crate::items::Items, stack: &ItemStack) -> usize {
+    match horizon_client::item_sync::equippable_slot(stack, items).as_deref() {
+        Some("feet") => 2,
+        Some("legs") => 3,
+        Some("chest") => 4,
+        Some("head") => 5,
+        Some("offhand") => 1,
+        _ => 0,
+    }
 }
 /// `ArmorStand.getBbWidth` and `getBbHeight`: a marker has no box, a small stand is half size.
 fn stand_box(a: &ArmorStand) -> (f32, f32) {

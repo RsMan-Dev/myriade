@@ -42,8 +42,10 @@ impl Game<'_> {
                     self.villager_compost_items_ecs(id, pos);
                 }
                 HostEvent::Darkness { at, radius } => self.apply_darkness(at, radius),
-                // Boss bars of the mobs: `add_bar`/`remove_bar` take a text name and the bar's value: not wired yet (gap).
-                HostEvent::BossBar { .. } => log::warn!("ecs: boss bar event not wired yet"),
+                HostEvent::BossBar { id, name, progress, color, remove } => self.on_boss_bar(id, name, progress, color, remove),
+                // The dragon's phase is read through its view (`Game::dragon_views`): nothing to apply here.
+                HostEvent::DragonPhase { .. } => {}
+                HostEvent::Fight(e) => self.on_fight_event(e),
                 HostEvent::PushPlayer { player, velocity } => {
                     self.with_player(player, |g| g.push_own_player(Vec3::new(velocity[0], velocity[1], velocity[2])));
                 }

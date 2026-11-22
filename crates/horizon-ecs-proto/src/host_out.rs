@@ -19,6 +19,8 @@ pub enum HostEvent {
     Darkness { at: [f64; 3], radius: f64 },
     /// A boss bar of entity `id`: its progress (0..1) and colour; `remove` closes it.
     BossBar { id: u32, name: &'static str, progress: f32, color: u8, remove: bool },
+    /// The ender dragon `entity` left phase `from` for `to` (`DragonPhaseChanged`, the phase's own log).
+    DragonPhase { entity: bevy_ecs::entity::Entity, from: u8, to: u8 },
     PushPlayer { player: u32, velocity: [f64; 3] },
     ParrotToShoulder { parrot: bevy_ecs::entity::Entity, player: u32 },
     /// An area effect cloud appeared (`radius`, `duration` in ticks).
@@ -130,7 +132,10 @@ pub enum HostEvent {
     Trident(crate::host_out_trident::TridentEvent),
     Using(crate::host_out_using::UsingEvent),
     VehiclePush(crate::host_out_vehicle_push::VehiclePushEvent),
+    Fight(FightEvent),
 }
+
+pub use crate::host_out_fight::FightEvent;
 
 #[derive(Default)]
 pub struct HostOut {
@@ -156,6 +161,9 @@ impl HostOut {
     }
     pub fn boss_bar_remove(&mut self, id: u32) {
         self.out.push(HostEvent::BossBar { id, name: "", progress: 0.0, color: 0, remove: true });
+    }
+    pub fn dragon_phase(&mut self, entity: bevy_ecs::entity::Entity, from: u8, to: u8) {
+        self.out.push(HostEvent::DragonPhase { entity, from, to });
     }
     /// `MobEvent::Sound(name, at, volume, pitch)`.
     pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {

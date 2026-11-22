@@ -31,7 +31,6 @@ impl Game<'_> {
             Target::Player => Some(self.player.as_ref()?.spectator),
             Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
             Target::Mob(id) if self.ecs_has(id) => self.ecs_flag(id, "NoPhysics"),
-            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.no_physics),
             Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) => {
                 Some(self.stored_no_physics(id))
             }
@@ -79,16 +78,6 @@ impl Game<'_> {
                     return false;
                 }
                 self.ecs_put_flag(id, "NoPhysics", no_physics)
-            }
-            Some(Target::Mob(id)) => {
-                let Some(mob) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-                    return false;
-                };
-                if mob.species() == Species::Vex {
-                    return false;
-                }
-                mob.no_physics = no_physics;
-                true
             }
             Some(Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id)) => {
                 self.persist.no_physics.insert(id, no_physics);

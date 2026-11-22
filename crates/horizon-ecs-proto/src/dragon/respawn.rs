@@ -237,15 +237,23 @@ fn finish(w: &mut World) {
 /// `createNewDragon`: over the podium, in the holding pattern, a random yaw; it becomes the fight's dragon. Its generators are seeded
 /// from the world's seed and its own uid (Horizon uses a process-unique seed: the stream is the dragon's, not the level's).
 pub fn spawn_new_dragon(w: &mut World) -> Entity {
-    use crate::dragon::{flight::{DragonRng, FlightHistory}, parts::Parts, phases};
+    use crate::dragon::phases;
     use horizon_core::random::{LegacyRandom, RandomSource};
-    let sp = *w.resource::<SpeciesTable>().0.iter().find(|s| s.name == crate::species::ENDER_DRAGON).expect("the dragon's species");
     let uid = crate::goals::next_uid();
     let seed = world_of(w).world_seed ^ uid as i64;
     let yaw = LegacyRandom::new(seed).next_float() * 360.0;
-    let e = spawn_species(w, &sp, 0.0, 0.0, seed as u64);
-    w.entity_mut(e).insert((Pos(Vec3::new(0.0, 128.0, 0.0)), Yaw(yaw), FlightHistory::new(128.0, yaw), Parts::default(), DragonRng(LegacyRandom::new(seed.wrapping_add(1)), LegacyRandom::new(seed.wrapping_add(2)))));
-    phases::set_phase(w, e, phases::HOLDING);
+    let e = summon(w, Vec3::new(0.0, 128.0, 0.0), yaw, seed, phases::HOLDING);
     w.resource_mut::<EndFight>().dragon = Some(e);
+    e
+}
+
+/// A dragon at `at` with `yaw`, its generators seeded from `seed`, born in `phase` (`/summon`, an egg, the fight's spawn). Not the fight's.
+pub fn summon(w: &mut World, at: Vec3, yaw: f32, seed: i64, phase: u8) -> Entity {
+    use crate::dragon::{flight::{DragonRng, FlightHistory}, parts::Parts, phases};
+    use horizon_core::random::LegacyRandom;
+    let sp = *w.resource::<SpeciesTable>().0.iter().find(|s| s.name == crate::species::ENDER_DRAGON).expect("the dragon's species");
+    let e = spawn_species(w, &sp, at.x, at.z, seed as u64);
+    w.entity_mut(e).insert((Pos(at), Yaw(yaw), FlightHistory::new(at.y, yaw), Parts::default(), DragonRng(LegacyRandom::new(seed.wrapping_add(1)), LegacyRandom::new(seed.wrapping_add(2)))));
+    phases::set_phase(w, e, phase);
     e
 }

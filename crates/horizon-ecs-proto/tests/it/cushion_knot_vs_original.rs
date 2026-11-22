@@ -6,6 +6,8 @@ use bevy_ecs::prelude::*;
 use common::*;
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::block_events::BlockEvents;
+use horizon_ecs_proto::goals::Events;
+use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::species::cushion::{self, CushionHost, Hazard};
 use horizon_ecs_proto::species::leash_knot::{self, Fences};
@@ -120,4 +122,26 @@ fn a_released_knot_without_leashes_is_discarded_at_once() {
     let e = leash_knot::tie(&mut h.world, [0, 60, 0]);
     leash_knot::released(&mut h.world, [0, 60, 0]);
     assert!(h.world.get_entity(e).is_err());
+}
+
+/// A cushion killed by a hit posts `entity_die` at its cell before its break sound; one whose support is lost is discarded, with none.
+#[test]
+fn a_killed_cushion_posts_entity_die_and_a_discarded_one_does_not() {
+    if !have_data() {
+        return;
+    }
+    let mut h = scene();
+    let e = cushion::place(&mut h.world, [0, 60, 0], Vec3::new(0.5, 61.0, 0.5), 14, 0.0, None).expect("placed");
+    h.world.resource_mut::<Events>().host.drain().count();
+    assert!(cushion::hurt(&mut h.world, e, cushion::Source::Entity));
+    let dies = h.world.resource_mut::<Events>().host.drain().filter(|ev| matches!(ev, HostEvent::GameEvent { name: "minecraft:entity_die", .. })).count();
+    assert_eq!(dies, 1, "a killed cushion posts entity_die once");
+    let f = cushion::place(&mut h.world, [4, 60, 4], Vec3::new(4.5, 61.0, 4.5), 14, 0.0, None).expect("placed");
+    h.world.resource_mut::<Events>().host.drain().count();
+    h.world.insert_resource(CushionHost { can_place, survives: gone, hazard: no_hazard });
+    for _ in 0..110 {
+        h.tick();
+    }
+    let dies = h.world.resource_mut::<Events>().host.drain().filter(|ev| matches!(ev, HostEvent::GameEvent { name: "minecraft:entity_die", .. })).count();
+    assert_eq!(dies, 0, "a discarded cushion posts no entity_die");
 }

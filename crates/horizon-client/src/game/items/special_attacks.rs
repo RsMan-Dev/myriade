@@ -1,5 +1,5 @@
 //! Accepted melee hits on special targets and their shared attacker tail.
-use super::{dragon::Hurt, *};
+use super::*;
 use horizon_client::mobs::DamageKind;
 
 impl Game<'_> {
@@ -30,11 +30,9 @@ impl Game<'_> {
             return false;
         }
         // A dragon part is no LivingEntity: `canCriticalAttack` is false.
-        let (amount, scale, _, _) = self.melee_damage(
-            "minecraft:ender_dragon",
-            false,
-            self.dragon.as_ref().map(|dragon| dragon.id),
-        );
+        // Its dragon: the one whose eight parts take the ids after it.
+        let dragon = self.dragon_views().into_iter().map(|(d, _)| d).find(|d| (d + 1..=d + 8).contains(&id));
+        let (amount, scale, _, _) = self.melee_damage("minecraft:ender_dragon", false, dragon);
         self.swing_arm();
         // The part's box.
         let area = self
@@ -44,8 +42,8 @@ impl Game<'_> {
             .map(|(_, b)| b);
         // The sweep and the sounds read the charge, which the hit then spends.
         let sweep = self.sweep_before_hit("minecraft:ender_dragon", false);
-        let hurt = self.hit_special(id, amount, true, DamageKind::PlayerAttack, None);
-        if let (Some(area), Hurt::Landed { .. }) = (area, hurt) {
+        let hurt = self.melee_special(id, amount, DamageKind::PlayerAttack);
+        if let (Some(area), true) = (area, hurt) {
             let (knockback, _) = self.extra_knockback("minecraft:ender_dragon", scale);
             self.attack_effects(area, sweep, None, false, super::mace::Spared::Nothing, None);
             self.post_attack_dragon_burst();

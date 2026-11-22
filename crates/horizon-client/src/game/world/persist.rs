@@ -824,14 +824,7 @@ impl Game<'_> {
                     self.remember(id, uuid, tag);
                 }
             }
-            "minecraft:ender_dragon" => {
-                if let Some(state) = transferred.take() {
-                    self.load_dragon_transferred(tag, uuid, Some(state));
-                } else {
-                    self.load_dragon(tag, uuid);
-                }
-            }
-            "minecraft:cushion" | "minecraft:end_crystal" | "minecraft:armor_stand" => {
+            "minecraft:ender_dragon" | "minecraft:cushion" | "minecraft:end_crystal" | "minecraft:armor_stand" => {
                 let id = match &tag {
                     Tag::Compound(c) => self.ecs_load(c),
                     _ => None,
@@ -912,38 +905,6 @@ impl Game<'_> {
     /// A saved boat.
     pub(super) fn load_boat(&mut self, tag: Tag, uuid: Option<[i32; 4]>, k: &str) {
         self.load_boat_transferred(tag, uuid, k, None);
-    }
-
-    /// The saved ender dragon.
-    pub(super) fn load_dragon(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_dragon_transferred(tag, uuid, None)
-    }
-    pub(super) fn load_dragon_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        // The loaded dragon's own random (`Entity.random`): loading draws
-        // nothing from the level's.
-        let seed = random_source::unique_seed();
-        if self.dragon.is_none()
-            && let Some(mut d) = super::dragon::Dragon::from_nbt(&tag, seed)
-        {
-            // EnderDragon's constructor takes its id and its
-            // parts' from the entity counter.
-            d.live
-                .retain_supplier(&self.motion.attributes, "minecraft:ender_dragon");
-            d.id = self.next_entity + 1;
-            self.next_entity += 9;
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(d.id, state);
-            }
-            self.remember_tags(d.id, &tag);
-            self.remember_uuid(d.id, uuid, &tag);
-            d.join = horizon_client::join_seq::JoinSeq::next();
-            assert!(self.dragon.install(d).is_ok());
-        }
     }
 
     /// `Entity.load`: adopt the bounded TAG_LIST_CODEC input as a set.
@@ -1513,20 +1474,6 @@ impl Game<'_> {
         let mut roots: HashMap<(i32, i32), Vec<(u32, JoinSeq, Tag)>> = HashMap::new();
         // Every kind in `entity_lists!` saves itself (`Entity::save_nbt`).
         self.save_every_entity(keys, &mut roots);
-        if let Some(d) = self.dragon.as_ref()
-            && keys.contains(&chunk_of(d.position))
-        {
-            let raw = anon_raw(&self.persist, "minecraft:ender_dragon", d.position);
-            let uuid = saved_uuid(&self.persist, d.id);
-            // The fields kept with it (`remember_tags`: Silent, Tags, a
-            // name...) once it has flown from where it was loaded.
-            let mut tag = with_raw(d.to_nbt(uuid, raw.as_ref()), self.persist.raw.get(&d.id));
-            write_attachments(&mut tag, d.id, &self.entity_attachments);
-            roots
-                .entry(chunk_of(d.position))
-                .or_default()
-                .push((d.id, d.join_seq(), tag));
-        }
         // `PersistentEntitySectionManager.storeChunkSections`: section by
         // section, each in the order its entities joined it. An entity not
         // yet given an id is not a lookup member: its join stands in.

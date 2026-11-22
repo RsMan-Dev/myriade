@@ -288,18 +288,26 @@ impl Game<'_> {
         for id in self.fang_ids().into_iter().filter(|id| gone.contains(id)) {
             self.kill_fang(id);
         }
-        for c in self.crystals() {
-            if gone.contains(&c.id) {
-                self.remove_crystal(c.id);
+        for (id, _) in self.ecs.crystal_views() {
+            if gone.contains(&id)
+                && let Some(e) = self.ecs.entity_of(id)
+            {
+                self.ecs.despawn(e);
             }
         }
-        for c in self.breath_clouds() {
-            if gone.contains(&c.id) {
-                self.remove_breath_cloud(c.id);
+        for id in self.ecs.species_ids("minecraft:area_effect_cloud") {
+            if gone.contains(&id)
+                && let Some(e) = self.ecs.entity_of(id)
+            {
+                self.ecs.despawn(e);
             }
         }
-        if self.dragon.as_ref().is_some_and(|e| gone.contains(&e.id)) {
-            self.dragon.discard();
+        for (id, _) in self.dragon_views() {
+            if gone.contains(&id)
+                && let Some(e) = self.ecs.entity_of(id)
+            {
+                self.ecs.despawn(e);
+            }
         }
         for &id in gone {
             self.release_vehicle_container(id);

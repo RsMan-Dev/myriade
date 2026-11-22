@@ -234,10 +234,6 @@ impl Game<'_> {
                 self.ecs.alive(id).then_some(())?;
                 (false, false, self.ecs.fall_distance(id), self.ecs.flag(id, horizon_ecs_proto::bridge::host::Flag::Gliding) == Some(true))
             }
-            Target::Mob(id) => {
-                let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
-                (false, false, mob.fall_distance, mob.extra.fall_flying)
-            }
             Target::Stand(_) | Target::Dragon(_) => (false, false, 0.0, false),
             _ => return None,
         })

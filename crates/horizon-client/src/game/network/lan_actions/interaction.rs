@@ -142,7 +142,7 @@ impl Game<'_> {
             None if self.object_target(id).is_some() => object()?,
             // A dragon part or an end crystal (game/mobs/dragon.rs).
             None => {
-                let b = self.tracked_special_box(id)?;
+                let b = u32::try_from(id).ok().and_then(|i| self.ecs.bounds(i))?;
                 let (lo, hi) = (b.min_position(), b.max_position());
                 [
                     (lo.x + hi.x) / 2.0,
@@ -227,7 +227,7 @@ impl Game<'_> {
                 Vec3::new(hi[0], hi[1], hi[2]),
             ));
         }
-        if let Some(b) = self.tracked_special_box(id) {
+        if let Some(b) = u32::try_from(id).ok().and_then(|i| self.ecs.bounds(i)) {
             return Some(b);
         }
         if let Some(knot) = self.knot_at_id(id) {
@@ -619,7 +619,6 @@ impl Game<'_> {
             .remote_entities
             .iter()
             .position(|m| m.id as i32 == id && m.alive())
-            .filter(|_| self.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
         {
             let Some(host) = self.lan.as_ref() else {
                 return Err(ActionRefused::Stale);

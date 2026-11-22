@@ -17,9 +17,10 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         game.build_registries();
         game.session.registries.permission = 4;
         crate::game::ecs::test_support::place_test_stand(game, 16, &ArmorStand::new(16, Vec3::ZERO, 0.0));
-        let mut dragon = super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-        dragon.id = 17;
-        game.dragon.replace(dragon);
+        let dragon = game.ecs_with(|ecs, mw| {
+            ecs.summon_dragon(mw, [0.0; 3], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 17)
+        });
+        assert_eq!(dragon, 17);
         let stand = "@e[type=minecraft:armor_stand,limit=1]";
         let dragon_sel = "@e[type=minecraft:ender_dragon,limit=1]";
         let replace = |game: &mut super::Game<'_>, who: &str, slot: &str, item: &str| {
@@ -28,7 +29,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         let stand_slot =
             |game: &super::Game<'_>, slot| game.armor_stand_list()[0].equipment[slot].clone();
         let dragon_slot =
-            |game: &super::Game<'_>, slot| game.dragon.as_ref().unwrap().equipment[slot].clone();
+            |game: &super::Game<'_>, slot| game.ecs.equipment_stack(dragon, slot);
 
         // A stand refuses body and saddle items and a chestplate in the wrong slot.
         replace(game, stand, "armor.body", "minecraft:diamond_horse_armor");
@@ -53,7 +54,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         replace(game, dragon_sel, "armor.body", "minecraft:stone");
         replace(game, dragon_sel, "armor.chest", "minecraft:iron_helmet");
         replace(game, dragon_sel, "saddle", "minecraft:stone");
-        assert!(game.dragon.as_ref().unwrap().equipment.is_empty());
+        assert!((0..8).all(|slot| game.ecs.equipment_stack(dragon, slot).is_none()));
         replace(game, dragon_sel, "armor.chest", "minecraft:iron_chestplate");
         replace(
             game,

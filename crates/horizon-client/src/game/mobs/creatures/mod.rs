@@ -1380,27 +1380,22 @@ impl Game<'_> {
         let Some(Who::Mob(attacker)) = source.attacker else {
             return;
         };
-        let Some((true, owner)) = self.ecs.tamable_values(attacker) else {
+        let Some((true, _)) = self.ecs.tamable_values(attacker) else {
             return;
         };
-        if self.ecs.entity_of(victim).is_none() {
+        let Some(by) = self.ecs.entity_of(attacker) else {
             return;
-        }
-        match owner {
-            Some(uuid) => self.last_hurt_by_player.insert(
-                victim,
-                super::combat::PlayerCredit(horizon_client::lan::playerdata::ints_uuid(uuid)),
-            ),
-            None => self.last_hurt_by_player.remove(&victim),
         };
+        self.ecs.record_credit(victim, Some(horizon_ecs_proto::targeting::Who::Entity(by)));
+    }
+    /// The ECS id of the player on connection `conn`, for a mob's love cause or credit (None: no player).
+    pub(in crate::game) fn player_id_by_connection(&self, conn: Option<u32>) -> Option<u32> {
+        self.player_entity_id_by_connection(conn).map(|p| p as u32)
     }
     /// Remember the acting player for a mob's `lastHurtByPlayer`.
     pub(super) fn remember_mob_player_credit(&mut self, victim: u32) {
-        if let Some(uuid) = self.player_uuid_of(self.lan_acting) {
-            self.last_hurt_by_player.insert(
-                victim,
-                super::combat::PlayerCredit(horizon_client::lan::playerdata::ints_uuid(uuid)),
-            );
+        if let Some(player) = self.player_id_by_connection(self.lan_acting) {
+            self.ecs.record_credit(victim, Some(horizon_ecs_proto::targeting::Who::Player(player)));
         }
     }
 
@@ -4224,7 +4219,7 @@ impl Game<'_> {
                         // only grew is not in love).
                         if self.remote_entities[index].extra.in_love > 0 {
                             let id = self.remote_entities[index].id;
-                            self.love_cause.insert(id, self.lan_acting);
+                            self.ecs.set_love_cause(id, self.player_id_by_connection(self.lan_acting));
                             let kind = self.remote_entities[index].kind.id.clone();
                             self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
                             self.mob_event_particles(id, 18);

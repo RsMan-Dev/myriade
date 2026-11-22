@@ -69,6 +69,21 @@ impl EcsWorld {
         }
     }
 
+    /// The host's `setLastHurtByPlayer`: a blow of `by` (a player, or a tamed attacker and its owner) on `e`, see `credit::record`.
+    pub fn record_credit(&mut self, e: Entity, by: Option<Who>) {
+        crate::credit::record(self.world_mut(), e, by);
+    }
+
+    /// The uuid of the player `e` remembers as its last hurter, while remembered.
+    pub fn credited_uuid(&self, e: Entity) -> Option<[i32; 4]> {
+        crate::credit::credited_uuid(self.world(), e)
+    }
+
+    /// `Animal.setInLove(player)`: the player that caused the love of `e`, by ECS id.
+    pub fn set_love_cause(&mut self, e: Entity, player: Option<u32>) {
+        crate::behaviours::breed::set_love_cause(self.world_mut(), e, player);
+    }
+
     /// The `CombatTracker` of `e`; None until its first hit.
     pub fn combat_log(&self, e: Entity) -> Option<&CombatLog> {
         self.world().get::<CombatLog>(e)

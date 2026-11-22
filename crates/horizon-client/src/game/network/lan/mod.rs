@@ -1820,23 +1820,18 @@ impl Game<'_> {
             return;
         };
         let effects = self.ecs.effects(id);
+        let kept = self.ecs.modified_swirls(id);
         let update = self.modified_effect_particles(
             &host.hub,
             id,
-            self.ecs_effect_particles.get(&id),
+            kept.as_ref(),
             || effects.iter().map(EffectInstance::shown),
             |i| active_effect(&effects[i]),
         );
-        match update {
-            Some(Some(kept)) => {
-                self.ecs_effect_particles.insert(id, kept);
-            }
-            Some(None) => {
-                self.ecs_effect_particles.remove(&id);
-            }
-            None => {}
+        if let Some(update) = update {
+            self.ecs.set_modified_swirls(id, update);
         }
-        if let Some(kept) = self.ecs_effect_particles.get(&id) {
+        if let Some(kept) = self.ecs.modified_swirls(id) {
             meta.retain(|e| e.0 != 10 && e.0 != 11);
             meta.extend_from_slice(&kept.meta);
         }

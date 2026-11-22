@@ -706,10 +706,7 @@ impl Game<'_> {
         if let Some((_, kind)) = self.combat.exploded_kinds.iter().rfind(|(m, _)| *m == id) {
             return Some(kind.clone());
         }
-        self.dragon
-            .as_ref()
-            .filter(|d| d.id == id)
-            .map(|_| "minecraft:ender_dragon".into())
+        None
     }
 
     /// The dying guest's last blow (`LivingEntity.getLastDamageSource`), its

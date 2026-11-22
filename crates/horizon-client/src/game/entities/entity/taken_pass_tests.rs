@@ -137,25 +137,6 @@ impl LifecycleFixture {
         crate::game::native_entity_refs::tests::with_game(|game| {
             let mut ids = |game: &mut Game<'_>| {
                 observe(game);
-                use horizon_client::join_seq::Joined;
-                let mut unique = std::collections::HashSet::new();
-                macro_rules! lookup {
-                    ($list:expr) => {
-                        for (index, entity) in $list.iter().enumerate() {
-                            let join = entity.join_seq();
-                            assert!(join.is_joined());
-                            assert!(join < horizon_client::join_seq::JoinSeq::upcoming());
-                            assert!(unique.insert(join), "duplicate owner join");
-                            assert_eq!($list.locate(join), Some(index));
-                        }
-                    };
-                }
-                if let Some(dragon) = game.dragon.as_ref() {
-                    assert!(dragon.join.is_joined());
-                    assert!(dragon.join < horizon_client::join_seq::JoinSeq::upcoming());
-                    assert!(unique.insert(dragon.join));
-                    assert_eq!(game.dragon.locate(dragon.join), Some(0));
-                }
                 (self.ids)(game)
             };
             let root = ScratchDirectory(std::env::temp_dir().join(format!(

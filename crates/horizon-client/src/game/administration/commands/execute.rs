@@ -880,9 +880,10 @@ impl Game<'_> {
                                 // LivingEntity.getLastHurtByMob is the player
                                 // who hit it, not whichever client is reading it.
                                 match self
-                                    .last_hurt_by_player
-                                    .get(&id)
-                                    .and_then(|credit| self.resolve_player_credit(*credit))
+                                    .ecs
+                                    .credited_uuid(id)
+                                    .map(crate::game::combat::PlayerCredit)
+                                    .and_then(|credit| self.resolve_player_credit(credit))
                                 {
                                     Some(Some(conn))
                                         if attacker && self.lan_acting != Some(conn) =>

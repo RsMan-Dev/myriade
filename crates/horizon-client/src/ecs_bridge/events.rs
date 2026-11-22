@@ -137,6 +137,8 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         HostEvent::PullEntity { entity, velocity } => MobEvent::Push { target: Who::Mob(id_of(world, entity)?), velocity },
         HostEvent::TargetChanged { entity, target: Some(t), .. } => MobEvent::SetTarget { mob: id_of(world, entity)?, target: who_of(world, t)? },
         HostEvent::BossBar { .. }
+        | HostEvent::Fight(_)
+        | HostEvent::DragonPhase { .. }
         | HostEvent::PushPlayer { .. }
         | HostEvent::Cloud { .. }
         | HostEvent::CloudHit { .. }

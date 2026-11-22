@@ -643,8 +643,19 @@ impl Game<'_> {
             .filter(|&id| id > after)
             .filter_map(|id| Some((id, self.ecs.position(id)?, self.ecs.rotation(id)?[0])))
             .collect();
-        let crystals = self.crystals();
-        let breath_views = self.breath_clouds();
+        let crystals = self.ecs.crystal_views();
+        // An AreaEffectCloud's box is its radius: half its width.
+        let breath_views: Vec<(u32, [f64; 3], f32)> = self
+            .ecs
+            .species_ids("minecraft:area_effect_cloud")
+            .into_iter()
+            .filter_map(|id| {
+                let at = self.ecs.position(id)?;
+                let b = self.ecs.bounds(id)?;
+                let radius = ((b.max(horizon_core::geometry::Axis::X) - b.min(horizon_core::geometry::Axis::X)) / 2.0) as f32;
+                Some((id, at, radius))
+            })
+            .collect();
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -673,12 +684,12 @@ impl Game<'_> {
             let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
             e.velocity = velocity;
         }
-        for c in crystals.iter().filter(|c| c.id > after) {
+        for (id, c) in crystals.iter().filter(|(id, _)| *id > after) {
             let e = add_state(
                 out,
-                c.id,
+                *id,
                 "minecraft:end_crystal",
-                at(c.position),
+                c.position,
                 0.0,
                 false,
             );
@@ -704,12 +715,9 @@ impl Game<'_> {
             ),
             None,
         );
-        for b in breath_views.iter().filter(|b| b.id > after) {
-            let e = add_state(out, b.id, "minecraft:area_effect_cloud", b.at, 0.0, false);
-            e.meta.push((8, serializer::FLOAT, Value::Float(b.radius)));
-            if b.waiting() {
-                e.meta.push((9, serializer::BOOLEAN, Value::Bool(true)));
-            }
+        for (id, at, radius) in breath_views.iter().filter(|(id, ..)| *id > after) {
+            let e = add_state(out, *id, "minecraft:area_effect_cloud", *at, 0.0, false);
+            e.meta.push((8, serializer::FLOAT, Value::Float(*radius)));
             if let Some(p) = &breath {
                 e.meta
                     .push((10, serializer::PARTICLE, Value::Particle(p.clone())));
@@ -717,7 +725,6 @@ impl Game<'_> {
             e.defaults
                 .push((9, serializer::BOOLEAN, Value::Bool(false)));
         }
-        out.extend(self.lan_dragon_state());
     }
 }
 

@@ -109,10 +109,6 @@ impl Game<'_> {
         if let Some(rider) = self.native_controlling_player(t, entity) {
             return self.native_entity_known_speed(rider);
         }
-        if let Target::Dragon(_) = t {
-            let d = self.dragon.as_ref()?;
-            return Some(d.position.subtract(d.previous));
-        }
         // P keeps no previous position (a write per entity per tick): the move of the last tick is its velocity.
         if let Some(m) = self.ecs.motion(entity.id()) {
             return Some(Vec3::new(m.velocity[0], m.velocity[1], m.velocity[2]));
@@ -166,9 +162,6 @@ impl Game<'_> {
         };
         let [x, y, z] = velocity;
         with_entity_mut!(self, h, e => *e.velocity_mut() = Vec3::new(x, y, z));
-        if let EntityHandle::Mob(i) = h {
-            self.remote_entities[i].needs_sync = true;
-        }
         true
     }
     /// `Entity.resetFallDistance`: how far the entity has fallen is forgotten, so its next
@@ -235,10 +228,7 @@ impl Game<'_> {
             return Some(corners(with_entity!(self, h, e => e.bounds())));
         }
         let (lo, hi) = match t {
-            Target::DragonPart(id) => {
-                let (dragon, part) = self.resident_dragon_part(id)?;
-                return Some(corners(dragon.part_geometry(part).1));
-            }
+            Target::DragonPart(_) => return None,
             Target::Frame(id) => self.ecs_frames().into_iter().find(|f| f.id == id)?.bounds(),
             Target::Painting(id) => self.ecs_paintings().into_iter().find(|p| p.id == id)?.bounds(),
             _ => return None,

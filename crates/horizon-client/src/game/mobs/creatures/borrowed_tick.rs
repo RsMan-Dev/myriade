@@ -12,9 +12,10 @@ impl Game<'_> {
         let attacker = match attacker {
             Some(Who::Mob(id)) => id,
             Some(Who::Player) => self
-                .last_hurt_by_player
-                .get(&m.id)
-                .and_then(|credit| self.resolve_player_credit(*credit))
+                .ecs
+                .credited_uuid(m.id)
+                .map(crate::game::combat::PlayerCredit)
+                .and_then(|credit| self.resolve_player_credit(credit))
                 .and_then(|conn| self.player_entity_id_by_connection(conn))
                 .map_or(0, |id| id as u32),
             None => 0,

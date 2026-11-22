@@ -100,7 +100,6 @@ impl Game<'_> {
             self.death_focus = None;
         }
         self.previous_position = feet;
-        self.hook.discard();
         self.player_state.attachments.retire();
         self.resident_entities.local_player.renew();
         self.player = Some(player);

@@ -62,7 +62,10 @@ fn hit(w: &mut World, e: Entity) {
         if r.spared.contains(&species_name(w, c)) {
             continue;
         }
-        hurt_creature(w, c, e, r.damage);
+        // `ArmorStand.hurtServer` for a mob attack leaves the stand whole: it is flung, not hurt.
+        if w.get::<crate::stand::Stand>(c).is_none() {
+            hurt_creature(w, c, e, r.damage);
+        }
         push_creature(w, c, fling(from, creature_xz(w, c), r.fling));
     }
     w.resource_mut::<Events>().host.particles("poof", [at.x, at.y + 0.5, at.z], [0.5; 3], 0.0, 40);

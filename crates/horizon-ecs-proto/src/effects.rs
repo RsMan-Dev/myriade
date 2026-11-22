@@ -11,6 +11,43 @@ use crate::rules::effects as rule;
 use crate::type_tags;
 use bevy_ecs::prelude::*;
 
+/// The mods' answer for a creature's effect swirls (`effect_particle_modification`), with the effects it was computed for. The host writes it
+/// when the effects change and clears it with `set_modified_swirls`; sparse, since most creatures have none.
+#[derive(Component, Clone, Debug, PartialEq)]
+#[component(storage = "SparseSet")]
+pub struct ModifiedSwirls(pub horizon_client_render::effects::ModifiedEffectParticles);
+
+/// Keeps `swirls` on `e`, or clears them with `None`.
+pub fn set_modified_swirls(w: &mut World, e: Entity, swirls: Option<horizon_client_render::effects::ModifiedEffectParticles>) {
+    match swirls {
+        Some(s) => {
+            w.entity_mut(e).insert(ModifiedSwirls(s));
+        }
+        None => {
+            w.entity_mut(e).remove::<ModifiedSwirls>();
+        }
+    }
+}
+
+#[cfg(test)]
+mod swirl_tests {
+    use super::*;
+    use horizon_client_render::effects::{ModifiedEffectParticles, ShownEffect};
+
+    #[test]
+    fn the_mods_swirls_stay_on_the_creature_until_they_are_cleared() {
+        let mut w = World::new();
+        let e = w.spawn_empty().id();
+        let speed = ShownEffect { effect: "minecraft:speed", amplifier: 0, visible: true, ambient: false };
+        let swirls = ModifiedEffectParticles::new([speed], vec![]);
+        set_modified_swirls(&mut w, e, Some(swirls.clone()));
+        assert_eq!(w.get::<ModifiedSwirls>(e).map(|s| s.0.clone()), Some(swirls.clone()));
+        assert!(swirls.computed_for([speed]), "computed for the effect it shows");
+        set_modified_swirls(&mut w, e, None);
+        assert!(w.get::<ModifiedSwirls>(e).is_none());
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
     Speed,

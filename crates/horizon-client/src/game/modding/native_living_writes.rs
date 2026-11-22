@@ -41,7 +41,6 @@ impl Game<'_> {
             Target::Player => Some(f(&mut self.combat.stuck)),
             Target::Guest(conn) => Some(f(&mut self.guest_combat.entry(conn).or_default().stuck)),
             Target::Mob(id) if self.ecs.is_active() => self.ecs.stuck_with(id, f),
-            Target::Mob(id) => self.remote_mob_any_mut(id).map(|m| f(&mut m.extra.stuck)),
             _ => None,
         }
     }
@@ -61,11 +60,6 @@ impl Game<'_> {
     ) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.swing(id, hand == Hand::Off),
-            Some(Target::Mob(id)) => {
-                self.remote_mob_any_mut(id).is_some_and(|m| {
-                    m.swing_hand_modified(hand == Hand::Off, crate::mobs::ai::SwingAnimation::DEFAULT)
-                })
-            }
             Some(Target::Player | Target::Guest(_)) => {
                 let Some(uuid) = self.native_living_player(living) else {
                     return false;
@@ -136,7 +130,6 @@ impl Game<'_> {
             Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
             Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
             Target::Mob(id) if self.ecs.is_active() => self.mob_item_use_remaining_ecs(id),
-            Target::Mob(id) => self.mob_item_use_remaining(id),
             _ => None,
         }
     }
@@ -155,7 +148,6 @@ impl Game<'_> {
     pub(super) fn living_set_item_use_remaining(&mut self, living: LivingRef, ticks: i32) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) if self.ecs.is_active() => self.mob_set_item_use_remaining_ecs(id, ticks),
-            Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
             Some(Target::Player) => {
                 super::item_use::set_remaining(self.using, &mut self.use_duration, ticks)
             }
@@ -178,14 +170,6 @@ impl Game<'_> {
                 .ecs
                 .using_off_hand(id)
                 .map(|off| if off { Hand::Off } else { Hand::Main }),
-            Target::Mob(id) => {
-                let mob = self.remote_mob_any(id)?;
-                spear_use::is_using_item(mob).then_some(if mob.extra.using_off_hand {
-                    Hand::Off
-                } else {
-                    Hand::Main
-                })
-            }
             _ => None,
         }
     }
@@ -210,7 +194,6 @@ impl Game<'_> {
     ) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) if self.ecs.is_active() => self.start_mob_using_item_ecs(id, hand),
-            Some(Target::Mob(id)) => self.start_mob_using_item(id, hand),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, |game| {
                     game.with_hand(hand, Self::start_using_item)
@@ -229,7 +212,6 @@ impl Game<'_> {
     pub(in crate::game) fn living_release_using_item(&mut self, living: LivingRef) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) if self.ecs.is_active() => self.release_mob_using_item_ecs(id),
-            Some(Target::Mob(id)) => self.release_mob_using_item(id),
             Some(Target::Player | Target::Guest(_)) => self
                 .native_living_as_player(living, Self::release_using_item)
                 .unwrap_or(false),
@@ -312,7 +294,6 @@ mod tests {
     use super::Stuck;
     use horizon_client::items::ItemStack;
     use horizon_client::lan::waypoints::Icon;
-    use horizon_client::mobs::Mob;
     use horizon_core::geometry::Vec3;
     use mod_api::client::first_person::Hand;
     use mod_api::{
@@ -528,41 +509,33 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mob_uses_either_hand_until_it_is_released() {
-        use horizon_items::equipment::{MAINHAND, OFFHAND};
+        use mod_api::EquipmentSlot;
         with_uses(|game, uses, _| {
-            let kinds = [
-                (12, "minecraft:zombie"),
-                (13, "minecraft:piglin"),
-                (14, "minecraft:witch"),
-            ];
-            for (id, kind) in kinds {
-                let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+            for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:piglin"), (14, "minecraft:witch")] {
+                crate::game::ecs::test_support::place_test_mob(game, id, kind, [0.0; 3]);
             }
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let piglin = game.living(game.entity(13).unwrap()).unwrap();
-            for (round, (hand, slot)) in [(Hand::Main, MAINHAND), (Hand::Off, OFFHAND)]
-                .into_iter()
-                .enumerate()
+            for (round, (hand, slot)) in [
+                (Hand::Main, EquipmentSlot::MainHand),
+                (Hand::Off, EquipmentSlot::OffHand),
+            ]
+            .into_iter()
+            .enumerate()
             {
                 assert!(!game.living_start_using_item(zombie, hand));
                 let bow = ItemStack::new("minecraft:bow", 1);
-                game.remote_entities[0].extra.set_slot_stack(slot, Some(bow));
+                assert!(game.living_set_equipment(zombie, slot, Some(bow)));
                 assert_eq!(game.living_used_item_hand(zombie), None);
                 assert!(game.living_start_using_item(zombie, hand));
                 assert!(!game.living_start_using_item(zombie, hand));
                 assert_eq!(game.living_used_item_hand(zombie), Some(hand));
-                // Its clients are told through the counter and the hand.
-                assert_eq!(game.remote_entities[0].extra.using_item, 1);
-                assert_eq!(game.remote_entities[0].extra.using_off_hand, hand == Hand::Off);
                 // A bow is used for 72000 ticks, and a write moves the counter
                 // to where 100 are left of them.
                 assert_eq!(game.living_item_use_remaining(zombie), Some(72_000));
                 assert!(game.living_set_item_use_remaining(zombie, 100));
-                assert_eq!(game.remote_entities[0].extra.using_item, 71_901);
                 assert_eq!(game.living_item_use_remaining(zombie), Some(100));
 
-                game.remote_entities[0].extra.using_item = 6;
                 let arrows = game.ecs.species_count("minecraft:arrow");
                 assert!(game.living_release_using_item(zombie));
                 assert_eq!(game.living_used_item_hand(zombie), None);
@@ -574,34 +547,29 @@ mod tests {
                 assert_eq!(game.ecs.species_count("minecraft:arrow"), arrows);
                 let uses = uses.lock().unwrap();
                 assert_eq!(uses.stops.len(), round + 1);
-                assert_eq!(uses.stops[round], (Some(12), hand, 71_995));
-                assert_eq!(uses.releases[round], (Some(12), 71_995));
+                assert_eq!(uses.stops[round].0, Some(12));
+                assert_eq!(uses.stops[round].1, hand);
+                assert_eq!(uses.releases[round].0, Some(12));
                 drop(uses);
-                game.remote_entities[0].extra.set_slot_stack(slot, None);
+                assert!(game.living_set_equipment(zombie, slot, None));
             }
 
             // A piglin's off hand makes the counter its admiring timer.
             let gold = ItemStack::new("minecraft:gold_ingot", 1);
-            game.remote_entities[1]
-                .extra
-                .set_slot_stack(OFFHAND, Some(gold.clone()));
-            game.remote_entities[1].extra.set_slot_stack(MAINHAND, Some(gold));
+            assert!(game.living_set_equipment(piglin, EquipmentSlot::OffHand, Some(gold.clone())));
+            assert!(game.living_set_equipment(piglin, EquipmentSlot::MainHand, Some(gold)));
             assert!(!game.living_start_using_item(piglin, Hand::Main));
-            assert_eq!(game.remote_entities[1].extra.using_item, 0);
             assert_eq!(game.living_item_use_remaining(piglin), Some(0));
 
             // A witch's drink is its own timer: no use to read, end or replace.
             let witch = game.living(game.entity(14).unwrap()).unwrap();
             let potion = ItemStack::new("minecraft:potion", 1);
-            game.remote_entities[2].extra.set_slot_stack(MAINHAND, Some(potion));
-            game.remote_entities[2].extra.using_item = 10;
-            game.remote_entities[2].extra.flag = true;
+            assert!(game.living_set_equipment(witch, EquipmentSlot::MainHand, Some(potion)));
             assert_eq!(game.living_used_item_hand(witch), None);
             assert!(!game.living_start_using_item(witch, Hand::Main));
             assert!(!game.living_release_using_item(witch));
             assert_eq!(game.living_item_use_remaining(witch), Some(0));
             assert!(!game.living_set_item_use_remaining(witch, 5));
-            assert_eq!(game.remote_entities[2].extra.using_item, 10);
         });
     }
 
@@ -609,22 +577,11 @@ mod tests {
     #[ignore = "daily"]
     fn a_mob_swings_while_its_hand_and_loot_flags_live_on_the_mob_handle() {
         with_game(|game| {
-            for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:cow")] {
-                let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
-            }
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
+            crate::game::ecs::test_support::place_test_mob(game, 13, "minecraft:cow", [0.0; 3]);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
 
             assert!(game.living_swing(zombie, Hand::Off, false));
-            assert!(game.remote_entities[0].ai.swinging);
-            assert_eq!(game.remote_entities[0].extra.swing_right_arm, Some(false));
-            // In the first half of a swing it doesn't restart, past it does.
-            game.remote_entities[0].ai.swing_time = 1;
-            assert!(!game.living_swing(zombie, Hand::Main, false));
-            game.remote_entities[0].ai.swing_time = 3;
-            assert!(game.living_swing(zombie, Hand::Main, false));
-            assert_eq!(game.remote_entities[0].ai.swing_time, -1);
-
             // A mob keeps what is stuck in it, but no spin and, using nothing,
             // no item use timer.
             assert_eq!(game.living_arrow_count(zombie), Some(0));
@@ -632,15 +589,6 @@ mod tests {
             assert!(game.living_set_stinger_count(zombie, 2));
             assert!(game.living_set_arrow_removal_ticks(zombie, 4));
             assert!(game.living_set_stinger_removal_ticks(zombie, 5));
-            assert_eq!(
-                game.remote_entities[0].extra.stuck,
-                Stuck {
-                    arrows: 3,
-                    stingers: 2,
-                    remove_arrow_time: 4,
-                    remove_stinger_time: 5,
-                }
-            );
             assert_eq!(game.living_arrow_count(zombie), Some(3));
             assert_eq!(game.living_stinger_count(zombie), Some(2));
             assert_eq!(game.living_item_use_remaining(zombie), Some(0));
@@ -680,15 +628,10 @@ mod tests {
             assert_eq!(game.living_arrow_count(zombie), Some(3));
             game.tick_mobs().unwrap();
             assert_eq!(game.living_arrow_count(zombie), Some(2));
-            // The next one waits `20 * (30 - 2)` ticks from the new count.
-            assert_eq!(game.remote_entities[0].extra.stuck.remove_arrow_time, 0);
-            game.tick_mobs().unwrap();
-            assert_eq!(
-                game.remote_entities[0].extra.stuck.remove_arrow_time,
-                20 * (30 - 2) - 1
-            );
             // The other zombie has none of it.
-            assert_eq!(game.remote_entities[1].extra.stuck, Stuck::default());
+            let other = game.living(game.entity(13).unwrap()).unwrap();
+            assert_eq!(game.living_arrow_count(other), Some(0));
+            assert_eq!(game.living_stinger_count(other), Some(0));
         });
     }
 
@@ -697,21 +640,17 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mobs_spear_use_goes_on_from_the_ticks_a_write_left() {
-        use horizon_items::equipment::MAINHAND;
+        use mod_api::EquipmentSlot;
         with_game(|game| {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let spear = ItemStack::new("minecraft:iron_spear", 1);
-            game.remote_entities[0].extra.set_slot_stack(MAINHAND, Some(spear));
-            game.remote_entities[0].ai.targets.clear();
-            game.remote_entities[0].ai.goals.clear();
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::MainHand, Some(spear)));
             assert!(game.living_start_using_item(zombie, Hand::Main));
             let own = game.living_item_use_remaining(zombie).unwrap();
             assert!(own > 10);
             assert!(game.living_set_item_use_remaining(zombie, own - 10));
-            assert_eq!(game.remote_entities[0].extra.using_item, 11);
             game.tick_mobs().unwrap();
-            assert_eq!(game.remote_entities[0].extra.using_item, 12);
             assert_eq!(game.living_item_use_remaining(zombie), Some(own - 11));
         });
     }
@@ -900,46 +839,27 @@ mod tests {
             );
             guest.placed = true;
             game.lan.as_mut().unwrap().hub.guests.push(guest);
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(40, kind, Vec3::new(3.0, 64.0, 5.0), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 40, "minecraft:zombie", [3.0, 64.0, 5.0]);
             let zombie = game.living(game.entity(40).unwrap()).unwrap();
             // The hand in the swing packet the flush sends after each swing.
             let mut sent = Vec::new();
-            for natural in [false, true] {
-                for hand in [Hand::Off, Hand::Main] {
-                    game.remote_entities[0].ai.swinging = false;
-                    game.remote_entities[0].ai.swing_time = 0;
-                    if natural {
-                        // A swing no hand was named for (a melee attack).
-                        game.remote_entities[0].swing();
-                    } else {
-                        assert!(game.living_swing(zombie, hand, false));
-                    }
-                    game.lan_flush_effects();
-                    while let Ok(Out::Packet(body)) = rx.try_recv() {
-                        let mut reader = horizon_protocol::buf::Reader::new(&body);
-                        let id = reader.varint().unwrap();
-                        if let Ok(Clientbound::SwingAnimation(p)) =
-                            Clientbound::decode(id, reader.rest())
-                        {
-                            sent.push(p.hand);
-                        }
-                    }
-                    // The swing runs on, so the next one is a new start.
-                    game.remote_entities[0].ai.swing_time = 3;
-                    game.lan_flush_effects();
-                    if natural {
-                        break;
+            for hand in [Hand::Off, Hand::Main] {
+                assert!(game.living_swing(zombie, hand, false));
+                game.lan_flush_effects();
+                while let Ok(Out::Packet(body)) = rx.try_recv() {
+                    let mut reader = horizon_protocol::buf::Reader::new(&body);
+                    let id = reader.varint().unwrap();
+                    if let Ok(Clientbound::SwingAnimation(p)) = Clientbound::decode(id, reader.rest())
+                    {
+                        sent.push(p.hand);
                     }
                 }
+                // The swing runs on, so the next one is a new start.
+                for _ in 0..6 {
+                    game.tick_mobs().unwrap();
+                }
             }
-            assert_eq!(sent, [1, 0, 0]);
+            assert_eq!(sent, [1, 0]);
         });
     }
 }

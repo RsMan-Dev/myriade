@@ -64,7 +64,7 @@ pub fn gone(w: &mut World, e: Entity, at: Vec3, by: Option<u32>) {
         f.crystals_alive = f.crystals_alive.saturating_sub(1);
     }
     let by = by.or_else(|| fight::nearest_enemy(w, Vec3::new(at.x.floor(), at.y.floor(), at.z.floor()), None, None).map(|(id, _)| id));
-    w.resource_mut::<FightEvents>().crystal_destroyed.push(CrystalDestroyed { crystal: e, by });
+    w.resource_mut::<FightEvents>().crystal_destroyed.push(CrystalDestroyed { crystal: e, at: [at.x, at.y, at.z], by });
     let Some(d) = w.resource::<EndFight>().dragon else { return };
     if w.get::<NearestCrystal>(d).and_then(|n| n.0) == Some(e) {
         w.entity_mut(d).insert(NearestCrystal(None));

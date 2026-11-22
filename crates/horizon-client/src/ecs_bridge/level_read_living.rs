@@ -64,6 +64,17 @@ impl EcsLevel {
             .filter_map(|x| Some(instance(potions::effect(effect_name(x.kind))?, x, ecs.effect_remaining(e, x.kind)?)))
             .collect()
     }
+    /// The mods' swirls kept on the entity `id` (`ModifiedSwirls`), as the host last left them.
+    pub fn modified_swirls(&self, id: u32) -> Option<crate::effects::ModifiedEffectParticles> {
+        self.ecs()?.modified_swirls(self.entity_of(id)?)
+    }
+    /// Keeps the mods' swirls on the entity `id`, or clears them with None; nothing when inert.
+    pub fn set_modified_swirls(&mut self, id: u32, swirls: Option<crate::effects::ModifiedEffectParticles>) {
+        let Some(e) = self.entity_of(id) else { return };
+        if let Some(w) = self.ecs_mut() {
+            w.set_modified_swirls(e, swirls);
+        }
+    }
     pub fn flag(&self, id: u32, flag: Flag) -> Option<bool> {
         self.ecs()?.flag(self.entity_of(id)?, flag_name(flag)?)
     }

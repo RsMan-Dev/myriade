@@ -7,7 +7,6 @@ mod cloud_particle;
 use horizon_ecs_proto::{effect_cloud::CloudSpec, effects, targeting};
 use super::{
     Game,
-    dragon::{FightWho, breath::CloudView},
     splash_water::thrown_block_hit,
 };
 use horizon_client::health::DamageLevel;
@@ -103,7 +102,6 @@ pub(in crate::game) use cloud_particle::particle_options;
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Victim {
     Mob(u32),
-    Player(FightWho),
 }
 /// A potion-bearing `AreaEffectCloud`: its effects, settings and recent victims.
 pub(super) struct PotionCloud {
@@ -480,27 +478,6 @@ fn thrown_kind(stack: &ItemStack) -> &'static str {
     }
 }
 
-/// `BottleItem.use`: find a living `AreaEffectCloud` owned by an `EnderDragon`
-/// within the player's box grown by 2, and shrink its radius by 0.5. Gives
-/// the cloud's position when one was found.
-pub(super) fn collect_dragon_breath(
-    player_box: Aabb,
-    clouds: &[CloudView],
-) -> Option<CloudView> {
-    let search_box = player_box.inflate(Vec3::new(2.0, 2.0, 2.0));
-    clouds.iter().copied().find(|c| {
-        if c.age - horizon_ecs_proto::cloud_tick::WAIT >= c.duration {
-            return false;
-        }
-        let r = f64::from(c.radius);
-        let cloud_box = Aabb::new(
-            Vec3::new(c.at[0] - r, c.at[1], c.at[2] - r),
-            Vec3::new(c.at[0] + r, c.at[1] + 0.5, c.at[2] + r),
-        );
-        search_box.intersects(cloud_box)
-    })
-}
-
 impl Game<'_> {
     /// Right-click with a potion, splash/lingering potion or glass bottle.
     pub(super) fn use_potion_item(&mut self, stack: &ItemStack) -> horizon_client::Result<bool> {
@@ -557,34 +534,6 @@ impl Game<'_> {
                 // plays item.bottle.fill_dragonbreath at the player, emits
                 // GameEvent.FLUID_PICKUP, fires PLAYER_INTERACTED_WITH_ENTITY on the
                 // cloud, and turns one bottle into dragon_breath.
-                if let Some(player) = self.player.as_ref()
-                    && let Some(cloud) = collect_dragon_breath(player.bounds(), &self.breath_clouds())
-                {
-                    let cloud_at = cloud.at;
-                    self.ecs.shrink_breath_cloud(cloud.id, 0.5);
-                    let player_pos = [player.position.x, player.position.y, player.position.z];
-                    self.audio.play(
-                        "minecraft:item.bottle.fill_dragonbreath",
-                        Some(player_pos),
-                        1.0,
-                        1.0,
-                    );
-                    self.post_entity_event("minecraft:fluid_pickup", Who::Player);
-                    let cloud = horizon_client::advancements::EntityView {
-                        kind: "minecraft:area_effect_cloud".into(),
-                        position: cloud_at,
-                        ..Default::default()
-                    };
-                    self.trigger_item_entity(
-                        "minecraft:player_interacted_with_entity",
-                        stack,
-                        &cloud,
-                    );
-                    // BottleItem.turnBottleIntoItem.
-                    self.award_stat("used", &stack.item, 1);
-                    self.fill_held(ItemStack::new("minecraft:dragon_breath", 1));
-                    return Ok(true);
-                }
                 let Some(hit) = self.pick_fluid() else {
                     return Ok(false);
                 };
@@ -1588,23 +1537,6 @@ impl Game<'_> {
         // effect stays infinite.
         let scaled = |duration| horizon_client::effects::scaled_duration(duration, duration_scale);
         match victim {
-            Victim::Player(who) => self.as_fight_player(who, |g| {
-                for (id, duration, amp) in effects {
-                    let Some(e) = brewing::effect(id) else {
-                        continue;
-                    };
-                    if e.instant {
-                        if let Some(a) = horizon_client::effects::instant(id, *amp, 0.5) {
-                            g.apply_indirect_effect_action(a, &cloud_owner);
-                        }
-                    } else {
-                        let mut instance = EffectInstance::new(e.id, scaled(*duration), *amp);
-                        instance.visible = !hidden.contains(id);
-                        instance.ambient = ambient.contains(id);
-                        g.add_player_effect(instance);
-                    }
-                }
-            }),
             Victim::Mob(mob) if self.ecs.is_active() => {
                 let scaled_effects: Vec<(&'static str, i32, i32)> =
                     effects.iter().map(|&(id, duration, amp)| (id, scaled(duration), amp)).collect();
@@ -1640,13 +1572,11 @@ impl Game<'_> {
                                     source,
                                     "minecraft:area_effect_cloud",
                                 ) && owner == Some(Who::Player)
-                                    && let Some(uuid) = self.player_uuid_of(guest)
+                                    && let Some(player) = self.player_id_by_connection(guest)
                                 {
-                                    self.last_hurt_by_player.insert(
+                                    self.ecs.record_credit(
                                         mob,
-                                        super::combat::PlayerCredit(
-                                            horizon_client::lan::playerdata::ints_uuid(uuid),
-                                        ),
+                                        Some(horizon_ecs_proto::targeting::Who::Player(player)),
                                     );
                                 }
                             } else {
@@ -1930,13 +1860,11 @@ impl Game<'_> {
                     );
                     if hurt
                         && owner.player
-                        && let Some(uuid) = self.player_uuid_of(owner.guest)
+                        && let Some(player) = self.player_id_by_connection(owner.guest)
                     {
-                        self.last_hurt_by_player.insert(
+                        self.ecs.record_credit(
                             id,
-                            super::combat::PlayerCredit(
-                                horizon_client::lan::playerdata::ints_uuid(uuid),
-                            ),
+                            Some(horizon_ecs_proto::targeting::Who::Player(player)),
                         );
                     }
                 } else {
@@ -2231,20 +2159,6 @@ mod tests {
         assert!(!thrown_left_owner(&[body(0.0), mount], beside_mount, up));
         // No thrower (a dispenser's potion): it has left them already.
         assert!(thrown_left_owner(&[], eye, up));
-    }
-
-    /// `BottleItem.use`: collecting dragon's breath from an ender dragon's cloud (#8054).
-    #[test]
-    fn glass_bottle_collects_dragon_breath_from_dragon_cloud() {
-        let player_box = Aabb::new(Vec3::new(-0.3, 64.0, -0.3), Vec3::new(0.3, 65.8, 0.3));
-        let clouds = [CloudView {
-            id: 1,
-            at: [1.0, 64.0, 0.0],
-            radius: 5.0,
-            age: 0,
-            duration: 200,
-        }];
-        assert_eq!(collect_dragon_breath(player_box, &clouds).map(|c| c.id), Some(1));
     }
 
 }

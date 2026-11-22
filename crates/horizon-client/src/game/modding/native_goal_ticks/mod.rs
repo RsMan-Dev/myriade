@@ -11,7 +11,7 @@
 //! handles take, and the write handles a `ServerHost` takes do not exist here.
 use super::Game;
 use crate::mobs::{
-    self, Mob, MobWorld, Seen, TargetInfo, Who,
+    self, Mob, MobWorld, Seen, Who,
     part_goals::{BehaviorOp, GoalOp},
 };
 use horizon_core::geometry::Axis;
@@ -51,7 +51,6 @@ enum Resolved<'a> {
     Player,
     Live(&'a Mob),
     Seen(&'a Seen),
-    Dragon(TargetInfo),
     /// Removed, or a mob outside the snapshot-only view (for example a spawn
     /// buffered while the pass holds its list). Authoritative over the game
     /// host behind the tick. A dead-but-present snapshot row still resolves.
@@ -81,11 +80,6 @@ impl GoalCx<'_, '_> {
                 .is_some_and(|(_, player)| player == id)
         {
             return Some(Resolved::Player);
-        }
-        if let Some((dragon, info)) = self.w.dragon
-            && dragon == id
-        {
-            return Some(Resolved::Dragon(info));
         }
         if let Some(mobs) = self.w.live_mobs {
             // When the tick has a live view, it is authoritative. Falling
@@ -139,8 +133,7 @@ impl GoalCx<'_, '_> {
                 Resolved::Own
                 | Resolved::Player
                 | Resolved::Live(_)
-                | Resolved::Seen(_)
-                | Resolved::Dragon(_),
+                | Resolved::Seen(_),
             ) => Some(entity),
             // An unavailable mob is the view's own answer: never ask the host.
             Some(Resolved::Unavailable) => None,
@@ -202,7 +195,6 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => Some(mob.position),
             Resolved::Player => self.w.selected_player().map(|p| p.position),
             Resolved::Seen(seen) => Some(seen.position),
-            Resolved::Dragon(info) => Some(info.position),
             Resolved::Unavailable => None,
         }
     }
@@ -224,7 +216,6 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => Some(mob.velocity),
             Resolved::Player => self.w.selected_player().map(|p| p.velocity),
             Resolved::Seen(seen) => Some(seen.velocity),
-            Resolved::Dragon(_) => None,
             Resolved::Unavailable => None,
         }
         .map(|v| [v.x, v.y, v.z])
@@ -246,7 +237,7 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => Some(mob.head_yaw),
             Resolved::Player => self.w.selected_player().map(|p| p.yaw),
             // `Seen::yaw` is the body's, not the head's.
-            Resolved::Seen(_) | Resolved::Dragon(_) | Resolved::Unavailable => None,
+            Resolved::Seen(_) | Resolved::Unavailable => None,
         }
     }
 
@@ -256,7 +247,6 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => mob.bounds(),
             Resolved::Player => self.w.selected_player().map(|p| p.bounds)?,
             Resolved::Seen(seen) => seen.bounds,
-            Resolved::Dragon(info) => info.bounds,
             Resolved::Unavailable => return None,
         };
         let axes = [Axis::X, Axis::Y, Axis::Z];
@@ -269,7 +259,6 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => Some(mob.eye_y() - mob.position.y),
             Resolved::Player => self.w.selected_player().map(|p| p.eye[1] - p.position.y),
             Resolved::Seen(seen) => Some(seen.eye_y - seen.position.y),
-            Resolved::Dragon(info) => Some(info.eye_y - info.position.y),
             Resolved::Unavailable => None,
         }
     }
@@ -283,7 +272,6 @@ impl GoalCx<'_, '_> {
             Resolved::Player => self.w.selected_player().map(|p| p.eye),
             Resolved::Live(mob) => Some([mob.position.x, mob.eye_y(), mob.position.z]),
             Resolved::Seen(seen) => Some([seen.position.x, seen.eye_y, seen.position.z]),
-            Resolved::Dragon(info) => Some([info.position.x, info.eye_y, info.position.z]),
             Resolved::Unavailable => None,
         }
     }
@@ -339,7 +327,6 @@ impl GoalCx<'_, '_> {
             Resolved::Live(mob) => Some(mob.alive()),
             Resolved::Player => self.w.selected_player().map(|p| p.alive),
             Resolved::Seen(seen) => Some(seen.alive),
-            Resolved::Dragon(info) => Some(info.alive),
             Resolved::Unavailable => None,
         }
     }
@@ -472,7 +459,7 @@ impl GoalCxBackend for GoalCx<'_, '_> {
                     }
                     Some(Who::Mob(mob.id))
                 }
-                Some(Resolved::Dragon(_) | Resolved::Unavailable) | None => return false,
+                Some(Resolved::Unavailable) | None => return false,
             },
         };
         matches!(
@@ -522,8 +509,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
             Resolved::Own
             | Resolved::Player
             | Resolved::Live(_)
-            | Resolved::Seen(_)
-            | Resolved::Dragon(_) => Some(LivingRef::new(entity)),
+            | Resolved::Seen(_) => Some(LivingRef::new(entity)),
         }
     }
 
@@ -537,7 +523,7 @@ impl BehaviorCxBackend for GoalCx<'_, '_> {
                 Some(Resolved::Player) => Some(Who::Player),
                 Some(Resolved::Seen(seen)) => Some(Who::Mob(seen.id)),
                 Some(Resolved::Live(mob)) => Some(Who::Mob(mob.id)),
-                Some(Resolved::Dragon(_) | Resolved::Unavailable) | None => return false,
+                Some(Resolved::Unavailable) | None => return false,
             },
         };
         mobs::ai::set_brain_target(self.m, who)
@@ -637,7 +623,7 @@ impl mobs::part_goals::GoalHost for Game<'_> {
     }
 
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>> {
-        let credit = *self.last_hurt_by_player.get(&mob.id)?;
+        let credit = super::combat::PlayerCredit(self.ecs.credited_uuid(mob.id)?);
         Some(
             self.resolve_player_credit(credit)
                 .and_then(|conn| self.player_entity_id_by_connection(conn))
@@ -902,7 +888,7 @@ impl Game<'_> {
             Some(Resolved::Own) => mobs::TargetChange::Set(Some(Who::Mob(context.m.id))),
             Some(Resolved::Live(mob)) => mobs::TargetChange::Set(Some(Who::Mob(mob.id))),
             Some(Resolved::Seen(seen)) => mobs::TargetChange::Set(Some(Who::Mob(seen.id))),
-            Some(Resolved::Dragon(_) | Resolved::Unavailable) | None => mobs::TargetChange::Keep,
+            Some(Resolved::Unavailable) | None => mobs::TargetChange::Keep,
         }
     }
 }

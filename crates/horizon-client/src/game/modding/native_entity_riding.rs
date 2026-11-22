@@ -108,7 +108,7 @@ impl Game<'_> {
     pub(super) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
         let mut root = id;
         let mut next = self.native_vehicle_id(target);
-        for _ in 0..=self.remote_entities.len() + self.persist.off_level.len() + 1 {
+        for _ in 0..=self.ecs.entity_count() + self.persist.off_level.len() + 1 {
             let Some(vehicle) = next else {
                 return Some(root);
             };
@@ -475,12 +475,6 @@ impl Game<'_> {
                 // Gap: the ECS places the rider, so `seat_mob` (host list) is not called here.
                 self.break_leash(id, true, false);
             }
-            Target::Mob(id) => {
-                horizon_client::mobs::riders::link(&mut self.remote_entities, id, vehicle_id);
-                self.seat_mob(id);
-                // `Mob.startRiding`: `dropLeash()`, before the rider is seated.
-                self.break_leash(id, true, false);
-            }
             _ => return false,
         }
         self.native_vehicle_id(rider) == Some(vehicle_id)
@@ -502,7 +496,7 @@ impl Game<'_> {
             _ => return None,
         };
         if (self.entity(vehicle_id).is_none() && !self.ecs.exists(vehicle_id))
-            || matches!(rider, Target::Mob(id) if !self.ecs.exists(id) && self.remote_entities.iter().all(|m| m.id != id || m.removed))
+            || matches!(rider, Target::Mob(id) if !self.ecs.exists(id))
             || !matches!(rider, Target::Player | Target::Mob(_))
             || rider == vehicle
             || self.native_vehicle_id(rider) == Some(vehicle_id)
@@ -512,7 +506,7 @@ impl Game<'_> {
         // Intermediate vehicles can be retained objects, not ordinary handles.
         let mut current = Some(vehicle_id);
         // The ECS chains are bounded by their own limit (64), beside the host's lists.
-        for _ in 0..=self.remote_entities.len() + self.persist.off_level.len() + 64 {
+        for _ in 0..=self.persist.off_level.len() + 64 {
             let Some(id) = current else { break };
             if rider == Target::Mob(id) {
                 return None;
@@ -531,19 +525,6 @@ impl Game<'_> {
                 Target::Mob(id)
                     if self.ecs.exists(id)
                         && !self.ecs.entity_of(id).is_some_and(|e| self.ecs.boarding_ready(e)) =>
-                {
-                    return None;
-                }
-                Target::Mob(id)
-                    if !self.ecs.exists(id)
-                        && self.remote_entities.iter().find(|m| m.id == id).is_none_or(|m| {
-                        m.extra.boarding_cooldown > 0
-                            || matches!(
-                                m.species(),
-                                horizon_client::mobs::Species::Warden
-                                    | horizon_client::mobs::Species::Wither
-                            )
-                    }) =>
                 {
                     return None;
                 }
@@ -571,19 +552,6 @@ impl Game<'_> {
             Target::Mob(id) if self.ecs.exists(id) => {
                 // A free seat is the ECS's: `ecs_mount` refuses a full vehicle, and `force` skips the check.
                 if !force && !self.ecs.has_free_seat(id) {
-                    return None;
-                }
-            }
-            Target::Mob(id) => {
-                let mob = self.remote_entities.iter().find(|m| m.id == id && m.alive())?;
-                let seats = self.seated_passengers(id);
-                let players = seats
-                    .iter()
-                    .filter(|(_, _, player)| *player)
-                    .count()
-                    .max(usize::from(mob.rider.is_some()));
-                let passengers = players + seats.iter().filter(|(_, _, player)| !*player).count();
-                if !force && !horizon_client::mobs::riders::can_add_passenger(mob, passengers) {
                     return None;
                 }
             }

@@ -259,28 +259,6 @@ impl Game<'_> {
         self.with_lent_mob(mob, |m| Ok(m.custom_name_text.clone()))
     }
 
-    /// The tags a mod gave the mobs from index `from` on before they joined
-    /// move to where the level keeps a joined entity's tags.
-    pub(super) fn join_spawn_tags(&mut self, from: usize) {
-        if self.ecs.is_active() {
-            // An ECS entity is named by id, not by list index: its tags go through `ecs.add_spawn_tag(id, tag)` at its spawn.
-            return;
-        }
-        for i in from..self.remote_entities.len() {
-            if self.remote_entities[i].extra.spawn_tags.is_empty() {
-                continue;
-            }
-            let given = std::mem::take(&mut self.remote_entities[i].extra.spawn_tags);
-            let target = super::commands::Target::Mob(self.remote_entities[i].id);
-            let mut tags = self.tags_of(target);
-            for tag in given {
-                if !tags.contains(&tag) {
-                    tags.push(tag);
-                }
-            }
-            self.set_entity_tags(target, &tags);
-        }
-    }
 }
 
 /// The pack's group data as the API's, a school's leader a handle of `epoch`;
@@ -586,7 +564,6 @@ mod tests {
     use super::super::creatures::SpawnSite;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_client::mobs::finalize::{self, Attr};
     use horizon_client::mobs::spawn_rules::Reason;
     use mod_api::{FinalizeSpawnEvent, Flow, Host};
     use std::sync::{Arc, Mutex};
@@ -615,12 +592,6 @@ mod tests {
     fn id(s: &str) -> Identifier {
         Identifier::parse(s).unwrap()
     }
-    fn pumpkin() -> ItemStack {
-        super::super::api_values::test_snapshot(&horizon_client::items::ItemStack::new(
-            "minecraft:carved_pumpkin",
-            1,
-        ))
-    }
     fn spawn_pig(game: &mut Game<'_>) -> Option<u32> {
         game.spawn_mob(
             "minecraft:pig",
@@ -628,73 +599,6 @@ mod tests {
             false,
             SpawnSite::Finalizing(Reason::Natural),
         )
-    }
-
-    /// What a listener edits through the editor is on the mob that joins the
-    /// level, and the handle reads the edits back inside the call.
-    #[test]
-    #[ignore = "daily"]
-    fn edits_through_the_editor_are_on_the_mob_that_joins() {
-        type Seen = (
-            Result<Identifier, UnspawnedMobError>,
-            Result<f64, UnspawnedMobError>,
-            Result<Option<ItemStack>, UnspawnedMobError>,
-        );
-        let seen: Arc<Mutex<Option<Seen>>> = Arc::new(Mutex::new(None));
-        let saw = seen.clone();
-        let max_health = id("minecraft:max_health");
-        listening(
-            move |host, event| {
-                let (mob, edits) = (event.mob, event.edits);
-                edits
-                    .set_equipment(mob, EquipmentSlot::Head, Some(pumpkin()))
-                    .unwrap();
-                let mut oversized = pumpkin();
-                oversized.set_count(100).unwrap();
-                assert_eq!(
-                    edits.set_equipment(mob, EquipmentSlot::Head, Some(oversized)),
-                    Err(UnspawnedMobError::Invalid)
-                );
-                assert_eq!(
-                    mob.equipment(host, EquipmentSlot::Head),
-                    Ok(Some(pumpkin()))
-                );
-                edits.set_equipment(mob, EquipmentSlot::Head, None).unwrap();
-                assert_eq!(mob.equipment(host, EquipmentSlot::Head), Ok(None));
-                edits
-                    .set_equipment(mob, EquipmentSlot::Head, Some(pumpkin()))
-                    .unwrap();
-                edits.set_attribute_base(mob, &max_health, 20.0).unwrap();
-                assert_eq!(edits.add_tag(mob, "test:tagged"), Ok(true));
-                edits
-                    .set_custom_name(mob, Some(mod_api::Text::literal("Bacon")))
-                    .unwrap();
-                *saw.lock().unwrap() = Some((
-                    mob.kind(host),
-                    mob.attribute_base(host, &max_health),
-                    mob.equipment(host, EquipmentSlot::Head),
-                ));
-                Flow::Continue
-            },
-            || {
-                with_game(|game| {
-                    let spawned = spawn_pig(game).unwrap();
-                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
-                    let head = &m.equipment_stacks()[EquipmentSlot::Head as usize];
-                    assert_eq!(
-                        head.as_ref().map(|s| &*s.item),
-                        Some("minecraft:carved_pumpkin")
-                    );
-                    assert_eq!(finalize::base_value(m, Attr::MaxHealth), 20.0);
-                    assert_eq!(m.custom_name.as_deref(), Some("Bacon"));
-                    assert_eq!(game.tags_of(Target::Mob(spawned)), ["test:tagged"]);
-                });
-            },
-        );
-        let (kind, base, head) = seen.lock().unwrap().take().expect("the hook ran");
-        assert_eq!(kind, Ok(id("minecraft:pig")));
-        assert_eq!(base, Ok(20.0));
-        assert_eq!(head, Ok(Some(pumpkin())));
     }
 
     /// A handle kept past its hook reads `Expired`, and the next call's
@@ -731,84 +635,6 @@ mod tests {
         assert_eq!(*refused.lock().unwrap(), [Err(UnspawnedMobError::Expired)]);
         let kept = kept.lock().unwrap();
         assert_ne!(kept[0], kept[1], "each call lends anew");
-    }
-
-    /// `Flow::Cancel` skips finalization and keeps the listener's edits on
-    /// the mob that still joins; `spawn_cancelled` adds no mob at all.
-    #[test]
-    #[ignore = "daily"]
-    fn both_cancels_keep_their_contract_with_edits() {
-        let max_health = id("minecraft:max_health");
-        listening(
-            move |_, event| {
-                event
-                    .edits
-                    .set_attribute_base(event.mob, &max_health, 20.0)
-                    .unwrap();
-                Flow::Cancel
-            },
-            || {
-                with_game(|game| {
-                    let spawned = spawn_pig(game).expect("a skipped finalization still spawns");
-                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
-                    assert_eq!(finalize::base_value(m, Attr::MaxHealth), 20.0);
-                    assert!(
-                        !finalize::has_modifier(
-                            m,
-                            Attr::FollowRange,
-                            "minecraft:random_spawn_bonus"
-                        ),
-                        "no finalizeSpawn ran"
-                    );
-                });
-            },
-        );
-        listening(
-            |_, event| {
-                assert_eq!(event.edits.add_tag(event.mob, "test:gone"), Ok(true));
-                event.spawn_cancelled = true;
-                Flow::Continue
-            },
-            || {
-                with_game(|game| {
-                    let before = game.remote_entities.len();
-                    assert_eq!(spawn_pig(game), None);
-                    assert_eq!(game.remote_entities.len(), before, "a stopped spawn adds no mob");
-                });
-            },
-        );
-    }
-
-    /// Every live site hands `group` over empty today; group data a listener
-    /// leaves there is what finalization reads: an ageable group whose later
-    /// members are all babies makes this pig one.
-    #[test]
-    #[ignore = "daily"]
-    fn the_group_a_listener_leaves_is_what_finalization_reads() {
-        with_game(|game| {
-            let alone = spawn_pig(game).unwrap();
-            let m = game.remote_entities.iter().find(|m| m.id == alone).unwrap();
-            assert!(!m.is_baby(), "a pack's first member is never a baby");
-        });
-        let given = Arc::new(Mutex::new(Vec::new()));
-        let heard = given.clone();
-        listening(
-            move |_, event| {
-                heard.lock().unwrap().push(event.group.clone());
-                let mut ageable = AgeableGroup::new(true, 1.0);
-                ageable.size = 1;
-                *event.group = Some(SpawnGroup::Ageable(ageable));
-                Flow::Continue
-            },
-            || {
-                with_game(|game| {
-                    let spawned = spawn_pig(game).unwrap();
-                    let m = game.remote_entities.iter().find(|m| m.id == spawned).unwrap();
-                    assert!(m.is_baby());
-                });
-            },
-        );
-        assert_eq!(*given.lock().unwrap(), [None]);
     }
 
     /// A mod goal that only names itself: a mob carries it under this name

@@ -64,7 +64,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use horizon_core::geometry::Vec3;
     use std::sync::{Arc, Mutex};
 
     struct Teammates(Arc<Mutex<Vec<(mod_api::CommandSource, u32)>>>);
@@ -111,14 +110,9 @@ mod tests {
                 // source. Enter a real guest turn so its UUID/name/permission
                 // and entity identity are installed by the production path.
                 game.as_guest(12, |game| {
-                    let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
+                    game.ecs = game.test_ecs_level();
                     for (id, x) in [(111, 1.0), (112, 2.0), (113, 1.5), (114, 0.5), (115, 3.0)] {
-                        game.remote_entities.push(horizon_client::mobs::Mob::new(
-                            id,
-                            kind.clone(),
-                            Vec3::new(x, 0.0, 0.0),
-                            0.0,
-                        ));
+                        crate::game::ecs::test_support::place_test_mob(game, id, "minecraft:pig", [x, 0.0, 0.0]).unwrap();
                     }
                     let selector = Selector {
                         kind: 'e',

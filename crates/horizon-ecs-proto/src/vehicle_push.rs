@@ -9,11 +9,12 @@ use crate::cow::*;
 use crate::goals::Online;
 use crate::hostile::PlayerState;
 use crate::host_out_vehicle_push::{VehiclePushEvent, VehiclePushEvents};
-use crate::minecart::Furnace;
+use crate::minecart::{Furnace, Kind};
 use crate::rules::area::centre_radius;
 use crate::rules::minecart::push_from;
 use crate::rules::push_rules::{self as rules, push_impulse, TOUCH_REACH};
 use crate::seat::{Seated, Seats};
+use crate::stand::{has_physics, unsettle, Stand};
 use crate::targeting::{player_box, Who};
 use crate::zone::{wake, Dormant};
 use bevy_ecs::prelude::*;
@@ -143,6 +144,30 @@ fn push_cart_boat(w: &mut World, cart: Entity, boat: Entity) -> bool {
     true
 }
 
+/// `ArmorStand.pushEntities` for a stand that can move, touching a cart: the cart takes the push, the stand a quarter of it, and it
+/// starts moving (`Entity.push` adds to its velocity directly). A stand is not pushed by the cart.
+fn push_cart_stand(w: &mut World, cart: Entity, stand: Entity) -> bool {
+    let (Some(pc), Some(ps), Some(bc), Some(bs)) = (pos_of(w, cart), pos_of(w, stand), bounds_of(w, cart), bounds_of(w, stand)) else {
+        return false;
+    };
+    let rideable = w.get::<Kind>(cart).is_some_and(|k| *k == Kind::Rideable);
+    let carries = w.get::<Seated>(stand).is_some_and(|s| s.vehicle == cart);
+    let Some((cart_push, stand_push)) = crate::rules::stand::cart_shove(ps, bs, pc, bc, rideable, carries) else {
+        return false;
+    };
+    push(w, cart, cart_push);
+    if let Some(mut v) = w.get_mut::<Vel>(stand) {
+        v.0 = Vec3::new(v.0.x + stand_push[0], v.0.y + stand_push[1], v.0.z + stand_push[2]);
+    }
+    unsettle(w, stand);
+    true
+}
+
+/// A stand whose physics run (`ArmorStand.hasPhysics`): the only stand a cart shoves.
+fn is_stand(w: &World, e: Entity) -> bool {
+    w.get::<Stand>(e).is_some_and(|s| has_physics(*s))
+}
+
 /// `Entity.push` between `a` and `b`, one way each: the second is pushed by the first and the first by the second, a boat only pushing
 /// what `boat_pushes` allows, a cart pushing a creature as `AbstractMinecart.push` does. Returns whether something was pushed.
 fn push_each_way(w: &mut World, a: Entity, b: Entity) -> bool {
@@ -174,6 +199,8 @@ fn push_each_way(w: &mut World, a: Entity, b: Entity) -> bool {
 pub fn push_between(w: &mut World, a: Entity, b: Entity) {
     match (is_cart(w, a), is_cart(w, b)) {
         (true, true) => push_carts(w, a, b),
+        (true, false) if is_stand(w, b) => push_cart_stand(w, a, b),
+        (false, true) if is_stand(w, a) => push_cart_stand(w, b, a),
         (true, false) if is_boat(w, b) => push_cart_boat(w, a, b),
         (false, true) if is_boat(w, a) => push_cart_boat(w, b, a),
         _ => push_each_way(w, a, b),
@@ -312,5 +339,21 @@ mod tests {
         push_pairs(&mut w, v);
         assert!(drain_events(&mut w).is_empty());
         assert!(w.get::<Moving>(v).is_none());
+    }
+
+    #[test]
+    fn a_rideable_cart_shoves_a_moving_stand_by_a_quarter_and_is_pushed_away() {
+        let mut w = world();
+        let c = cart(&mut w, Vec3::new(0.0, 0.0, 0.0));
+        w.entity_mut(c).insert(Kind::Rideable);
+        let at = Vec3::new(0.3, 0.0, 0.0);
+        let b = Aabb::new(Vec3::new(0.1, 0.0, -0.3), Vec3::new(0.5, 1.975, 0.3));
+        let st = w.spawn((Stand { flags: 0 }, Pos(at), Vel(Vec3::ZERO), Bounds(b))).id();
+        indexed(&mut w, st, at);
+        push_between(&mut w, c, st);
+        let (cv, sv) = (w.get::<Vel>(c).unwrap().0, w.get::<Vel>(st).unwrap().0);
+        assert!(cv.x < 0.0, "the cart is pushed away from the stand, on the other side");
+        assert!((sv.x * 4.0 + cv.x).abs() < 1e-12, "the stand takes a quarter of the cart's push, in the opposite sense");
+        assert!(w.get::<Moving>(st).is_some(), "the stand starts moving");
     }
 }

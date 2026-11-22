@@ -198,7 +198,7 @@ impl Game<'_> {
                 };
                 SlotAccess::Done(visit(attachments.attachment_lifetime()))
             }
-            Source::DragonPart(_) | Source::Hook { .. } | Source::Ordinary => SlotAccess::Missing,
+            Source::DragonPart(_) | Source::Ordinary => SlotAccess::Missing,
         }
     }
 

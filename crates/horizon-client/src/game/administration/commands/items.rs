@@ -461,13 +461,7 @@ impl Game<'_> {
                 .item(*id)
                 .map(|e| e.stack)
                 .filter(|s| &*s.item != "minecraft:air" && s.count > 0),
-            Slot::Dragon(id, i) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == *id)?
-                .equipment
-                .get(*i)
-                .cloned(),
+            Slot::Dragon(id, i) => self.ecs.equipment_stack(*id, *i),
             Slot::Frame(id) => {
                 let c = self.ecs.entity_of(*id).and_then(|e| self.ecs.entity_nbt(e))?;
                 c.get(&horizon_core::nbt::JavaString::from("Item")).and_then(horizon_items::item_nbt::item_from_nbt)
@@ -779,11 +773,7 @@ impl Game<'_> {
                 }
                 true
             }
-            Slot::Dragon(id, i) => self
-                .dragon
-                .as_mut()
-                .filter(|d| d.id == *id)
-                .is_some_and(|d| d.equipment.set(*i, stack)),
+            Slot::Dragon(id, i) => self.ecs.put_equipment_slot(*id, *i, stack),
             Slot::Item(id) => {
                 // `ItemEntity.setItem`: the stack is the entity's.
                 let stack = stack

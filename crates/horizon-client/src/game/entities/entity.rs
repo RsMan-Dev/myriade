@@ -807,19 +807,10 @@ impl Game<'_> {
             .into_iter()
             .chain(self.ecs_frames().into_iter().map(|e| e.id))
             .chain(self.ecs_paintings().into_iter().map(|e| e.id))
-            .chain(self.breath_clouds().into_iter().map(|e| e.id))
+            .chain(self.ecs.species_ids("minecraft:area_effect_cloud"))
             .chain(self.fang_ids())
-            .chain(self.crystals().into_iter().map(|e| e.id))
-            .chain(self.dragon.iter().map(|e| e.id))
-            .chain(
-                self.dragon
-                    .iter()
-                    .filter(|dragon| dragon.id != 0)
-                    .flat_map(|dragon| {
-                        (0..dragon.parts.len())
-                            .filter_map(move |offset| dragon.id.checked_add(offset as u32 + 1))
-                    }),
-            )
+            .chain(self.ecs.crystal_views().into_iter().map(|(id, _)| id))
+            .chain(self.ecs.dragon_views().into_iter().flat_map(|(id, _)| std::iter::once(id).chain((1..=8).map(move |k| id + k))))
             // Cast hooks live with their players, not in the saveable lists.
             // Keep both their identities and attachment holders until they leave.
             .chain(self.fishing_hooks_here().map(|(id, _)| id))

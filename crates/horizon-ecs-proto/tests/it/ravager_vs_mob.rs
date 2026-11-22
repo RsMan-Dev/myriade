@@ -164,3 +164,26 @@ fn a_shield_stun_then_the_roar_as_a_mob_does() {
     assert_eq!(mh - mr, 10, "the mob's roar hits 10 ticks after its sound");
     assert!((mh - eh).abs() <= 1, "roar hit: mob {mh}, ecs {eh}");
 }
+
+#[test]
+fn a_roar_flings_a_stand_in_its_box_and_leaves_it_whole() {
+    let mut h = Herd::with_slab_awake(60, true, false);
+    h.world.resource_mut::<PlayerState>().immortal = true;
+    let table = h.world.resource::<SpeciesTable>().0.clone();
+    let idx = table.iter().position(|s| s.name == "minecraft:ravager").expect("the ravager is in the table");
+    let rav = spawn_species(&mut h.world, &table[idx], 0.0, 0.0, 1000);
+    h.world.get_mut::<ActiveUntil>(rav).unwrap().0 = u64::MAX;
+    h.world.resource_mut::<Entered>().0.push(rav);
+    let at = h.world.get::<horizon_ecs_proto::cow::Pos>(rav).unwrap().0;
+    let sp = *table.iter().find(|s| s.name == "minecraft:armor_stand").unwrap();
+    let st = horizon_ecs_proto::stand::spawn(&mut h.world, &sp, Vec3::new(at.x + 1.0, at.y, at.z), 5, 0);
+    horizon_ecs_proto::cow::enter_index(&mut h.world, st);
+    h.world.resource_mut::<Entered>().0.push(st);
+    let x0 = h.world.get::<horizon_ecs_proto::cow::Pos>(st).unwrap().0.x;
+    assert!((0..200).any(|_| horizon_ecs_proto::behaviours::shield_stun::on_blocked(&mut h.world, rav)), "the draw stuns within 200 tries");
+    for _ in 0..200 {
+        h.tick();
+    }
+    assert_eq!(h.world.get::<horizon_ecs_proto::cow::Health>(st).unwrap().0, 20.0, "the roar hurt the stand");
+    assert!(h.world.get::<horizon_ecs_proto::cow::Pos>(st).unwrap().0.x > x0, "the roar did not fling the stand away");
+}

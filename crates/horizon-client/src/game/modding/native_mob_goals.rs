@@ -4,7 +4,7 @@ use super::{Game, commands::Target};
 use horizon_client::mobs::{
     self, Species,
     goals::{
-        Avoid, AvoidEntity, BreathAir, Breed, ClimbOnTopOfPowderSnow, Cx, EatBlock, FleeSun, Float,
+        Avoid, AvoidEntity, BreathAir, Breed, ClimbOnTopOfPowderSnow, EatBlock, FleeSun, Float,
         FollowMob, FollowParent, Goal, HurtByTarget, LeapAtTarget, LookAtPlayer, MeleeAttack,
         NearestTarget, Panic, Prey, RandomLookAround, RestrictSun, Stroll, Tempt, TryFindWater,
     },
@@ -83,22 +83,7 @@ impl Game<'_> {
                 && self.ecs_mod_live(id).is_some()
                 && self.ecs.add_goal(id, priority, goal);
         }
-        let Some((species, navigation)) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .map(|m| (m.species(), m.ai.nav.kind))
-        else {
-            return false;
-        };
-        let Some(goal) = self.boxed_goal(species, navigation, goal) else {
-            return false;
-        };
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return false;
-        };
-        m.ai.goals.add_boxed(priority, goal);
-        true
+        false
     }
 
     /// `GoalSelector.addGoal` on the mob's target selector. The same rules
@@ -117,22 +102,7 @@ impl Game<'_> {
                 && self.ecs_mod_live(id).is_some()
                 && self.ecs.add_target_goal(id, priority, goal);
         }
-        let Some((species, navigation)) = self
-            .remote_entities
-            .iter()
-            .find(|m| m.id == id)
-            .map(|m| (m.species(), m.ai.nav.kind))
-        else {
-            return false;
-        };
-        let Some(goal) = self.boxed_goal(species, navigation, goal) else {
-            return false;
-        };
-        let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) else {
-            return false;
-        };
-        m.ai.targets.add_boxed(priority, goal);
-        true
+        false
     }
 
     /// `GoalSelector.removeGoal` on the goal selector, by kind: every goal
@@ -148,8 +118,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mod_live(entity).and(self.ecs.remove_goal(entity, id, false));
         }
-        let index = self.remote_entities.iter().position(|m| m.id == entity)?;
-        Some(self.remove_from_selector(index, id, false))
+        None
     }
 
     /// `GoalSelector.removeGoal` on the target selector, by kind, as
@@ -161,8 +130,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mod_live(entity).and(self.ecs.remove_goal(entity, id, true));
         }
-        let index = self.remote_entities.iter().position(|m| m.id == entity)?;
-        Some(self.remove_from_selector(index, id, true))
+        None
     }
 
     /// `Mob.registerGoals` again: every running goal is stopped, both
@@ -176,58 +144,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mod_live(entity).is_some() && self.ecs.reset_goals(entity);
         }
-        let Some(index) = self.remote_entities.iter().position(|m| m.id == entity) else {
-            return false;
-        };
-        let snapshot: Vec<_> = self
-            .remote_entities
-            .iter()
-            .map(|m| super::creatures::seen(m, self.level.player_uuid, self.items()))
-            .collect();
-        let mut mobs = self.remote_entities.lift();
-        let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
-        let mut w = self.mob_world_base(&snapshot);
-        let pos = mobs[index].position;
-        w.difficulty = self.local_difficulty([pos.x, pos.y, pos.z]);
-        let mut events = Vec::new();
-        {
-            let mut level = horizon_client::health::DamageLevel::lent(
-                &self.world,
-                self.pack.assets.registry,
-                &mut lent,
-                Some(world_items!(self)),
-                Some(&self.pack.block_registries),
-                &self.damage_hooks,
-            );
-            let m = &mut mobs[index];
-            // Out of the mob while they stop, as in its own tick.
-            let (mut goals, mut targets) = (
-                std::mem::take(&mut m.ai.goals),
-                std::mem::take(&mut m.ai.targets),
-            );
-            let mut cx = Cx {
-                w: &w,
-                level: &mut level,
-                events: &mut events,
-            };
-            goals.stop_all(m, &mut cx);
-            targets.stop_all(m, &mut cx);
-            // Registration also initializes species state. Run it on a detached
-            // copy so only the selectors replace state on the live mob.
-            let mut registration = m.clone();
-            mobs::ai::register(&mut registration);
-            mobs::part_goals::attach(&mut registration);
-            m.ai.goals = registration.ai.goals;
-            m.ai.targets = registration.ai.targets;
-            m.ai.goals.disabled = goals.disabled;
-            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0);
-        }
-        drop(w);
-        lent.give_back(&mut self.world);
-        self.remote_entities
-            .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-        self.handle_mob_events(events).ok();
-        true
+        false
     }
 
     /// `GoalSelector.getRunningGoals` read wider: every goal of the goal
@@ -241,17 +158,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mod_live(id).and(self.ecs.goals(id));
         }
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(
-            m.ai.goals
-                .entries()
-                .map(|(priority, name, running)| MobGoalEntry {
-                    priority,
-                    id: goal_id(name),
-                    running,
-                })
-                .collect(),
-        )
+        None
     }
 
     /// Every goal of the target selector, as `goals` reads the goal
@@ -263,72 +170,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.ecs_mod_live(id).and(self.ecs.target_goals(id));
         }
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(
-            m.ai.targets
-                .entries()
-                .map(|(priority, name, running)| MobGoalEntry {
-                    priority,
-                    id: goal_id(name),
-                    running,
-                })
-                .collect(),
-        )
-    }
-
-    /// One `removeGoal` pass over the mob's selector: the mob list comes
-    /// out, as the mob tick takes it, so the goal's `stop` sees the world
-    /// the tick's `Cx` sees; no hook fires in between. The events a stop
-    /// makes land as any tick's do.
-    fn remove_from_selector(&mut self, index: usize, id: &str, targets: bool) -> usize {
-        let snapshot: Vec<_> = self
-            .remote_entities
-            .iter()
-            .map(|m| super::creatures::seen(m, self.level.player_uuid, self.items()))
-            .collect();
-        let mut mobs = self.remote_entities.lift();
-        #[cfg(test)]
-        super::entity::taken_pass_tests::after_take(self);
-        let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
-        let mut w = self.mob_world_base(&snapshot);
-        let pos = mobs[index].position;
-        w.difficulty = self.local_difficulty([pos.x, pos.y, pos.z]);
-        let mut events = Vec::new();
-        let removed = {
-            let mut level = horizon_client::health::DamageLevel::lent(
-                &self.world,
-                self.pack.assets.registry,
-                &mut lent,
-                Some(world_items!(self)),
-                Some(&self.pack.block_registries),
-                &self.damage_hooks,
-            );
-            let m = &mut mobs[index];
-            let mut selector = if targets {
-                std::mem::take(&mut m.ai.targets)
-            } else {
-                std::mem::take(&mut m.ai.goals)
-            };
-            let mut cx = Cx {
-                w: &w,
-                level: &mut level,
-                events: &mut events,
-            };
-            let removed = selector.remove_all(|g| goal_id(g.name()) == id, m, &mut cx);
-            if targets {
-                mobs[index].ai.targets = selector;
-            } else {
-                mobs[index].ai.goals = selector;
-            }
-            mobs::apply_brain_events(&mut mobs, &mut level, &mut events, 0);
-            removed
-        };
-        drop(w);
-        lent.give_back(&mut self.world);
-        self.remote_entities
-            .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-        self.handle_mob_events(events).ok();
-        removed
+        None
     }
 
     /// The goal `goal` names, built as the species code builds it, for a
@@ -567,18 +409,17 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use horizon_client::{chunk::Chunk, mobs::Mob};
-    use horizon_core::geometry::Vec3;
+    use horizon_client::chunk::Chunk;
     use mod_api::{EntityRef, GoalSpec, MobFilter, MobRef, WorldEpoch};
     use std::sync::Arc;
 
-    /// A mob of `kind` in the game's list, its species goals registered by
-    /// `Mob::new`, as a handle.
+    /// A mob of `kind` in the test game's ECS, its species goals made by the
+    /// spawn, as a handle.
     fn mob_in_game(game: &mut super::super::Game<'_>, kind: &str, id: u32) -> MobRef {
-        let t = game.res.mob_types().get(kind).unwrap().clone();
-        let mut m = Mob::new(id, t, Vec3::new(3.5, 65.0, 3.5), 0.0);
-        m.on_ground = true;
-        game.remote_entities.push(m);
+        if !game.ecs.is_active() {
+            game.ecs = game.test_ecs_level();
+        }
+        crate::game::ecs::test_support::place_test_mob(game, id, kind, [3.5, 65.0, 3.5]).unwrap();
         let entity = game.entity(id).unwrap();
         game.mob(entity).unwrap()
     }
@@ -671,267 +512,6 @@ mod tests {
                     .is_none()
                 );
             }
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn follow_mob_uses_the_mobs_actual_navigation() {
-        with_game(|game| {
-            let mob = mob_in_game(game, "minecraft:cow", 501);
-            let goal = GoalSpec::FollowMob {
-                speed: 1.0,
-                stop: 2.0,
-                area: 8.0,
-            };
-            for nav in [
-                super::NavKind::Water { breach: false },
-                super::NavKind::Amphibious {
-                    prefers_shallow: false,
-                },
-            ] {
-                game.remote_entities[0].ai.nav.kind = nav;
-                assert!(!game.mob_add_goal(mob, 0, &goal));
-                assert!(!game.mob_add_target_goal(mob, 0, &goal));
-            }
-            for nav in [
-                super::NavKind::Ground,
-                super::NavKind::WallClimber,
-                super::NavKind::Flying,
-            ] {
-                game.remote_entities[0].ai.nav.kind = nav;
-                assert!(game.mob_add_goal(mob, 0, &goal));
-                assert!(game.mob_add_target_goal(mob, 0, &goal));
-            }
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn removing_running_goal_supplies_snapshot_and_persists_level_random() {
-        use horizon_client::mobs::goals::{Cx, Goal};
-        use horizon_core::random::RandomSource;
-        #[derive(Clone, Debug)]
-        struct StopProbe;
-        impl Goal for StopProbe {
-            fn flags(&self) -> u8 {
-                0
-            }
-            fn can_use(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
-                true
-            }
-            fn box_clone(&self) -> Box<dyn Goal> {
-                Box::new(self.clone())
-            }
-            fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
-                m.extra.followers = cx.w.others.len() as i32;
-                m.health = cx.level.random().next_int_bound(1000).unwrap() as f32;
-            }
-        }
-        with_game(|game| {
-            let handle = mob_in_game(game, "minecraft:zombie", 99);
-            mob_in_game(game, "minecraft:zombie", 100);
-            let mut mobs = game.remote_entities.lift();
-            let snapshot: Vec<_> = mobs
-                .iter()
-                .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
-                .collect();
-            let mut test_level = horizon_client::health::TestLevel::new(0);
-            let mut level = test_level.level();
-            let mut events = Vec::new();
-            let mut selector = std::mem::take(&mut mobs[0].ai.goals);
-            selector.clear();
-            selector.add(0, StopProbe);
-            {
-                let world = game.mob_world_base(&snapshot);
-                let mut cx = Cx {
-                    w: &world,
-                    level: &mut level,
-                    events: &mut events,
-                };
-                selector.tick(&mut mobs[0], &mut cx);
-            }
-            mobs[0].ai.goals = selector;
-            game.remote_entities
-                .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-            let mut expected = game.world.random.clone();
-            let draw = expected.next_int_bound(1000).unwrap();
-            let next = expected.next_int_bound(1000).unwrap();
-            assert_eq!(handle.remove_goal(game, "StopProbe"), Some(1));
-            assert_eq!(game.remote_entities[0].extra.followers, 2);
-            assert_eq!(game.remote_entities[0].health, draw as f32);
-            assert_eq!(game.world.random.next_int_bound(1000).unwrap(), next);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn resetting_goals_stops_the_running_ones_and_registers_as_a_new_mob() {
-        use horizon_client::mobs::goals::{Cx, Goal};
-        use std::sync::atomic::{AtomicBool, Ordering};
-        /// A goal that always starts and says when it was stopped.
-        #[derive(Clone, Debug)]
-        struct StopProbe(Arc<AtomicBool>);
-        impl Goal for StopProbe {
-            fn flags(&self) -> u8 {
-                0
-            }
-            fn can_use(&mut self, _: &mut Mob, _: &mut Cx) -> bool {
-                true
-            }
-            fn box_clone(&self) -> Box<dyn Goal> {
-                Box::new(self.clone())
-            }
-            fn stop(&mut self, _: &mut Mob, _: &mut Cx) {
-                self.0.store(true, Ordering::SeqCst);
-            }
-        }
-        with_game(|game| {
-            let handle = mob_in_game(game, "minecraft:zombie", 99);
-            let printed = |game: &super::super::Game<'_>| {
-                format!("{:?} / {:?}", game.remote_entities[0].ai.goals, game.remote_entities[0].ai.targets)
-            };
-            let fresh = printed(game);
-            let stopped = Arc::new(AtomicBool::new(false));
-            let mut mobs = game.remote_entities.lift();
-            let snapshot: Vec<_> = mobs
-                .iter()
-                .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
-                .collect();
-            let mut test_level = horizon_client::health::TestLevel::new(0);
-            let mut level = test_level.level();
-            let mut events = Vec::new();
-            let mut selector = std::mem::take(&mut mobs[0].ai.goals);
-            selector.add(0, StopProbe(stopped.clone()));
-            {
-                let world = game.mob_world_base(&snapshot);
-                let mut cx = Cx {
-                    w: &world,
-                    level: &mut level,
-                    events: &mut events,
-                };
-                selector.tick(&mut mobs[0], &mut cx);
-            }
-            assert!(selector.is_running("StopProbe"));
-            selector.disabled = 2;
-            mobs[0].ai.goals = selector;
-            mobs[0].ai.targets.add(1, StopProbe(stopped.clone()));
-            game.remote_entities
-                .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-            assert_ne!(printed(game), fresh);
-            assert!(handle.reset_goals(game));
-            assert!(stopped.load(Ordering::SeqCst), "the running goal stopped");
-            assert_eq!(game.remote_entities[0].ai.goals.disabled, 2, "a rider's flags stay");
-            game.remote_entities[0].ai.goals.disabled = 0;
-            assert_eq!(printed(game), fresh, "the mob has a new mob's goals");
-            let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
-            assert!(!stale.reset_goals(game));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn resetting_warden_goals_preserves_anger() {
-        with_game(|game| {
-            let handle = mob_in_game(game, "minecraft:warden", 99);
-            let uuid = [1, 2, 3, 4];
-            game.remote_entities[0].extra.warden.as_mut().unwrap().anger =
-                horizon_client::mobs::warden::AngerManagement::from_saved([(uuid, 90)]);
-            assert!(handle.reset_goals(game));
-            let anger: Vec<_> = game.remote_entities[0].extra.warden.as_ref().unwrap().anger.unloaded().collect();
-            assert_eq!(anger, vec![(uuid, 90)]);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn removing_hold_ground_notifies_nearby_raiders() {
-        use horizon_client::mobs::{
-            Who,
-            goals::Cx,
-            raider::{self, HoldGroundAttack},
-        };
-        with_game(|game| {
-            let handle = mob_in_game(game, "minecraft:pillager", 99);
-            mob_in_game(game, "minecraft:pillager", 100);
-            let mut mobs = game.remote_entities.lift();
-            raider::state_mut(&mut mobs[0]).patrolling = true;
-            mobs[0].ai.target = Some(Who::Player);
-            let snapshot: Vec<_> = mobs
-                .iter()
-                .map(|m| super::super::creatures::seen(m, game.level.player_uuid, game.items()))
-                .collect();
-            let mut test_level = horizon_client::health::TestLevel::new(0);
-            let mut level = test_level.level();
-            let mut events = Vec::new();
-            let mut selector = std::mem::take(&mut mobs[0].ai.goals);
-            selector.clear();
-            selector.add(0, HoldGroundAttack::new(8.0));
-            {
-                let world = game.mob_world_base(&snapshot);
-                let mut cx = Cx {
-                    w: &world,
-                    level: &mut level,
-                    events: &mut events,
-                };
-                selector.tick(&mut mobs[0], &mut cx);
-            }
-            assert!(selector.is_running("HoldGroundAttack"));
-            mobs[0].ai.goals = selector;
-            game.remote_entities
-                .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-            assert_eq!(handle.remove_goal(game, "HoldGroundAttack"), Some(1));
-            assert!(game.remote_entities[1].ai.aggressive);
-            assert_eq!(game.remote_entities[1].ai.target, Some(Who::Player));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn removing_school_goal_updates_the_leader() {
-        use horizon_client::mobs::{aquatic::FollowFlockLeader, goals::Cx};
-        with_game(|game| {
-            let follower = mob_in_game(game, "minecraft:cod", 99);
-            let _leader = mob_in_game(game, "minecraft:cod", 100);
-            let mut mobs = game.remote_entities.lift();
-            mobs[0].extra.leader = Some(100);
-            mobs[1].extra.followers = 1;
-            let snapshot: Vec<_> = mobs
-                .iter()
-                .map(|m| m.seen(game.level.player_uuid, game.items()))
-                .collect();
-            let mut test_level = horizon_client::health::TestLevel::new(0);
-            let mut level = test_level.level();
-            let mut events = Vec::new();
-            let mut selector = std::mem::take(&mut mobs[0].ai.goals);
-            selector.clear();
-            selector.add(0, FollowFlockLeader::new(0));
-            {
-                let world = game.mob_world_base(&snapshot);
-                let mut context = Cx {
-                    w: &world,
-                    level: &mut level,
-                    events: &mut events,
-                };
-                selector.tick(&mut mobs[0], &mut context);
-            }
-            assert!(selector.is_running("FollowFlockLeaderGoal"));
-            assert!(
-                events.is_empty(),
-                "starting an established follower must not change the school"
-            );
-            mobs[0].ai.goals = selector;
-            game.remote_entities
-                .restore(mobs, horizon_client::join_seq::RestoreOrder::SurvivorsFirst);
-            assert_eq!(follower.remove_goal(game, "FollowFlockLeaderGoal"), Some(1));
-            assert_eq!(
-                game.remote_entities[0].extra.leader, None,
-                "the actual stop method must run"
-            );
-            assert_eq!(
-                game.remote_entities[1].extra.followers, 0,
-                "stopping a follower must decrement its leader"
-            );
         });
     }
 
@@ -1037,13 +617,10 @@ mod tests {
             let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 99));
             assert!(!stale.add_goal(game, 1, &GoalSpec::Float));
             assert!(stale.goals(game).is_none());
-            let taken = game.remote_entities.lift();
+            game.held_out.push(99);
             assert!(zombie.goals(game).is_none());
             assert_eq!(zombie.remove_goal(game, "panic"), None);
-            game.remote_entities.restore(
-                taken,
-                horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-            );
+            game.held_out.pop();
         });
     }
 }

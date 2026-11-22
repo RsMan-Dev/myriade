@@ -360,45 +360,7 @@ impl Game<'_> {
             }
             return;
         }
-        let mut indices = horizon_client::fast_hash::FxHashMap::default();
-        indices.extend(
-            self.remote_entities
-                .iter()
-                .enumerate()
-                .map(|(index, mob)| (mob.join, index)),
-        );
-        for write in moves.drain(..) {
-            if write.delivered {
-                continue;
-            }
-            let Some(&index) = indices.get(&write.join) else {
-                sections.forget(write.id);
-                continue;
-            };
-            let final_position = self.remote_entities[index].position;
-            self.remote_entities.update(index, |mob| mob.position = write.to);
-            sections.moved(
-                scope,
-                write.id,
-                write.from.map(|from| [from.x, from.y, from.z]),
-                [write.to.x, write.to.y, write.to.z],
-            );
-            self.tell_entity_sections_in(sections);
-            indices.clear();
-            indices.extend(
-                self.remote_entities
-                    .iter()
-                    .enumerate()
-                    .map(|(index, mob)| (mob.join, index)),
-            );
-            if let Some(&index) = indices.get(&write.join) {
-                self.remote_entities.update(index, |mob| {
-                    if mob.position == write.to {
-                        mob.position = final_position;
-                    }
-                });
-            }
-        }
+        moves.clear();
     }
 
     /// Entity `id`'s position was written from `from` to `to` (`setPosRaw`) inside a family tick

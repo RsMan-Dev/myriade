@@ -31,15 +31,6 @@ impl Game<'_> {
                 .unwrap_or(false),
             // The ECS mob's fire is its saved `Fire` ticks; clearing them is the vanilla clearFire.
             Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put(id, "Fire", Tag::Short(0)),
-            Some(Target::Mob(id)) => {
-                let Some(mob) = self.remote_entities.iter_mut().find(|mob| mob.id == id) else {
-                    return false;
-                };
-                // Own random, kind-owned fire immunity, sound outbox, then clearFire.
-                mob.extinguish_fire();
-                mob.needs_sync = true;
-                true
-            }
             Some(Target::Stand(id)) => {
                 let Some(stand) = self.armor_stand_saved(id) else {
                     return false;

@@ -98,7 +98,7 @@ macro_rules! entity_count_view {
                 // Multipart hitboxes are not independently admitted world entities.
                 (
                     "minecraft:ender_dragon",
-                    usize::from($level.dragon.as_ref().is_some()),
+                    $level.ecs.species_count("minecraft:ender_dragon"),
                 ),
             ],
             mobs: &$level.remote_entities,
@@ -132,7 +132,6 @@ pub(super) struct Parked {
     paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     pub(super) ecs: horizon_client::ecs_bridge::EcsLevel,
     pub(super) remote_entities: horizon_client::join_seq::JoinList<Mob>,
@@ -704,7 +703,6 @@ impl Game<'_> {
             paintings: Default::default(),
             item_frames: Default::default(),
             jukebox_sounds: HashMap::new(),
-            dragon: Default::default(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
             remote_entities: Default::default(),
@@ -832,7 +830,6 @@ impl Game<'_> {
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.portals.sections, &mut p.portal_sections);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
-        swap(&mut self.dragon, &mut p.dragon);
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.remote_entities, &mut p.remote_entities);
         swap(&mut self.ecs, &mut p.ecs);

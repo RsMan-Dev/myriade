@@ -699,7 +699,8 @@ impl Game<'_> {
             }
             Target::Mob(id) | Target::Other(id) => self.ecs_set_rotation(id, yaw, pitch),
             Target::Boat(id) | Target::Cart(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, pitch),
-            Target::Stand(id) | Target::Fangs(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, None),
+            Target::Stand(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, pitch),
+            Target::Fangs(id) if yaw.is_finite() => self.ecs_set_rotation(id, yaw, None),
             _ => {}
         }
     }

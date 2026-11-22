@@ -199,10 +199,16 @@ fn cause_damage(w: &mut World, e: Entity, amount: f32) {
     }
 }
 
-/// `ArmorStand.brokenByAnything` then `kill`: the equipment pops above the stand's cell and the stand is gone; its own item does not drop.
-/// The loot table is not rolled here.
+/// `ArmorStand.brokenByAnything` then `kill`: the loot table rolls first (`drops_loot`), then the equipment pops above the stand's cell
+/// and the stand is gone; its own item does not drop.
 fn break_by_anything(w: &mut World, e: Entity) {
     let at = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
+    let on_fire = w.get::<crate::cow::Burning>(e).is_some_and(|b| crate::cow::now_of(w, e) < b.until);
+    if w.get::<Stand>(e).copied().is_some_and(|s| drops_loot(s, crate::blocks::world_of(w).mob_drops)) {
+        for stack in crate::loot::roll(w, "minecraft:armor_stand", on_fire, false, 0) {
+            crate::item::drop_item(w, stack, at, Vec3::ZERO, 10);
+        }
+    }
     for slot in (0..8).filter_map(slot_of_index) {
         let id = crate::equipment::take_slot(w, e, slot);
         if let Some(name) = crate::items::item_name(id).filter(|_| id != 0) {

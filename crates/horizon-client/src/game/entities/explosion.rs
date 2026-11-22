@@ -907,7 +907,9 @@ impl Game<'_> {
             (self.blast_knockback(false), self.blast_knockback(true));
         let kind = self.blast_damage_kind();
         if hurts {
-            self.explosion_hits_special(center, radius, blocks, damage_type);
+            for (id, _) in self.dragon_views() {
+                self.explosion_hits_special(center, radius, blocks, id);
+            }
         }
         let diameter = f64::from(radius * 2.0);
         let damage = |dist: f64, exposure: f32| {
@@ -1150,12 +1152,10 @@ impl Game<'_> {
                         if hurt {
                             if source.attacker == Some(Who::Player) {
                                 let guest = self.combat.blast_guest;
-                                if let Some(uuid) = self.player_uuid_of(guest) {
-                                    self.last_hurt_by_player.insert(
+                                if let Some(player) = self.player_id_by_connection(guest) {
+                                    self.ecs.record_credit(
                                         victim,
-                                        crate::game::combat::PlayerCredit(
-                                            horizon_client::lan::playerdata::ints_uuid(uuid),
-                                        ),
+                                        Some(horizon_ecs_proto::targeting::Who::Player(player)),
                                     );
                                 }
                                 if let Some(host) = self.lan.as_mut() {
@@ -1231,7 +1231,8 @@ impl Game<'_> {
         if let Some((id, _)) = self.blast_attacker() {
             return Some(Target::Mob(id));
         }
-        self.crystal_blast_player()
+        // An end crystal's blast names its player through the explicit cause; the fight keeps no copy of it here.
+        None
     }
     /// Decoration hurt checks use the damage source's cause (`instanceof Mob`),
     /// unlike vehicles, which use the explosion's indirect source.

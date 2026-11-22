@@ -105,7 +105,7 @@ mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use crate::game::api_values::test_snapshot;
-    use horizon_client::{entities::ArmorStand, mobs::Mob};
+    use horizon_client::entities::ArmorStand;
     use horizon_core::geometry::Vec3;
     use mod_api::WorldEpoch;
 
@@ -153,13 +153,7 @@ mod tests {
             assert!(item.set_target(game, Some(target)));
             assert_eq!(item.target(game), Some(target));
             assert_eq!(item.owner(game), None);
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(99, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 99, "minecraft:zombie", [0.0; 3]).unwrap();
             let thrower = game.entity(99).unwrap();
             let owner = uuid_ints(game.entity_uuid(thrower).unwrap());
             game.ecs.set_item_thrower(id, Some(owner));

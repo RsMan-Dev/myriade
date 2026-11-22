@@ -60,6 +60,7 @@ pub mod host_combat;
 pub mod host_vitals;
 pub mod host_using;
 pub mod misc;
+pub mod dragon;
 pub mod projectile_more;
 pub mod seat;
 pub mod sync_boats;

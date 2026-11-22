@@ -1244,14 +1244,21 @@ impl Game<'_> {
                 }
                 Target::Other(_) => {}
                 Target::Fangs(_) => self.kill_fang(id),
-                Target::Crystal(_) => self.remove_crystal(id),
-                Target::Dragon(_) => self.discard_resident_dragon(),
+                Target::Crystal(_) | Target::Dragon(_) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
                 Target::Spawner(_) => {
                     if let Some(e) = self.ecs.entity_of(id) {
                         self.ecs.despawn(e);
                     }
                 }
-                Target::Cloud(_) => self.remove_breath_cloud(id),
+                Target::Cloud(_) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
                 Target::Falling(_) | Target::Trident(_) | Target::Rocket(_) | Target::Orb(_) => {
                     if let Some(e) = self.ecs.entity_of(id) {
                         self.ecs.despawn(e);

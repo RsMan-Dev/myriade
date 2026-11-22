@@ -10,6 +10,7 @@ mod stab_dismount;
 mod remove_killed;
 mod bridge;
 mod bridge_host;
+mod dragon_bridge;
 mod sync_a;
 mod sync_b;
 mod sync_core;

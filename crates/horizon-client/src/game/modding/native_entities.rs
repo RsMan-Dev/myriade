@@ -105,14 +105,39 @@ impl Game<'_> {
     }
 }
 
-/// The entities the walk does not hold: Horizon keeps these in lists of their own.
+/// The entities the walk does not hold: they are read from the ECS on demand.
 #[derive(Clone, Copy)]
 enum Apart {
     Crystal(u32),
     Cushion(u32),
     Painting(u32),
     Frame(u32),
-    Dragon,
+}
+
+/// An end crystal the ECS holds: its id, the join it came in with and its feet.
+struct EcsCrystal {
+    id: u32,
+    join: horizon_client::join_seq::JoinSeq,
+    position: Vec3,
+}
+
+impl Game<'_> {
+    /// Every end crystal the ECS holds, read on demand (none is kept in a list).
+    fn ecs_crystals(&self) -> Vec<EcsCrystal> {
+        self.ecs
+            .crystal_views()
+            .into_iter()
+            .map(|(id, c)| {
+                let p = c.position;
+                let join = self
+                    .ecs
+                    .entity_of(id)
+                    .and_then(|e| self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)))
+                    .map_or_else(Default::default, |j| j.0);
+                EcsCrystal { id, join, position: Vec3::new(p[0], p[1], p[2]) }
+            })
+            .collect()
+    }
 }
 
 /// One entity a mod is told of: in the walk, or apart from it.
@@ -162,7 +187,6 @@ impl Game<'_> {
         if mod_api::__private::mods().is_empty() || !self.joins_pending() {
             return true;
         }
-        self.assign_pending_join_ids();
         // Read before this call's own announcement is held: it reaches the entities to construct.
         let held_before = self.held_joins_through();
         if through.is_none()
@@ -248,9 +272,6 @@ impl Game<'_> {
         }
     }
 
-    fn assign_pending_join_ids(&mut self) {
-        self.assign_dragon_and_crystal_ids();
-    }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
     fn next_unannounced(
@@ -279,7 +300,7 @@ impl Game<'_> {
             let (id, seq) = super::entity::with_entity!(self, handle, e => (e.id(), e.join_seq()));
             offer(Slot::Walk(handle), id, seq);
         }
-        for c in self.crystals() {
+        for c in self.ecs_crystals() {
             offer(Slot::Apart(Apart::Crystal(c.id)), c.id, c.join);
         }
         for c in self.cushion_list() {
@@ -290,9 +311,6 @@ impl Game<'_> {
         }
         for f in self.ecs_frames() {
             offer(Slot::Apart(Apart::Frame(f.id)), f.id, f.join);
-        }
-        if let Some(d) = self.dragon.as_ref() {
-            offer(Slot::Apart(Apart::Dragon), d.id, d.join);
         }
         // A toss still being asked (`item_toss`) ends the flush: it and what joined after wait.
         best.filter(|&(_, id, _)| !self.native_lifecycle.held_joins.contains(&id))
@@ -321,7 +339,7 @@ impl Game<'_> {
                 super::entity::with_entity!(self, h, e => (e.native_type(), e.position()))
             }
             Slot::Apart(Apart::Crystal(id)) => {
-                ("minecraft:end_crystal".into(), self.crystal(id).map_or(Vec3::ZERO, |c| c.position))
+                ("minecraft:end_crystal".into(), self.ecs_crystals().into_iter().find(|c| c.id == id).map_or(Vec3::ZERO, |c| c.position))
             }
             Slot::Apart(Apart::Cushion(id)) => {
                 ("minecraft:cushion".into(), self.cushion_saved(id).map_or(Vec3::ZERO, |c| c.position))
@@ -339,18 +357,13 @@ impl Game<'_> {
                 };
                 (kind.into(), block(pos))
             }
-            Slot::Apart(Apart::Dragon) => (
-                "minecraft:ender_dragon".into(),
-                self.dragon.as_ref().map_or(Vec3::ZERO, |d| d.position),
-            ),
         }
     }
     /// Takes the entity out of the level, before it ever ticked.
     fn discard_slot(&mut self, slot: Slot) {
         match slot {
             Slot::Walk(h) => self.discard_entity(h),
-            Slot::Apart(Apart::Crystal(id)) => self.remove_crystal(id),
-            Slot::Apart(Apart::Cushion(id)) => {
+            Slot::Apart(Apart::Crystal(id) | Apart::Cushion(id)) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     self.ecs.despawn(e);
                 }
@@ -358,7 +371,6 @@ impl Game<'_> {
             Slot::Apart(Apart::Painting(id) | Apart::Frame(id)) => {
                 self.ecs_remove_hanging(id);
             }
-            Slot::Apart(Apart::Dragon) => self.discard_resident_dragon(),
         }
     }
     /// Entities that were moved, not added (a portal's arrival keeps being
@@ -367,7 +379,6 @@ impl Game<'_> {
     pub(super) fn native_joins_skip(&mut self) {
         let observed = horizon_client::join_seq::JoinSeq::latest();
         if !mod_api::__private::mods().is_empty() {
-            self.assign_pending_join_ids();
             while let Some((slot, id, seq)) =
                 self.next_unannounced(self.persist.joined_seq, &[], None)
             {
@@ -429,7 +440,7 @@ impl Game<'_> {
             l.2 = false;
         }
         let cushions = self.cushion_ids();
-        let crystal_ids: Vec<u32> = self.crystals().into_iter().map(|c| c.id).collect();
+        let crystal_ids: Vec<u32> = self.ecs_crystals().into_iter().map(|c| c.id).collect();
         let live = &mut self.persist.live;
         let mut seen = |id: u32| {
             if let Ok(i) = live.binary_search_by_key(&id, |l| l.0) {
@@ -442,9 +453,6 @@ impl Game<'_> {
         crystal_ids.into_iter().for_each(|id| seen(id));
         cushions.into_iter().for_each(|id| seen(id));
         hanging.into_iter().for_each(|id| seen(id));
-        if let Some(d) = self.dragon.as_ref() {
-            seen(d.id);
-        }
         while let Some(i) = self.persist.live.iter().position(|l| !l.2) {
             let (id, kind, _) = self.persist.live.remove(i);
             self.entity_section_forget(id);
@@ -541,15 +549,12 @@ mod tests {
 
                 // A crystal, a cushion, a painting and a frame of the ECS (ids base + 4 to base + 7).
                 game.ecs = game.test_ecs_level();
-                assert_eq!(game.spawn_crystal(Vec3::ZERO, true), base + 4);
+                assert_eq!(game.ecs_with(|ecs, mw| ecs.spawn_crystal(mw, [0.0; 3], true, &mut || base + 4)), base + 4);
                 game.next_entity = base + 5;
                 assert_eq!(crate::game::ecs::test_support::place_test_cushion(game, [0, 0, 0], base + 5), base + 5);
                 assert_eq!(crate::game::ecs::test_support::hang_test_painting(game, [0, 0, 4], 3, "minecraft:kebab"), Some(base + 6));
                 assert_eq!(crate::game::ecs::test_support::hang_test_frame(game, [0, 0, 0], 3, false), Some(base + 7));
-                let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-                dragon.id = base + 8;
-                dragon.join = horizon_client::join_seq::JoinSeq::next();
-                game.dragon.replace(dragon);
+                game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || base + 8));
                 game.next_entity = base + 8;
                 game.native_joins_flush(true, 0);
                 game.native_joins_flush(true, 0);

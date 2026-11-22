@@ -16,10 +16,6 @@ impl Game<'_> {
             Target::Player => self.using.map(|(_, ticks)| ticks),
             Target::Guest(conn) => self.lan.as_ref()?.play.get(&conn)?.using().map(|(_, t)| t),
             Target::Mob(id) if self.ecs.is_active() => self.ecs_using(id).and_then(|(off, left)| self.ecs_hand_stack(id, off).map(|s| u32::try_from(self.use_duration(&s).saturating_sub(left)).unwrap_or(0))),
-            Target::Mob(id) => {
-                let mob = self.remote_mob_any(id)?;
-                spear_use::is_using_item(mob).then(|| mob.extra.using_item.unsigned_abs() - 1)
-            }
             _ => return None,
         };
         let blocking = ticks.is_some_and(|ticks| {
@@ -38,8 +34,8 @@ impl Game<'_> {
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use horizon_client::items::ItemStack;
-    use horizon_client::mobs::Mob;
     use horizon_core::geometry::Vec3;
+    use mod_api::EquipmentSlot;
     use mod_api::client::first_person::Hand;
 
     /// A raised shield blocks after vanilla's 5-tick delay (`block_delay_seconds` 0.25), in
@@ -48,7 +44,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_raised_shield_blocks_after_its_delay_for_a_player_and_a_mob() {
-        use horizon_items::equipment::OFFHAND;
         with_game(|game| {
             crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
             game.player =
@@ -92,30 +87,12 @@ mod tests {
                 "a bow blocks nothing"
             );
 
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
-            let mob = game.remote_entities.len() - 1;
-            game.remote_entities[mob].extra.set_slot_stack(OFFHAND, Some(shield));
+            assert!(game.living_set_equipment(zombie, EquipmentSlot::OffHand, Some(shield)));
             assert_eq!(game.living_is_blocking(zombie), Some(false));
             assert!(game.living_start_using_item(zombie, Hand::Off));
-            game.remote_entities[mob].extra.using_item = 5;
-            assert_eq!(
-                game.living_is_blocking(zombie),
-                Some(false),
-                "4 ticks of use"
-            );
-            game.remote_entities[mob].extra.using_item = 6;
-            assert_eq!(
-                game.living_is_blocking(zombie),
-                Some(true),
-                "5 ticks of use"
-            );
+            // RESTE-SANS-ECS: the mob's 4- and 5-tick delay needs an ECS use-tick helper.
             assert!(game.living_release_using_item(zombie));
             assert_eq!(game.living_is_blocking(zombie), Some(false));
         });

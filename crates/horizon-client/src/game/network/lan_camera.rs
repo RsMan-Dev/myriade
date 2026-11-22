@@ -68,9 +68,9 @@ impl Game<'_> {
                 return Some(CameraExtra { position: at(Vec3::new(m.position[0], m.position[1], m.position[2])), rotation: [0.0; 2], bounds });
             }
         }
-        let (position, bounds) = self.dragon_part(id)?;
+        let (position, bounds) = self.dragon_part_of(id).map(|(v, k)| (v.parts[k], v.boxes[k]))?;
         Some(CameraExtra {
-            position: at(position),
+            position: at(Vec3::new(position[0], position[1], position[2])),
             rotation: [0.0; 2],
             bounds,
         })

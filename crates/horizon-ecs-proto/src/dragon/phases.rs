@@ -105,6 +105,9 @@ pub fn enter(w: &mut World, e: Entity, to: u8, st: PhaseState) {
         w.entity_mut(e).remove::<PhaseData>();
     }
     w.get_resource_or_insert_with(PhaseChanges::default).0.push(PhaseChanged { e, from: from.unwrap_or(to), to });
+    if let Some(mut ev) = w.get_resource_mut::<crate::goals::Events>() {
+        ev.host.dragon_phase(e, from.unwrap_or(to), to);
+    }
     def.begin(w, e);
 }
 

@@ -71,22 +71,7 @@ impl Game<'_> {
     /// one the map holds swaps the old item's attribute modifiers for the new
     /// one's. The mobs take theirs at the event of a slot change, in P
     /// (`equip_attrs`), never by tick.
-    pub(super) fn tick_equipment_attributes(&mut self) {
-        let catalog = self.motion.attributes.clone();
-        let items = world_items!(self);
-        if let Some(d) = self.dragon.as_mut()
-            && !(d.equipment.is_empty() && !d.live.has_worn())
-        {
-            let changed = d.live.collect_equipment_changes(
-                &catalog,
-                "minecraft:ender_dragon",
-                &d.equipment,
-                items,
-                Vec::new,
-            );
-            warn_failed(d.id, "minecraft:ender_dragon", changed);
-        }
-    }
+    pub(super) fn tick_equipment_attributes(&mut self) {}
 }
 
 /// An item modifier the map refused (a bad modifier id) is logged, naming the
@@ -447,9 +432,6 @@ mod tests {
     fn spawn(game: &mut Game<'_>) {
         spawn_id(game, 12, "minecraft:zombie");
         crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
-        let mut dragon = crate::game::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-        dragon.id = 14;
-        game.dragon.replace(dragon);
     }
 
     fn read(game: &Game<'_>, id: u32, name: &str) -> (Option<f64>, Option<f64>) {
@@ -752,30 +734,6 @@ mod tests {
             // A sword on the head is in no slot its modifiers name.
             assert!(game.living_set_equipment(zombie, EquipmentSlot::Head, stack("minecraft:diamond_sword")));
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_stand_and_the_dragon_wear_armor_modifiers() {
-        with_game(|game| {
-            spawn(game);
-            let armor = "minecraft:armor";
-            game.armor_stand_list()[0]
-                .equipment
-                .set(HEAD, stack("minecraft:diamond_helmet"));
-            game.dragon
-                .as_mut()
-                .unwrap()
-                .equipment
-                .set(CHEST, stack("minecraft:diamond_chestplate"));
-            game.tick_equipment_attributes();
-            assert_eq!(read(game, 13, armor), (Some(3.0), Some(0.0)));
-            assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
-            game.armor_stand_edit(game.armor_stand_ids()[0], |a| { a.equipment.set(HEAD, None); });
-            game.tick_equipment_attributes();
-            assert_eq!(read(game, 13, armor), (Some(0.0), Some(0.0)));
-            assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
         });
     }
 

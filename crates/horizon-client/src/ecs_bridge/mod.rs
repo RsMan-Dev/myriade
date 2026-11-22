@@ -20,6 +20,7 @@ mod level_acts;
 mod level_vehicle;
 mod level_leash;
 mod items;
+mod dragon;
 pub use items::ItemView;
 mod orbs;
 pub use orbs::OrbView;

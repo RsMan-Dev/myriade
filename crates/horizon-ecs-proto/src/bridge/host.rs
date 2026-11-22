@@ -126,6 +126,7 @@ impl EcsWorld {
             if let Err(p) = ran {
                 resume_unwind(p);
             }
+            crate::dragon::fight_tick::drain_out(&mut self.world);
         }
         self.world.clear_trackers();
         let mut out = Vec::new();

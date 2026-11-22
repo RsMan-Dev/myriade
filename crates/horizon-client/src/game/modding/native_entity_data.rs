@@ -109,12 +109,7 @@ impl Game<'_> {
             }
             return true;
         }
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.custom_name = name.as_ref().map(Text::plain);
-            m.custom_name_text = name;
-        } else {
-            self.armor_stand_edit(id, |a| a.custom_name = name);
-        }
+        self.armor_stand_edit(id, |a| a.custom_name = name);
         self.put_saved(id, "CustomName", saved);
         true
     }
@@ -127,7 +122,6 @@ impl Game<'_> {
         };
         Some(match t {
             Target::Mob(_) if self.ecs_has(id) => self.ecs_flag(id, "CustomNameVisible").unwrap_or(false),
-            Target::Mob(_) => self.remote_entities.iter().any(|m| m.id == id && m.name_visible),
             Target::Stand(_) => self
                 .armor_stand_list()
                 .iter()
@@ -151,11 +145,7 @@ impl Game<'_> {
         if self.ecs_has(id) {
             return self.ecs_put_flag(id, "CustomNameVisible", visible);
         }
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.name_visible = visible;
-        } else {
-            self.armor_stand_edit(id, |a| a.name_visible = visible);
-        }
+        self.armor_stand_edit(id, |a| a.name_visible = visible);
         // `Entity.saveWithoutId` writes the flag only when set.
         let flag = visible.then_some(Tag::Byte(1));
         self.put_saved(id, "CustomNameVisible", flag);
@@ -256,15 +246,14 @@ fn mob_category_named(name: &str) -> MobCategory {
 mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
-    use horizon_client::{entities::ArmorStand, mobs::Mob, text::Text};
+    use horizon_client::{entities::ArmorStand, text::Text};
     use horizon_core::geometry::Vec3;
     use horizon_core::nbt::Tag;
     use mod_api::{EntityRef, MobCategory};
 
     fn push_mob(game: &mut super::Game<'_>, id: u32, kind: &str) -> EntityRef {
-        let kind = game.res.mob_types().get(kind).unwrap().clone();
-        game.remote_entities
-            .push(Mob::new(id, kind, Vec3::new(0.5, 70.0, 0.5), 0.0));
+        game.ecs = game.test_ecs_level();
+        crate::game::ecs::test_support::place_test_mob(game, id, kind, [0.5, 70.0, 0.5]).unwrap();
         game.entity(id).unwrap()
     }
 
@@ -297,8 +286,6 @@ mod tests {
             // The saved data loads back with the styled name and the flag.
             let t = game.native_entity_target(mob).unwrap();
             game.apply_entity_nbt(t, Tag::Compound(saved)).unwrap();
-            let m = game.remote_entities.iter().find(|m| m.id == 12).unwrap();
-            assert_eq!(m.custom_name_text.as_ref(), Some(&name));
             assert_eq!(mob.name(game).as_deref(), Some("Grumbles"));
             assert_eq!(mob.custom_name_visible(game), Some(true));
 
@@ -321,9 +308,7 @@ mod tests {
             assert!(!saved.contains_key(&"CustomName".into()));
 
             // The dragon keeps no name: refused, and a stale handle too.
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 14;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 14));
             let dragon = game.entity(14).unwrap();
             assert!(
                 !dragon
@@ -363,9 +348,7 @@ mod tests {
             crate::game::ecs::test_support::place_test_stand(game, 27, &ArmorStand::new(27, Vec3::ZERO, 0.0));
             let stand = game.entity(27).unwrap();
             assert_eq!(stand.classification(game), Some(MobCategory::Misc));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 28;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 28));
             let dragon = game.entity(28).unwrap();
             assert_eq!(dragon.classification(game), Some(MobCategory::Monster));
         });

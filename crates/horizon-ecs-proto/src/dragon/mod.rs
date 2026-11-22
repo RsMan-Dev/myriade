@@ -5,6 +5,7 @@ pub mod crystals;
 pub mod data;
 pub mod death;
 pub mod fight;
+pub mod fight_tick;
 pub mod fireball;
 pub mod flight;
 pub mod hurt;

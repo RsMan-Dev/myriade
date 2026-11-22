@@ -500,7 +500,6 @@ impl Game<'_> {
     /// else gets `ClientboundBossEventPacket`s.
     pub(super) fn publish_boss_bars(&mut self) {
         self.load_bossbars();
-        self.update_dragon_bar_name();
         let viewers = self.boss_viewers();
         let live: HashSet<u128> = viewers.iter().map(|v| v.uuid).collect();
         self.bosses.sent.retain(|id, _| live.contains(id));
@@ -523,26 +522,15 @@ impl Game<'_> {
             host.hub.send_to(*conn, packet);
         }
     }
-    /// `EnderDragonFight.updateDragon`: the fight's dragon's custom name
-    /// becomes the bar's, and stays after the name is removed.
-    fn update_dragon_bar_name(&mut self) {
-        // `EnderDragon.aiStep` calls `updateDragon` only while it has AI (and
-        // is alive); `kill`/`tickDeath` call it too, so a dead dragon updates.
-        let ticks = self.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
-        if !ticks || !self.is_fight_dragon() {
+    /// `HostEvent::BossBar` of entity `id`: `remove` closes the dragon's bar; otherwise its
+    /// custom name is read again from the ECS (the progress is read from the dragon's view).
+    pub(in crate::game) fn on_boss_bar(&mut self, id: u32, _name: &'static str, _progress: f32, _color: u8, remove: bool) {
+        if remove {
+            self.bosses.remove_bar("minecraft:ender_dragon");
             return;
         }
-        let custom = self
-            .dragon
-            .as_ref()
-            .filter(|d| d.id != 0)
-            .and_then(|d| self.persist_raw(d.id))
-            .and_then(|raw| raw.get("CustomName"))
-            .cloned();
-        if let Some(custom) = custom {
-            self.bosses.dragon_name = Some(json_to_tag(
-                &horizon_client::entity_nbt::name_text(&custom).component(),
-            ));
+        if let Some(custom) = self.ecs.custom_name(id).map(|name| Tag::String(name.as_str().into())) {
+            self.bosses.dragon_name = Some(json_to_tag(&horizon_client::entity_nbt::name_text(&custom).component()));
         }
     }
     fn boss_viewers(&self) -> Vec<Viewer> {

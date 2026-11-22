@@ -53,9 +53,6 @@ pub enum Source {
     Ordinary,
     LocalPlayer,
     Guest(u32),
-    Hook {
-        caster: Option<u32>,
-    },
     DragonPart(u8),
 }
 

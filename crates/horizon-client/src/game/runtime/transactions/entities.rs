@@ -452,20 +452,6 @@ impl Game<'_> {
                 });
             )*};
         }
-        if let Some(id) = (self.dragon.as_ref())
-            .filter(|dragon| added(dragon.id, dragon.join_seq()))
-            .map(|dragon| dragon.id)
-        {
-            self.discard_resident_dragon();
-            gone.push(id);
-        }
-        if let Some(id) = (self.hook.as_ref())
-            .filter(|hook| added(hook.id(), hook.join_seq()))
-            .map(|hook| hook.id())
-        {
-            self.hook.discard();
-            gone.push(id);
-        }
         (self.native_lifecycle.pending_item_spawns).retain(|spawn| !gone.contains(&spawn.0));
         for id in gone.into_iter().filter(|&id| id != 0) {
             self.forget_entity(id);

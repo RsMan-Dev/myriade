@@ -29,9 +29,7 @@ impl Game<'_> {
             Target::Player => self.player.as_ref().map(|p| p.bounds()),
             Target::Guest(conn) => self.command_guest(conn).map(|p| p.bounds()),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| crate::game::fishing::bounds(p)),
-            Target::DragonPart(id) => self
-                .resident_dragon_part(id)
-                .map(|(d, i)| d.part_geometry(i).1),
+            Target::DragonPart(id) => self.dragon_part_of(id).map(|(v, k)| v.boxes[k]),
             Target::Mob(id) | Target::Orb(id) => self.ecs.bounds(id),
             Target::Item(id) => self.ecs.bounds(id),
             Target::Projectile(id) => self.ecs.entity_of(id).and_then(|e| self.ecs.bounds_of(e)),
@@ -51,9 +49,7 @@ impl Game<'_> {
                 .find(|e| e.id == id)
                 .map(|e| extents(e.bounds())),
             Target::Cushion(id) => self.cushion_saved(id).map(|e| extents(e.bounds())),
-            Target::Crystal(id) => self
-                .crystal(id)
-                .map(|c| crate::game::dragon::crystal::crystal_box(c.position)),
+            Target::Crystal(id) => self.ecs.bounds(id),
             Target::Other(_)
             | Target::Fangs(_)
             | Target::Dragon(_)

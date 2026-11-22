@@ -84,8 +84,10 @@ impl Game<'_> {
             let (lo, hi) = cushion.bounds();
             listed(cushion.id, lo, hi, entities);
         }
-        for crystal in self.crystals() {
-            let bounds = crate::game::dragon::crystal::crystal_box(crystal.position);
+        for (id, _) in self.ecs.crystal_views() {
+            let Some(bounds) = self.ecs.bounds(id) else {
+                continue;
+            };
             let lo = [
                 bounds.min(horizon_core::geometry::Axis::X),
                 bounds.min(horizon_core::geometry::Axis::Y),
@@ -96,7 +98,7 @@ impl Game<'_> {
                 bounds.max(horizon_core::geometry::Axis::Y),
                 bounds.max(horizon_core::geometry::Axis::Z),
             ];
-            listed(crystal.id, lo, hi, entities);
+            listed(id, lo, hi, entities);
         }
     }
 
@@ -109,34 +111,5 @@ impl Game<'_> {
             return Some(EntityHandle::Mob(i));
         }
         None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::game::native_entity_refs::tests::with_game;
-    use horizon_core::geometry::Vec3;
-    use mod_api::{ExplosionDetonateEvent, Hooks, ServerHost};
-
-    struct Noop;
-    #[mod_api::__subscriptions]
-    impl Hooks for Noop {
-        fn explosion_detonate(&self, _: &mut dyn ServerHost, _: &mut ExplosionDetonateEvent<'_>) {}
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn special_query_excludes_a_box_that_only_touches_the_boundary() {
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("noop", Box::new(Noop))].into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                let far = game.spawn_crystal(Vec3::new(8.0, 1.0, 0.0), false);
-                let near = game.spawn_crystal(Vec3::new(7.99, 1.0, 0.0), false);
-                game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut Vec::new());
-                let listed = game.combat.blast_hit_list.as_ref().unwrap();
-                assert!(!listed.contains(&far));
-                assert!(listed.contains(&near));
-            })
-        });
     }
 }

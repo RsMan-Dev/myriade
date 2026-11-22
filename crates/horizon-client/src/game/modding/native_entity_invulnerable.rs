@@ -67,7 +67,6 @@ impl Game<'_> {
     pub(super) fn entity_permanently_invulnerable(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) if self.ecs_has(id) => self.ecs_flag(id, "Invulnerable"),
-            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable_flag),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.permanently_invulnerable)
             }
@@ -85,13 +84,6 @@ impl Game<'_> {
     ) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs_put_flag(id, "Invulnerable", invulnerable),
-            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
-                Some(m) => {
-                    m.invulnerable_flag = invulnerable;
-                    true
-                }
-                None => false,
-            },
             Some(t @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_body_mut(t).is_some_and(|p| {
                     p.health.permanently_invulnerable = invulnerable;
@@ -139,7 +131,6 @@ impl Game<'_> {
         match self.native_entity_target(entity)? {
             // The ECS mob's window is read by the bridge (`invulnerable_time`, listed in the report).
             Target::Mob(id) if self.ecs_has(id) => self.ecs.invulnerable_time(id),
-            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.invulnerable_time)
             }
@@ -153,13 +144,6 @@ impl Game<'_> {
         let ticks = ticks.max(0);
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) if self.ecs_has(id) => self.ecs.set_invulnerable_time(id, ticks),
-            Some(Target::Mob(id)) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
-                Some(m) => {
-                    m.invulnerable_time = ticks;
-                    true
-                }
-                None => false,
-            },
             Some(t @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_body_mut(t).is_some_and(|p| {
                     p.health.invulnerable_time = ticks;
@@ -319,8 +303,7 @@ impl Game<'_> {
             let held = self.ecs_flag(id, "Invulnerable")? || self.ecs.invulnerable_time(id)? > 0;
             return Some(held && !bypass);
         }
-        let m = self.remote_entities.iter().find(|m| m.id == id)?;
-        Some(self.mob_query_invulnerable(m, damage_type))
+        None
     }
 
     /// `Entity.isInvulnerableTo` asked of `mob` outside a hit, for a source of `damage_type`:
@@ -388,7 +371,6 @@ impl Game<'_> {
                 let window = self.ecs.invulnerable_time(id).unwrap_or(0);
                 Some(self.ecs_flag(id, "Invulnerable")? || window > 0)
             }
-            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.is_invulnerable()),
             t @ (Target::Player | Target::Guest(_)) => {
                 let p = self.native_player_body(t)?;
                 Some(p.health.permanently_invulnerable || p.health.invulnerable_time > 0)
@@ -410,7 +392,6 @@ impl Game<'_> {
     pub(super) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
             Target::Mob(id) if self.ecs_has(id) => self.ecs.damage_cooldown(id),
-            Target::Mob(id) => Some(self.remote_entities.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
         }
     }
@@ -426,13 +407,6 @@ impl Game<'_> {
         };
         match t {
             Target::Mob(id) if self.ecs_has(id) => self.ecs.set_damage_cooldown(id, ticks),
-            Target::Mob(id) => match self.remote_entities.iter_mut().find(|m| m.id == id) {
-                Some(m) => {
-                    m.invulnerable = ticks;
-                    true
-                }
-                None => false,
-            },
             t => match self.native_player_body_mut(t) {
                 Some(p) => {
                     p.health.hurt.cooldown = ticks;
@@ -753,12 +727,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_dragons_saved_flag_refuses_all_but_a_creative_player() {
-        use super::super::dragon::Dragon;
         use horizon_client::mobs::DamageKind;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 15;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 15));
             let entity = game.entity(15).unwrap();
             assert!(game.entity_set_invulnerable(entity, true));
 
@@ -768,7 +739,7 @@ mod tests {
                 Some(super::Target::Player),
                 None,
             );
-            let before = game.dragon.as_ref().unwrap().health;
+            let before = game.ecs_living_health(15).unwrap();
             // A survival player's blow: refused.
             game.creative = false;
             assert!(!game.command_damage_dragon(
@@ -778,7 +749,7 @@ mod tests {
                 DamageKind::Generic,
                 source,
             ));
-            assert_eq!(game.dragon.as_ref().unwrap().health, before);
+            assert_eq!(game.ecs_living_health(15), Some(before));
             // A creative player's blow passes the flag (`isCreativePlayer`).
             game.creative = true;
             assert!(game.command_damage_dragon(
@@ -788,7 +759,7 @@ mod tests {
                 DamageKind::Generic,
                 source,
             ));
-            assert!(game.dragon.as_ref().unwrap().health < before);
+            assert!(game.ecs_living_health(15).unwrap() < before);
             // And the void needs no creative help (`#bypasses_invulnerability`).
             game.creative = false;
             assert!(game.command_damage_dragon(

@@ -198,6 +198,7 @@ pub mod host_out_items;
 pub mod host_out_misc;
 pub mod host_out_seat;
 pub mod host_out_tnt;
+pub mod host_out_fight;
 pub mod host_out_trident;
 pub mod host_out_using;
 pub mod host_out_vehicle_push;

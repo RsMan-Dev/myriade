@@ -35,6 +35,7 @@ lots! {
     crate::seat::SeatEvents => Seat,
     crate::tnt_tick::TntOut => Tnt,
     crate::host_out_trident::TridentOut => Trident,
+    crate::host_out_fight::FightOut => Fight,
     crate::host_out_using::UsingOut => Using,
     crate::host_out_vehicle_push::VehiclePushEvents => VehiclePush,
 }

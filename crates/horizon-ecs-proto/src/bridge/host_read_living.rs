@@ -84,6 +84,16 @@ impl EcsWorld {
     pub fn effects(&self, e: Entity) -> Vec<Effect> {
         self.world().get::<Effects>(e).map_or_else(Vec::new, |f| f.list.clone())
     }
+
+    /// The mods' swirls kept on `e` (`ModifiedSwirls`), while the host keeps them.
+    pub fn modified_swirls(&self, e: Entity) -> Option<horizon_client_render::effects::ModifiedEffectParticles> {
+        self.world().get::<crate::effects::ModifiedSwirls>(e).map(|s| s.0.clone())
+    }
+
+    /// Keeps the mods' swirls on `e`, or clears them with None (`effects::set_modified_swirls`).
+    pub fn set_modified_swirls(&mut self, e: Entity, swirls: Option<horizon_client_render::effects::ModifiedEffectParticles>) {
+        crate::effects::set_modified_swirls(self.world_mut(), e, swirls);
+    }
     /// The ticks left on the effect of `kind`: its last tick less the entity's own time.
     pub fn effect_remaining(&self, e: Entity, kind: Kind) -> Option<i32> {
         let w = self.world();

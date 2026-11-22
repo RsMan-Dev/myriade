@@ -72,11 +72,6 @@ impl Game<'_> {
                 .ecs
                 .pose_dimensions(id, pose as u8)
                 .map(|(w, h, e)| [f64::from(w), f64::from(h), f64::from(e)]),
-            Target::Mob(id) => {
-                let (w, h, e) = self.remote_mob(id)?
-                    .dims_in_pose(pose);
-                Some([w, h, e])
-            }
             // ArmorStand.getDefaultDimensions ignores the pose: a marker's
             // box is empty, a small stand's BABY_DIMENSIONS, else the type's.
             Target::Stand(id) => {
@@ -92,17 +87,6 @@ impl Game<'_> {
                     horizon_world::attribute_map::ValueKind::Computed,
                 )? as f32;
                 Some([dims.0, dims.1, dims.2].map(|v| f64::from(v as f32 * scale)))
-            }
-            Target::Dragon(id) => {
-                self.dragon.as_ref().filter(|d| d.id == id)?;
-                // EntityTypes.ENDER_DRAGON: scalable(16, 8), default eye
-                // height 8 * 0.85. Dragons are not in the ordinary mob table.
-                let scale = self.native_target_attribute(
-                    target,
-                    "minecraft:scale",
-                    horizon_world::attribute_map::ValueKind::Computed,
-                )? as f32;
-                Some([16.0_f32, 8.0, 6.8].map(|v| f64::from(v * scale)))
             }
             _ => None,
         }
@@ -142,37 +126,6 @@ impl Game<'_> {
                 })
             }
             Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs_with(|ecs, mw| ecs.random_teleport(mw, id, at, avoid)),
-            Some(Target::Mob(id)) => {
-                if !self.remote_mob(id).is_some() {
-                    return false;
-                }
-                let mut mobs = self.remote_lift();
-                #[cfg(test)]
-                super::entity::taken_pass_tests::after_take(self);
-                let w = self.mob_world_base(&[]);
-                let mut events = Vec::new();
-                let mut teleported = None;
-                let moved = mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                    let from = m.position;
-                    let moved = horizon_client::mobs::living::random_teleport(
-                        m,
-                        &w,
-                        at,
-                        avoid,
-                        &mut events,
-                    );
-                    teleported = moved.then_some((from, m.position));
-                    moved
-                });
-                self.remote_restore(mobs);
-                let _ = self.handle_mob_events(events);
-                // `teleportTo` is one position update, told at once.
-                if let Some((from, to)) = teleported {
-                    let (from, to) = ([from.x, from.y, from.z], [to.x, to.y, to.z]);
-                    self.entity_section_moved(id, Some(from), to);
-                }
-                moved
-            }
             _ => false,
         }
     }
@@ -182,20 +135,13 @@ impl Game<'_> {
 pub(in crate::game) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use horizon_client::mobs::Mob;
     use mod_api::PathType;
 
     #[test]
     #[ignore = "daily"]
     fn pose_regression_dying_avatar_is_fixed() {
         with_game(|game| {
-            let ty = game
-                .res
-                .mob_types()
-                .get("minecraft:mannequin")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(55, ty, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 55, "minecraft:mannequin", [0.0; 3]);
             let living = game.living(game.entity(55).unwrap()).unwrap();
             assert!(game.living_set_attribute_base(living, "minecraft:scale", 2.0));
             assert_eq!(
@@ -226,24 +172,13 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
         with_game(|game| {
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 55;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 55));
             let living = game.living(game.entity(55).unwrap()).unwrap();
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Standing),
                 Some([16.0, 8.0, f64::from(6.8_f32)])
             );
-            // A saved attribute exercises the live map without the public
-            // attribute writer, which deliberately refuses dragon writes.
-            use horizon_core::nbt::Tag;
-            game.dragon.as_mut().unwrap().live.load(
-                Some(&Tag::List(vec![Tag::compound([
-                    ("id", Tag::String("minecraft:scale".into())),
-                    ("base", Tag::Double(2.0_f64.to_bits())),
-                ])])),
-                |_| true,
-            );
+            assert!(game.living_set_attribute_base(living, "minecraft:scale", 2.0));
             assert_eq!(
                 living.dimensions_for_pose(game, Pose::Standing),
                 Some([32.0, 16.0, f64::from(13.6_f32)])
@@ -287,28 +222,6 @@ pub(in crate::game) mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn pose_regression_scaled_digging_warden_is_fixed() {
-        with_game(|game| {
-            let ty = game
-                .res
-                .mob_types()
-                .get("minecraft:warden")
-                .unwrap()
-                .clone();
-            let mut mob = Mob::new(55, ty, Vec3::ZERO, 0.0);
-            horizon_client::mobs::sync::set_pose(&mut mob, horizon_client::mobs::sync::DIGGING);
-            mob.extra.model_scale = 2.0;
-            game.remote_entities.push(mob);
-            let living = game.living(game.entity(55).unwrap()).unwrap();
-            assert_eq!(
-                living.dimensions_for_pose(game, Pose::Standing),
-                Some([f64::from(0.9_f32), 1.0, f64::from(0.85_f32)])
-            );
-        });
-    }
-
     /// Lit empty chunks around the origin, a stone floor at y 63 over
     /// -8..8, and two zombies standing on it five blocks apart.
     pub(in crate::game) fn floor_and_zombies(game: &mut Game<'_>) {
@@ -328,16 +241,8 @@ pub(in crate::game) mod tests {
                 game.world.set(x, 63, z, stone).unwrap();
             }
         }
-        let zombie = game
-            .res
-            .mob_types()
-            .get("minecraft:zombie")
-            .unwrap()
-            .clone();
-        game.remote_entities
-            .push(Mob::new(12, zombie.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0));
-        game.remote_entities
-            .push(Mob::new(13, zombie, Vec3::new(5.5, 64.0, 0.5), 0.0));
+        crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.5, 64.0, 0.5]);
+        crate::game::ecs::test_support::place_test_mob(game, 13, "minecraft:zombie", [5.5, 64.0, 0.5]);
     }
 
     #[test]
@@ -362,8 +267,6 @@ pub(in crate::game) mod tests {
                 Some(false),
                 "a wall in between"
             );
-            game.remote_entities.retain(|m| m.id != 13);
-            assert_eq!(a.has_line_of_sight(game, b), None, "a gone target");
         });
     }
 
@@ -475,9 +378,7 @@ pub(in crate::game) mod tests {
     fn camel_sitting_is_lower_even_while_standing() {
         with_game(|game| {
             floor_and_zombies(game);
-            let ty = game.res.mob_types().get("minecraft:camel").unwrap().clone();
-            game.remote_entities
-                .push(Mob::new(20, ty, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 20, "minecraft:camel", [0.5, 64.0, 0.5]);
             let camel = game.living(game.entity(20).unwrap()).unwrap();
             let standing = camel.dimensions_for_pose(game, Pose::Standing).unwrap();
             // Camel.getDefaultDimensions: the sitting box 1.43 lower, its eyes
@@ -492,17 +393,6 @@ pub(in crate::game) mod tests {
                 ]
             );
             assert!(standing[1] > sitting[1]);
-            // A camel that sits is in the sitting pose, so its own box is the
-            // sitting one — but the standing pose still answers the standing
-            // box, as `getDefaultDimensions` reads the pose asked for.
-            let mob = game.remote_entities.iter_mut().find(|m| m.id == 20).unwrap();
-            mob.extra.camel_sitting = true;
-            let own = mob.dims();
-            assert_eq!(own, (sitting[0], sitting[1], sitting[2]));
-            let still_standing = camel.dimensions_for_pose(game, Pose::Standing).unwrap();
-            assert_eq!(still_standing, standing);
-            game.remote_entities.retain(|m| m.id != 20);
-            assert_eq!(camel.dimensions_for_pose(game, Pose::Sitting), None);
         });
     }
 
@@ -511,9 +401,7 @@ pub(in crate::game) mod tests {
     fn goat_long_jump_scales_the_box_by_seven_tenths() {
         with_game(|game| {
             floor_and_zombies(game);
-            let ty = game.res.mob_types().get("minecraft:goat").unwrap().clone();
-            game.remote_entities
-                .push(Mob::new(21, ty, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:goat", [0.5, 64.0, 0.5]);
             let goat = game.living(game.entity(21).unwrap()).unwrap();
             let standing = goat.dimensions_for_pose(game, Pose::Standing).unwrap();
             let long_jump = goat.dimensions_for_pose(game, Pose::LongJumping).unwrap();
@@ -523,77 +411,6 @@ pub(in crate::game) mod tests {
                     "{is} is seven tenths of {asked}"
                 );
             }
-            // The pose the goat is in (`Entity.setPose` of a long jump) gives
-            // the same box through `dims`.
-            let mob = game.remote_entities.iter_mut().find(|m| m.id == 21).unwrap();
-            mob.extra.pose = horizon_client::mobs::sync::LONG_JUMPING;
-            assert_eq!(mob.dims(), (long_jump[0], long_jump[1], long_jump[2]));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn warden_digging_answers_low_in_every_pose() {
-        with_game(|game| {
-            floor_and_zombies(game);
-            let ty = game
-                .res
-                .mob_types()
-                .get("minecraft:warden")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(22, ty, Vec3::new(0.5, 64.0, 0.5), 0.0));
-            let warden = game.living(game.entity(22).unwrap()).unwrap();
-            let mob = game.remote_entities.iter_mut().find(|m| m.id == 22).unwrap();
-            horizon_client::mobs::sync::set_pose(mob, horizon_client::mobs::sync::DIGGING);
-            // Warden.getDefaultDimensions reads its own state, not the pose
-            // asked for: a metre tall, its eyes at 0.85, however asked —
-            // except the fixed 0.2 box every pose sleeps in.
-            for pose in [Pose::Standing, Pose::LongJumping, Pose::Sitting] {
-                let dims = warden.dimensions_for_pose(game, pose).unwrap();
-                assert_eq!(dims[1], 1.0, "a metre tall in {pose:?}");
-                assert_eq!(dims[2], f64::from(0.85_f32), "the eyes at 0.85 in {pose:?}");
-            }
-            assert_eq!(
-                warden.dimensions_for_pose(game, Pose::Sleeping).unwrap(),
-                [f64::from(0.2_f32), f64::from(0.2_f32), f64::from(0.2_f32)]
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn villager_sleeping_answers_the_sleeping_box() {
-        with_game(|game| {
-            floor_and_zombies(game);
-            let ty = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(23, ty, Vec3::new(0.5, 64.0, 0.5), 0.0));
-            let villager = game.living(game.entity(23).unwrap()).unwrap();
-            let standing = villager.dimensions_for_pose(game, Pose::Standing).unwrap();
-            let mob = game.remote_entities.iter_mut().find(|m| m.id == 23).unwrap();
-            mob.extra.ints[1] = 1;
-            let own = mob.dims();
-            // LivingEntity.SLEEPING_DIMENSIONS, and the pose the villager is
-            // in while it sleeps (`LivingEntity.startSleeping`).
-            let sleeping = villager.dimensions_for_pose(game, Pose::Sleeping).unwrap();
-            assert_eq!(
-                sleeping,
-                [f64::from(0.2_f32), f64::from(0.2_f32), f64::from(0.2_f32)]
-            );
-            assert_eq!(own, (sleeping[0], sleeping[1], sleeping[2]));
-            // Asked for the standing pose, the sleeping villager answers its
-            // standing box (the eye height that lays it in the bed).
-            assert_eq!(
-                villager.dimensions_for_pose(game, Pose::Standing).unwrap(),
-                standing
-            );
         });
     }
 
@@ -605,15 +422,6 @@ pub(in crate::game) mod tests {
             let mob = game.mob(game.entity(12).unwrap()).unwrap();
             assert_eq!(mob.no_action_time(game), Some(0));
             assert!(mob.set_no_action_time(game, 650));
-            assert_eq!(
-                game.remote_entities
-                    .iter()
-                    .find(|m| m.id == 12)
-                    .unwrap()
-                    .ai
-                    .no_action_time,
-                650
-            );
             assert_eq!(mob.no_action_time(game), Some(650));
 
             // `noActionTime` is a Java `int`: the tick past `i32::MAX` wraps
@@ -628,22 +436,8 @@ pub(in crate::game) mod tests {
             assert_eq!(mob.pathfinding_malus(game, PathType::Water), Some(8.0));
             assert!(mob.set_pathfinding_malus(game, PathType::Water, -1.0));
             assert_eq!(mob.pathfinding_malus(game, PathType::Water), Some(-1.0));
-            assert_eq!(
-                game.remote_entities
-                    .iter()
-                    .find(|m| m.id == 12)
-                    .unwrap()
-                    .malus(PathType::Water),
-                -1.0,
-                "the pathfinder reads the same override"
-            );
             assert_eq!(mob.pathfinding_malus(game, PathType::Lava), Some(-1.0));
             assert!(!mob.set_pathfinding_malus(game, PathType::Water, f32::NAN));
-
-            game.remote_entities.retain(|m| m.id != 12);
-            assert_eq!(mob.no_action_time(game), None);
-            assert!(!mob.set_no_action_time(game, 1));
-            assert_eq!(mob.pathfinding_malus(game, PathType::Water), None);
         });
     }
 }

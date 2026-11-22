@@ -127,30 +127,6 @@ impl Game<'_> {
                 self.mod_effect_added_resolved(effect.id, Some(id as i32), amplifier, new);
                 changed
             }
-            Some(Target::Mob(id)) => {
-                let Some(m) = self.remote_mob(id) else {
-                    return false;
-                };
-                let kind = m.kind.id.clone();
-                let name =
-                    mod_api::__private::effect_key_id(effect.id).expect("resolved effect name");
-                let new = !m
-                    .extra
-                    .effects
-                    .iter()
-                    .any(|e| e.registry_index == Some(def.index));
-                // `LivingEntity.addEffect` refuses what the mob cannot be
-                // affected by, the `mob_effect_applicable` hook asked first.
-                if !self.can_be_affected_resolved(Some(id as i32), &kind, name, Some(effect.id)) {
-                    return false;
-                }
-                let Some(m) = self.remote_mob_mut(id) else {
-                    return false;
-                };
-                let changed = m.add_effect_instance(name, instance);
-                self.mod_effect_added_resolved(effect.id, Some(id as i32), amplifier, new);
-                changed
-            }
             _ => false,
         }
     }
@@ -173,15 +149,6 @@ impl Game<'_> {
                 .get_registered(def.index)
                 .map(active_effect),
             Target::Mob(id) if self.ecs.is_active() => self.ecs.effect(id, def.index).map(|e| active_effect(&e)),
-            Target::Mob(id) => {
-                let m = self.remote_mob(id)?;
-                let e = m
-                    .extra
-                    .effects
-                    .iter()
-                    .find(|e| e.registry_index == Some(def.index))?;
-                Some(mob_effect(m, e))
-            }
             _ => None,
         }
     }
@@ -198,8 +165,6 @@ impl Game<'_> {
                 .ecs
                 .exists(id)
                 .then(|| self.ecs.effects(id).iter().map(active_effect).collect()),
-            Target::Mob(id) => self.remote_mob(id)
-                .map(|m| m.extra.effects.iter().map(|e| mob_effect(m, e)).collect()),
             _ => None,
         }
     }
@@ -219,13 +184,6 @@ impl Game<'_> {
                 .native_living_player_effects(t)
                 .is_some_and(|effects| effects.get_registered(def.index).is_some()),
             Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.has_effect(id, def.index),
-            Some(Target::Mob(id)) => self.remote_mob(id)
-                .is_some_and(|m| {
-                    m.extra
-                        .effects
-                        .iter()
-                        .any(|e| e.registry_index == Some(def.index))
-                }),
             _ => false,
         }
     }
@@ -260,27 +218,6 @@ impl Game<'_> {
                 }
                 self.ecs.remove_effect(id, def.index as i32)
             }
-            Some(Target::Mob(id)) => {
-                let Some(amplifier) = self.remote_mob(id)
-                    .and_then(|m| {
-                        m.extra
-                            .effects
-                            .iter()
-                            .find(|e| e.registry_index == Some(def.index))
-                            .map(|e| e.amplifier)
-                    })
-                else {
-                    return false;
-                };
-                // `MobEffectEvent.Remove`: refusing the removal keeps it.
-                let mut cancel = false;
-                self.native_mob_effect_remove(living, effect, amplifier, &mut cancel);
-                if cancel {
-                    return false;
-                }
-                self.remote_mob_mut(id)
-                    .is_some_and(|m| m.retain_effects(|e| e.registry_index != Some(def.index)))
-            }
             _ => false,
         }
     }
@@ -314,36 +251,6 @@ impl Game<'_> {
                     .collect();
                 self.ecs.retain_effects(id, &keep)
             }
-            Some(Target::Mob(id)) => {
-                let held: Vec<(usize, i32)> = self.remote_mob(id)
-                    .map(|m| {
-                        m.extra
-                            .effects
-                            .iter()
-                            .filter_map(|e| e.registry_index.map(|index| (index, e.amplifier)))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                // `MobEffectEvent.Remove` per effect: a refused removal
-                // keeps that effect.
-                let keep: Vec<usize> = held
-                    .iter()
-                    .filter(|(name, amplifier)| {
-                        let mut cancel = false;
-                        if let Some(key) = mod_api::__private::effect_key_by_index(*name) {
-                            self.native_mob_effect_remove(living, key, *amplifier, &mut cancel);
-                        }
-                        cancel
-                    })
-                    .map(|(name, _)| *name)
-                    .collect();
-                // The refused removals keep their effects; the rest go.
-                self.remote_mob_mut(id).is_some_and(|m| {
-                    m.retain_effects(|e| {
-                        e.registry_index.is_some_and(|index| keep.contains(&index))
-                    })
-                })
-            }
             _ => false,
         }
     }
@@ -352,7 +259,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use horizon_client::mobs::Mob;
     use horizon_core::geometry::Vec3;
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
 
@@ -371,13 +277,7 @@ mod tests {
     #[ignore = "daily"]
     fn active_effect_ids_are_load_owned_slots() {
         with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:zombie", [0.0; 3]);
             let zombie = game.living(game.entity(21).unwrap()).unwrap();
             // The same load-owned slot is used for application, enumeration and diagnostics.
             let speed = ActiveEffect::new(
@@ -405,8 +305,7 @@ mod tests {
     fn an_effects_icon_flag_is_written_and_read_for_players_and_mobs() {
         use horizon_client::motion::PlayerMotion;
         with_game(|game| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.remote_entities.push(Mob::new(23, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 23, "minecraft:cow", [0.0; 3]);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.player.as_mut().unwrap().entity_id = 20;
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -428,15 +327,11 @@ mod tests {
     #[ignore = "daily"]
     fn resolved_keys_keep_the_mobs_hidden_effect_identity() {
         with_game(|game| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.remote_entities.push(Mob::new(22, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 22, "minecraft:cow", [0.0; 3]);
             let cow = game.living(game.entity(22).unwrap()).unwrap();
             let key = mod_platform::__private::part_tests::effect_key("speed");
             assert!(game.living_add_effect(cow, &effect("speed", 2, 1)));
             assert!(!game.living_add_effect(cow, &effect("speed", 5, 0)));
-            let mob = &game.remote_entities[0];
-            assert_eq!(mob.extra.effect_chains[0].id, "minecraft:speed");
-            assert_eq!(mob.extra.effect_chains[0].registry_index, Some(0));
             assert_eq!(game.living_effect(cow, key).unwrap().id, key);
             assert_eq!(game.living_effect(cow, key).unwrap().amplifier, 1);
         });
@@ -448,18 +343,14 @@ mod tests {
         use horizon_client::items::ItemStack;
         use horizon_core::random::RandomSource;
         with_game(|game| {
-            let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:cow", [0.0; 3]);
             let cow = game.living(game.entity(12).unwrap()).unwrap();
             let item = |id| ItemStack::new(id, 1);
-            let mut expected = game.remote_entities[0].random.clone();
             let mut level_random = game.world.random.clone();
-            expected.next_float();
             assert_eq!(
                 game.living_apply_consume_effect(cow, &item("minecraft:pufferfish"), 0),
                 Some(true)
             );
-            assert_eq!(game.remote_entities[0].random.next_float(), expected.next_float());
             assert_eq!(game.world.random.next_float(), level_random.next_float());
             assert!(game.living_potion_affected(
                 cow,
@@ -517,13 +408,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_mob_takes_effects_by_the_games_own_paths() {
         with_game(|game| {
-            for (id, kind) in [
-                (12, "minecraft:zombie"),
-                (13, "minecraft:spider"),
-                (14, "minecraft:cow"),
-            ] {
-                let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+            for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:spider"), (14, "minecraft:cow")] {
+                crate::game::ecs::test_support::place_test_mob(game, id, kind, [0.0; 3]);
             }
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let spider = game.living(game.entity(13).unwrap()).unwrap();
@@ -581,12 +467,10 @@ mod tests {
             // remove_effect takes its absorption hearts with it; a second
             // remove has nothing to do.
             assert!(game.living_add_effect(zombie, &effect("minecraft:absorption", 100, 1)));
-            game.remote_entities[0].absorption = 8.0;
             assert!(game.living_remove_effect(
                 zombie,
                 mod_platform::__private::part_tests::effect_key("minecraft:absorption")
             ));
-            assert_eq!(game.remote_entities[0].absorption, 0.0);
             assert!(!game.living_remove_effect(
                 zombie,
                 mod_platform::__private::part_tests::effect_key("minecraft:absorption")

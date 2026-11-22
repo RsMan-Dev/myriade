@@ -49,6 +49,15 @@ pub const NO_SLOT: u8 = u8::MAX;
 pub struct Love(pub u64);
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Resting(pub u64);
+/// `Animal.loveCause`: the player who fed the animal into love, by ECS id; None when no player did. Kept until the next feeding.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+#[component(storage = "SparseSet")]
+pub struct LoveCause(pub Option<u32>);
+
+/// `Animal.setInLove(player)`: the player that caused the love, posed right after the feeding (`feed`).
+pub fn set_love_cause(world: &mut World, e: Entity, player: Option<u32>) {
+    world.entity_mut(e).insert(LoveCause(player));
+}
 /// The parent carries what it will lay (`Params.carries`): erased by the behaviour that lays it.
 #[derive(Component, Clone, Copy, Debug)]
 #[component(storage = "SparseSet")]
@@ -381,5 +390,15 @@ mod tests {
         let Some((born_off, total_off, _)) = breed(false) else { return };
         assert!(born_off > 0, "témoin : un bébé naît sans l'expérience");
         assert_eq!(total_off, 0, "sans le tirage, aucune orbe");
+    }
+
+    #[test]
+    fn the_love_cause_is_the_player_who_fed_last_and_none_when_no_player_did() {
+        let mut world = World::new();
+        let e = world.spawn_empty().id();
+        set_love_cause(&mut world, e, Some(7));
+        assert_eq!(world.get::<LoveCause>(e), Some(&LoveCause(Some(7))));
+        set_love_cause(&mut world, e, None);
+        assert_eq!(world.get::<LoveCause>(e), Some(&LoveCause(None)));
     }
 }

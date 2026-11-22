@@ -3,6 +3,13 @@
 use super::*;
 
 impl Game<'_> {
+    /// The dragon whose `EnderDragonPart` has this id (the dragon's id + 1 + k, k < 8), and k.
+    pub(in crate::game) fn dragon_part_of(&self, id: u32) -> Option<(horizon_ecs_proto::bridge::dragon::DragonView, usize)> {
+        self.ecs.dragon_views().into_iter().find_map(|(d, v)| {
+            let k = id.checked_sub(d + 1)? as usize;
+            (k < 8).then_some((v, k))
+        })
+    }
     /// The level `t` is in (`Entity.level`): a server's players have their
     /// own, which need not be the one in place; everything else is in the
     /// level in place.
@@ -55,22 +62,13 @@ impl Game<'_> {
             Target::Boat(id) => self.ecs.position(id),
             Target::Cart(id) => self.ecs_view(id).map(|v| v.position),
             Target::Other(id) => self.ecs.position(id),
-            Target::Crystal(id) => self
-                .crystal(id)
-                .map(|c| [c.position.x, c.position.y, c.position.z]),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == id)
-                .map(|d| [d.position.x, d.position.y, d.position.z]),
+            Target::Crystal(id) => self.ecs.position(id),
+            Target::Dragon(id) => self.ecs.position(id),
             Target::Cushion(id) => self.cushion_saved(id).map(|c| [c.position.x, c.position.y, c.position.z]),
-            Target::DragonPart(id) => self.resident_dragon_part(id).map(|(d, i)| {
-                let p = d.parts[i].0;
-                [p.x, p.y, p.z]
-            }),
+            Target::DragonPart(id) => self.dragon_part_of(id).map(|(v, k)| v.parts[k]),
             Target::Tnt(id) | Target::Falling(id) => self.ecs.position(id),
             Target::Rocket(id) => self.ecs.position(id),
-            Target::Cloud(id) => self.breath_cloud(id).map(|c| c.at),
+            Target::Cloud(id) => self.ecs.position(id),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| [p.x, p.y, p.z]),
             Target::Trident(id) => self.ecs.position(id),
             Target::Fangs(id) => self.ecs.position(id),

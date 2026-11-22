@@ -519,7 +519,7 @@ impl Game<'_> {
         self.post_game_event("minecraft:eat", at, ctx);
         // Animal.setInLove: entity event 18.
         if loved {
-            self.love_cause.insert(id, self.lan_acting);
+            self.ecs.set_love_cause(id, self.player_id_by_connection(self.lan_acting));
             let kind = self.remote_entities[index].kind.id.clone();
             self.native_entity_enter_love_mode(id, &kind, self.lan_acting_uuid);
             self.mob_event_particles(id, 18);

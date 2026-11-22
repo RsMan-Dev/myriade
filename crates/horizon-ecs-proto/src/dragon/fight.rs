@@ -41,11 +41,72 @@ pub struct EndFight {
     pub players: bool,
     pub blast_by: Option<u32>,
     pub last_blow: Option<Cause>,
+    /// The fight's dragon as the save names it (`dragon_uuid`); the living one's uuid wins when it has one.
+    pub dragon_uuid: Option<u128>,
+    /// Ticks since the fight last saw its dragon (`dragon_unseen`): a saved dragon that is not found is replaced after 1200.
+    pub dragon_unseen: u32,
+    /// Ticks until the next players' scan (`player_scan`).
+    pub player_scan: u64,
+    pub needs_scan: bool,
+    pub crystals_placed: bool,
+    pub dirty: bool,
+    /// The bar was shown for a living fight dragon at the last tick (`BarGone` when it goes).
+    pub bar_shown: bool,
+    /// `fight_load` has run for this world.
+    pub loaded: bool,
+    /// The fight dragon's `Silent` marker as the last tick read it: the death, which despawns the dragon, reports it.
+    pub silent: bool,
+}
+
+/// What the fight keeps in its save (`ender_dragon_fight.dat`, `save_fight`): the fight's own fields, without the dragon's entity.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FightSave {
+    pub killed: bool,
+    pub previously_killed: bool,
+    pub exit_portal: Option<[i32; 3]>,
+    pub gateways: Vec<i32>,
+    pub respawn: Option<(RespawnStage, u32)>,
+    pub respawn_crystals: Vec<[f64; 3]>,
+    pub crystals_placed: bool,
+    pub dragon_uuid: Option<u128>,
+    pub needs_scan: bool,
+}
+
+/// The fight as the host reads it: its dragon, its spikes, its exit portal, the gateways and the respawn.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FightView {
+    pub dragon: Option<Entity>,
+    pub crystals_alive: u32,
+    pub exit_portal: Option<[i32; 3]>,
+    pub killed: bool,
+    pub previously_killed: bool,
+    pub respawn: Option<(RespawnStage, u32)>,
+    pub gateways: Vec<i32>,
+    pub loaded: bool,
+}
+
+/// The fight of a saved world (`load_fight`): the gateways are shuffled from `seed` when the save has none, the players are scanned at the
+/// first tick.
+pub fn restore(seed: i64, s: FightSave) -> EndFight {
+    let gateways = if s.gateways.is_empty() { shuffled_gateways(seed) } else { s.gateways };
+    EndFight {
+        gateways,
+        killed: s.killed,
+        previously_killed: s.previously_killed,
+        exit_portal: s.exit_portal,
+        respawn: s.respawn,
+        dragon_uuid: s.dragon_uuid,
+        needs_scan: s.needs_scan,
+        crystals_placed: s.crystals_placed,
+        loaded: true,
+        ..Default::default()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CrystalDestroyed {
     pub crystal: Entity,
+    pub at: [f64; 3],
     pub by: Option<u32>,
 }
 #[derive(Clone, Copy, Debug, PartialEq)]

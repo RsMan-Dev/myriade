@@ -12,13 +12,6 @@ use horizon_core::{
     random::{EntityRandom, RandomSource},
 };
 
-pub(super) struct Hook {
-    pub(super) uuid: [i32; 4],
-    pub(super) attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    pub(super) join: horizon_client::join_seq::JoinSeq,
-    /// Its entity id, which a server's players track it under.
-    id: u32,
-}
 const SIZE: f64 = 0.25;
 pub(in crate::game) fn bounds(p: Vec3) -> Aabb {
     let h = SIZE / 2.0;
@@ -26,16 +19,6 @@ pub(in crate::game) fn bounds(p: Vec3) -> Aabb {
         Vec3::new(p.x - h, p.y, p.z - h),
         Vec3::new(p.x + h, p.y + SIZE, p.z + h),
     )
-}
-horizon_mod_runtime::impl_attachment_lifetime!(Hook);
-
-impl horizon_client::join_seq::Joined for Hook {
-    fn join_seq(&self) -> horizon_client::join_seq::JoinSeq {
-        self.join
-    }
-    fn set_join_seq(&mut self, join: horizon_client::join_seq::JoinSeq) {
-        self.join = join;
-    }
 }
 /// `FishingHook` constructor's three independent triangle draws.
 fn cast_velocity(y_sin: f32, y_cos: f32, dir_y: f32, random: &mut EntityRandom) -> Vec3 {
@@ -199,12 +182,6 @@ impl Game<'_> {
     }
 }
 
-
-impl Hook {
-    pub(super) fn id(&self) -> u32 {
-        self.id
-    }
-}
 
 /// `FishingHook(Player, Level, int, int)`: `(ySin, yCos, y)` of the cast direction, using
 /// `Mth.sin`/`Mth.cos` (the 65536-entry table), so straight down gives `xCos == -0.0`, y `-5`.

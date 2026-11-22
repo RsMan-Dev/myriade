@@ -155,6 +155,12 @@ pub fn hurt(w: &mut World, e: Entity, b: Blow) -> Hurt {
         }
         w.resource_mut::<Events>().host.sound("minecraft:entity.ender_dragon.hurt", at, 5.0, 1.0);
     }
+    // The boss bar's progress (`EnderDragon` max health 200, as `flight::equip`), sent on each accepted hit of the fight's dragon only.
+    if w.get_resource::<super::fight::EndFight>().is_some_and(|f| f.dragon == Some(e)) {
+        if let (Some(id), Some(hp)) = (w.get::<crate::bridge::ids::NetId>(e).map(|n| n.0), w.get::<Health>(e).map(|h| h.0)) {
+            w.resource_mut::<Events>().host.boss_bar(id, "entity.minecraft.ender_dragon", crate::rules::boss_bar::bar_progress(hp, 200.0), 0);
+        }
+    }
     if is_sitting(phase_of(w, e)) {
         perch::sitting_hurt(w, e, before - after.max(0.0));
     }

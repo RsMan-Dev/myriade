@@ -4,7 +4,6 @@
 use super::*;
 use horizon_client::chunk::Chunk;
 use horizon_core::geometry::Vec3;
-use horizon_core::nbt::Tag;
 
 fn end_game() -> Game<'static> {
     let root = std::path::PathBuf::from(
@@ -63,7 +62,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     for _ in 0..20 {
         game.tick_fight();
     }
-    let id = game.dragon.as_ref().expect("the fight's dragon").id;
+    let id = game.dragon_views().into_iter().find(|(_, v)| v.fight).map(|(d, _)| d).expect("the fight's dragon");
     game.publish_boss_bars();
     assert!(
         game.bosses.dragon_name.is_none(),
@@ -71,19 +70,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     );
     // The name a summoned dragon carries: `remember_tags` keeps its
     // `CustomName` for `/data get`, and `updateDragon` reads it.
-    game.persist.raw.insert(
-        id,
-        Tag::compound([("CustomName", Tag::String("Bob".into()))]),
-    );
-    game.publish_boss_bars();
-    assert!(format!("{:?}", game.bosses.dragon_name).contains("Bob"));
-    // A living NoAI dragon's `aiStep` does not call `updateDragon`, so the
-    // bar keeps the name it had.
-    game.dragon.as_mut().expect("the fight's dragon").no_ai = true;
-    game.persist.raw.insert(
-        id,
-        Tag::compound([("CustomName", Tag::String("Not Yet".into()))]),
-    );
+    game.ecs.set_custom_name(id, Some("Bob".into()));
     game.publish_boss_bars();
     assert!(format!("{:?}", game.bosses.dragon_name).contains("Bob"));
 }

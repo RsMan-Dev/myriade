@@ -9,7 +9,8 @@ use horizon_core::{
     position::BlockPos,
 };
 use horizon_ecs_proto::{
-    cow::{Bounds, Clock, Contact, Herd, Pos, Vel},
+    cow::{Bounds, Clock, Contact, Herd, Pos, SpeciesTable, Vel},
+    stand,
     world_push::{piston_push, PushBlock},
     zone,
 };
@@ -317,4 +318,20 @@ fn a_mod_replacing_the_move_changes_the_push() {
     push(&mut free, piston(Direction::East, true), Direction::East, false);
     let whole = free.world.get::<Pos>(f).unwrap().0.x - x0;
     assert!(half > 0.0 && (half - whole * 0.5).abs() < 1e-6, "the replaced move gave {half}, half of the plain push {whole}");
+}
+
+#[test]
+fn a_piston_pushes_a_stand_and_leaves_a_marker_where_it_is() {
+    let mut h = Herd::new_awake(0, 6.0, true, false, 3);
+    let sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:armor_stand").unwrap();
+    let at = Vec3::new(0.1, 1.0, 0.5);
+    let st = horizon_ecs_proto::stand::spawn(&mut h.world, &sp, at, 5, 0);
+    horizon_ecs_proto::cow::enter_index(&mut h.world, st);
+    let far = Vec3::new(0.1, 1.0, 3.0);
+    let marker = horizon_ecs_proto::stand::spawn(&mut h.world, &sp, far, 6, horizon_ecs_proto::stand::MARKER);
+    horizon_ecs_proto::cow::enter_index(&mut h.world, marker);
+    let (x0, m0) = (h.world.get::<Pos>(st).unwrap().0.x, h.world.get::<Pos>(marker).unwrap().0.x);
+    push(&mut h, piston(Direction::East, true), Direction::East, false);
+    assert!(h.world.get::<Pos>(st).unwrap().0.x > x0, "the piston did not push the stand");
+    assert_eq!(h.world.get::<Pos>(marker).unwrap().0.x, m0, "a marker stand is IGNORE_ENTITY and was moved");
 }

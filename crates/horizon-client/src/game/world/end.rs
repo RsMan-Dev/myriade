@@ -368,16 +368,10 @@ impl Game<'_> {
     /// End portals, End gateways and the exit portal, once per tick.
     pub(super) fn tick_end(&mut self) -> Result<()> {
         self.end.gateway_cooldown = self.end.gateway_cooldown.saturating_sub(1);
+        self.tick_fight();
         if self.dimension_type().has_ender_dragon_fight {
-            self.tick_fight();
             // The breath clouds tick in the ECS; the flame ends when its phase is left.
-            self.end_dragon_flame();
-        } else {
-            // `/summon ender_dragon` outside the End: no fight, but the dragon flies.
-            self.tick_fight();
-        }
-        if let Some((id, from, to)) = self.dragon.as_ref().map(|d| (d.id, d.previous, d.position)) {
-            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.ecs_with(|ecs, mw| ecs.end_flames(mw));
         }
         // The spikes' crystals (placed above) join before they light a fire:
         // a mod that cancels one keeps its fire out too.
@@ -525,7 +519,7 @@ impl Game<'_> {
         {
             return Ok(());
         }
-        let won = self.fight.previously_killed;
+        let won = self.ecs.fight_view().previously_killed;
         let gateway = self.first_gateway();
         if self.exit_portal().is_none() {
             // findExitPortal remembers the location of a podium that is already there.

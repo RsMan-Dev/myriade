@@ -131,9 +131,11 @@ impl Game<'_> {
             }
         }
         // EntityType.END_CRYSTAL is 2 by 2.
-        for c in self.crystals() {
-            if intersects(standing(at(c.position), 2.0, 2.0), bounds) {
-                self.remove_crystal(c.id);
+        for (id, c) in self.ecs.crystal_views() {
+            if intersects(standing(c.position, 2.0, 2.0), bounds) {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
             }
         }
     }

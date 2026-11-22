@@ -1684,8 +1684,10 @@ impl Game<'_> {
         for p in self.ecs_paintings().into_iter() {
             offer(Some(Target::Painting(p.id)), aabb(p.bounds()));
         }
-        for c in self.crystals() {
-            offer(Some(Target::Crystal(c.id)), crate::game::dragon::crystal::crystal_box(c.position));
+        for (id, _) in self.ecs.crystal_views() {
+            if let Some(b) = self.ecs.bounds(id) {
+                offer(Some(Target::Crystal(id)), b);
+            }
         }
         let (t, _) = best?;
         // `LivingEntity.hasLineOfSight`: eye to the target's eye height,

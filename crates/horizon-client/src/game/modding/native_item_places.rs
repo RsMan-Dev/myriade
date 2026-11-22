@@ -46,18 +46,7 @@ impl Game<'_> {
             self.ecs.mount_store(id, saddle, body, items);
             return Some(r);
         } else {
-            let m = self
-                .remote_entities
-                .iter_mut()
-                .find(|m| m.id == id && m.extra.chested)?;
-            let size = crate::game::mount_inventory::mount_columns(m) * 3;
-            if m.extra.items.len() < size {
-                if let Some(level) = self.transactions.last_mut() {
-                    level.keep_mob_length(id, m.extra.items.len());
-                }
-                m.extra.items.resize(size, None);
-            }
-            return Some(edit(&mut m.extra.items[..size], at(&m.position)));
+            return None;
         };
         if container {
             return self.edit_cart_slots(id, |slots| edit(slots, position));
@@ -116,14 +105,7 @@ impl Game<'_> {
     /// `entity_slots` reaches them: none for an entity without one, and on a client.
     pub(super) fn entity_container_size(&self, entity: u32) -> Option<usize> {
         self.entity_automation_size(entity).or_else(|| {
-            if let Some(columns) = self.ecs.mount_columns(entity) {
-                return Some(columns * 3);
-            }
-            let m = self
-                .remote_entities
-                .iter()
-                .find(|m| m.id == entity && m.extra.chested)?;
-            Some(crate::game::mount_inventory::mount_columns(m) * 3)
+            self.ecs.mount_columns(entity).map(|columns| columns * 3)
         })
     }
     /// How many slots the container entity `entity` of the level in place shows automation
@@ -150,7 +132,6 @@ impl Game<'_> {
             return None;
         }
         (self.ecs.exists(entity)
-            || self.remote_entities.iter().any(|m| m.id == entity && !m.removed)
             || self.armor_stand_list().iter().any(|a| a.id == entity))
         .then_some(7)
     }
@@ -444,9 +425,6 @@ impl Game<'_> {
         }
         if self.ecs.exists(entity) {
             return Some(self.ecs.equipment_stack(entity, slot as usize));
-        }
-        if let Some(mob) = self.remote_entities.iter().find(|m| m.id == entity && !m.removed) {
-            return Some(mob.equipment_stacks().get(slot as usize).cloned());
         }
         let stand = self.armor_stand_saved(entity)?;
         Some(stand.equipment.get(slot as usize).cloned())

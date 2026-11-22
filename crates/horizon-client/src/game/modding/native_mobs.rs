@@ -38,31 +38,6 @@ impl Game<'_> {
             return;
         }
         // The ECS's slots reach the mods through its host events (`ecs_equipment_event`): nothing to read here.
-        if self.ecs.is_active() {
-            return;
-        }
-        let ticking = self.entity_ticking_area();
-        let mut changes = Vec::new();
-        for m in self.remote_entities.iter_mut().filter(|m| !m.removed) {
-            if !ticking(m.position.x.floor() as i32, m.position.z.floor() as i32) {
-                continue;
-            }
-            let now = m.equipment_stacks();
-            let heard = m.extra.equipment_heard.get_or_insert_with(Default::default);
-            if **heard == now {
-                continue;
-            }
-            for (slot, name) in MOB_SLOTS.into_iter().enumerate() {
-                if now[slot] != heard[slot] {
-                    let from = heard[slot].take();
-                    changes.push((m.id, m.kind.id.clone(), name, from, now[slot].clone()));
-                }
-            }
-            **heard = now;
-        }
-        for (id, kind, slot, from, to) in changes {
-            self.native_living_equipment_change(id, &kind, slot, from.as_ref(), to.as_ref());
-        }
     }
 }
 
@@ -196,48 +171,20 @@ impl Game<'_> {
         if monster && self.session.difficulty == 0 {
             return None;
         }
-        if self.ecs.is_active() {
-            // The options are the saved fields of the entity (vanilla's keys), written on the ECS entity the spawn returns.
-            let id = self.ecs_spawn(&qualified, pos, None)?;
-            self.ecs_put_flag(id, "NoAI", options.no_ai);
-            self.ecs_put_flag(id, "Invisible", options.invisible);
-            self.ecs_put_flag(id, "Silent", options.silent);
-            self.ecs_put_flag(id, "Invulnerable", options.invulnerable);
-            self.ecs_put_flag(id, "NoGravity", options.no_gravity);
-            if let Some(name) = &options.name {
-                self.ecs_put(id, "CustomName", Tag::String(JavaString::from(name.as_str())));
-                self.ecs_put_flag(id, "CustomNameVisible", true);
-            }
-            if let Some(health) = options.health.filter(|h| h.is_finite() && *h > 0.0) {
-                // Capped to the maximum by the bridge, as the mob's own health is.
-                self.ecs.set_health(id, health);
-            }
-            return Some(id);
+        // The options are the saved fields of the entity (vanilla's keys), written on the ECS entity the spawn returns.
+        let id = self.ecs_spawn(&qualified, pos, None)?;
+        self.ecs_put_flag(id, "NoAI", options.no_ai);
+        self.ecs_put_flag(id, "Invisible", options.invisible);
+        self.ecs_put_flag(id, "Silent", options.silent);
+        self.ecs_put_flag(id, "Invulnerable", options.invulnerable);
+        self.ecs_put_flag(id, "NoGravity", options.no_gravity);
+        if let Some(name) = &options.name {
+            self.ecs_put(id, "CustomName", Tag::String(JavaString::from(name.as_str())));
+            self.ecs_put_flag(id, "CustomNameVisible", true);
         }
-        let id = self.spawn_mob(
-            kind,
-            pos,
-            true,
-            super::creatures::SpawnSite::Finalizing(
-                horizon_client::mobs::spawn_rules::Reason::Command,
-            ),
-        )?;
-        // A jockey's other mob comes after it: this one is found by its id.
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.no_ai = options.no_ai;
-            m.invisible = options.invisible;
-            m.silent = options.silent;
-            m.invulnerable_flag = options.invulnerable;
-            m.no_gravity = options.no_gravity;
-            if let Some(name) = &options.name {
-                m.custom_name = Some(name.clone());
-                // A plain name replaces any styled one the spawn gave.
-                m.custom_name_text = None;
-                m.name_visible = true;
-            }
-            if let Some(health) = options.health.filter(|h| h.is_finite() && *h > 0.0) {
-                m.health = health.min(m.attrs.max_health);
-            }
+        if let Some(health) = options.health.filter(|h| h.is_finite() && *h > 0.0) {
+            // Capped to the maximum by the bridge, as the mob's own health is.
+            self.ecs.set_health(id, health);
         }
         Some(id)
     }
@@ -252,11 +199,7 @@ impl Game<'_> {
         if !self.native_mob_level(dimension) {
             return None;
         }
-        if self.ecs.is_active() {
-            return self.native_mob_ecs(id);
-        }
-        let mob = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
-        mob.alive().then(|| self.native_mob_of(mob))
+        self.native_mob_ecs(id)
     }
     /// The living mob `id` the ECS holds, read through the view.
     fn native_mob_ecs(&self, id: u32) -> Option<NativeMob> {
@@ -277,15 +220,8 @@ impl Game<'_> {
         if !self.native_mob_level(dimension) {
             return Vec::new();
         }
-        if self.ecs.is_active() {
-            let ids = self.ecs_mod_mobs();
-            return ids.into_iter().filter_map(|id| self.native_mob_ecs(id)).collect();
-        }
-        self.remote_entities
-            .iter()
-            .filter(|m| !m.removed && m.alive())
-            .map(|m| self.native_mob_of(m))
-            .collect()
+        let ids = self.ecs_mod_mobs();
+        ids.into_iter().filter_map(|id| self.native_mob_ecs(id)).collect()
     }
     /// Kills mob `id` as `/kill` does: it falls and drops its loot. False for
     /// no such living mob or another dimension.
@@ -295,16 +231,5 @@ impl Game<'_> {
         }
         self.kill_target(Target::Mob(id));
         true
-    }
-    fn native_mob_of(&self, m: &horizon_client::mobs::Mob) -> NativeMob {
-        NativeMob {
-            id: m.id,
-            dimension: self.dim.id().to_owned(),
-            kind: horizon_client::command::args::normalize(&m.kind.id),
-            pos: [m.position.x, m.position.y, m.position.z],
-            yaw: m.yaw,
-            health: m.health,
-            max_health: m.attrs.max_health,
-        }
     }
 }

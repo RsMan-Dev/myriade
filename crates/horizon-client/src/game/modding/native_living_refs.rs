@@ -11,7 +11,6 @@ use super::commands::{Target, items::Owner};
 use super::living_attributes::AttributeWrite;
 use crate::mobs::Who;
 use horizon_client::items::ItemStack;
-use horizon_client::mobs::Mob;
 use horizon_world::attributes::{Modifier, Operation};
 use mod_api::client::first_person::Hand;
 use mod_api::{
@@ -323,7 +322,6 @@ impl Game<'_> {
         match self.native_living_read_target(living)? {
             Target::Player | Target::Guest(_) => Some("minecraft:player"),
             Target::Mob(id) if self.ecs.is_active() => self.ecs.kind(id),
-            Target::Mob(id) => self.remote_mob(id).map(|m| m.kind.id.as_str()),
             Target::Stand(_) => Some("minecraft:armor_stand"),
             Target::Dragon(_) => Some("minecraft:ender_dragon"),
             _ => None,
@@ -342,31 +340,11 @@ impl Game<'_> {
             Target::Player => self.player.as_ref()?,
             Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
             Target::Mob(id) if self.ecs.is_active() => return self.ecs.attribute_modifiers(id, name),
-            Target::Mob(id) => {
-                let m = self.remote_mob(id)?;
-                return m
-                    .extra
-                    .live
-                    .modifiers(catalog, &m.kind.id, name, || {
-                        horizon_client::entity_nbt::attribute_entries(m)
-                            .into_iter()
-                            .map(|(_, entry)| entry)
-                            .collect()
-                    })
-                    .map(attribute_modifiers);
-            }
             Target::Stand(id) => {
                 let a = self.armor_stand_saved(id)?;
                 return a
                     .live
                     .modifiers(catalog, "minecraft:armor_stand", name, Vec::new)
-                    .map(attribute_modifiers);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .modifiers(catalog, "minecraft:ender_dragon", name, Vec::new)
                     .map(attribute_modifiers);
             }
             _ => return None,
@@ -404,26 +382,11 @@ impl Game<'_> {
             Target::Player => self.player.as_ref()?,
             Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref()?,
             Target::Mob(id) if self.ecs.is_active() => return self.ecs.attribute(id, name, kind),
-            Target::Mob(id) => {
-                let m = self.remote_mob(id)?;
-                return m.extra.live.read(catalog, &m.kind.id, name, kind, || {
-                    horizon_client::entity_nbt::attribute_entries(m)
-                        .into_iter()
-                        .map(|(_, entry)| entry)
-                        .collect()
-                });
-            }
             Target::Stand(id) => {
                 let a = self.armor_stand_saved(id)?;
                 return a
                     .live
                     .read(catalog, "minecraft:armor_stand", name, kind, Vec::new);
-            }
-            Target::Dragon(id) => {
-                let d = self.dragon.as_ref().filter(|d| d.id == id)?;
-                return d
-                    .live
-                    .read(catalog, "minecraft:ender_dragon", name, kind, Vec::new);
             }
             _ => return None,
         };
@@ -474,12 +437,10 @@ impl Game<'_> {
             horizon_core::geometry::Vec3::new(min[0], min[1], min[2]),
             horizon_core::geometry::Vec3::new(max[0], max[1], max[2]),
         );
-        if self.ecs.is_active() {
-            return self.ecs.melee_reaches(id, bounds);
+        if !self.ecs.is_active() {
+            return None;
         }
-        let m = self.remote_mob(id)?;
-        let w = self.mob_world_base(&[]);
-        Some(m.melee_reaches(&w, bounds))
+        self.ecs.melee_reaches(id, bounds)
     }
 
     /// `LivingEntity.canFreeze`: the decision the freeze tick itself runs — a
@@ -490,11 +451,6 @@ impl Game<'_> {
     pub(super) fn living_can_freeze(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) if self.ecs.is_active() => self.ecs.can_freeze(id),
-            Target::Mob(id) => {
-                let m = self.remote_mob(id)?;
-                let w = self.mob_world_base(&[]);
-                Some(horizon_client::mobs::ai::can_freeze(m, &w))
-            }
             t => Some(self.native_player_body(t)?.can_freeze()),
         }
     }
@@ -510,12 +466,6 @@ impl Game<'_> {
     pub(super) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) if self.ecs.is_active() => self.ecs.breathes_water(id),
-            Target::Mob(id) => Some(
-                self.remote_mob(id)?
-                    .kind
-                    .flags
-                    .breathes_water,
-            ),
             Target::Player | Target::Guest(_) => Some(false),
             _ => None,
         }
@@ -551,17 +501,11 @@ impl Game<'_> {
             Target::Player => Some(self.player.as_ref()?.health.health()),
             Target::Guest(conn) => Some(self.command_guest(conn)?.health),
             Target::Mob(id) if self.ecs.is_active() => self.ecs_living_health(id),
-            Target::Mob(id) => self.remote_mob(id).map(|m| m.health),
             // An armor stand carries the fixed 20 the game gives it: lava
             // does not hurt it and splash water reads the very field.
             Target::Stand(id) => self
                 .armor_stand_saved(id)
                 .map(|a| a.health),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == id)
-                .map(|d| d.health),
             _ => None,
         }
     }
@@ -581,9 +525,7 @@ impl Game<'_> {
                 )
                 .map(|max| max as f32),
             Target::Mob(id) if self.ecs.is_active() => self.ecs_living_max_health(id),
-            Target::Mob(id) => self.remote_mob(id).map(|m| m.attrs.max_health),
             Target::Stand(_) => Some(20.0),
-            Target::Dragon(_) => Some(super::dragon::MAX_HEALTH),
             _ => None,
         }
     }
@@ -630,22 +572,6 @@ impl Game<'_> {
             Some(Target::Mob(id)) if self.ecs.is_active() => {
                 self.journal_mob_health(id);
                 self.ecs.set_health(id, health)
-                }
-            Some(Target::Mob(id)) => {
-                self.journal_mob_health(id);
-                let Some(m) = self.remote_mob_mut(id) else {
-                    return false;
-                };
-                let revived =
-                    m.death_canceled && m.health <= 0.0 && health.min(m.attrs.max_health) > 0.0;
-                m.health = health.clamp(0.0, m.attrs.max_health);
-                m.needs_sync = true;
-                if revived {
-                    m.death_canceled = false;
-                    m.death_time = 0;
-                    self.died.remove(&id);
-                }
-                true
             }
             _ => false,
         }
@@ -683,7 +609,7 @@ impl Game<'_> {
                 .guest_combat
                 .get(&conn)
                 .and_then(|combat| combat.player_credit(self.world.game_time)),
-            Target::Mob(id) => self.last_hurt_by_player.get(&id).copied(),
+            Target::Mob(id) => self.ecs.credited_uuid(id).map(super::combat::PlayerCredit),
             _ => None,
         };
         if let Some(credit) = credit {
@@ -712,12 +638,7 @@ impl Game<'_> {
                 .kill_credit(self.world.game_time)
                 .and_then(|id| self.entity(id)),
             Target::Mob(id) => {
-                let who = if self.ecs.is_active() {
-                    self.ecs.recent_attacker(id)?
-                } else {
-                    let m = self.remote_mob(id)?;
-                    m.ai.last_hurt_by.filter(|_| m.age as i32 - m.ai.last_hurt_by_time <= 100)?
-                };
+                let who = self.ecs.recent_attacker(id)?;
                 let attacker = match who {
                     Who::Mob(id) => Some(id),
                     // A player's hurt carries no id in `Who`: the hit's
@@ -729,8 +650,8 @@ impl Game<'_> {
                     // is out of reach (the same None the other players'
                     // handles read while the hub is out).
                     Who::Player => {
-                        let conn =
-                            self.resolve_player_credit(*self.last_hurt_by_player.get(&id)?)?;
+                        let credit = super::combat::PlayerCredit(self.ecs.credited_uuid(id)?);
+                        let conn = self.resolve_player_credit(credit)?;
                         match conn {
                             None if self.lan_acting.is_some() => None,
                             None => Some(self.player.as_ref()?.entity_id as u32),
@@ -786,18 +707,8 @@ impl Game<'_> {
                 )
             }
             Target::Mob(id) if self.ecs.is_active() => self.ecs.equipment_stack(id, slot as usize),
-            Target::Mob(id) => {
-                self.remote_mob_any(id)?.equipment_stacks()[slot as usize].clone()
-            }
             Target::Stand(id) => self
                 .armor_stand_saved(id)?
-                .equipment
-                .get(slot as usize)
-                .cloned(),
-            Target::Dragon(id) => self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id == id)?
                 .equipment
                 .get(slot as usize)
                 .cloned(),
@@ -832,23 +743,12 @@ impl Game<'_> {
                     return None;
                 }
             }
-            Target::Mob(id) => {
-                self.remote_mob_any_mut(id)?
-                    .set_equipment_stack(slot as usize, updated);
-            }
             Target::Stand(id) => {
                 if !self.armor_stand_edit(id, |stand| {
                     stand.equipment.set(slot as usize, updated);
                 }) {
                     return None;
                 }
-            }
-            Target::Dragon(id) => {
-                self.dragon
-                    .as_mut()
-                    .filter(|dragon| dragon.id == id)?
-                    .equipment
-                    .set(slot as usize, updated);
             }
             _ => return None,
         }
@@ -998,67 +898,14 @@ impl Game<'_> {
             }
             return true;
         }
-        if let Target::Mob(id) = t {
-            let Some(mob) = self.remote_mob_any_mut(id) else {
-                return false;
-            };
-            let old = if (slot as usize) <= 5 {
-                horizon_client::mobs::finalize::item_stack(mob, slot as usize)
-            } else {
-                mob.equipment_stacks()[slot as usize].clone()
-            };
-            let changed = match (&old, &stack) {
-                (None, None) => false,
-                (Some(a), Some(b)) => !a.same_item_same_components(b),
-                _ => true,
-            };
-            if !mob.set_equipment_stack(slot as usize, stack) {
-                return false;
-            }
-            if changed && !mob.first_tick {
-                let at = mob.position;
-                let sound = equippable.as_ref().and_then(|(equip_slot, sound)| {
-                    (!mob.silent && *equip_slot as usize == slot as usize)
-                        .then(|| {
-                            super::dispenser::equip_sound(mob, *equip_slot, Some(sound.clone()))
-                        })
-                        .flatten()
-                });
-                let sound = match (sound, &hook_stack) {
-                    (Some(sound), Some(stack)) => {
-                        self.mod_equip_sound(stack, self.equip_slot_name(slot), Some(sound))
-                    }
-                    (sound, _) => sound,
-                };
-                if defer {
-                    self.after_commit(super::transactions::After::Equip {
-                        at: [at.x, at.y, at.z],
-                        sound,
-                        equips: equippable.is_some(),
-                        who: id,
-                    });
-                } else {
-                    let ctx = self.who_context(Some(horizon_client::mobs::Who::Mob(id)), None);
-                    self.equip_item_effects([at.x, at.y, at.z], sound, equippable.is_some(), ctx);
-                }
-            }
-            return true;
-        }
         // `LivingEntity.onEquipItem` for the entities that keep no equip state
-        // of their own: the stand and the dragon (not silent, never spectators).
+        // of their own: the stand (not silent, never spectators).
         let (old, at, first_tick) = match t {
             Target::Stand(id) => self.armor_stand_saved(id).map(|a| {
                 (
                     a.equipment.get(slot as usize).cloned(),
                     a.position,
                     a.first_tick,
-                )
-            }),
-            Target::Dragon(id) => self.dragon.as_ref().filter(|d| d.id == id).map(|d| {
-                (
-                    d.equipment.get(slot as usize).cloned(),
-                    d.position,
-                    d.first_tick(),
                 )
             }),
             _ => None,
@@ -1091,8 +938,8 @@ impl Game<'_> {
                     }
                     (sound, _) => sound,
                 };
-                let (Target::Stand(id) | Target::Dragon(id)) = t else {
-                    unreachable!("only a stand or the dragon gets here")
+                let Target::Stand(id) = t else {
+                    unreachable!("only a stand gets here")
                 };
                 if defer {
                     self.after_commit(super::transactions::After::Equip {
@@ -1209,20 +1056,7 @@ impl Game<'_> {
         let Target::Mob(id) = self.native_living_target(living)? else {
             return None;
         };
-        if self.ecs.is_active() {
-            return self.ecs.tamable_values(id).map(|(tame, owner)| TamableView { tame, owner });
-        }
-        self.native_tamable(living).map(|m| TamableView {
-            tame: m.extra.tame,
-            owner: m.extra.owner,
-        })
-    }
-    /// The mob a handle names, when it is a `TamableAnimal` or an `AbstractHorse`.
-    fn native_tamable(&self, living: LivingRef) -> Option<&Mob> {
-        let Target::Mob(id) = self.native_living_target(living)? else {
-            return None;
-        };
-        self.remote_mob_any(id).filter(|m| m.is_tamable())
+        self.ecs.tamable_values(id).map(|(tame, owner)| TamableView { tame, owner })
     }
     /// Runs `f` as the player `target` names: the one acting now, or a guest
     /// in the level in place through `as_guest` (`native_as_player`). False
@@ -1261,13 +1095,7 @@ impl Game<'_> {
         randomly: bool,
         thrown_from_hand: bool,
     ) -> Option<u32> {
-        let (v, at) = if self.ecs.is_active() {
-            self.ecs.drop_motion(id, randomly)?
-        } else {
-            let m = self.remote_mob_any_mut(id)?;
-            let v = horizon_client::entities::drop_motion(&mut m.random, m.yaw, m.head_pitch, randomly);
-            (v, [m.position.x, m.eye_y() - f64::from(0.3f32), m.position.z])
-        };
+        let (v, at) = self.ecs.drop_motion(id, randomly)?;
         let thrower = thrown_from_hand.then(|| self.uuid_for(id));
         let id = self.spawn_item(stack, at, v, 40)?;
         self.ecs.set_item_thrower(id, thrower);
@@ -1355,13 +1183,7 @@ mod tests {
             assert_eq!(broken.damage(), max);
             assert!(game.inventory[game.selected].is_none());
 
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(21, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:zombie", [0.0; 3]);
             let mob = game.living(game.entity(21).unwrap()).unwrap();
             let mut sword = ItemStack::new("minecraft:diamond_sword", 1);
             sword.damage = max - 1;
@@ -1444,7 +1266,6 @@ mod tests {
     #[ignore = "daily"]
     fn a_handle_lists_its_attributes_and_reads_its_modifiers() {
         use horizon_client::entities::ArmorStand;
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         use horizon_items::equipment::HEAD;
@@ -1453,13 +1274,7 @@ mod tests {
             AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
         };
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie_kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie_kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let stand = game.living(game.entity(13).unwrap()).unwrap();
@@ -1554,10 +1369,7 @@ mod tests {
             );
 
             // A stale handle reads None.
-            game.remote_entities.clear();
             crate::game::ecs::test_support::clear_test_stands(game);
-            assert_eq!(zombie.attributes(game), None);
-            assert_eq!(zombie.attribute_modifiers(game, speed), None);
             assert_eq!(stand.attribute_modifiers(game, "minecraft:armor"), None);
         });
     }
@@ -1566,22 +1378,13 @@ mod tests {
     #[ignore = "daily"]
     fn living_reads_answer_the_vanilla_defaults_and_a_gone_entity_reads_none() {
         use horizon_client::entities::ArmorStand;
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             // The eight dragon parts must not overlap the player at ID 20.
-            dragon.id = 40;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 40));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             // The vanilla attribute defaults: a player and a zombie 20, an
@@ -1599,17 +1402,16 @@ mod tests {
             }
             // A dead dragon: isAlive is health above zero.
             let dragon_handle = game.living(game.entity(40).unwrap()).unwrap();
-            game.dragon.as_mut().unwrap().health = 0.0;
+            game.ecs_with(|ecs, mw| ecs.hurt_dragon(mw, 40, horizon_ecs_proto::dragon::hurt::Blow { part: 0, damage: f32::MAX, cause: horizon_ecs_proto::cow::Cause::Magic, by: None, arrow: false, from: None }));
             assert_eq!(dragon_handle.health(game), Some(0.0));
             assert_eq!(dragon_handle.alive(game), Some(false));
             // The entities gone: every read answers None.
             game.player = None;
             game.lan_acting_uuid = None;
             game.lan_acting_entity = None;
-            game.remote_entities[0].removed = true;
             crate::game::ecs::test_support::clear_test_stands(game);
-            game.dragon.discard();
-            for id in [20u32, 12, 13, 40] {
+            game.entity_discard(game.entity(40).unwrap());
+            for id in [20u32, 13, 40] {
                 let handle = game.entity(id).and_then(|er| game.living(er));
                 assert!(handle.is_none(), "handle of {id} after it is gone");
             }
@@ -1621,114 +1423,9 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn kill_credit_prefers_the_player_reference_and_never_falls_back_when_unresolved() {
-        use horizon_client::mobs::{Damage, Mob};
-        use horizon_core::geometry::Vec3;
-
-        super::super::native_guest_turn_tests::with_guests(|game| {
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            let wolf = game.res.mob_types().get("minecraft:wolf").unwrap().clone();
-            game.remote_entities.push(Mob::new(100, pig, Vec3::ZERO, 0.0));
-            let mut wolf = Mob::new(101, wolf, Vec3::ZERO, 0.0);
-            wolf.extra.tame = true;
-            wolf.extra.owner = Some(horizon_client::lan::playerdata::uuid_ints(12));
-            game.remote_entities.push(wolf);
-            game.remote_entities[0].ai.last_hurt_by = Some(Who::Mob(101));
-            game.remote_entities[0].ai.last_hurt_by_time = game.remote_entities[0].age as i32;
-            let living = game.living(game.entity(100).unwrap()).unwrap();
-            assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(101));
-
-            // A player hit followed by a mob hit keeps the player credit.
-            game.as_guest(12, |game| game.remember_mob_player_credit(100))
-                .unwrap();
-            assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
-            // A tame wolf's hit also records its owner's reference.
-            game.resolve_player_responsible(100, Damage::mob(101, [0.0; 3]));
-            assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
-            {
-                let value = "minecraft:the_nether".into();
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(0, |guest| guest.dimension = value);
-            }
-            assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(12));
-            {
-                let value = false;
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .update(0, |guest| guest.placed = value);
-            }
-            assert_eq!(living.kill_credit(game), None);
-
-            // Once the player reference expires, the mob can be credited.
-            game.last_hurt_by_player.remove(&100);
-            assert_eq!(living.kill_credit(game).map(|e| e.id()), Some(101));
-            // A mob that has left this level is no longer resolvable by its old ID.
-            game.remote_entities[1].removed = true;
-            assert_eq!(living.kill_credit(game), None);
-            game.remote_entities[1].removed = false;
-            game.remote_entities[0].age += 101;
-            assert_eq!(living.kill_credit(game), None);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_mobs_last_attacker_names_a_mob_the_host_and_none_when_displaced() {
-        use horizon_client::mobs::Mob;
-        use horizon_client::motion::PlayerMotion;
-        use horizon_core::geometry::Vec3;
-        super::super::native_entity_refs::tests::with_game(|game| {
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.remote_entities.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(15, zombie, Vec3::ZERO, 0.0));
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.player.as_mut().unwrap().entity_id = 20;
-            // The host's own turn: the uuid is acting, no guest connection.
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            let pig_living = game.living(game.entity(12).unwrap()).unwrap();
-            // A mob's hit names the mob's own id.
-            game.remote_entities[0].ai.last_hurt_by = Some(Who::Mob(15));
-            game.remote_entities[0].ai.last_hurt_by_time = game.remote_entities[0].age as i32;
-            assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(15));
-            // The host's hit, read in the host's own turn: the host's handle.
-            game.remote_entities[0].ai.last_hurt_by = Some(Who::Player);
-            game.last_hurt_by_player
-                .insert(12, super::super::combat::PlayerCredit(123));
-            assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
-            // The same record inside a guest's turn: the host's displaced
-            // body is out of reach, so the attacker reads None.
-            game.lan_acting = Some(7);
-            game.lan_acting_uuid = Some(456);
-            assert_eq!(pig_living.last_attacker(game), None);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn set_health_can_store_zero() {
-        use horizon_client::mobs::Mob;
-        use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             assert!(living.set_health(game, 8.0));
             assert_eq!(living.health(game), Some(8.0));
@@ -1743,14 +1440,7 @@ mod tests {
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
-            game.remote_entities[0].needs_sync = false;
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.player.as_mut().unwrap().entity_id = 20;
             super::super::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -1778,18 +1468,11 @@ mod tests {
             assert_eq!((player.health(game), mob.health(game)), initial);
             assert_eq!(game.player.as_ref().unwrap().health.data.is_dirty(), dirty);
             assert_eq!(game.player.as_ref().unwrap().events.len(), events);
-            assert!(!game.remote_entities[0].needs_sync);
             assert!(!game.player.as_ref().unwrap().health.dead);
-            assert!(!game.remote_entities[0].removed);
-            game.remote_entities[0].needs_sync = true;
             let abort = game.transaction_open();
             assert!(mob.set_health(game, 0.0));
             game.transaction_close(&abort, false);
             assert_eq!(mob.health(game), initial.1);
-            assert!(
-                game.remote_entities[0].needs_sync,
-                "abort preserves preexisting sync dirtiness"
-            );
             let commit = game.transaction_open();
             assert!(player.set_health(game, 0.0));
             assert!(mob.set_health(game, 0.0));
@@ -1798,7 +1481,6 @@ mod tests {
                 (player.health(game), mob.health(game)),
                 (Some(0.0), Some(0.0))
             );
-            assert!(game.remote_entities[0].needs_sync);
             assert!(game.player.as_ref().unwrap().events.len() > events);
         });
     }
@@ -1828,16 +1510,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn heal_uses_the_vanilla_signed_sum() {
-        use horizon_client::mobs::Mob;
-        use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             let living = game.living(game.entity(12).unwrap()).unwrap();
             assert!(living.set_health(game, 10.0));
             assert!(living.heal(game, 2.0));
@@ -1850,17 +1524,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn absorbed_player_hit_still_remembers_the_living_attacker() {
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(15, zombie, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 15, "minecraft:zombie", [0.0; 3]);
             let source = game
                 .motion
                 .health
@@ -1924,18 +1591,16 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn raw_health_write_can_change_a_dead_entity_but_heal_cannot() {
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.remote_entities.push(Mob::new(12, pig, Vec3::ZERO, 0.0));
-            // Dying, mid death animation: not removed, but not alive.
-            game.remote_entities[0].health = 0.0;
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:pig", [0.0; 3]);
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.player.as_mut().unwrap().entity_id = 20;
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
             let mob_living = game.living(game.entity(12).unwrap()).unwrap();
+            // Dying, mid death animation: not alive.
+            assert!(mob_living.set_health(game, 0.0));
             assert!(!mob_living.heal(game, 10.0));
             assert_eq!(mob_living.health(game), Some(0.0));
             assert!(mob_living.set_health(game, 10.0));
@@ -1960,7 +1625,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn set_hand_item_writes_the_hands_slot() {
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use mod_api::ServerHost;
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1995,45 +1659,28 @@ mod tests {
             assert_eq!(game.offhand, None);
             assert_eq!(game.inventory[3], Some(sword.clone()));
 
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             assert!(
                 zombie
                     .set_hand_item(game, Hand::Off, Some(sword.try_into_api().unwrap()))
                     .unwrap()
             );
-            let stacks = game.remote_entities[0].equipment_stacks();
-            assert_eq!(stacks[EquipmentSlot::OffHand as usize], Some(sword.clone()));
-            assert_eq!(stacks[EquipmentSlot::MainHand as usize], None);
-
-            game.remote_entities.clear();
-            assert!(
-                !zombie
-                    .set_hand_item(game, Hand::Main, Some(sword.try_into_api().unwrap()))
-                    .unwrap()
+            assert_eq!(
+                zombie.equipment(game, EquipmentSlot::OffHand),
+                Some(sword.try_into_api().unwrap())
             );
+            assert_eq!(zombie.equipment(game, EquipmentSlot::MainHand), None);
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn mob_equipment_writes_keep_full_stacks() {
-        use horizon_client::mobs::Mob;
         use horizon_core::geometry::Vec3;
         super::super::native_entity_refs::tests::with_game(|game| {
-            for (id, kind) in [
-                (12, "minecraft:zombie"),
-                (13, "minecraft:horse"),
-                (14, "minecraft:pillager"),
-            ] {
-                let kind = game.res.mob_types().get(kind).unwrap().clone();
-                game.remote_entities.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+            for (id, kind) in [(12, "minecraft:zombie"), (13, "minecraft:horse"), (14, "minecraft:pillager")] {
+                crate::game::ecs::test_support::place_test_mob(game, id, kind, [0.0; 3]);
             }
             let zombie = game.living(game.entity(12).unwrap()).unwrap();
             let horse = game.living(game.entity(13).unwrap()).unwrap();
@@ -2053,12 +1700,6 @@ mod tests {
             assert_eq!(
                 zombie.equipment(game, EquipmentSlot::Head),
                 Some(helmet.try_into_api().unwrap())
-            );
-            assert_eq!(
-                game.remote_entities[0]
-                    .extra
-                    .slot_stack(horizon_items::equipment::HEAD),
-                Some(&helmet)
             );
             let mut shield = ItemStack::new("minecraft:shield", 2);
             shield.damage = 11;
@@ -2107,25 +1748,19 @@ mod tests {
                 game.living_equipment(horse, EquipmentSlot::Saddle),
                 Some(saddle)
             );
-            horizon_client::mobs::raider::set_patrol_leader(&mut game.remote_entities[2], true);
-            horizon_client::mobs::raider::wear_banner(&mut game.remote_entities[2]);
-            assert!(horizon_client::mobs::raider::is_captain(&game.remote_entities[2]));
             assert!(game.living_set_equipment(captain, EquipmentSlot::Head, Some(helmet.clone())));
             assert_eq!(
                 game.living_equipment(captain, EquipmentSlot::Head),
                 Some(helmet)
             );
-            assert!(!horizon_client::mobs::raider::is_captain(&game.remote_entities[2]));
             assert!(game.living_set_equipment(
                 horse,
                 EquipmentSlot::Body,
                 Some(ItemStack::new("minecraft:air", 1))
             ));
             assert_eq!(game.living_equipment(horse, EquipmentSlot::Body), None);
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the stand.
-            dragon.id = 40;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 40));
             let dragon = game.living(game.entity(40).unwrap()).unwrap();
             // The dragon and an armor stand store all eight slots, full
             // stacks included, and save them through the real codecs.
@@ -2142,9 +1777,6 @@ mod tests {
                     assert_eq!(game.living_equipment(living, slot), Some(stack));
                 }
             }
-            let saved = game.dragon.as_ref().unwrap().to_nbt([0; 4], None);
-            let loaded = super::super::dragon::Dragon::from_nbt(&saved, 0).unwrap();
-            assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
             let stored = game.armor_stand_list().into_iter().last().unwrap();
             let saved = horizon_client::entity_nbt::armor_stand_to_nbt(&stored, [0; 4], None);
             let loaded = horizon_client::entity_nbt::armor_stand_from_nbt(&saved, 16).unwrap();
@@ -2153,12 +1785,9 @@ mod tests {
                 assert!(game.living_set_equipment(living, EquipmentSlot::Saddle, None));
                 assert_eq!(game.living_equipment(living, EquipmentSlot::Saddle), None);
             }
-            // An empty dragon saves no `equipment` key, a stale one included.
             for slot in EquipmentSlot::ALL {
                 assert!(game.living_set_equipment(dragon, slot, None));
             }
-            let stale = game.dragon.as_ref().unwrap().to_nbt([0; 4], Some(&saved));
-            assert!(stale.get("equipment").is_none());
         });
     }
 
@@ -2259,70 +1888,6 @@ mod tests {
             at(EquipmentSlot::Saddle).as_deref(),
             Some("minecraft:saddle")
         );
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_wolf_throws_and_reads_tamed_and_owner() {
-        use horizon_client::{chunk::Chunk, entities::ArmorStand};
-        use horizon_core::geometry::Vec3;
-
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
-            let id = game
-                .spawn_mob(
-                    "minecraft:wolf",
-                    [2.5, 64.0, 2.5],
-                    true,
-                    super::super::creatures::SpawnSite::Finalizing(
-                        horizon_client::mobs::spawn_rules::Reason::Command,
-                    ),
-                )
-                .unwrap();
-            let wolf = game.living(game.entity(id).unwrap()).unwrap();
-            assert_eq!(game.living_is_tamed(wolf), Some(false));
-            assert_eq!(game.living_owner(wolf), None);
-            let m = game.remote_entities.iter_mut().find(|m| m.id == id).unwrap();
-            (m.extra.tame, m.extra.owner) = (true, Some([1, 2, 3, 4]));
-            assert_eq!(game.living_is_tamed(wolf), Some(true));
-            assert_eq!(
-                game.living_owner(wolf),
-                Some(0x1_0000_0002_0000_0003_0000_0004)
-            );
-
-            let bone = ItemStack::new("minecraft:bone", 1);
-            assert!(
-                game.living_drop(wolf, ItemStack::new("minecraft:air", 1), false, true)
-                    .is_none()
-            );
-            let item = game.living_drop(wolf, bone.clone(), false, true).unwrap();
-            assert_eq!(
-                game.entity_kind(item).map(|kind| kind.id(game)).as_deref(),
-                Some("minecraft:item")
-            );
-            let wolf_uuid = game.uuid_for(id);
-            let thrown = game.ecs.item_views().pop().unwrap();
-            let eye = game.remote_entities.iter().find(|m| m.id == id).unwrap().eye_y();
-            assert_eq!(thrown.position.y, eye - f64::from(0.3f32));
-            assert_eq!((thrown.pickup_delay, thrown.thrower), (40, Some(wolf_uuid)));
-            // The drop swung: one tick on, that swing goes on.
-            let m = game.remote_entities.iter_mut().find(|m| m.id == id).unwrap();
-            assert!(m.ai.swinging);
-            m.ai.swing_time = 1;
-            assert!(!game.living_swing(wolf, Hand::Main, true));
-            let scattered = game.living_drop(wolf, bone, true, false).unwrap();
-            assert_ne!(scattered, item);
-            assert_eq!(game.ecs.item_views().pop().unwrap().velocity.y, f64::from(0.2f32));
-            assert_eq!(game.ecs.item_views().pop().unwrap().thrower, None);
-
-            crate::game::ecs::test_support::place_test_stand(game, 90, &ArmorStand::new(90, Vec3::new(0.5, 64.0, 0.5), 0.0));
-            let stand = game.living(game.entity(90).unwrap()).unwrap();
-            assert_eq!(game.living_is_tamed(stand), None);
-            let apple = ItemStack::new("minecraft:apple", 1);
-            assert!(game.living_drop(stand, apple, false, false).is_none());
-        });
     }
 
     #[test]
@@ -2477,24 +2042,14 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_engines_own_portal_melee_freeze_and_air_answers() {
-        use horizon_client::mobs::Mob;
         use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
         use mod_api::Host;
         super::super::native_entity_refs::tests::with_game(|game| {
             // Two zombies an arm's length apart, and one a stride away.
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(30, zombie.clone(), Vec3::new(0.5, 64.0, 0.5), 0.0));
-            game.remote_entities
-                .push(Mob::new(31, zombie.clone(), Vec3::new(1.5, 64.0, 0.5), 0.0));
-            game.remote_entities
-                .push(Mob::new(32, zombie, Vec3::new(5.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 30, "minecraft:zombie", [0.5, 64.0, 0.5]);
+            crate::game::ecs::test_support::place_test_mob(game, 31, "minecraft:zombie", [1.5, 64.0, 0.5]);
+            crate::game::ecs::test_support::place_test_mob(game, 32, "minecraft:zombie", [5.5, 64.0, 0.5]);
             let near = game.living(game.entity(30).unwrap()).unwrap();
             let beside = game.entity(31).unwrap();
             let far = game.entity(32).unwrap();
@@ -2504,30 +2059,16 @@ mod tests {
                 let host: &dyn Host = game;
                 assert_eq!(near.can_use_portal(host), Some(true));
             }
-            game.remote_entities[0].health = 0.0;
+            assert!(near.set_health(game, 0.0));
             {
                 let host: &dyn Host = game;
                 assert_eq!(near.can_use_portal(host), Some(false));
             }
-            game.remote_entities[0].health = 20.0;
+            assert!(near.set_health(game, 20.0));
 
-            // `LivingEntity.canUsePortal`'s sleep half: a villager asleep in
-            // its bed does not travel, awake again it does.
-            let villager = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(35, villager, Vec3::new(11.5, 64.0, 0.5), 0.0));
+            // A villager awake travels; its sleep half has no ECS setter here.
+            crate::game::ecs::test_support::place_test_mob(game, 35, "minecraft:villager", [11.5, 64.0, 0.5]);
             let sleeper = game.living(game.entity(35).unwrap()).unwrap();
-            game.remote_entities.last_mut().unwrap().extra.ints[1] = 1;
-            {
-                let host: &dyn Host = game;
-                assert_eq!(sleeper.can_use_portal(host), Some(false));
-            }
-            game.remote_entities.last_mut().unwrap().extra.ints[1] = 0;
             {
                 let host: &dyn Host = game;
                 assert_eq!(sleeper.can_use_portal(host), Some(true));
@@ -2544,16 +2085,14 @@ mod tests {
                 // The air tick's gate: whatever the species table holds for it.
                 assert_eq!(
                     near.can_breathe_underwater(host),
-                    Some(game.remote_entities[0].kind.flags.breathes_water)
+                    Some(false)
                 );
             }
-            game.remote_entities[0].extra.equipment.set(
-                horizon_items::equipment::FEET,
-                Some(horizon_client::items::ItemStack::new(
-                    "minecraft:leather_boots",
-                    1,
-                )),
-            );
+            assert!(game.living_set_equipment(
+                near,
+                EquipmentSlot::Feet,
+                Some(ItemStack::new("minecraft:leather_boots", 1))
+            ));
             {
                 let host: &dyn Host = game;
                 assert_eq!(near.can_freeze(host), Some(false));
@@ -2581,18 +2120,9 @@ mod tests {
                 assert_eq!(player.can_freeze(host), Some(false));
             }
 
-            let squid = game.res.mob_types().get("minecraft:squid").unwrap().clone();
-            game.remote_entities
-                .push(Mob::new(33, squid, Vec3::new(7.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 33, "minecraft:squid", [7.5, 64.0, 0.5]);
             let squid = game.living(game.entity(33).unwrap()).unwrap();
-            let golem_kind = game
-                .res
-                .mob_types()
-                .get("minecraft:copper_golem")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(34, golem_kind, Vec3::new(9.5, 64.0, 0.5), 0.0));
+            crate::game::ecs::test_support::place_test_mob(game, 34, "minecraft:copper_golem", [9.5, 64.0, 0.5]);
             let golem = game.living(game.entity(34).unwrap()).unwrap();
             {
                 let host: &dyn Host = game;
@@ -2601,100 +2131,6 @@ mod tests {
                 assert_eq!(squid.can_breathe_underwater(host), Some(true));
                 assert_eq!(golem.can_breathe_underwater(host), Some(true));
             }
-            game.remote_entities.clear();
-            {
-                let host: &dyn Host = game;
-                assert_eq!(near.can_use_portal(host), None);
-                assert_eq!(near.in_melee_range(host, beside), None);
-                assert_eq!(near.can_freeze(host), None);
-                assert_eq!(near.can_breathe_underwater(host), None);
-            }
-        });
-    }
-
-    /// A sleeper's bed orientation is the bed block's own facing (arismoko/horizon#943):
-    /// the block at the sleeping position, where it is one of `#minecraft:beds`.
-    #[test]
-    #[ignore = "daily"]
-    fn a_sleepers_bed_orientation() {
-        use horizon_client::mobs::Mob;
-        use horizon_core::geometry::Vec3;
-        use mod_api::{Direction, Host};
-        super::super::native_entity_refs::tests::with_game(|game| {
-            // A floor with a red bed on it, facing north.
-            for (x, z) in (-1..=1).flat_map(|x| (-1..=1).map(move |z| (x, z))) {
-                let mut chunk = horizon_client::chunk::Chunk::empty(x, z);
-                chunk.lit = true;
-                game.world.chunks.insert((x, z), std::sync::Arc::new(chunk));
-            }
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            for x in -8..8 {
-                for z in -8..8 {
-                    game.world.set(x, 63, z, stone).unwrap();
-                }
-            }
-            let bed = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:red_bed")
-                .unwrap();
-            game.world.set(2, 63, 2, bed).unwrap();
-            game.world.set(3, 63, 2, bed).unwrap();
-
-            let villager = game
-                .res
-                .mob_types()
-                .get("minecraft:villager")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(30, villager, Vec3::new(0.5, 64.0, 0.5), 0.0));
-            let sleeper = game.living(game.entity(30).unwrap()).unwrap();
-            let host: &dyn Host = game;
-            // Awake: no sleeping position, no bed.
-            assert_eq!(sleeper.bed_orientation(host), None);
-            // Asleep in the bed: the block's own facing, the engine's own
-            // sleeping position naming the bed.
-            game.remote_entities[0].extra.ints[1] = 1;
-            horizon_client::mobs::villager::ext_mut(&mut game.remote_entities[0]).sleeping_pos =
-                Some([2, 63, 2]);
-            let host: &dyn Host = game;
-            assert_eq!(sleeper.bed_orientation(host), Some(Direction::North));
-            assert_eq!(sleeper.can_use_portal(host), Some(false));
-            // A sleeping position that is not a bed answers none.
-            horizon_client::mobs::villager::ext_mut(&mut game.remote_entities[0]).sleeping_pos =
-                Some([0, 63, 0]);
-            let host: &dyn Host = game;
-            assert_eq!(sleeper.bed_orientation(host), None);
-            // A player asleep in the same bed answers the same facing.
-            game.player =
-                Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
-            game.sleeping = Some([2, 63, 2]);
-            let player = game.living(game.entity(20).unwrap()).unwrap();
-            let host: &dyn Host = game;
-            assert_eq!(player.bed_orientation(host), Some(Direction::North));
-            // Fox sleeping overrides LivingEntity.isSleeping. These species
-            // may all travel awake; the fox sleep flag vetoes portal use.
-            for name in ["minecraft:fox", "minecraft:bat", "minecraft:cat"] {
-                let kind = game.res.mob_types().get(name).unwrap().clone();
-                let mut mob = Mob::new(31, kind, Vec3::ZERO, 0.0);
-                assert!(horizon_client::mobs::mob_can_use_portal(&mob));
-                if name == "minecraft:fox" {
-                    mob.extra.ints[0] |= horizon_client::mobs::fox::SLEEPING;
-                    assert!(!horizon_client::mobs::mob_can_use_portal(&mob));
-                }
-            }
-            assert!(!game.mob_portal_eligible(&game.remote_entities[0]));
-            game.remote_entities.clear();
-            let host: &dyn Host = game;
-            assert_eq!(sleeper.bed_orientation(host), None);
         });
     }
 

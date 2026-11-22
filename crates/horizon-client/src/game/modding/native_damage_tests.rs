@@ -1,7 +1,6 @@
 //! `living_damage_pre` and `living_damage_post` heard by a trait mod, through the game's own
 //! hooks: the damage container each hit fills, the hit's level host, and the mob and dragon
 //! hits that fire them.
-use super::dragon::{Dragon, SPECIAL};
 use super::entity::damage_level_of;
 use super::native_entity_refs::tests::{bind_local_player, with_game};
 use horizon_client::command::args::GameMode;
@@ -192,11 +191,9 @@ fn pre_draws_from_the_level_random_of_the_hit() {
 #[ignore = "daily"]
 fn a_hit_on_the_dragon_fires_pre_and_post() {
     let heard = heard(|game| {
-        let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-        dragon.id = 225009;
-        game.dragon.replace(dragon);
-        let _ = game.hit_special(SPECIAL, 6.0, true, DamageKind::Generic, None);
-        assert_eq!(game.dragon.as_ref().unwrap().health, 194.0);
+        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 225009));
+        let _ = game.command_damage_dragon(225009, 6.0, "minecraft:generic", DamageKind::Generic, (None, None, None));
+        assert_eq!(game.ecs_living_health(225009), Some(194.0));
     });
     assert_eq!(heard.pre, [(225009, 6.0, 6.0, 0.0)]);
     assert_eq!(heard.post, [(225009, 6.0)]);
@@ -212,13 +209,11 @@ fn mob_and_dragon_post_records_fresh_hit_decision() {
         assert!(pig.damage(damage_level_of!(game), 4.0, source));
         assert!(!pig.damage(damage_level_of!(game), 3.0, source));
         assert_eq!(pig.health, 6.0);
-        let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);
-        dragon.id = 225015;
-        game.dragon.replace(dragon);
+        game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 225015));
         for amount in [2.0, 4.0, 3.0] {
-            let _ = game.hit_special(SPECIAL, amount, true, DamageKind::Generic, None);
+            let _ = game.command_damage_dragon(225015, amount, "minecraft:generic", DamageKind::Generic, (None, None, None));
         }
-        assert_eq!(game.dragon.as_ref().unwrap().health, 196.0);
+        assert_eq!(game.ecs_living_health(225015), Some(196.0));
     });
     assert_eq!(
         heard.post,

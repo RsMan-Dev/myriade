@@ -164,13 +164,11 @@ impl Game<'_> {
             return;
         };
         let area = nearby_living_area(source);
-        for player in self
-            .fight_players()
-            .into_iter()
-            .filter(|p| p.alive && p.bounds.intersects(area))
-        {
-            self.as_fight_player(player.who, |g| g.apply_nausea_effect_to_player(source));
-        }
+        self.for_each_player(|g| {
+            if g.player.as_ref().is_some_and(|p| !p.health.dead_or_dying() && p.bounds().intersects(area)) {
+                g.apply_nausea_effect_to_player(source);
+            }
+        });
         if self.ecs.is_active() {
             for (id, kind) in self.ecs_gas_reached(source, area) {
                 if self.can_be_affected(Some(id as i32), &kind, "nausea") {

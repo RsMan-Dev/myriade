@@ -868,10 +868,10 @@ impl Game<'_> {
                 .find(|m| m.id == id && !m.removed)
                 .map(|m| m.kind.id.clone())
                 .or_else(|| {
-                    self.dragon
-                        .as_ref()
-                        .filter(|d| d.id == id)
-                        .map(|_| "minecraft:ender_dragon".to_owned())
+                    self.ecs
+                        .kind(id)
+                        .filter(|k| *k == "minecraft:ender_dragon")
+                        .map(str::to_owned)
                 }),
             None => None,
         };
@@ -973,10 +973,7 @@ impl Game<'_> {
                     Who::Player => random_source::entity().next_float(),
                     Who::Mob(id) => match self.remote_index.find(&self.remote_entities, id) {
                         Some(index) => self.remote_entities[index].random.next_float(),
-                        None => match self.dragon_effect_random(id) {
-                            Some(random) => random,
-                            None => return,
-                        },
+                        None => random_source::entity().next_float(),
                     },
                 };
                 let damage = random * (max - min) + min;

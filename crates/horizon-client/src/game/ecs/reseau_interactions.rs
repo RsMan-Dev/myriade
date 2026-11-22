@@ -117,7 +117,7 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_guest_hit(&mut self, conn: u32, gi: usize, id: i32) -> Option<bool> {
         let mob = u32::try_from(id).ok()?;
         let e = self.ecs.entity_of(mob)?;
-        if !self.ecs.alive(mob) || self.dragon.as_ref().is_some_and(|d| d.id as i32 == id) {
+        if !self.ecs.alive(mob) || self.ecs.kind(mob) == Some("minecraft:ender_dragon") {
             return None;
         }
         if self.lan.as_ref()?.hub.guests[gi].vehicle == Some(mob) {

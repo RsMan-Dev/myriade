@@ -12,13 +12,20 @@ impl Game<'_> {
         let gone = |p: Vec3| keys.contains(&chunk_of(p));
         let mut removed: Vec<u32> = Vec::new();
         let riding = self.riding;
-        for c in self.crystals() {
-            if gone(c.position) {
-                self.remove_crystal(c.id);
+        for (id, c) in self.ecs.crystal_views() {
+            if gone(Vec3::new(c.position[0], c.position[1], c.position[2])) {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
             }
         }
-        if self.dragon.as_ref().is_some_and(|d| gone(d.position)) {
-            self.discard_resident_dragon();
+        for (id, v) in self.dragon_views() {
+            if gone(Vec3::new(v.position[0], v.position[1], v.position[2])) {
+                removed.push(id);
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
         }
         for id in self.fang_ids() {
             let Some(at) = self.ecs.position(id) else { continue };

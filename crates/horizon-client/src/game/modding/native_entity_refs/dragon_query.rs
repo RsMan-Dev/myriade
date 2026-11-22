@@ -1,24 +1,25 @@
-//! The separately stored dragon participates in Level.getEntities; parts follow the walk.
+//! The ECS dragon participates in Level.getEntities; parts follow the walk.
 use super::*;
 
 impl Game<'_> {
     pub(super) fn append_dragon_query_ids(&self, bounds: Aabb, parts: bool, ids: &mut Vec<u32>) {
-        let Some(dragon) = self.dragon.as_ref().filter(|d| d.id != 0) else {
-            return;
-        };
-        if parts {
-            ids.extend(self.dragon.parts_table().iter().filter(|&id| {
-                bounds.intersects(dragon.part_geometry((id - dragon.id - 1) as usize).1)
-            }));
-        } else {
-            // EntityType.ENDER_DRAGON dimensions: 16 wide, 8 high.
-            let p = dragon.position;
-            let body = Aabb::new(
-                Vec3::new(p.x - 8.0, p.y, p.z - 8.0),
-                Vec3::new(p.x + 8.0, p.y + 8.0, p.z + 8.0),
-            );
-            if bounds.intersects(body) {
-                ids.push(dragon.id);
+        for (id, dragon) in self.ecs.dragon_views().into_iter().filter(|(id, _)| *id != 0) {
+            if parts {
+                ids.extend(
+                    (0..8u32)
+                        .filter(|&k| bounds.intersects(dragon.boxes[k as usize]))
+                        .map(|k| id + 1 + k),
+                );
+            } else {
+                // EntityType.ENDER_DRAGON dimensions: 16 wide, 8 high.
+                let p = dragon.position;
+                let body = Aabb::new(
+                    Vec3::new(p[0] - 8.0, p[1], p[2] - 8.0),
+                    Vec3::new(p[0] + 8.0, p[1] + 8.0, p[2] + 8.0),
+                );
+                if bounds.intersects(body) {
+                    ids.push(id);
+                }
             }
         }
     }
@@ -27,8 +28,21 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::game::{dragon::Dragon, native_entity_refs::tests::with_game};
+    use crate::game::native_entity_refs::tests::with_game;
     use horizon_client::mobs::Mob;
+
+    fn summon_dragon_20(game: &mut Game<'_>) {
+        game.ecs_with(|ecs, mw| {
+            ecs.summon_dragon(
+                mw,
+                [0.0, 80.0, 0.0],
+                0.0,
+                0,
+                horizon_ecs_proto::species::ender_dragon::START_PHASE,
+                &mut || 20,
+            )
+        });
+    }
 
     #[test]
     #[ignore = "daily"]
@@ -80,9 +94,7 @@ mod tests {
                 Vec3::new(1.0e12, 64.0, 0.0),
                 0.0,
             ));
-            let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0);
-            dragon.id = 20;
-            game.dragon.replace(dragon);
+            summon_dragon_20(game);
             game.remote_entities.push(Mob::new(3, kind, Vec3::ZERO, 0.0));
             let level = game.level(game.dim.id()).unwrap();
             let ids: Vec<_> = game
@@ -119,9 +131,7 @@ mod tests {
         with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
-            let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0);
-            dragon.id = 20;
-            game.dragon.replace(dragon);
+            summon_dragon_20(game);
             let level = game.level(game.dim.id()).unwrap();
             // Parts start at the origin, away from the dragon's own body.
             let ids = game
@@ -157,9 +167,7 @@ mod tests {
                 query(game, [-10.0, 60.0, -10.0], [10.0, 100.0, 10.0]),
                 vec![12]
             );
-            let mut dragon = Dragon::new(Vec3::new(0.0, 80.0, 0.0), 0.0, 0);
-            dragon.id = 20;
-            game.dragon.replace(dragon);
+            summon_dragon_20(game);
             assert_eq!(
                 query(game, [-10.0, 60.0, -10.0], [10.0, 100.0, 10.0]),
                 vec![12, 20]

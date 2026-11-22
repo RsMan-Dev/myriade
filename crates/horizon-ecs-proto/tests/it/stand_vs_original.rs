@@ -230,3 +230,36 @@ fn an_invisible_stand_takes_no_burn() {
     }
     assert_eq!(h.world.get::<Health>(e).unwrap().0, 20.0);
 }
+
+/// `ArmorStand.isDisabled` and `swapItem`'s locks: the bit of a slot locks it, a take from a filled slot and a put into an empty one have
+/// their own bits, and a stand without arms has no hands.
+#[test]
+fn a_disabled_slot_locks_its_piece_and_a_stand_without_arms_has_no_hands() {
+    let mut w = World::new();
+    let e = w.spawn(Stand { flags: stand::SHOW_ARMS }).id();
+    w.entity_mut(e).insert(stand::DisabledSlots(1 << 13));
+    assert!(stand::swap_locked(&w, e, 1, true), "the off hand's filled bit is 5 + 8");
+    assert!(!stand::swap_locked(&w, e, 1, false), "the empty bit is not set");
+    assert!(!stand::is_disabled(&w, e, 1), "only the filled bit is set, so the slot still takes a click");
+    let bare = w.spawn(Stand { flags: 0 }).id();
+    assert!(stand::is_disabled(&w, bare, 0) && stand::is_disabled(&w, bare, 1), "a stand without arms has no hands");
+    assert!(!stand::is_disabled(&w, bare, 2), "the feet are still there");
+}
+
+/// A plate is pressed by an armor stand with physics or without (`getEntitiesOfClass(..,
+/// !isIgnoringBlockTriggers)`): a marker stand is ignored, the others press it.
+#[test]
+fn a_plate_is_pressed_by_a_stand_unless_it_is_a_marker() {
+    if !have_data() {
+        return;
+    }
+    let mut h = Herd::with_slab_awake(16, true, false);
+    let area = horizon_core::geometry::Aabb::new(Vec3::new(4.0, 1.5, 4.0), Vec3::new(5.0, 2.5, 5.0));
+    let plain = spawn_stand(&mut h, Vec3::new(4.5, 2.0, 4.5), 0);
+    let marker = spawn_stand(&mut h, Vec3::new(4.5, 2.0, 4.5), MARKER);
+    enter_index(&mut h.world, plain);
+    enter_index(&mut h.world, marker);
+    let found = horizon_ecs_proto::inside::triggers_in(&h.world, area, true);
+    assert!(found.contains(&plain), "a stand with physics does not press the plate");
+    assert!(!found.contains(&marker), "a marker stand pressed the plate");
+}

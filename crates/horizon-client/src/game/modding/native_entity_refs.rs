@@ -8,8 +8,6 @@
 //! copy: the local player and the entities the server told it of, in the level
 //! it shows. The entities are those of the level in place (the one a hook runs
 //! in) and the server's players, whatever their level.
-#[path = "native_entity_refs/dragon_parts_table.rs"]
-pub(in crate::game) mod dragon_parts_table;
 #[path = "native_entity_refs/dragon_query.rs"]
 mod dragon_query;
 #[cfg(test)]
@@ -2479,13 +2477,8 @@ pub(super) mod tests {
             assert_eq!(joined(game, false), (1, true, true, true));
             assert_eq!(joined(game, true), (0, false, false, true));
             // A remote guest can mount through the same handle path as the acting player.
-            let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.remote_entities.push(horizon_client::mobs::Mob::new(
-                21,
-                kind,
-                horizon_core::geometry::Vec3::ZERO,
-                0.0,
-            ));
+            game.ecs = game.test_ecs_level();
+            crate::game::ecs::test_support::place_test_mob(game, 21, "minecraft:pig", [0.0; 3]).unwrap();
             let guest = game.entity(12).unwrap();
             let vehicle = game.entity(21).unwrap();
             assert!(game.entity_start_riding(guest, vehicle, true));
@@ -3447,20 +3440,13 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn living_attributes_answer_for_mobs_stands_and_the_dragon() {
-        use horizon_client::{entities::ArmorStand, mobs::Mob};
+        use horizon_client::entities::ArmorStand;
         use horizon_core::geometry::Vec3;
         with_game(|game| {
-            let zombie = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
+            game.ecs = game.test_ecs_level();
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]).unwrap();
             crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
-            dragon.id = 14;
-            game.dragon.replace(dragon);
+            game.ecs_with(|ecs, mw| ecs.summon_dragon(mw, [0.0, 80.0, 0.0], 0.0, 0, horizon_ecs_proto::species::ender_dragon::START_PHASE, &mut || 14));
             for (id, max) in [(12, 20.0), (13, 20.0), (14, 200.0)] {
                 let living = game.living(game.entity(id).unwrap()).unwrap();
                 assert_eq!(

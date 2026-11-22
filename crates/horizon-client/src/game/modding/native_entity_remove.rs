@@ -141,18 +141,7 @@ impl Game<'_> {
                 self.effects_on_death(&effects, bounds, false, Some(id), None);
             }
             self.native_entity_left(id);
-            return;
         }
-        if !self.remote_entities.iter().any(|m| m.id == id && !m.removed) {
-            return;
-        }
-        if killed {
-            self.mob_removal_effects(id);
-        }
-        if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-            m.removed = true;
-        }
-        self.native_entity_left(id);
     }
     /// What a killed mob's effects do on removal (Oozing's slimes, Weaving's cobwebs, Wind
     /// Charged's burst).
@@ -214,12 +203,7 @@ impl Game<'_> {
         }
         for t in pending {
             match t {
-                Target::Crystal(id) => self.remove_crystal(id),
-                Target::Dragon(id) => {
-                    if self.dragon.as_ref().is_some_and(|d| d.id == id) {
-                        self.discard_resident_dragon();
-                    }
-                }
+                Target::Crystal(_) | Target::Dragon(_) => {}
                 Target::Boat(id) | Target::Cart(id) => {
                     let marked = !already_marked.contains(&t);
                     self.spill_vehicle(t);
@@ -300,9 +284,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn removal_dismounts_and_tells_mods_once_at_the_call() {
-        use super::super::{boats::Boat, native_entity_refs::tests::with_game};
-        use horizon_client::mobs::Mob;
-        use horizon_core::geometry::Vec3;
+        use super::super::native_entity_refs::tests::with_game;
         use mod_api::{EntityLeaveLevelEvent, Hooks, ServerHost};
         use std::sync::{Arc, Mutex};
 
@@ -332,9 +314,7 @@ mod tests {
                 let boat_id = game.take_entity_id();
                 game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0, 64.0, 0.0], 0.0, &mut || boat_id));
                 let mob_id = game.take_entity_id();
-                let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
-                game.remote_entities
-                    .push(Mob::new(mob_id, cow, Vec3::new(0.0, 64.0, 0.0), 0.0));
+                crate::game::ecs::test_support::place_test_mob(game, mob_id, "minecraft:cow", [0.0, 64.0, 0.0]).unwrap();
                 game.native_joins_flush(false, 0);
                 let boat = game.entity(boat_id).unwrap();
                 let mob = game.entity(mob_id).unwrap();
@@ -346,7 +326,6 @@ mod tests {
                 assert!(game.ecs.boat_ids().contains(&boat_id));
                 assert_eq!(*observer.0.lock().unwrap(), vec![(boat_id, true)]);
                 assert_eq!(game.entity_vehicle(mob), None);
-                assert!(!game.remote_entities.iter().any(|m| m.extra.mount == Some(boat_id)));
 
                 game.native_leaves_flush();
                 assert!(!game.ecs.boat_ids().contains(&boat_id));
@@ -402,20 +381,15 @@ mod tests {
     #[ignore = "daily"]
     fn discard_mob_and_refuse_players_and_stale_handles() {
         use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::{mobs::Mob, motion::PlayerMotion};
+        use horizon_client::motion::PlayerMotion;
         use horizon_core::geometry::Vec3;
 
         with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities.push(Mob::new(12, kind, Vec3::ZERO, 0.0));
+            game.ecs = game.test_ecs_level();
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.0; 3]).unwrap();
             let mob = game.entity(12).unwrap();
             assert!(mob.discard(game));
-            assert!(game.remote_entities[0].removed);
+            assert!(!game.ecs_has(12));
             assert!(!mob.discard(game));
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -429,18 +403,12 @@ mod tests {
     #[ignore = "daily"]
     fn spawn_at_location_drops_an_item_above_the_entity() {
         use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::{items::ItemStack, mobs::Mob};
+        use horizon_client::items::ItemStack;
         use horizon_core::geometry::Vec3;
 
         with_game(|game| {
-            let kind = game
-                .res
-                .mob_types()
-                .get("minecraft:zombie")
-                .unwrap()
-                .clone();
-            game.remote_entities
-                .push(Mob::new(12, kind, Vec3::new(3.5, 70.0, -2.5), 0.0));
+            game.ecs = game.test_ecs_level();
+            crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [3.5, 70.0, -2.5]).unwrap();
             let mob = game.entity(12).unwrap();
             let item = mob
                 .spawn_at_location(

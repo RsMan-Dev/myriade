@@ -167,13 +167,13 @@ pub fn hurt(w: &mut World, e: Entity, source: Source) -> bool {
     if w.get::<Cushion>(e).is_none() {
         return false;
     }
-    remove(w, e, source);
+    remove(w, e, source, true);
     true
 }
 
 /// `Cushion.dropItem` (after `kill` or `discard`): the sound, the wool, and the cushion unless drops are off or a creative player broke
 /// it. The rider of a removed cushion is let go without a sound.
-fn remove(w: &mut World, e: Entity, source: Source) {
+fn remove(w: &mut World, e: Entity, source: Source, killed: bool) {
     let Some(c) = w.get::<Cushion>(e).copied() else { return };
     let at = pos_of(w, e);
     let named = w.get::<Named>(e).map(|n| n.0.clone());
@@ -183,6 +183,10 @@ fn remove(w: &mut World, e: Entity, source: Source) {
     w.despawn(e);
     let p = [at.x, at.y, at.z];
     let mut events = w.resource_mut::<Events>();
+    if killed {
+        // BlockAttachedEntity.kill posts `entity_die` before dropItem's sound; the host attributes it to the player.
+        events.host.game_event("minecraft:entity_die", p);
+    }
     events.host.sound("entity.cushion.break", p, 1.0, 1.0);
     events.host.particles(WOOL[usize::from(c.color)], p, [0.25, 0.0625, 0.25], 0.05, 10);
     drop(events);
@@ -208,9 +212,9 @@ fn check(w: &mut World, e: Entity) {
     let at = pos_of(w, e);
     let (hazard, survives) = w.get_resource::<CushionHost>().map_or((Hazard::None, true), |h| ((h.hazard)(w, at), (h.survives)(w, at)));
     if hazard != Hazard::None {
-        remove(w, e, Source::Environment);
+        remove(w, e, Source::Environment, true);
     } else if !survives {
-        remove(w, e, Source::Environment);
+        remove(w, e, Source::Environment, false);
     }
 }
 

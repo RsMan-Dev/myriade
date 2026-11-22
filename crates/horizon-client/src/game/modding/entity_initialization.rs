@@ -82,12 +82,7 @@ impl Game<'_> {
     }
 
     pub(super) fn forget_entity_initialization(&mut self, holder: Holder) {
-        if let Holder::Entity(id) = holder
-            // An ECS mob keeps its `accepted_hit` nowhere on the bridge yet (listed in the report).
-            && let Some(mob) = self.remote_entities.iter_mut().find(|mob| mob.id == id)
-        {
-            mob.accepted_hit = None;
-        }
+        // An ECS mob keeps its `accepted_hit` nowhere on the bridge yet (listed in the report).
         self.entity_initialization.initialized.remove(&holder);
     }
 

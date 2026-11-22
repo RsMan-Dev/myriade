@@ -45,16 +45,6 @@ impl Game<'_> {
                     && self.ecs.variant_of(id) == Some(horizon_client::mobs::rabbit::EVIL);
                 if evil || hostile_species(species) { SoundSource::Hostile } else { SoundSource::Neutral }
             }
-            Target::Mob(id) => {
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                let evil = m.species() == Species::Rabbit
-                    && m.extra.variant == horizon_client::mobs::rabbit::EVIL;
-                if evil || hostile_species(m.species()) {
-                    SoundSource::Hostile
-                } else {
-                    SoundSource::Neutral
-                }
-            }
             Target::Item(_) | Target::Orb(_) => SoundSource::Ambient,
             Target::Dragon(_) => SoundSource::Hostile,
             t => match self.target_type(t).as_str() {

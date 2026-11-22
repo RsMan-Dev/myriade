@@ -861,8 +861,6 @@ struct Game<'a> {
     /// Remote guardian eye targets reused between ticks.
     guardian_look_scratch: Vec<(usize, [f64; 3])>,
     next_entity: u32,
-    /// What the native mods made of the effect swirls of the ECS entities, by network id, kept while one listens (`ecs_state`).
-    ecs_effect_particles: HashMap<u32, horizon_client::effects::ModifiedEffectParticles>,
     /// The last entity id when this level's entity pass began: an item with a
     /// later one was added during that pass and first ticks on the next
     /// (`EntityTickList`). `u32::MAX` until a tick has run.
@@ -911,15 +909,6 @@ struct Game<'a> {
     /// swap just before an attack keeps them, with the new item's enchantments
     /// (attribute swapping).
     attack_item: Option<Arc<str>>,
-    /// Mobs a player hurt (`LivingEntity.lastHurtByPlayer`), by player UUID.
-    last_hurt_by_player: HashMap<u32, combat::PlayerCredit>,
-    /// Leashed mobs a player killed, with the killer's UUID: the lead drops
-    /// on the corpse's next tick (`Leashable.tickLeash`), for the mods. With
-    /// the corpse's dimension: each level's tick prunes only its own.
-    lead_killers: HashMap<u32, (u128, Dim)>,
-    /// Animals a player fed into love (`Animal.loveCause`), with the guest it was by
-    /// connection (None: the host). Breeding credits them, wherever they are.
-    love_cause: HashMap<u32, Option<u32>>,
     /// Mobs whose death (`LivingEntity.die`) has been handled.
     /// Looked up per mob each tick: a fast hasher (never iterated).
     died: horizon_client::fast_hash::FxHashSet<u32>,
@@ -1056,14 +1045,8 @@ struct Game<'a> {
     /// Songs playing from jukeboxes (tracked sound handles).
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     maps: maps::Maps,
-    /// The ender dragon fight (game/mobs/dragon.rs).
-    fight: dragon::Fight,
-    dragon: native_entity_refs::dragon_parts_table::DragonSlot,
     text_displays: std::collections::HashMap<i32, text_displays::RemoteTextDisplay>,
     interactions: std::collections::HashMap<i32, interactions::RemoteInteraction>,
-    /// The fence knots a server tracks to this client, by entity id, at their
-    /// block (`LeashFenceKnotEntity`).
-    remote_knots: HashMap<u32, [i32; 3]>,
     text_display_vertices: usize,
     /// `ProfileResolver.Cached`: `Dynamic` profiles (name- or id-only heads
     /// and mannequins) resolve through the services in the background.
@@ -1093,8 +1076,6 @@ struct Game<'a> {
     spill: spill::Spill,
     /// The recipe book of the open screen (game/items/recipe_book.rs).
     recipe_ui: recipe_book::RecipeUi,
-    /// The player's fishing hook.
-    hook: horizon_client::join_seq::ResidentSlot<fishing::Hook>,
     creaking: creaking::CreakingState,
     /// Monster spawners' display mobs (`game/mobs/spawner.rs`).
     spawners: spawner::SpawnerState,
@@ -2206,12 +2187,9 @@ impl Game<'_> {
                 forced: self.streaming.forced.iter().copied().collect(),
                 // Filled from the `PORTAL` tickets by `update`.
                 portal: Vec::new(),
-                // EnderDragonFight.tick: while a player watches the fight, the arena holds a
-                // `DRAGON` ticket of radius 9 at (0, 0), so its island ticks out to 7 chunks
-                // whatever the watcher's simulation distance. The fight is where the type has one.
-                dragon: (self.dimension_type().has_ender_dragon_fight
-                    && self.fight.arena_watched())
-                .then_some((0, 0)),
+                // EnderDragonFight.tick: a watched arena holds a `DRAGON` ticket at (0, 0). Not yet
+                // read from the ECS fight: its FightView has no watchers.
+                dragon: None,
                 viewed: self.viewed_tickets(),
                 view_distance: self.settings.render_distance.clamp(2, 32),
                 simulation_distance: self.settings.simulation_distance.max(2),
@@ -3900,9 +3878,6 @@ impl Game<'_> {
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
-        self.dragon.discard();
-        self.clear_crystals();
-        self.clear_breath_clouds();
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();
@@ -5334,7 +5309,6 @@ impl<'a> Game<'a> {
             was_fall_flying: false,
             guardian_look_scratch: Vec::new(),
             next_entity: 0,
-            ecs_effect_particles: HashMap::new(),
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             pickups: Default::default(),
@@ -5357,9 +5331,6 @@ impl<'a> Game<'a> {
             raiding: Default::default(),
             attack_ticks: 100,
             attack_item: None,
-            last_hurt_by_player: HashMap::new(),
-            lead_killers: HashMap::new(),
-            love_cause: HashMap::new(),
             died: Default::default(),
             be_anims: {
                 let mut anims = horizon_client::block_entity_anim::BlockEntityAnims::default();
@@ -5428,11 +5399,8 @@ impl<'a> Game<'a> {
             experience_display: Default::default(),
             jukebox_sounds: HashMap::new(),
             maps: maps::Maps::default(),
-            fight: dragon::Fight::default(),
-            dragon: Default::default(),
             text_displays: Default::default(),
             interactions: Default::default(),
-            remote_knots: Default::default(),
             text_display_vertices: 0,
             skin_profiles: RefCell::new(horizon_client::skins::Resolver::new()),
             riding: None,
@@ -5445,7 +5413,6 @@ impl<'a> Game<'a> {
             pending: Default::default(),
             spill: Default::default(),
             recipe_ui: Default::default(),
-            hook: Default::default(),
             creaking: Default::default(),
             spawners: Default::default(),
             spawn_scratch: Default::default(),

@@ -22,3 +22,24 @@ pub fn clicked_slot(small: bool, rel_y: f32, has: impl Fn(usize) -> bool) -> usi
 pub fn blow_breaks(last: Option<u64>, now: u64, creative: bool, always_kills: bool) -> bool {
     creative || always_kills || last.is_some_and(|t| now - t <= 5)
 }
+
+/// `ArmorStand.pushEntities` for one plain minecart (`RIDABLE_MINECARTS`) whose box meets the stand's, when the distance squared is at
+/// most 0.2 and the stand does not ride it: the cart takes the push away from the stand, the stand a quarter of it on x and z.
+pub fn cart_shove(
+    stand: horizon_core::geometry::Vec3,
+    stand_box: horizon_core::geometry::Aabb,
+    cart: horizon_core::geometry::Vec3,
+    cart_box: horizon_core::geometry::Aabb,
+    rideable: bool,
+    carries_stand: bool,
+) -> Option<([f64; 3], [f64; 3])> {
+    if !rideable || carries_stand || !stand_box.intersects(cart_box) {
+        return None;
+    }
+    let (dx, dy, dz) = (stand.x - cart.x, stand.y - cart.y, stand.z - cart.z);
+    if dx * dx + dy * dy + dz * dz > 0.2 {
+        return None;
+    }
+    let [xa, za] = crate::rules::minecart::push_from(stand, cart)?;
+    Some(([-xa, 0.0, -za], [xa / 4.0, 0.0, za / 4.0]))
+}

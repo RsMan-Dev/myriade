@@ -373,7 +373,6 @@ impl Game<'_> {
     /// `Leashable.dropLeash`; `from` is where the mob stood when it let go,
     /// when that is not where it is now.
     fn drop_leash(&mut self, id: u32, drop: bool, sound: bool, used: bool, from: Option<[f64; 3]>) {
-        let killer = self.lead_killers.remove(&id).map(|(killer, _)| killer);
         let taken = if self.ecs.is_active() {
             self.ecs_take_leash(id, from)
         } else {
@@ -403,13 +402,8 @@ impl Game<'_> {
         if !drop {
             return;
         }
-        // The mods' say when a player is behind it: the user, else the
-        // killer of a mob that died leashed.
-        let player = if used {
-            Some(self.native_acting_id())
-        } else {
-            killer
-        };
+        // The mods' say when a player is behind it: the user.
+        let player = used.then(|| self.native_acting_id());
         let Some(player) = player else {
             self.drop_lead_item(at);
             return;

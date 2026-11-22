@@ -125,30 +125,23 @@ impl Game<'_> {
         multiplier: f32,
         blocks: &[[i32; 3]],
     ) {
-        let Some(d) = self.dragon.as_ref() else {
+        let Some((id, _)) = self.dragon_views().into_iter().next() else {
             return;
         };
-        let whole = d.whole_box();
+        let whole = self.ecs.dragon_boxes(id).into_iter().map(|(_, b)| b).reduce(|a, b| a.union_bounds(b));
+        let Some(whole) = whole else {
+            return;
+        };
         let (lo, hi) = (whole.min_position(), whole.max_position());
         let exposure = self.seen_percent(center, [lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
-        let Some((id, mut push)) = self
-            .dragon
-            .as_ref()
-            .and_then(|d| Some((d.id, d.explosion_knockback(center, radius, exposure)?)))
-        else {
+        let Some(mut push) = self.ecs_with(|ecs, mw| ecs.dragon_push(mw, id, center, radius, &|_| exposure)) else {
             return;
         };
         for component in &mut push {
             *component *= f64::from(multiplier);
         }
         self.native_explosion_knockback(self.dim.id(), center, blocks, Some(id), &mut push);
-        if let Some(d) = self.dragon.as_mut() {
-            d.velocity = Vec3::new(
-                d.velocity.x + push[0],
-                d.velocity.y + push[1],
-                d.velocity.z + push[2],
-            );
-        }
+        self.ecs.push(id, push);
     }
 
     /// `WindChargeItem.use`.
