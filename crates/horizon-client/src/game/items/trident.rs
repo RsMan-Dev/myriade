@@ -8,14 +8,13 @@ use super::{Game, view_vector};
 use horizon_client::{
     collisions::SceneCollisions,
     items::ItemStack,
-    mobs::{Who, anim::Poses},
+    mobs::Who,
 };
-use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::trident::Pickup;
 use mod_api::SoundSource;
 
 pub(super) use horizon_gameplay::trident::ThrownTrident;
-use horizon_gameplay::trident::HALF;
 
 impl Game<'_> {
     /// The trident stack's maximum damage component, else its item's default.

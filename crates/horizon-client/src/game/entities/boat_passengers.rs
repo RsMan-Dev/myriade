@@ -8,17 +8,13 @@ use super::{Game, boats::Boat, lan_mobs::guest_bounds};
 use horizon_client::{
     fast_hash::FxHashMap,
     join_seq::ListStamp,
-    mobs::{BoxReach, Mob, Species, Who, riders, seen_grid::SeenGrid},
-    scoreboard::pushable_by,
+    mobs::{BoxReach, Mob, Species, seen_grid::SeenGrid},
 };
 use horizon_core::geometry::{Aabb, Vec3};
 use std::cell::{Cell, RefCell};
 
 /// `Entity.boardingCooldown` once a mob leaves its boat.
 pub(super) const BOARDING_COOLDOWN: i32 = 60;
-/// `Player.DEFAULT_VEHICLE_ATTACHMENT`: how far below the seat a player's
-/// feet are.
-const PLAYER_RIDING_OFFSET: f64 = 0.6;
 
 /// How many box queries the walk over every mob answers, once a write to the mob list has
 /// made the grid stale, before a new grid is built: about what building one costs (with
@@ -49,78 +45,13 @@ struct MobGrid {
     patience: u32,
 }
 
-/// `Entity.canRide` for a mob species: `Warden` and `WitherBoss` override it
-/// to return false, so no vehicle ever takes them aboard.
-pub(super) fn species_can_ride(species: Species) -> bool {
-    !matches!(species, Species::Warden | Species::Wither)
-}
-
-/// `Entity.isVehicle`: a player or a mob rides it.
-fn carries(m: &Mob) -> bool {
-    m.rider.is_some() || m.extra.rider.is_some()
-}
 /// `isPushable`, as `pushableBy` and `canVehicleCollide` ask it:
 /// `Mob::pushable` plus the shulkers it leaves out (they take no push, but
 /// count).
 fn pushable(m: &Mob) -> bool {
     !m.removed && (m.pushable() || m.species() == Species::Shulker && m.alive())
 }
-/// Whether `Entity.push` moves the mob: it is pushable and carries no one.
-fn moved_by_push(m: &Mob) -> bool {
-    !m.removed && m.pushable() && !carries(m)
-}
-/// `Entity.push(Entity)`: the push `other` gets from `this` (which takes the
-/// opposite one), or None when they stand on nearly the same spot.
-pub(super) fn push_impulse(this: Vec3, other: Vec3) -> Option<Vec3> {
-    let (mut xa, mut za) = (other.x - this.x, other.z - this.z);
-    let mut dd = xa.abs().max(za.abs());
-    if dd < f64::from(0.01_f32) {
-        return None;
-    }
-    dd = dd.sqrt();
-    xa /= dd;
-    za /= dd;
-    let pow = (1.0 / dd).min(1.0);
-    let k = f64::from(0.05_f32);
-    Some(Vec3::new(xa * pow * k, 0.0, za * pow * k))
-}
-/// `AbstractBoat.push`: another boat is pushed while it is lower than this
-/// boat's top, anything else while its feet are no higher than the boat's.
-pub(super) fn boat_pushes(boat: Aabb, other: Aabb, other_is_boat: bool) -> bool {
-    if other_is_boat {
-        other.min_position().y < boat.max_position().y
-    } else {
-        other.min_position().y <= boat.min_position().y
-    }
-}
-
 impl Game<'_> {
-    /// Starts or ends a stretch of vehicle ticks (`tick_boats`, `tick_carts`): while one runs,
-    /// a vehicle's box query ([`Self::mobs_meeting`]) reads the mobs near it from a grid of
-    /// their boxes, or tests the mobs' positions against their [`BoxReach`] first. A mob
-    /// joining or leaving works the reach out again, and so does [`Self::vehicle_picked_up`].
-    /// The first query that needs one works it out (the reach's count is one no list has), so
-    /// a level without boats or carts never walks its mobs for them.
-    pub(super) fn vehicles_ticking(&self, on: bool) {
-        let reach = (on && mod_api::__private::mods().is_empty())
-            .then(|| (usize::MAX, BoxReach::default()));
-        self.vehicle_mobs.reach.set(reach);
-        // The boats' grid serves the carts ticking right after them; an older one goes.
-        let mut grid = self.vehicle_mobs.grid.borrow_mut();
-        let stamp = self.remote_entities.stamp();
-        let built = grid.built.take().filter(|(s, _)| *s == stamp);
-        *grid = MobGrid {
-            built,
-            ..Default::default()
-        };
-    }
-    /// A vehicle picked a mob up: a shulker turns its lid up (`Shulker.startRiding`), which
-    /// changes its box, so the next query works the [`BoxReach`] out again.
-    pub(super) fn vehicle_picked_up(&self) {
-        if let Some((_, reach)) = self.vehicle_mobs.reach.get() {
-            self.vehicle_mobs.reach.set(Some((usize::MAX, reach)));
-        }
-    }
     /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
     pub(super) fn vehicle_mob_reach(&self) -> Option<BoxReach> {
         let (count, reach) = self.vehicle_mobs.reach.get()?;
@@ -155,17 +86,6 @@ impl Game<'_> {
             .as_ref()
             .and_then(|(_, by_vehicle)| by_vehicle.get(&id));
         of.cloned().unwrap_or_default()
-    }
-    /// Whether a mob (one not removed) rides vehicle `id`: `Entity.isVehicle` for a cart.
-    pub(in crate::game) fn mob_rides(&self, id: u32) -> bool {
-        if self.ecs.is_active() && self.ecs_rider_of(id).is_some() {
-            return true;
-        }
-        let riders = self.vehicle_riders(id);
-        riders.iter().any(|&j| !self.remote_entities[j].removed)
-            || self.persist.off_level.values().any(|entity| {
-                matches!(entity, super::persist::OffLevel::Mob(m) if !m.removed && m.extra.mount == Some(id))
-            })
     }
     /// Whether what a stretch of vehicle ticks reads from the mob list may stand in for a walk
     /// over it: a stretch runs, and no native mod is loaded (a hook can move a mob unseen, as
@@ -337,16 +257,16 @@ impl Game<'_> {
         );
         out
     }
-    /// What boat `b` may run into this tick.
-    pub(super) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
-        let reach = b.velocity.length() + 1.0;
-        self.boat_obstacles(b.id, b.bounds().inflate(Vec3::new(reach, reach, reach)))
-    }
     /// `noEntityCollision(boat, box)` for a new boat (`BoatItem.use`).
     pub(super) fn boat_entity_collision(&self, bb: Aabb) -> bool {
         // EntityGetter.getEntityCollisions: the box grown by 1e-7.
         let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         !self.boat_obstacles(u32::MAX, area).is_empty()
+    }
+    /// What boat `b` may run into this tick.
+    pub(super) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
+        let reach = b.velocity.length() + 1.0;
+        self.boat_obstacles(b.id, b.bounds().inflate(Vec3::new(reach, reach, reach)))
     }
 
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
@@ -430,55 +350,6 @@ impl Game<'_> {
         }
     }
 
-    /// `ejectPassengers` for the mobs in boat `i`: each gets out where
-    /// `getDismountLocationForPassenger` puts it (beside the boat when it
-    /// broke: `LivingEntity.dismountVehicle`) and can't board for a while.
-    pub(super) fn eject_boat_mobs(&mut self, id: u32, broken: bool) {
-        let Some(y) = self.ecs.position(id).map(|p| p[1]) else {
-            return;
-        };
-        for rider in self.mob_passenger_ids(id) {
-            if self
-                .mob_object(rider)
-                .is_none_or(|m| m.removed || m.extra.mount != Some(id))
-            {
-                continue;
-            }
-            if !self.native_mob_may_ride(rider, id, false) {
-                continue;
-            }
-            let Some(m) = self
-                .mob_object(rider)
-                .filter(|m| !m.removed && m.extra.mount == Some(id))
-            else {
-                continue;
-            };
-            let at = if broken {
-                self.removed_vehicle_dismount_point(
-                    m.position,
-                    f64::from(m.width()),
-                    f64::from(m.height()),
-                    y,
-                )
-            } else if let Some(boat) = self.boat_object(id) {
-                self.boat_dismount_target(boat, f64::from(m.width()), m.yaw)
-            } else {
-                self.removed_vehicle_dismount_point(
-                    m.position,
-                    f64::from(m.width()),
-                    f64::from(m.height()),
-                    y,
-                )
-            };
-            let m = self.mob_object_mut(rider).unwrap();
-            m.extra.mount = None;
-            m.extra.passenger = false;
-            m.extra.boarding_cooldown = BOARDING_COOLDOWN;
-            m.position = at;
-            m.previous = at;
-            self.snap_mob_passengers(rider);
-        }
-    }
 }
 
 #[cfg(test)]

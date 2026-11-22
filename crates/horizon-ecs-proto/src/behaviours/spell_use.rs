@@ -16,7 +16,6 @@ use super::*;
 use crate::cow::*;
 use crate::effects;
 use crate::goals::*;
-use crate::hostile::PlayerState;
 use crate::rules::spell_use as rules;
 use crate::targeting::{self, Target, Who};
 use horizon_core::geometry::{Aabb, Vec3};

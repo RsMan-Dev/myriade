@@ -1,6 +1,7 @@
 //! `Panda.mobInteract` with bamboo: a baby ages up by a tenth of what it has left; an adult already in love (the breed refuses it) sits, begins to eat
 //! and holds one bamboo; the end of the eating then comes by the wheel (sound steps, the animal keeps sitting for a bamboo). Expected values from the jar.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::breed::Love;
 use horizon_ecs_proto::behaviours::panda_state::{PandaState, FLAG_SIT};

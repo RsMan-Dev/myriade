@@ -89,7 +89,7 @@ fn full(w: &World, e: Entity) -> bool {
     w.get::<MaxHealth>(e).is_none_or(|m| h.0 >= m.0)
 }
 /// Damage wakes a sleeping regeneration at the next heal date of its phase (`age % period`).
-fn damaged(w: &mut World, e: Entity, inst: Inst, _: &Damaged) {
+fn damaged(w: &mut World, e: Entity, _inst: Inst, _: &Damaged) {
     let now = now_of(w, e);
     let Some(mut r) = w.get::<Regen>(e).copied() else { return };
     if !r.asleep || full(w, e) {

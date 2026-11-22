@@ -589,7 +589,7 @@ pub fn recheck_stuck(w: &mut World, e: Entity) {
 /// A deadline of the wheel for a stuck projectile: it is gone once its life is over (the deadline is the wheel's reach,
 /// the projectile's may be later).
 pub fn expire(w: &mut World, e: Entity) {
-    let (now, world_now) = (now_of(w, e), w.resource::<Clock>().0);
+    let now = now_of(w, e);
     let Some(p) = w.get::<Projectile>(e).copied() else { return };
     let Some(s) = w.get::<Stuck>(e).copied() else { return };
     if now < p.expires {
@@ -604,7 +604,7 @@ pub fn expire(w: &mut World, e: Entity) {
 }
 /// A block changed: the projectiles stuck in it fall if nothing holds them any more (`AbstractArrow.shouldFall`: the box
 /// of the arrow's point grown by 0.06 meets no block).
-fn stuck_wake(changed: Res<ChangedBlocks>, level: Res<Level>, mut stuck: ResMut<StuckIndex>, pos: Query<&Pos, With<Stuck>>, mut commands: Commands) {
+fn stuck_wake(changed: Res<ChangedBlocks>, level: Res<Level>, mut stuck: ResMut<StuckIndex>, pos: Query<&Pos, With<Stuck>>) {
     if changed.0.is_empty() || stuck.at.is_empty() {
         return;
     }

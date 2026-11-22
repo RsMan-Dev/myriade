@@ -1,7 +1,6 @@
 //! `AnimalPanic` (on land): started by a damage that makes it panic or while panicking, picks a spot 5 blocks out whenever the walk
 //! is over, until its duration is up.
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::stop_nav;
 
 #[derive(Clone, Copy)]

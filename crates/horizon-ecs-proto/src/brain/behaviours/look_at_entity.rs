@@ -2,7 +2,6 @@
 //! and a visible entity within 8 blocks that the entry names (by species, or a player), the nearest becomes the look target at once.
 //! The species names and the player flag are the entry's `Params`.
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::rules::look_at_entity as rules;
 use crate::targeting::info;

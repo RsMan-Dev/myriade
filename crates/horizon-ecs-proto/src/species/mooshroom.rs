@@ -4,7 +4,6 @@ use super::{cow, Def};
 use crate::behaviours::shear::{adult, ShearDef};
 use crate::behaviours::variant::Variant;
 use crate::conversion::{convert_or_ask, ConvertKeep};
-use bevy_ecs::prelude::*;
 
 /// `MushroomCow.shear`: the cow it becomes (nothing kept) and 5 mushrooms of its variant (`Variant` 1: brown) fall from its height.
 pub static SHEARING: ShearDef = ShearDef {

@@ -2,12 +2,6 @@
 use super::Game;
 use horizon_client::{items::ItemStack, particles::ParticleOptions};
 
-impl Game<'_> {
-    pub(super) fn item_particle_options(&self, stack: &ItemStack) -> Option<ParticleOptions> {
-        Some(self.item_particle(stack))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

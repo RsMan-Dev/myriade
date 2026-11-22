@@ -1,6 +1,7 @@
 //! The right-click rules written by action: coating (wax, axe), hand over / take back, piglin gift, llama carpet and chest, harness, nautilus taming
 //! use up the item. Expected values come from the jar (`CopperGolem.mobInteract`, `Allay.mobInteract`, `AbstractChestedHorse.mobInteract`).
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::coating::Coat;

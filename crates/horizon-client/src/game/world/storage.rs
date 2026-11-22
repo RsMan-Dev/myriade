@@ -406,20 +406,6 @@ impl Game<'_> {
     pub(super) fn open_container_size(&self) -> usize {
         self.container_parts().iter().map(|p| p.1).sum()
     }
-    pub(super) fn container_slot(&self, mut n: usize) -> &Option<ItemStack> {
-        for (pos, size) in self.container_parts() {
-            if n < size {
-                return self
-                    .world
-                    .block_entities
-                    .get(&pos)
-                    .and_then(|e| e.slots().get(n))
-                    .unwrap_or(&self.scratch_slot);
-            }
-            n -= size;
-        }
-        &self.scratch_slot
-    }
     /// Container slot `n` (menu slot `300 + n`).
     pub(super) fn container_slot_mut(&mut self, mut n: usize) -> &mut Option<ItemStack> {
         let mut target = None;
@@ -439,43 +425,6 @@ impl Game<'_> {
             Some(slot) => slot,
             None => &mut self.scratch_slot,
         }
-    }
-    pub(super) fn container_block_is_shulker(&self) -> bool {
-        self.container_block()
-            .as_deref()
-            .is_some_and(is_shulker_box)
-    }
-    fn container_block(&self) -> Option<std::sync::Arc<str>> {
-        let k = self.container?;
-        Some(
-            self.res
-                .facts()
-                .get(self.world.block(k.0, k.1, k.2))
-                .name
-                .clone(),
-        )
-    }
-    /// Rows of the open generic 9-wide container (`ChestMenu`), or None for
-    /// the other menus (hoppers, dispensers, shulker boxes, furnaces...).
-    pub(super) fn chest_rows(&self) -> Option<usize> {
-        if !matches!(self.container_kind()?, BlockEntity::Chest(_)) {
-            return None;
-        }
-        let generic = match self.container_block().as_deref() {
-            Some("minecraft:barrel" | "minecraft:ender_chest") => true,
-            Some(n) if is_chest_block(n) => true,
-            _ => self.open_cart_kind() == Some(super::minecarts::CartKind::Chest),
-        };
-        generic.then(|| self.open_container_size() / 9)
-    }
-}
-
-impl Game<'_> {
-    /// `quickMoveStack` of the open chest-like, hopper, dispenser or furnace
-    /// menu for a shift-click on `slot`, run by the verified menu engine
-    /// (`horizon_client::menu`); false when the menu has none.
-    pub(super) fn container_quick_move(&mut self, slot: usize) -> bool {
-        self.click_open_inventory(Some(slot), 0, horizon_client::menu::Input::QuickMove)
     }
 }
 

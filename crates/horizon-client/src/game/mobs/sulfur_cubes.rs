@@ -5,8 +5,7 @@
 use super::Game;
 use horizon_client::{
     items::ItemStack,
-    mobs::{Mob, Species, Who, sulfur_cube},
-    projectiles::Projectile,
+    mobs::{Species, Who, sulfur_cube},
     text::Text,
 };
 use horizon_core::position::BlockPos;
@@ -150,17 +149,6 @@ impl Game<'_> {
             self.native_player_bucket_entity(player, &name, id as i32, "minecraft:sulfur_cube");
         }
     }
-    /// The resident sulfur cubes whose adopted body (`adopted_body`, the
-    /// body `collectEquipmentChanges` last took) explodes, with its fuse:
-    /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
-    /// use this tick although the body has changed since.
-    pub(super) fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
-        self.remote_entities
-            .iter()
-            .filter(|m| m.species() == Species::SulfurCube)
-            .filter_map(|m| Some((m.id, sulfur_cube::adopted_explosion(m)?.0)))
-            .collect()
-    }
     /// `SulfurCube.primeWhenOnPoweredPosition`: an explosive cube standing in
     /// or next to redstone power lights its fuse (`getBestOwnOrNeighbourSignal`;
     /// no block has an own signal, so the neighbour signal is all there is).
@@ -200,26 +188,6 @@ impl Game<'_> {
             if signal != 0 {
                 sulfur_cube::prime_with_fuse(&mut self.remote_entities[i], false, fuse);
             }
-        }
-    }
-    /// `SulfurCube.hurtServer`: an arrow or a trident on fire that hits an
-    /// explosive cube with a block lights its fuse (with `tnt_explodes`, as
-    /// `primeTime` asks), called after the hit's hurt, which the priming
-    /// leaves as it is, so its knock and the fuse both go ahead.
-    pub(super) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
-        if !p.arrow.as_ref().is_some_and(|a| a.on_fire())
-            || !self
-                .session
-                .rules
-                .bool_at(horizon_client::gamerules::vanilla::TNT_EXPLODES)
-        {
-            return;
-        }
-        if let Who::Mob(id) = who
-            && let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id)
-            && m.species() == Species::SulfurCube
-        {
-            sulfur_cube::burning_arrow_hit(m);
         }
     }
     /// `SulfurCubeSearchForItemsGoal` and `pickUpItem`: an adult with nothing

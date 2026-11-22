@@ -9,7 +9,7 @@ use horizon_client::{
         Context,
         args::{IntRange, Selector},
     },
-    lan::{guest::Guest, playerdata::ints_uuid},
+    lan::playerdata::ints_uuid,
     save::{self, uuid_from_text, uuid_text},
     scoreboard::{self as sb, Comp, Scoreboard, literal},
     scoreboard_cmd::{self, Env, Holder},
@@ -749,31 +749,6 @@ impl Game<'_> {
                 .collect(),
         }
     }
-    /// The carts (indices into `carts`, as `near` holds them) that cart `i`
-    /// pushes this tick, as `OldMinecartBehavior.pushAndPickupEntities` asks
-    /// `EntitySelector.pushableBy(cart)`: a moving rideable cart keeps only
-    /// what its own team's and the target's collision rules allow; a still or
-    /// unrideable cart pushes every minecart in its box (no team filter).
-    pub(super) fn cart_push_allowed(
-        &self,
-        carts: &[super::minecarts::Minecart],
-        i: usize,
-        near: &[u32],
-    ) -> Vec<bool> {
-        let v = carts[i].velocity;
-        let moving =
-            carts[i].kind == super::minecarts::CartKind::Rideable && v.x * v.x + v.z * v.z >= 0.01;
-        if !moving {
-            return vec![true; near.len()];
-        }
-        let own = self.team_with_owner(carts[i].id, || None);
-        near.iter()
-            .map(|&j| {
-                let target = &carts[j as usize];
-                sb::pushable_by(own, self.team_with_owner(target.id, || None), true)
-            })
-            .collect()
-    }
     /// The mobs on the player's team (`isAlliedTo`).
     pub(super) fn player_allies(&self) -> HashSet<u32> {
         let Some(team) = self.player_team() else {
@@ -887,36 +862,6 @@ impl Game<'_> {
             .map(|t| self.target_name(t).plain())
             .collect();
         names.join(", ")
-    }
-
-    // ---- the sidebar -----------------------------------------------------------
-
-    /// The objective in the player's team's sidebar slot, else the sidebar's.
-    fn sidebar_objective(&self) -> Option<&sb::Objective> {
-        let board = &self.score.board;
-        if board.display.is_empty() {
-            return None;
-        }
-        let name = PLAYER_NAME;
-        let team_slot = board
-            .players_team(name)
-            .and_then(|t| t.color.as_ref())
-            .map(|c| format!("sidebar.team.{c}"))
-            .and_then(|slot| board.display_objective(&slot));
-        team_slot.or_else(|| board.display_objective(sb::SLOT_SIDEBAR))
-    }
-    /// The sidebar the HUD shows: its objective and its lines, for `status`.
-    pub(super) fn sidebar_status(&self) -> serde_json::Value {
-        let board = &self.score.board;
-        let Some(objective) = self.sidebar_objective() else {
-            return serde_json::Value::Null;
-        };
-        let scores: serde_json::Map<String, serde_json::Value> = board
-            .scores
-            .iter()
-            .filter_map(|(holder, s)| Some((holder.clone(), s.get(&objective.name)?.value.into())))
-            .collect();
-        serde_json::json!({ "objective": objective.name, "title": objective.display_text().plain(), "scores": scores })
     }
 
 }

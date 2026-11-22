@@ -6,7 +6,7 @@
 //! screen draws the preview with its error and lock sprites.
 use super::{
     Game,
-    maps::{MapData, map_id, shown_on_frame},
+    maps::{MapData, map_id},
 };
 use horizon_client::{items::ItemStack, menu::Maps};
 use std::{
@@ -89,24 +89,6 @@ impl Game<'_> {
     }
 }
 impl Game<'_> {
-}
-
-/// Decoration `d`'s corners on screen, for a map drawn at `(x, y)` with
-/// `scale` GUI pixels per map pixel: (-1, 1), (1, 1), (1, -1), (-1, -1)
-/// under `MapRenderer.render`'s pose.
-fn decoration_corners(d: &super::maps::Decoration, x: f32, y: f32, scale: f32) -> [[f32; 2]; 4] {
-    pose_corners(super::maps::decoration_pose(d, 0.0), x, y, scale)
-}
-/// The corners of a decoration drawn under `pose` (`decoration_pose`), like
-/// [`decoration_corners`].
-fn pose_corners(pose: glam::Mat4, x: f32, y: f32, scale: f32) -> [[f32; 2]; 4] {
-    let m = glam::Mat4::from_translation(glam::Vec3::new(x, y, 0.0))
-        * glam::Mat4::from_scale(glam::Vec3::new(scale, scale, 1.0))
-        * pose;
-    [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].map(|(cx, cy)| {
-        let p = m.transform_point3(glam::Vec3::new(cx, cy, 0.0));
-        [p.x, p.y]
-    })
 }
 
 impl MapData {

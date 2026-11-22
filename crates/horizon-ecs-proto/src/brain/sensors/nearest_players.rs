@@ -5,7 +5,6 @@
 //! expiry: the next scan rewrites it.
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::{d2, Online};
 use crate::bridge::teams::allied;
 use crate::hostile::PlayerState;

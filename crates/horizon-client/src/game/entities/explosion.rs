@@ -1963,16 +1963,6 @@ impl Game<'_> {
     ) -> Result<()> {
         self.explode_with(source, center, radius, false, blast)
     }
-    /// `ServerLevel.explode` with `ExplosionInteraction.MOB` and the caller's fire flag.
-    pub(super) fn explode_mob(
-        &mut self,
-        center: [f64; 3],
-        radius: f32,
-        fire: bool,
-        blast: ExplosionSource,
-    ) -> Result<()> {
-        self.explode_with(None, center, radius, fire, blast)
-    }
     /// `SulfurCube.tickFuse`: `ExplosionInteraction.TNT` (the
     /// tnt_explosion_drop_decay rule) with mobGriefing, `NONE` without.
     pub(super) fn explode_sulfur_cube(

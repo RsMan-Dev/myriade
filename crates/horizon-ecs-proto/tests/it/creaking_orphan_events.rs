@@ -12,11 +12,19 @@ use horizon_ecs_proto::{
     colony_register::MiscOut,
     cow::*,
     damage_link::DamageLink,
+    goals::Entered,
     host_out_misc::MiscEvent,
     nbt::{self, Saved},
     targeting::{self, Who},
     tear_down,
 };
+
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:cow"])
+}
+fn species_named(name: &str) -> Species {
+    *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))
+}
 
 fn asked(h: &Herd) -> Vec<(Entity, [i32; 3])> {
     h.world.get_resource::<MiscOut>().map_or_else(Vec::new, |m| m.0.iter().filter_map(|e| if let MiscEvent::HeartAsked { entity, pos } = e { Some((*entity, *pos)) } else { None }).collect())

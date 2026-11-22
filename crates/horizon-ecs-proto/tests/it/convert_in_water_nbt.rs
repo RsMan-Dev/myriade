@@ -1,5 +1,5 @@
 //! The soaking count of a zombie is read from `DrownedConversionTime` and saved back as the ticks left.
-use horizon_core::nbt::Tag;
+use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::{behaviours::convert_in_water::Soaking, behaviours::convert_timer::Converting, cow::*, nbt};
 
 #[test]
@@ -18,5 +18,5 @@ fn a_conversion_in_progress_is_loaded_and_saved() {
     assert!(s.converting);
     assert!(h.world.get::<Converting>(e).is_some(), "the shake is synced");
     let saved = nbt::save(&h.world, e).expect("an NBT");
-    assert_eq!(saved.get("DrownedConversionTime"), Some(&Tag::Int(200)));
+    assert_eq!(saved.get(&JavaString::from("DrownedConversionTime")), Some(&Tag::Int(200)));
 }

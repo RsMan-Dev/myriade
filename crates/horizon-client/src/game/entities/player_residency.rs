@@ -6,7 +6,6 @@ pub(super) enum SpecializedSource<'a> {
     Guest(&'a horizon_client::lan::guest::Guest),
 }
 use horizon_client::join_seq::{
-    Joined,
     residency::{
         Journal, Kind, Owner, Source,
         table::{Location, SourceEntity},
@@ -65,29 +64,6 @@ impl Game<'_> {
                 .map(|identity| identity.id.get()),
             _ => super::native_entities::target_id(target),
         }
-    }
-
-    pub(super) fn acting_player_join(&self) -> horizon_client::join_seq::JoinSeq {
-        self.lan_acting
-            .and_then(|conn| self.command_guest(conn))
-            .map_or_else(
-                || self.resident_entities.local_player.join(),
-                |guest| guest.residency.join(),
-            )
-    }
-
-    pub(super) fn install_fishing_hook(&mut self, mut hook: super::fishing::Hook) {
-        hook.caster = self.lan_acting;
-        hook.caster_generation = self.acting_player_join();
-        self.hook.discard();
-        self.hook.replace(hook);
-    }
-
-    pub(super) fn remove_local_player_body(&mut self) {
-        self.hook.discard();
-        self.resident_entities.local_player.retire();
-        self.player_state.attachments.retire();
-        self.player = None;
     }
 
     pub(super) fn bind_local_player_residency(&mut self) {

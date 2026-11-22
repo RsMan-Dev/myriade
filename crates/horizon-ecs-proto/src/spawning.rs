@@ -648,7 +648,7 @@ pub fn step(world: &mut World) {
     // The players that changed chunk this tick (`Online` events): their square of chunks and the counts near them.
     let changed: Vec<(u32, Option<(f64, f64)>)> = world.resource::<crate::goals::Online>().seen.iter().filter_map(|(o, n)| n.or(*o).map(|p| (p.id, n.map(|n| (n.x, n.z))))).collect();
     if !changed.is_empty() {
-        world.resource_scope(|w, mut sp: Mut<Spawner>| {
+        world.resource_scope(|w, _sp: Mut<Spawner>| {
             let mut c = w.resource_mut::<SpawnCounts>();
             for (id, at) in changed {
                 match at {

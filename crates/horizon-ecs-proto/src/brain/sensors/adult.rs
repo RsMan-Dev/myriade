@@ -3,9 +3,7 @@
 //! takes the entity's own species; `ANY` takes the species named by the tag of its parameters (`followable_friendly_mobs`).
 //! The list is `visible_mobs`, nearest first (`living.rs`). Nothing found: the memory is erased.
 use crate::behaviours::Cap;
-use crate::brain::sensors::living;
 use crate::brain::*;
-use crate::cow::*;
 use crate::targeting::{info, Who};
 
 pub static SAME: Sensor = Sensor { name: "minecraft:adult_same_type", mems: &[&NEAREST_VISIBLE_ADULT], scan: scan_same, requires: &[Cap::Targets], ..Sensor::DEFAULT };

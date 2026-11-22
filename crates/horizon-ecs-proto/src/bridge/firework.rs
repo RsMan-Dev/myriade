@@ -2,7 +2,7 @@
 //! host takes after a step. The rocket's flight and its end are the fireworks' own (`firework`, `firework_burst`).
 use crate::bridge::host::EcsWorld;
 use crate::firework::{launch, Shot};
-use crate::firework_burst::{FireworkOut, FireworkStar, Stars};
+use crate::firework_burst::{FireworkStar, Stars};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::mobs::MobWorld;

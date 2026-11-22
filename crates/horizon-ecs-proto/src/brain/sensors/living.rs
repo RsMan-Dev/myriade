@@ -2,7 +2,6 @@
 //! written to `mobs` (absent when empty) and `visible_mobs` (present even when empty; its sight cache starts again).
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::{d2, Online};
 use crate::targeting::{FollowRange, Who};
 use horizon_core::geometry::Vec3;

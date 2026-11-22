@@ -21,7 +21,7 @@ use horizon_client::{
 use horizon_core::nbt::Tag;
 use horizon_core::{
     geometry::Vec3,
-    random::{LegacyRandom, LevelRandom, RandomSource},
+    random::{LegacyRandom, LevelRandom},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -462,36 +462,6 @@ impl Game<'_> {
         // The entity's own compound, its name and data merged in: it loads back.
         let _ = self.apply_entity_nbt(target, tag);
     }
-}
-
-/// `SpawnerBlockEntity.clientTick` / `BaseSpawner.clientTick`: spawner, trial
-/// spawner and vault keys within 64 blocks (Chebyshev distance) of `center`
-/// among `entities`. Non-spawner block entities are ignored before distance
-/// calculation, and coordinate difference uses `abs_diff` to prevent overflow.
-pub(super) fn nearby_remote_spawner_keys<'a>(
-    entities: impl IntoIterator<Item = (&'a Pos, &'a BlockEntity)>,
-    center: [i32; 3],
-) -> (Vec<Pos>, Vec<Pos>, Vec<Pos>) {
-    let mut keys = Vec::new();
-    let mut trial_keys = Vec::new();
-    let mut vault_keys = Vec::new();
-    for (&pos, be) in entities {
-        let target = match be {
-            BlockEntity::Spawner(_) => &mut keys,
-            BlockEntity::TrialSpawner(_) => &mut trial_keys,
-            BlockEntity::Vault(_) => &mut vault_keys,
-            _ => continue,
-        };
-        let d = pos
-            .0
-            .abs_diff(center[0])
-            .max(pos.1.abs_diff(center[1]))
-            .max(pos.2.abs_diff(center[2]));
-        if d <= 64 {
-            target.push(pos);
-        }
-    }
-    (keys, trial_keys, vault_keys)
 }
 
 #[cfg(test)]

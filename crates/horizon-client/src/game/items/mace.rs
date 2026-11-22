@@ -12,7 +12,6 @@ use horizon_client::{
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
-    position::BlockPos,
     random::RandomSource,
 };
 

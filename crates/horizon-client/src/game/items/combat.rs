@@ -1,15 +1,14 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
-use super::{Game, commands::Target};
+use super::Game;
 
 use horizon_client::{
     health::{Attack, HealthEvent},
-    mobs::{Damage, Mob, Species, Who, stuck::Stuck},
+    mobs::{Damage, Species, Who, stuck::Stuck},
     motion::MotionEvent,
     particles::{ParticleOptions, ParticleType},
     text::Text,
 };
-use horizon_core::random::RandomSource;
 
 /// `EntityEvent.DROWN_PARTICLES`: broadcast with the drowning damage.
 pub(super) const DROWN_EVENT: i8 = 67;
@@ -106,7 +105,6 @@ pub(super) struct CombatTracker {
     /// Player`), not a mob whose UUID the TNT's `owner` names.
     pub(super) blast_owner_player: bool,
     pub(super) projectile_attacker: Option<(u32, Text)>,
-    pub(super) enchantment_projectile_attacker: Option<u32>,
     /// The projectile hitting the player now is another player's that
     /// `ServerPlayer.canHarmPlayer` refuses (the `pvp` rule, an ally).
     pub(super) refuse_player_hit: bool,
@@ -206,17 +204,6 @@ impl CombatTracker {
         &self.attack
     }
 
-    /// The newest damage of this fight for `events`: when it landed (game
-    /// time), its damage type, the amount and the name of what dealt it.
-    pub(super) fn last_hit(&self) -> Option<(i64, String, Option<f32>, Option<String>)> {
-        let e = self.entries.last()?;
-        let by = e
-            .attacker
-            .as_ref()
-            .map(|(_, t)| t.plain())
-            .or_else(|| e.direct.as_ref().map(Text::plain));
-        Some((self.last_damage, e.damage_type.clone(), Some(e.damage), by))
-    }
     /// The scalar death-tail/death-message fallback, not the full accepted killing source.
     pub(super) fn last_blow(&self) -> Option<(&str, u32)> {
         let e = self.entries.last()?;
@@ -310,14 +297,6 @@ impl Game<'_> {
         Some(match &m.custom_name {
             Some(name) => Text::literal(name.clone()),
             None => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
-        })
-    }
-    /// `mob_display_name` for the ECS mob `id`: its name and its type come from the bridge.
-    pub(in crate::game) fn mob_display_name_ecs(&self, id: u32) -> Option<Text> {
-        let kind = self.ecs.kind(id)?;
-        Some(match self.ecs.custom_name(id) {
-            Some(name) => Text::literal(name),
-            None => Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
         })
     }
     /// `getLastHurtByMob`: the last mob to hurt the player, for 100 ticks.
@@ -725,252 +704,6 @@ impl Game<'_> {
         // template that names a killer then shows as written).
         Text::translate(&key, &[me])
     }
-    /// `tell_owner_pet_died` for the ECS mob `id`: its species, tame flag and owner come from the bridge.
-    pub(super) fn tell_owner_pet_died_ecs(&mut self, id: u32, killer: Option<Option<u32>>) {
-        let Some(mob) = self.ecs_mob(id) else { return };
-        let tamable = matches!(
-            mob.species,
-            Some(Species::Wolf | Species::Cat | Species::Parrot | Species::Nautilus | Species::ZombieNautilus)
-        );
-        let Some(owner) = self.ecs.tamable_values(id).and_then(|(_, uuid)| uuid).filter(|_| tamable && mob.tame) else {
-            return;
-        };
-        if !self.session.rules.bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES) {
-            return;
-        }
-        let host = self.player.is_some()
-            && self.options.dedicated.is_none()
-            && horizon_client::mobs::tame::owned_by(Some(owner), self.level.player_uuid.unwrap_or_default());
-        let uuid = horizon_client::lan::playerdata::ints_uuid(owner);
-        let guest = !host
-            && self
-                .lan
-                .as_ref()
-                .is_some_and(|l| l.hub.guests.iter().any(|g| g.placed && g.uuid == uuid));
-        if !host && !guest {
-            return;
-        }
-        let mut built = Some(self.mob_death_message_ecs(id, killer));
-        let Some(kind) = self.ecs.kind(id).map(str::to_owned) else { return };
-        self.native_living_death_message(id, &kind, &mut built);
-        let Some(message) = built else {
-            return;
-        };
-        if host {
-            self.system_message(message);
-        } else if let Some(lan) = &self.lan {
-            let content = horizon_client::lan::data::component_nbt(&message.component());
-            lan.hub.system_message_to_player(uuid, content);
-        }
-    }
-    /// `mob_death_message` for the ECS mob `id`: the hits, the last hurt and the age are read by id from the bridge.
-    pub(super) fn mob_death_message_ecs(&mut self, id: u32, killer: Option<Option<u32>>) -> Text {
-        use horizon_client::mobs::{DamageKind, Who};
-        let me = self.mob_display_name_ecs(id).unwrap_or_else(|| Text::literal(String::new()));
-        let player = match killer {
-            Some(Some(conn)) => Some((u32::MAX - 1 - conn, self.target_name(Target::Guest(conn)))),
-            Some(None) => Some((u32::MAX, self.target_name(Target::Player))),
-            None if self.player.is_some() || self.lan_acting.is_some() => Some((u32::MAX, self.target_name(Target::Player))),
-            None => None,
-        };
-        let player_item = match killer {
-            Some(conn) => self.player_main_hand_custom_name(conn),
-            None => player.as_ref().and_then(|_| self.main_hand_custom_name()),
-        };
-        let name = |g: &Self, who: Who| match who {
-            Who::Player => player.clone(),
-            Who::Mob(id) => g
-                .mob_display_name(id)
-                .or_else(|| g.mob_display_name_ecs(id))
-                .or_else(|| g.combat.exploded.iter().find(|(e, _)| *e == id).map(|(_, n)| n.clone()))
-                .map(|n| (id, n)),
-        };
-        let tracker = self.ecs.combat_tracker(id).unwrap_or_default();
-        let entries = tracker
-            .entries
-            .iter()
-            .map(|e| {
-                let attacker = e.source.attacker.and_then(|w| name(self, w));
-                let item = (e.source.attacker == Some(Who::Player)).then(|| player_item.clone()).flatten();
-                let direct = match e.source.kind {
-                    _ if attacker.is_some() => None,
-                    DamageKind::Arrow => Some(Text::translate("entity.minecraft.arrow", &[])),
-                    DamageKind::Fireworks => Some(Text::translate("entity.minecraft.firework_rocket", &[])),
-                    _ => None,
-                };
-                Entry {
-                    damage_type: super::creatures::source_damage_type(e.source).to_owned(),
-                    damage: e.damage,
-                    fall_location: e.in_water.then_some("water"),
-                    fall_distance: e.fall_distance,
-                    attacker,
-                    item,
-                    direct,
-                }
-            })
-            .collect();
-        let credit = if self.ecs.last_hurt_by_player(id) > 0 && player.is_some() {
-            player.clone()
-        } else {
-            self.ecs
-                .recent_attacker(id)
-                .and_then(|w| name(self, w))
-        };
-        let now = self.world.game_time;
-        let mut swap = CombatTracker {
-            entries,
-            last_damage: now,
-            in_combat: tracker.in_combat,
-            last_hurt_by: credit.map(|c| (c, now)),
-            ..CombatTracker::default()
-        };
-        std::mem::swap(&mut self.combat, &mut swap);
-        let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.combat, &mut swap);
-        text
-    }
-    /// `TamableAnimal.die`: with `showDeathMessages`, a tame wolf, cat,
-    /// parrot or nautilus's owner, when online in any dimension
-    /// (`EntityReference.getEntity` looks through every level), is sent how it
-    /// died. `killer` is the player who last hurt it (`None` inside for the
-    /// host), from `last_hurt_by_player`.
-    pub(super) fn tell_owner_pet_died(&mut self, m: &Mob, killer: Option<Option<u32>>) {
-        let tamable = matches!(
-            m.species(),
-            Species::Wolf
-                | Species::Cat
-                | Species::Parrot
-                | Species::Nautilus
-                | Species::ZombieNautilus
-        );
-        let Some(owner) = m.extra.owner.filter(|_| tamable && m.extra.tame) else {
-            return;
-        };
-        if !self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::SHOW_DEATH_MESSAGES)
-        {
-            return;
-        }
-        let host = self.player.is_some()
-            && self.options.dedicated.is_none()
-            && horizon_client::mobs::tame::owned_by(
-                Some(owner),
-                self.level.player_uuid.unwrap_or_default(),
-            );
-        let uuid = horizon_client::lan::playerdata::ints_uuid(owner);
-        let guest = !host
-            && self
-                .lan
-                .as_ref()
-                .is_some_and(|l| l.hub.guests.iter().any(|g| g.placed && g.uuid == uuid));
-        if !host && !guest {
-            return;
-        }
-        let mut built = Some(self.mob_death_message(m, killer));
-        let kind = super::native_hooks::mob_kind(m);
-        self.native_living_death_message(m.id, &kind, &mut built);
-        // A native mod may have changed the message, or set it to None to tell the owner nothing.
-        let Some(message) = built else {
-            return;
-        };
-        if host {
-            self.system_message(message);
-        } else if let Some(lan) = &self.lan {
-            let content = horizon_client::lan::data::component_nbt(&message.component());
-            lan.hub.system_message_to_player(uuid, content);
-        }
-    }
-    /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
-    /// (`Mob::combat`), told the way the player's own tracker tells them.
-    pub(super) fn mob_death_message(&mut self, m: &Mob, killer: Option<Option<u32>>) -> Text {
-        use horizon_client::mobs::{DamageKind, Who};
-        let me = mob_name(m);
-        // The player behind a `Who::Player` hit: the last one to hurt it, or
-        // the one in place (a server with nobody acting has none).
-        let player = match killer {
-            Some(Some(conn)) => Some((u32::MAX - 1 - conn, self.target_name(Target::Guest(conn)))),
-            Some(None) => Some((u32::MAX, self.target_name(Target::Player))),
-            None if self.player.is_some() || self.lan_acting.is_some() => {
-                Some((u32::MAX, self.target_name(Target::Player)))
-            }
-            None => None,
-        };
-        // DamageSource.getLocalizedDeathMessage reads that player's main hand
-        // as the message is built.
-        let player_item = match killer {
-            Some(conn) => self.player_main_hand_custom_name(conn),
-            None => player.as_ref().and_then(|_| self.main_hand_custom_name()),
-        };
-        // The cause's display name: a mob that is gone (a creeper that blew
-        // up) is still named by its blast.
-        let name = |g: &Self, who: Who| match who {
-            Who::Player => player.clone(),
-            Who::Mob(id) => g
-                .mob_display_name(id)
-                .or_else(|| g.mob_display_name_ecs(id))
-                .or_else(|| {
-                    g.combat
-                        .exploded
-                        .iter()
-                        .find(|(e, _)| *e == id)
-                        .map(|(_, n)| n.clone())
-                })
-                .map(|n| (id, n)),
-        };
-        let entries = m
-            .combat
-            .entries
-            .iter()
-            .map(|e| {
-                let attacker = e.source.attacker.and_then(|w| name(self, w));
-                let item = (e.source.attacker == Some(Who::Player))
-                    .then(|| player_item.clone())
-                    .flatten();
-                // AbstractArrow.onHitEntity: an arrow nobody shot is its own
-                // cause; a rocket nobody fired still names itself.
-                let direct = match e.source.kind {
-                    _ if attacker.is_some() => None,
-                    DamageKind::Arrow => Some(Text::translate("entity.minecraft.arrow", &[])),
-                    DamageKind::Fireworks => {
-                        Some(Text::translate("entity.minecraft.firework_rocket", &[]))
-                    }
-                    _ => None,
-                };
-                Entry {
-                    damage_type: super::creatures::source_damage_type(e.source).to_owned(),
-                    damage: e.damage,
-                    fall_location: e.in_water.then_some("water"),
-                    fall_distance: e.fall_distance,
-                    attacker,
-                    item,
-                    direct,
-                }
-            })
-            .collect();
-        // LivingEntity.getKillCredit: the player who hurt it lately, else the
-        // last mob to hurt it within 100 ticks.
-        let credit = if m.ai.last_hurt_by_player > 0 && player.is_some() {
-            player.clone()
-        } else {
-            m.ai.last_hurt_by
-                .filter(|_| m.age as i32 - m.ai.last_hurt_by_time <= 100)
-                .and_then(|w| name(self, w))
-        };
-        let now = self.world.game_time;
-        let mut tracker = CombatTracker {
-            entries,
-            last_damage: now,
-            in_combat: m.combat.in_combat,
-            last_hurt_by: credit.map(|c| (c, now)),
-            ..CombatTracker::default()
-        };
-        std::mem::swap(&mut self.combat, &mut tracker);
-        let text = self.combat_death_message_for(me);
-        std::mem::swap(&mut self.combat, &mut tracker);
-        text
-    }
 }
 
 /// `!stack.isEmpty() && stack.has(DataComponents.CUSTOM_NAME)`: the held
@@ -979,15 +712,6 @@ fn has_custom_name(stack: &horizon_client::items::ItemStack) -> bool {
     &*stack.item != "minecraft:air"
         && stack.count > 0
         && stack.data().is_some_and(|d| d.custom_name.is_some())
-}
-
-/// `Entity.getDisplayName` of a mob: its custom name or its type's name.
-fn mob_name(m: &Mob) -> Text {
-    match (&m.custom_name_text, &m.custom_name) {
-        (Some(text), _) => text.clone(),
-        (None, Some(name)) => Text::literal(name.clone()),
-        (None, None) => Text::translate(&format!("entity.{}", m.kind.id.replace(':', ".")), &[]),
-    }
 }
 
 /// `Player.actuallyHurt`'s DAMAGE_TAKEN award: `dmg * 10.0F` rounded as Java

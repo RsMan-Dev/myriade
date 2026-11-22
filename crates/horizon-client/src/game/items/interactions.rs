@@ -5,7 +5,6 @@
 //! behind them is used).
 use super::{Game, ray_box};
 use horizon_core::geometry::{Aabb, Vec3};
-use horizon_protocol::entity_data::Value;
 
 /// `Interaction`'s synced data and box: `DATA_WIDTH` (8), `DATA_HEIGHT` (9)
 /// and `DATA_RESPONSE` (10), from its `defineSynchedData`.
@@ -13,22 +12,12 @@ pub(super) struct RemoteInteraction {
     pub position: Vec3,
     pub width: f32,
     pub height: f32,
-    pub response: bool,
     /// `Entity.getVehicle`: ModelEngine's hitboxes ride the pivot that
     /// carries them.
     pub vehicle: Option<u32>,
 }
 
 impl RemoteInteraction {
-    pub fn new(position: [f64; 3]) -> Self {
-        Self {
-            position: Vec3::new(position[0], position[1], position[2]),
-            width: 1.0,
-            height: 1.0,
-            response: false,
-            vehicle: None,
-        }
-    }
     /// `Entity.positionRider`'s move: a passenger is placed on its vehicle's
     /// seat, not moved on its own.
     pub fn ride_to(&mut self, at: glam::DVec3) {
@@ -49,16 +38,6 @@ impl RemoteInteraction {
             ),
         )
     }
-    pub fn metadata(&mut self, values: &[(u8, i32, Value)]) {
-        for (index, _, value) in values {
-            match (index, value) {
-                (8, Value::Float(width)) => self.width = *width,
-                (9, Value::Float(height)) => self.height = *height,
-                (10, Value::Bool(response)) => self.response = *response,
-                _ => {}
-            }
-        }
-    }
 }
 
 impl Game<'_> {
@@ -71,13 +50,6 @@ impl Game<'_> {
             .iter()
             .filter_map(|(&id, i)| ray_box(eye, dir, reach, i.bounds()).map(|d| (id, d)))
             .min_by(|a, b| a.1.total_cmp(&b.1))
-    }
-    /// An `Interaction` keeps `Entity`'s no-op interpolation handler: the
-    /// server's position replaces its own at once.
-    pub(super) fn move_remote_interaction(&mut self, id: i32, position: [f64; 3]) {
-        if let Some(i) = self.interactions.get_mut(&id) {
-            i.position = Vec3::new(position[0], position[1], position[2]);
-        }
     }
 }
 

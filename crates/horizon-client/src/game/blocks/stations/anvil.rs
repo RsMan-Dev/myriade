@@ -1,9 +1,6 @@
 //! `AnvilScreen`'s name: the server keeps the name the player typed, up to 50 characters.
 use super::Station;
 
-/// `AnvilScreen`: `name.setMaxLength(50)`.
-pub(super) const NAME_CHARS: usize = 50;
-
 /// `AnvilScreen.slotChanged`: the name shows the input's name.
 pub(super) fn input_changed(station: &mut Station, name: String) {
     station.name = name;

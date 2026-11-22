@@ -17,7 +17,9 @@ const SLOTS: usize = 256;
 /// the cells of the ring beyond a section's face lie in the neighbours of that side.
 const TOUCH: [u32; 512] = {
     let mut t = [0u32; 512];
-    let (mut a, mut b, mut c) = (0, 0, 0);
+    let mut a = 0;
+    let mut b;
+    let mut c;
     while a < 8 {
         b = 0;
         while b < 8 {
@@ -263,7 +265,7 @@ fn resolve_in(tl: &mut Tl, occ: &Occupancy, scene: &SceneCollisions<'_, '_>, bou
     let mv = [movement.x, movement.y, movement.z];
     let subject = scene.subject.is_some();
     let Tl { recent, cubes, .. } = tl;
-    let mut n = 0;
+    let mut n;
     let resolved = if movement.length_squared() == 0.0 {
         mv
     } else {

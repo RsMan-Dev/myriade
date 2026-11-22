@@ -5,10 +5,10 @@
 //! projectile's (`Projectile`); it is not visited by `projectile::fly`.
 use crate::cow::*;
 use crate::firework_burst::{rocket_end, FireworkOut};
-use crate::goals::{Online, Player};
+use crate::goals::Online;
 use crate::host_out_firework::FireworkEvent;
 use crate::projectile::{entity_hit, Projectile};
-use crate::rules::firework::{box_at, detonation_damage, exposure, glide_boost, hit_margin, is_sideways_stop, life_ticks, rise_motion};
+use crate::rules::firework::{box_at, glide_boost, hit_margin, is_sideways_stop, life_ticks, rise_motion};
 use crate::targeting::{player_box, Who};
 use bevy_ecs::prelude::*;
 use horizon_client_lib::arrows::clip_block_hit;

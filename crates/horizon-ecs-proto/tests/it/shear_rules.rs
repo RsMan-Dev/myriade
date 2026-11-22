@@ -1,6 +1,7 @@
 //! `behaviours::shear` through the player's shears: each shearable species changes its state once and the host gets the sound, the tool's
 //! wear and the game event; the mooshroom becomes a cow; a baby is refused.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;

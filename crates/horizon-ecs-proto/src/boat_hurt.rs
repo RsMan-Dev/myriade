@@ -2,7 +2,7 @@
 //! decays one tick at a time on a wheel deadline, only while `Hurt` is present. The loot is not copied here: `take_loot` hands the host
 //! the table and the seed of a chest boat, and the host rolls it.
 use crate::boat_leash;
-use crate::boat_state::{self, Chest, Hurt, Wood, CHEST_SLOTS};
+use crate::boat_state::{Chest, Hurt, Wood, CHEST_SLOTS};
 use crate::cow::{after, Pos};
 use crate::goals::{self, Online};
 use crate::host_out_boat_hurt::BoatHurtEvent;

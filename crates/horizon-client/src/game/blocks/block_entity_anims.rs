@@ -6,16 +6,14 @@
 use super::Game;
 use horizon_client::{
     block_entity_anim::{
-        BellEntity, ConduitServer, ConduitTarget, EndGateway, Shulker, ShulkerStatus, Ticker,
+        BellEntity, ConduitServer, EndGateway, Shulker, ShulkerStatus, Ticker,
         closer_to_center_than,
     },
     collisions::{SceneCollisions, no_collision_empty},
     containers::BlockEntity,
     effects::EffectInstance,
     mobs::{Damage, DamageKind},
-    particles::{ParticleOptions, ParticleType},
     save::number,
-    skins,
 };
 use horizon_core::nbt::Tag;
 use horizon_core::{
@@ -686,27 +684,6 @@ impl Game<'_> {
             .unwrap_or(0);
         Some(candidates[pick as usize])
     }
-    /// The conduit's `destroyTarget` as the client draws it: the block
-    /// entity's `Target`, which `sendBlockUpdated` keeps in step for every
-    /// window; the server's own copy answers where there is no block entity.
-    fn conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
-        let id = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-            Some(BlockEntity::Conduit(target)) => self.mob_by_uuid((*target)?)?,
-            _ => self.be_anims.conduit_servers.get(&pos)?.target?,
-        };
-        if self.ecs.is_active() {
-            let [x, y, z] = self.ecs.position(id).filter(|_| self.mob_exists(id))?;
-            let (width, height) = self.ecs.size(id)?;
-            return Some(ConduitTarget { position: [x, y, z], eye_y: self.ecs_mob_eye(id)?[1], width, height });
-        }
-        let m = self.remote_entities.iter().find(|m| m.id == id && !m.removed)?;
-        Some(ConduitTarget {
-            position: [m.position.x, m.position.y, m.position.z],
-            eye_y: m.eye_y(),
-            width: m.width(),
-            height: m.height(),
-        })
-    }
     /// `TheEndGatewayBlockEntity.portalTick` (the server ticker), from
     /// `Level.tickBlockEntities`: the age counts up in the block entity itself,
     /// which `/data get block` and the chunk save read; the cooldown an entry
@@ -794,14 +771,6 @@ impl Game<'_> {
                         .eq(&pos.map(|v| Some(i64::from(v))))
                 })
             })
-    }
-    /// The client chest ticker, also used when replaying a moved chest.
-    pub(super) fn tick_chest_lid(&mut self, pos: [i32; 3]) {
-        self.be_anims.chests.entry(pos).or_default().tick();
-    }
-    /// `ChestLidController.getOpenness(partial)` at `pos`.
-    pub(super) fn chest_lid(&self, pos: [i32; 3], partial: f32) -> f32 {
-        self.be_anims.lid(pos, partial)
     }
 }
 

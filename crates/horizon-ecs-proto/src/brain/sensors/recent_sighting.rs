@@ -3,7 +3,6 @@
 use crate::behaviours::golem_recent::GOLEM_RECENT;
 use crate::brain::*;
 use crate::targeting::Who;
-use bevy_ecs::prelude::*;
 
 /// The predicate of the species' configuration: the seen mobs it accepts.
 pub struct Params {

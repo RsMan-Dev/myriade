@@ -164,21 +164,21 @@ impl RuntimeLevels for Game<'_> {
     }
 }
 impl RenderAssets for Game<'_> {
-    fn model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {
+    fn model(&self, _id: &Identifier) -> Result<ModelRef, ModelError> {
         mod_api::__private::check_access(
             "model",
             mod_api::__private::LoadAccess::PublishedResources,
         );
         Err(ModelError::UnknownModel)
     }
-    fn render_pipeline(&self, id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
+    fn render_pipeline(&self, _id: &Identifier) -> Result<RenderPipelineRef, RenderPipelineError> {
         mod_api::__private::check_access(
             "render_pipeline",
             mod_api::__private::LoadAccess::PublishedResources,
         );
         Err(RenderPipelineError::Unknown)
     }
-    fn animation(&self, id: &Identifier) -> Option<AnimationHolder> {
+    fn animation(&self, _id: &Identifier) -> Option<AnimationHolder> {
         mod_api::__private::check_access(
             "animation",
             mod_api::__private::LoadAccess::PublishedResources,

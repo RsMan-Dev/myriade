@@ -1,5 +1,6 @@
 //! `HELD_SWAP`, `STEW_FLOWER`, `STEW_BOWL` and the brush: what the host hears and what the hand holds afterwards.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
@@ -51,7 +52,7 @@ fn a_flower_then_a_bowl_gives_a_suspicious_stew_with_the_flowers_effect() {
     let out = events(&mut h);
     let stew = out.iter().find_map(|ev| if let HostEvent::HeldSwap { to, .. } = ev { Some(to.clone()) } else { None }).expect("a swap");
     assert_eq!(stew.item.as_ref(), "minecraft:suspicious_stew");
-    assert!(!stew.data().stew_effects.is_empty());
+    assert!(stew.data().is_some_and(|d| !d.stew_effects.is_empty()));
     assert!(has_sound(&out, "minecraft:entity.mooshroom.milk_suspiciously"));
 }
 

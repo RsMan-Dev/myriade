@@ -1,27 +1,8 @@
 //! Server text displays: metadata, interpolation, billboard transforms and world text.
-use super::Game;
-use horizon_client::{items::ItemStack, text_display::TextDisplayData};
-use horizon_protocol::entity_data::Value;
-use horizon_world::registry::BlockStateId;
-
-/// What a display shows besides its transformation: its text (in `data`),
-/// a block state (`BlockDisplay`) or an item and how it is displayed
-/// (`ItemDisplay`).
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Shows {
-    Text,
-    Block,
-    Item,
-}
+use horizon_client::text_display::TextDisplayData;
 
 pub(super) struct RemoteTextDisplay {
     pub data: TextDisplayData,
-    shows: Shows,
-    /// `BlockDisplay.DATA_BLOCK_STATE_ID`.
-    block: Option<BlockStateId>,
-    /// `ItemDisplay.DATA_ITEM_STACK` and `DATA_ITEM_DISPLAY_ID`.
-    item: Option<ItemStack>,
-    item_display: u8,
     from: TextDisplayData,
     shown: TextDisplayData,
     position: glam::DVec3,
@@ -46,40 +27,7 @@ pub(super) struct RemoteTextDisplay {
     pub(super) vehicle: Option<u32>,
 }
 
-/// `Display.RENDER_STATE_IDS` and `TextDisplay.TEXT_RENDER_STATE_IDS`: the
-/// data a render state is built from (not the view range, size or glow).
-fn renders(id: u8) -> bool {
-    matches!(id, 11..=16 | 18 | 19 | 23..=27)
-}
-
 impl RemoteTextDisplay {
-    pub fn new(shows: Shows, position: [f64; 3], yaw: f32) -> Self {
-        Self {
-            data: Default::default(),
-            shows,
-            block: None,
-            item: None,
-            item_display: 0,
-            from: Default::default(),
-            shown: Default::default(),
-            position: position.into(),
-            previous: position.into(),
-            target: position.into(),
-            rotation: [yaw, 0.0],
-            old_rotation: [yaw, 0.0],
-            target_rotation: [yaw, 0.0],
-            steps: 0,
-            age: 0,
-            start: 0,
-            duration: 0,
-            dirty: true,
-            start_dirty: false,
-            duration_dirty: false,
-            initialized: false,
-            last_progress: 0.0,
-            vehicle: None,
-        }
-    }
     /// Where a passenger of this display sits, this tick and the last
     /// (`Display`'s box is 0 by 0, so its passenger attachment is its feet).
     pub(super) fn seat(&self) -> (glam::DVec3, glam::DVec3) {
@@ -95,102 +43,6 @@ impl RemoteTextDisplay {
     }
     pub(super) fn position(&self) -> glam::DVec3 {
         self.position
-    }
-    fn progress(&self, partial: f32) -> f32 {
-        if self.duration <= 0 {
-            1.0
-        } else {
-            (((self.age - self.start) as f32 + partial) / self.duration as f32).clamp(0.0, 1.0)
-        }
-    }
-    /// The entries after `Display`'s: a block state, or an item with its
-    /// display context (the stack comes converted by the caller).
-    pub fn show(&mut self, values: &[(u8, i32, Value)], item: Option<Option<ItemStack>>) {
-        for (id, _, value) in values {
-            match (self.shows, id, value) {
-                (Shows::Block, 23, Value::Id(state)) => {
-                    self.block = Some(BlockStateId(u32::try_from(*state).unwrap_or(0)));
-                }
-                (Shows::Item, 24, Value::Byte(context)) => self.item_display = *context as u8,
-                _ => {}
-            }
-        }
-        if let Some(item) = item
-            && self.shows == Shows::Item
-        {
-            self.item = item;
-        }
-    }
-    pub fn metadata(&mut self, values: &[(u8, i32, Value)]) {
-        self.start_dirty |= values.iter().any(|v| v.0 == 8);
-        self.duration_dirty |= values.iter().any(|v| v.0 == 9);
-        self.dirty |= values.iter().any(|v| renders(v.0));
-        self.data.apply(values);
-    }
-    fn tick(&mut self) {
-        self.age += 1;
-        self.previous = self.position;
-        self.old_rotation = self.rotation;
-        if self.steps > 0 {
-            self.position += (self.target - self.position) / f64::from(self.steps);
-            for i in 0..2 {
-                self.rotation[i] +=
-                    angle(self.target_rotation[i] - self.rotation[i]) / self.steps as f32;
-            }
-            self.steps -= 1;
-        }
-        if self.start_dirty {
-            self.start = self.age + i64::from(self.data.interpolation_delay);
-        }
-        if self.duration_dirty {
-            self.duration = self.data.interpolation_duration;
-        }
-        if self.dirty {
-            self.from = if self.initialized && self.duration > 0 {
-                self.shown.blend(&self.from, self.last_progress)
-            } else {
-                self.data.clone()
-            };
-            self.shown = self.data.clone();
-            self.initialized = true;
-        }
-        self.dirty = false;
-        self.start_dirty = false;
-        self.duration_dirty = false;
-    }
-    fn move_to(&mut self, position: [f64; 3], rotation: Option<(f32, f32)>) {
-        self.target = position.into();
-        if let Some((yaw, pitch)) = rotation {
-            self.target_rotation = [yaw, pitch];
-        }
-        self.steps = self.data.teleport_duration.clamp(0, 59);
-        if self.steps == 0 {
-            self.position = self.target;
-            self.previous = self.target;
-            self.rotation = self.target_rotation;
-            self.old_rotation = self.rotation;
-        }
-    }
-}
-fn angle(d: f32) -> f32 {
-    (d + 180.0).rem_euclid(360.0) - 180.0
-}
-
-impl Game<'_> {
-    pub(super) fn move_remote_text_display(
-        &mut self,
-        id: i32,
-        position: [f64; 3],
-        rotation: Option<(f32, f32)>,
-    ) {
-        if let Some(d) = self.text_displays.get_mut(&id) {
-            d.move_to(position, rotation);
-        }
-    }
-    pub(super) fn tick_text_displays(&mut self) {
-        for display in self.text_displays.values_mut() {
-            display.tick();
-        }
     }
 }
 

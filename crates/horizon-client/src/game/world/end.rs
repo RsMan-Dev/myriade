@@ -6,10 +6,8 @@ use super::{Dim, Game};
 use horizon_client::{
     Result,
     containers::BlockEntity,
-    environment::Environment,
     items::ItemStack,
     mobs::Who,
-    particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     vanillagen::VanillaTerrain,
     world_spawn::PlayerSpawnFinder,
@@ -145,61 +143,8 @@ pub(super) struct EndState {
     locator: std::sync::Mutex<Option<Arc<VanillaTerrain>>>,
     /// Thrown eyes of ender in flight.
     eyes: Vec<EyeOfEnder>,
-    flash: EndFlash,
 }
 
-/// EndFlashState: a purple flash in the End sky every 600 ticks that also
-/// lights the world (the lightmap's sky factor).
-#[derive(Default)]
-struct EndFlash {
-    seed: Option<i64>,
-    offset: i32,
-    duration: i32,
-    intensity: f32,
-    old_intensity: f32,
-    x_angle: f32,
-    y_angle: f32,
-}
-impl EndFlash {
-    fn tick(&mut self, clock: i64) {
-        let seed = clock.div_euclid(600);
-        if self.seed != Some(seed) {
-            let mut random = LegacyRandom::new(seed);
-            random.next_float();
-            let between = |r: &mut LegacyRandom, lo: i32, hi: i32| {
-                r.next_int_bound(hi - lo + 1).unwrap_or(0) + lo
-            };
-            self.offset = between(&mut random, 0, 200);
-            self.duration = between(&mut random, 100, 380.min(600 - self.offset));
-            self.x_angle = random.next_float() * 70.0 - 60.0;
-            self.y_angle = random.next_float() * 360.0 - 180.0;
-            self.seed = Some(seed);
-        }
-        self.old_intensity = self.intensity;
-        let t = clock.rem_euclid(600) as i32;
-        self.intensity = if t >= self.offset && t <= self.offset + self.duration {
-            ((t - self.offset) as f32 * std::f32::consts::PI / self.duration as f32).sin()
-        } else {
-            0.0
-        };
-    }
-    /// `EndFlashState.flashStartedThisTick`.
-    fn started_this_tick(&self) -> bool {
-        self.intensity > 0.0 && self.old_intensity <= 0.0
-    }
-    fn intensity(&self, partial: f32) -> f32 {
-        self.old_intensity + (self.intensity - self.old_intensity) * partial
-    }
-    /// SkyRenderer.renderEndFlash's pose: the sprite at height 100 turned to the flash.
-    fn pose(&self) -> glam::Mat4 {
-        flash_pose(self.x_angle, self.y_angle)
-    }
-}
-
-fn flash_pose(x_angle: f32, y_angle: f32) -> glam::Mat4 {
-    glam::Mat4::from_rotation_y((180.0 - y_angle).to_radians())
-        * glam::Mat4::from_rotation_x((-90.0 - x_angle).to_radians())
-}
 impl EndState {
     pub(super) fn locator(&self) -> Option<Arc<VanillaTerrain>> {
         self.locator.lock().unwrap().clone()
@@ -220,46 +165,6 @@ impl EndState {
             .iter()
             .filter(|e| e.id != 0)
             .map(|e| (e.id, e.position.to_array(), e.velocity.to_array()))
-    }
-    /// `handleAddEntity` for an eye of ender on a server's client: it flies
-    /// where the server says.
-    pub(super) fn add_remote_eye(&mut self, id: u32, at: [f64; 3], velocity: [f64; 3]) {
-        self.eyes.retain(|e| e.id != id);
-        let at = glam::DVec3::from_array(at);
-        self.eyes.push(EyeOfEnder {
-            id,
-            position: at,
-            previous: at,
-            velocity: glam::DVec3::from_array(velocity),
-            target: at,
-            life: 0,
-            survive: false,
-        });
-    }
-    /// Where each eye in flight was last tick and is now (the hitbox view).
-    pub(super) fn eye_motions(&self) -> impl Iterator<Item = (glam::DVec3, glam::DVec3)> + '_ {
-        self.eyes.iter().map(|e| (e.previous, e.position))
-    }
-    /// A server's move: an eye has no interpolation handler, so
-    /// `moveOrInterpolateTo` puts it there at once. False when `id` isn't one.
-    pub(super) fn move_remote_eye(&mut self, id: u32, at: [f64; 3]) -> bool {
-        let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
-            return false;
-        };
-        e.position = glam::DVec3::from_array(at);
-        true
-    }
-    /// `handleSetEntityMotion` for an eye. False when `id` isn't one.
-    pub(super) fn remote_eye_motion(&mut self, id: u32, velocity: [f64; 3]) -> bool {
-        let Some(e) = self.eyes.iter_mut().find(|e| e.id == id) else {
-            return false;
-        };
-        e.velocity = glam::DVec3::from_array(velocity);
-        true
-    }
-    /// Where each eye is, for `status`.
-    pub(super) fn eye_positions(&self) -> impl Iterator<Item = (u32, [f64; 3])> {
-        self.eyes.iter().map(|e| (e.id, e.position.to_array()))
     }
 }
 
@@ -371,37 +276,6 @@ impl EyeOfEnder {
 }
 
 impl Game<'_> {
-    /// The environment attributes the frame draws: the packs' Polytone layers over the
-    /// current dimension's, when a pack has some. Gameplay keeps `dim_environment`.
-    pub(super) fn view_environment(&self) -> &Environment {
-        match (&self.pack.environments, self.dim) {
-            (Some(e), Dim::Overworld) => &e[0],
-            (Some(e), Dim::Nether) => &e[1],
-            (Some(e), Dim::End) => &e[2],
-            (None, _) | (_, Dim::Extra(_)) => self.dim_environment(),
-        }
-    }
-
-    /// The environment attributes of the current dimension.
-    pub(super) fn dim_environment(&self) -> &Environment {
-        self.res.environment_of(&self.dimension_type().id)
-    }
-
-    /// Iris's `endFlashIntensity` and the flash's direction (camera-relative, length 100: the
-    /// sprite's centre), for shader packs; no flash outside the End.
-    pub(super) fn end_flash_for_pack(&self, partial: f32) -> (f32, glam::Vec3) {
-        if self.dimension_type().skybox != horizon_world::dimension_type::Skybox::End {
-            return (0.0, glam::Vec3::ZERO);
-        }
-        let flash = &self.end.flash;
-        (
-            flash.intensity(partial).clamp(0.0, 1.0),
-            flash
-                .pose()
-                .transform_point3(glam::Vec3::new(0.0, 100.0, 0.0)),
-        )
-    }
-
     pub(super) fn block_name(&self, p: [i32; 3]) -> std::sync::Arc<str> {
         self.res
             .facts()
@@ -521,19 +395,6 @@ impl Game<'_> {
             }
         }
         None
-    }
-
-    /// `ClientLevel.tick`'s End flash, on every client in the End:
-    /// `EndFlashState.tick`, and when a flash starts (not under the credits)
-    /// its `DirectionalSoundInstance`, played 30 ticks later from the camera
-    /// toward the flash.
-    pub(super) fn tick_end_flash(&mut self) {
-        if self.dimension_type().skybox != horizon_world::dimension_type::Skybox::End {
-            return;
-        }
-        // getDefaultClockTime: the End's own clock (the client keeps the
-        // dimension's default clock in day_time), not the game time.
-        self.end.flash.tick(self.world.day_time);
     }
 
     /// End portals, End gateways and the exit portal, once per tick.

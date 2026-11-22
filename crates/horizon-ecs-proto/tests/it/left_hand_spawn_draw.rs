@@ -9,6 +9,13 @@ use horizon_ecs_proto::left_handed::LeftHanded;
 use horizon_ecs_proto::spawn_finalize::{Finalize, finalize};
 use horizon_ecs_proto::spawn_reason::SpawnReason;
 
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:cow"])
+}
+fn species_named(name: &str) -> Species {
+    *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))
+}
+
 #[test]
 fn the_spawn_draw_sets_the_marker_and_the_synced_flag() {
     if skip() {

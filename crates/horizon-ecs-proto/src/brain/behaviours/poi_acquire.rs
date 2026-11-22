@@ -4,7 +4,6 @@
 use crate::behaviours::poi_claim;
 use crate::brain::*;
 use crate::goals::Events;
-use bevy_ecs::prelude::*;
 
 pub struct Params {
     pub claim: &'static poi_claim::Params,

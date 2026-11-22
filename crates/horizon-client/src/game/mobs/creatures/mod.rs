@@ -2,21 +2,15 @@
 //! chunk-generation spawning (`NaturalSpawner`), mob events (attacks,
 //! breeding, conversions, drops), projectiles, player interactions
 //! (feeding, shearing, milking, spawn eggs, throwing) and rendering.
-#[path = "../../creatures/biome_facts.rs"]
-pub(super) mod biome_facts;
 #[path = "../../creatures/mob_conversion.rs"]
 mod mob_conversion;
 mod borrowed_tick;
 mod combat_adaptations;
 mod conversion_identity;
-mod death_tail;
-mod projectile_targets;
 mod pufferfish_player;
 mod death_weapon;
 mod destroy_rules;
 mod player_loot_entity;
-mod projectile_world;
-pub(super) use projectile_world::ProjWorld;
 mod residency;
 pub(in crate::game) mod section_steps;
 mod world_view;
@@ -28,25 +22,25 @@ use horizon_client::{
     Result,
     blocks::Fluid,
     crafting::Recipes,
-    health::{Attack, HealthEvent, HurtSource, Hurting, Knock},
+    health::{Attack, HealthEvent, HurtSource},
     items::{ItemStack, Items},
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         finalize::Group,
-        spawning::{self, BiomeFacts},
+        spawning,
     },
     collisions::SceneCollisions,
     particles::{ParticleOptions, ParticleType},
-    projectiles::{Hit, Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
+    projectiles::{Projectile, ProjectileKind, ProjectileWorld, clip_including_border},
 };
 use horizon_core::{
-    geometry::{Aabb, Direction, Vec3, trig::Mth, traverse_blocks},
+    geometry::{Aabb, Direction, Vec3, traverse_blocks},
     position::BlockPos,
     random::RandomSource,
 };
-use mod_api::{EquipmentSlot, LootDrops, SoundSource};
+use mod_api::SoundSource;
 use std::sync::Arc;
 
 pub(super) type SpawnReason = horizon_client::mobs::spawn_rules::Reason;
@@ -196,12 +190,6 @@ pub(super) struct Creatures {
     /// Explosion packets from a guest's turn, waiting for it to end
     /// (game/network/lan_particles.rs).
     pub lan_explosions: Vec<super::lan_particles::LanExplosion>,
-    /// The snapshot's buffer between ticks, empty: ~400 bytes a mob, so
-    /// thousands of mobs would allocate and free megabytes every tick.
-    seen_buf: Vec<Seen>,
-    /// Per-tick scratch retained between creature ticks.
-    event_buf: Vec<MobEvent>,
-    pickable_projectile_targets: Vec<(Who, Aabb)>,
     pending: std::collections::HashMap<&'static str, PendingMobBatch>,
     /// The mobs whose own tick ran in the last `tick_creature_entities`:
     /// `ServerLevel.tick` ticks only the entities in entity-ticking range, so
@@ -222,36 +210,6 @@ pub(super) struct Creatures {
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
 }
-/// `Projectile.isPickable`: a projectile in `#minecraft:redirectable_projectile`
-/// (a ghast's fireball and both wind charges) is pickable, so another
-/// projectile's `ProjectileUtil.getEntityHitResult` can strike it
-/// (`Projectile.onHit` then redirects it). `PICKABLE_PROJECTILE_IDS + j` is
-/// `projectiles[j]` during `tick_projectiles`, below the dragon's reserved ids.
-const PICKABLE_PROJECTILE_IDS: u32 = super::dragon::SPECIAL - 0x10000;
-
-/// The index of the projectile a `pickable_projectile_hitboxes` id stands for.
-pub(super) fn pickable_projectile_hit(id: u32) -> Option<usize> {
-    (PICKABLE_PROJECTILE_IDS..super::dragon::SPECIAL)
-        .contains(&id)
-        .then(|| (id - PICKABLE_PROJECTILE_IDS) as usize)
-}
-
-fn pickable_projectile_hitboxes_into(
-    projectiles: &[Projectile],
-    alive: &[bool],
-    skip: usize,
-    out: &mut Vec<(Who, Aabb)>,
-) {
-    out.clear();
-    out.extend(
-        projectiles
-            .iter()
-            .enumerate()
-            .filter(|(j, q)| *j != skip && alive[*j] && super::deflect::redirectable(q))
-            .map(|(j, q)| (Who::Mob(PICKABLE_PROJECTILE_IDS + j as u32), q.aabb())),
-    );
-}
-
 #[cfg(test)]
 fn pickable_projectile_hitboxes(
     projectiles: &[Projectile],
@@ -280,13 +238,9 @@ pub(super) fn named_mob_pickable(
     alive && Some(id) != riding && Some(id) != camera
 }
 
-/// What an entity's skin frame drew: the frame's mark before its draws, and their
-/// camera-relative bounds.
-pub(super) type Skinned = Option<((usize, usize, u32), Option<(glam::Vec3, glam::Vec3)>)>;
-
 /// What a block's `onProjectileHit` reads of the projectile that struck it:
-/// a thrown projectile ([`ProjectileHitter::of`]) or a fishing bobber
-/// (`FishingHook.onHitBlock` calls `Projectile.onHitBlock` too).
+/// a thrown projectile or a fishing bobber (`FishingHook.onHitBlock` calls
+/// `Projectile.onHitBlock` too).
 #[derive(Clone, Copy, Debug)]
 pub(super) struct ProjectileHitter {
     /// `Projectile.getOwner`.
@@ -298,23 +252,6 @@ pub(super) struct ProjectileHitter {
     /// Its entity type, for `target_hit`'s projectile predicate.
     pub(super) kind: &'static str,
     pub(super) position: Vec3,
-}
-impl ProjectileHitter {
-    pub(super) fn of(p: &Projectile) -> Self {
-        Self {
-            owner: p.owner,
-            guest: p.guest,
-            arrow: p.arrow.is_some(),
-            kind: p.entity_type(),
-            position: p.position,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OrbOrder {
-    BeforeChild,
-    AfterChild,
 }
 
 impl Game<'_> {
@@ -411,17 +348,6 @@ impl Game<'_> {
                 })
             }),
         })
-    }
-    /// Biome facts at a position for finalizeSpawn and variant rules.
-    pub(super) fn biome_facts(&self, x: i32, y: i32, z: i32) -> BiomeFacts {
-        biome_facts::biome_facts_in(
-            &self.world,
-            world_biomes!(self),
-            self.res.mob_data(),
-            x,
-            y,
-            z,
-        )
     }
     /// Create a mob of `kind` at a position, finalized like a natural spawn.
     pub(super) fn spawn_mob(
@@ -1122,14 +1048,7 @@ impl Game<'_> {
                 self.creatures.deferred_hits = false;
                 result?;
                 self.lan_guest_mob_events(&mut batch.guests);
-                self.creatures.event_buf = pending
-                    .batches
-                    .pop_front()
-                    .unwrap()
-                    .normal
-                    .root
-                    .events
-                    .into();
+                pending.batches.pop_front();
             }
             if !pending.pushes.is_empty() {
                 for mob in &mut self.remote_entities {
@@ -1567,7 +1486,7 @@ impl Game<'_> {
     /// server sent in its list (display state). Its id.
     pub(in crate::game) fn add_projectile(
         &mut self,
-        mut p: horizon_client::projectiles::Projectile,
+        p: horizon_client::projectiles::Projectile,
     ) -> u32 {
         {
             // Already in the level: its flight is the ECS's.
@@ -5094,23 +5013,6 @@ impl Game<'_> {
             .bool_at(horizon_client::gamerules::vanilla::MOB_GRIEFING);
         entity.map_or(rule, |entity| self.entity_grief(entity, rule))
     }
-    /// Whether a large fireball's blast lights fire (`LargeFireball.onHit`):
-    /// [`Self::can_entity_grief`] for its owner, as `getOwner()` gives it. That
-    /// is the mob that shot it, or the player who owns it (the guest on `guest`,
-    /// else the player in place). An owner that is gone, or none, reads the rule.
-    pub(in crate::game) fn large_fireball_fire(
-        &self,
-        owner: Option<Who>,
-        guest: Option<u32>,
-    ) -> bool {
-        self.can_entity_grief(match owner {
-            Some(Who::Mob(id)) => Some(id),
-            Some(Who::Player) => self
-                .player_entity_id_by_connection(guest)
-                .map(|id| id as u32),
-            None => None,
-        })
-    }
     /// Whether a mod may answer `can_entity_grief` differently from the rule:
     /// the sites that skip their whole work while griefing is off skip it only
     /// when no mod listens.
@@ -5338,66 +5240,6 @@ mod tests {
 
 }
 
-/// Whether the killing blow's causing entity (`DamageSource.getEntity`) was a
-/// mob, such as a tame wolf whose owner gets the kill credit.
-fn killed_by_mob(m: &Mob) -> bool {
-    m.last_damage
-        .is_some_and(|(d, _)| matches!(d.attacker, Some(Who::Mob(_))))
-}
-
-/// `Animal.finalizeSpawnChildFromBreeding`'s player: the one who fed the
-/// parent, or else the one who fed the partner (`getLoveCause`). `Some(None)`
-/// is the host, `Some(Some(conn))` a guest. Both animals are spent.
-/// `DyeColor.getMixedColor`: the colour of the crafting recipe that mixes
-/// the two dyes, else one of the two picked at random.
-fn dye_mix(
-    context: &horizon_world::native_load_context::LoopContext,
-    recipes: &Recipes,
-    random: &mut impl RandomSource,
-    a: u8,
-    b: u8,
-) -> u8 {
-    if let Some(mixed) = dye_color_mix_in_recipes(context, recipes, a, b) {
-        return mixed;
-    }
-    if random.next_boolean() { a } else { b }
-}
-
-/// `DyeColor.findColorMixInRecipes`: the dye colour a two-dye crafting recipe
-/// makes, when its result is a dye. The two dyes are the grid's first row
-/// (`CraftingInput.of(2, 1, ...)`) and the recipe manager answers for it; the
-/// result's `_dye` item names the colour.
-fn dye_color_mix_in_recipes(
-    context: &horizon_world::native_load_context::LoopContext,
-    recipes: &Recipes,
-    a: u8,
-    b: u8,
-) -> Option<u8> {
-    let dye = |c: u8| {
-        let name = horizon_client::mobs::DYE_NAMES[usize::from(c) & 15];
-        Some(ItemStack::new(&format!("minecraft:{name}_dye"), 1))
-    };
-    let grid = [dye(a), dye(b), None, None];
-    let (_, result) = recipes.find(context, &grid, 2)?;
-    let name = result
-        .item
-        .strip_prefix("minecraft:")?
-        .strip_suffix("_dye")?;
-    let index = horizon_client::mobs::DYE_NAMES
-        .iter()
-        .position(|n| *n == name)?;
-    u8::try_from(index).ok()
-}
-
-fn breeding_credit(
-    love_cause: &mut std::collections::HashMap<u32, Option<u32>>,
-    parent: u32,
-    partner: u32,
-) -> Option<Option<u32>> {
-    let from_parent = love_cause.remove(&parent);
-    let from_partner = love_cause.remove(&partner);
-    from_parent.or(from_partner)
-}
 
 #[cfg(test)]
 mod mob_subscription_tests {

@@ -6,8 +6,4 @@ impl Game<'_> {
     pub(in crate::game) fn game_dir() -> PathBuf {
         std::env::current_dir().unwrap_or_default()
     }
-    /// The game folder's `options.txt`.
-    pub(in crate::game) fn options_path() -> PathBuf {
-        Self::game_dir().join("options.txt")
-    }
 }

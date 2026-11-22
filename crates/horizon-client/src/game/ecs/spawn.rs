@@ -5,7 +5,6 @@ use bevy_ecs::entity::Entity;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use super::super::creatures::SpawnSite;
 use horizon_client::mobs::spawn_rules::Reason;
-use horizon_ecs_proto::bridge::host::Select;
 use horizon_ecs_proto::spawn_reason::SpawnReason;
 
 impl Game<'_> {
@@ -61,11 +60,6 @@ impl Game<'_> {
         let special = super::super::creatures::local_difficulty_in(&self.world, at).special();
         let why = ecs_reason(reason);
         let e = self.ecs_with(|ecs, mw| ecs.spawn_patrol_member(mw, kind, at, leader, why, special))?;
-        Some(self.ecs_link(e))
-    }
-    /// `ecs_spawn` for the natural spawning pass: `entity_spawn` is told `natural`.
-    pub(in crate::game) fn ecs_spawn_natural(&mut self, kind: &str, at: [f64; 3]) -> Option<u32> {
-        let e = self.ecs_with(|ecs, mw| ecs.spawn_natural(mw, kind, at))?;
         Some(self.ecs_link(e))
     }
     /// Loads an entity from its saved data into the ECS level and links its network id.
@@ -134,11 +128,6 @@ impl Game<'_> {
             *next += 1;
             *next
         })
-    }
-    /// The entities of `kind` within `r` of `near`, counted by the index; not for a per-tick cap (P keeps those by events).
-    pub(in crate::game) fn ecs_count(&self, kind: &str, near: [f64; 3], r: f64) -> usize {
-        let q = Select { kind: Some(kind.to_owned()), tag: None, near: Some((near, r)), limit: usize::MAX };
-        self.ecs.select(&q).len()
     }
 }
 

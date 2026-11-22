@@ -18,15 +18,6 @@ impl Game<'_> {
         matches!(hit, HitResult::Hurt | HitResult::Broke { .. })
     }
 
-    /// The credit of a projectile's blow: its owner, a guest, or the host's player in place.
-    pub(in crate::game) fn projectile_credit(&self, owner: Option<Who>, guest: Option<u32>) -> Option<CartAttacker> {
-        match owner {
-            Some(Who::Player) => guest.or_else(|| self.acting_player_uuid_id()).map(CartAttacker::Player),
-            Some(Who::Mob(m)) => Some(CartAttacker::Mob(m)),
-            None => None,
-        }
-    }
-
     /// The bridge's credit for a command or blast source that struck a cart: the host's player, a guest, or a mob.
     pub(in crate::game) fn target_credit(&self, by: Option<Target>) -> Option<CartAttacker> {
         match by? {

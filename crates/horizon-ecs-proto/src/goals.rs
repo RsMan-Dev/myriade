@@ -1067,7 +1067,7 @@ fn player_watch(on: Res<Online>, moves: Res<CellMoves>, idx: Res<Index>, mut q: 
     if (on.seen.is_empty() && moves.0.is_empty()) || q.is_empty() {
         return;
     }
-    let mut eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
+    let eval = |e: Entity, pos: &Pos, w: &mut PlayerWatch, id: u32, p: Option<Player>, ev: &mut Events| {
         let now = p.is_some_and(|p| (pos.0.x - p.x).powi(2) + (pos.0.y - p.y).powi(2) + (pos.0.z - p.z).powi(2) <= f64::from(w.radius).powi(2));
         let at = w.inside.binary_search(&id);
         let was = at.is_ok();
@@ -1520,9 +1520,13 @@ fn rotate_if_necessary(base: f32, target: f32, max: f32) -> f32 {
 /// body that moved takes the yaw; a head turned by more than 15 degrees drags the body; a head still for 10 ticks
 /// brings it back over 10 more). Leaves when the head, the pitch and the body are at rest.
 #[allow(clippy::type_complexity)]
-fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>, Option<&mut LookMemo>), With<Looking>>, mut cmd: Commands) {
+fn look_control(
+    mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Following>, Option<&mut LookMemo>, Has<crate::bridge::ids::NetId>), With<Looking>>,
+    mut sent: Option<ResMut<crate::bridge::view::Modified>>,
+    mut cmd: Commands,
+) {
     const ARRIVED: f64 = 2.500_000_3e-7_f32 as f64;
-    for (e, pos, yaw, mut look, mut h, walking, mut kept) in &mut q {
+    for (e, pos, yaw, mut look, mut h, walking, mut kept, followed) in &mut q {
         // The memo is worked in place (no copy, no change mark): a laid one is written through, a missing one is laid when it holds something.
         let had = kept.is_some();
         let mut fresh = LookMemo::default();
@@ -1580,6 +1584,10 @@ fn look_control(mut q: Query<(Entity, &Pos, &Yaw, &mut Look, &mut Head, Has<Foll
                 let f = ((h.stable_time - 10) as f32 / 10.0).clamp(0.0, 1.0);
                 h.body = rotate_if_necessary(h.body, h.yaw, look.max_head_y * (1.0 - f));
             }
+        }
+        // A followed entity whose head or body turned is sent again (the tracker reads `Modified`).
+        if followed && before != (h.yaw, h.pitch, h.body, h.stable) && let Some(m) = sent.as_mut() {
+            m.push(e);
         }
         memo.settled = (aimed && !moved && h.stable_time > 20 && before == (h.yaw, h.pitch, h.body, h.stable)).then_some((look.target, pos.0, look.y_speed, walking));
         if look.cooldown == 0 && !moved && wrap(h.yaw - h.body).abs() < 0.01 && h.pitch == 0.0 {

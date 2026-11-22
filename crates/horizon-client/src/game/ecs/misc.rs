@@ -2,7 +2,7 @@
 //! bite's sound, and an area cloud's effects on the creatures it reached. Creation is `ecs_strike` and `add_fangs` (the mobs' fangs).
 use super::super::Game;
 use horizon_client::{effects::EffectInstance, random_source};
-use horizon_core::random::{EntityRandom, RandomSource};
+use horizon_core::random::EntityRandom;
 use super::potions::effect_kind;
 use horizon_ecs_proto::{bridge::host_read_living::effect_name, effects::Brew, host_out_misc::MiscEvent, targeting::Who};
 

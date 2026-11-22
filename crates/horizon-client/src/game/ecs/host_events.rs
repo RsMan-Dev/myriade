@@ -115,7 +115,7 @@ impl Game<'_> {
                 HostEvent::RaiderHurt { raid, id, before } => self.ecs_raider_hurt(raid, id, before),
                 HostEvent::Hurt { id, damage, cause, direct, at } => self.ecs_hurt_event(id, damage, cause, direct, at),
                 HostEvent::DeathAnimation { id, at } => self.lan_entity_event(id as i32, 3, at),
-                HostEvent::DeathSmoke { id, at, width, height } => {
+                HostEvent::DeathSmoke { id, at, .. } => {
                     self.lan_entity_event(id as i32, 60, at);
                 }
                 HostEvent::ConversionAsk { entity, into } => self.ecs_conversion_asked(entity, into),

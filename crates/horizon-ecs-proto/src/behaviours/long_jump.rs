@@ -12,8 +12,7 @@ use crate::goals::*;
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_client_lib::mobs::path::PathType;
-use horizon_core::geometry::{Aabb, Vec3, trig};
-use horizon_core::jmath;
+use horizon_core::geometry::Vec3;
 
 /// `LongJumpToPreferredBlock` / `LongJumpToRandomPos` : les nombres de la grenouille (`Params::DEFAULT`) et de la chèvre
 /// (`prefer` à None, boîte 5 x 5, cooldown 600..1200, `gated_by_ram`).
@@ -494,7 +493,6 @@ pub(crate) fn reaches_on_foot(w: &World, e: Entity, target: [i32; 3]) -> bool {
 /// Whether a path of at most 8 blocks reaches the block (`Mob.create_path_raw(&[target], 0, 8.0).reached`): the search `pathfind` makes, without
 /// touching the animal. The frog's is the amphibious one that prefers shallow water (`nav.rs:20`), the goat's the walking one.
 fn walkable(w: &World, e: Entity, p: &Params, target: [i32; 3]) -> bool {
-    use crate::pathsearch::Finder;
     use horizon_client_lib::mobs::path::{Evaluator, PathMob};
     let (Some(pos), Some(body), Some(c), Some(sp)) = (w.get::<Pos>(e), w.get::<Body>(e), w.get::<Contact>(e), w.get::<NavParams>(e)) else { return false };
     let in_fluid = w.get::<FluidState>(e).is_some_and(|f| f.in_water);

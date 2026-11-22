@@ -1,5 +1,5 @@
 //! Calculations of the search areas: the circle that covers a box.
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Aabb;
 
 /// The centre (x, z) of the box and the radius of the circle that covers its footprint (half its widest side).
 pub fn centre_radius(a: Aabb) -> ((f64, f64), f64) {

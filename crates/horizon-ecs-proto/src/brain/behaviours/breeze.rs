@@ -10,7 +10,6 @@
 use crate::behaviours::Cap;
 use crate::brain::sensors::attackable::NEAREST_ATTACKABLE;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::with_rng;
 use crate::projectile::{launch, Flight};
 use crate::rules::breeze::{self as rules};

@@ -40,16 +40,22 @@ impl Game<'_> {
         if !self.ecs.is_active() {
             return;
         }
-        let moved: Vec<([f64; 3], i32)> = match self.lan.as_ref() {
-            Some(host) => host
-                .hub
-                .guests
-                .iter()
-                .filter(|g| host.hub.here(g) && section(g.position) != section(g.previous_position))
-                .map(|g| (g.position, g.view_distance))
-                .collect(),
+        // The players whose section changed since their last pairing: a move, a teleport, a join, an arrival from another level.
+        let mut moved: Vec<([f64; 3], i32)> = Vec::new();
+        match self.lan.as_mut() {
+            Some(host) => {
+                let dimension = host.hub.config.dimension.clone();
+                host.hub.guests.update_all(|g| {
+                    if !g.placed_in(&dimension) {
+                        g.ecs_section = None;
+                    } else if g.ecs_section != Some(section(g.position)) {
+                        g.ecs_section = Some(section(g.position));
+                        moved.push((g.position, g.view_distance));
+                    }
+                });
+            }
             None => return,
-        };
+        }
         let dirty = self.ecs.drain_attribute_changes();
         let pairing = !moved.is_empty();
         let mut changed = Vec::new();

@@ -346,20 +346,6 @@ impl Game<'_> {
         )
     }
 
-    /// `isInvulnerableToBase` of a non-living entity the acting player strikes in melee
-    /// (`player_attack`), asked of listeners.
-    pub(in crate::game) fn native_player_hit_invulnerable(&mut self, id: u32, kind: &str) -> bool {
-        let attacker = self.own_entity_id();
-        let source = horizon_client::health::HurtSource {
-            damage_type: "minecraft:player_attack",
-            causing: attacker,
-            direct: attacker,
-            position: None,
-        };
-        let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.creative);
-        self.native_nonliving_invulnerable(id, kind, source, vanilla)
-    }
-
     /// Whether `source`'s damage may hit `entity` through their teams
     /// (`Player.canHarmPlayer`, `Team.allowFriendlyFire`,
     /// `DamageSource.doTeamsAllowDamage`): allies without friendly fire

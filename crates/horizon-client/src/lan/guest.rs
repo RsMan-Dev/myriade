@@ -226,6 +226,8 @@ pub struct Guest {
     /// an accepted move or teleport ack, a passenger or vehicle move, a camera change, a placement.
     pub held_ticket_chunk: Option<(i32, i32)>,
     pub previous_position: [f64; 3],
+    /// The section whose surroundings the ECS's tracker last paired for this player; None until its first pass in the level in place.
+    pub ecs_section: Option<[i32; 3]>,
     pub yaw: f32,
     pub pitch: f32,
     pub head_yaw: f32,
@@ -748,6 +750,7 @@ impl Guest {
             position,
             held_ticket_chunk: None,
             previous_position: position,
+            ecs_section: None,
             yaw: 0.0,
             pitch: 0.0,
             head_yaw: 0.0,

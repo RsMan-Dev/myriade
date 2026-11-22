@@ -7,8 +7,7 @@
 use super::Game;
 use horizon_client::lan::hub::passage_cross::{REACH, crossing_source, refusal_named};
 use horizon_core::geometry::Vec3 as Motion;
-use horizon_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
-use horizon_protocol::passage_sync::{CROSS_CHANNEL, Cross, decode_cross, encode_cross};
+use horizon_protocol::passage_sync::decode_cross;
 use mod_api::{
     Passage, PassageCrossError as Error, PassageCrossRefusal as Refusal, PassageId, PassageTurn,
     Vec3,
@@ -70,67 +69,6 @@ fn chunk_of(point: [f64; 3]) -> (i32, i32) {
 }
 
 impl Game<'_> {
-    /// `ClientHost::cross_passage`: the window's player comes out of `passage` with its
-    /// feet, its last tick's place, its velocity and its look carried through, and the
-    /// server is told the passage and where the feet were; a payload a mod cancels moves
-    /// nothing. Until the server's position packet, the next crossing waits.
-    pub(super) fn cross_passage(&mut self, passage: PassageId) -> Result<(), Error> {
-        {
-            return Err(Error::Unavailable);
-        }
-        if self.player.is_none() {
-            return Err(Error::NoPlayer);
-        }
-        if self.passages.crossing.is_some() {
-            return Err(Error::Pending);
-        }
-        if self.riding.is_some() {
-            return Err(Error::Riding);
-        }
-        let p = *self
-            .passages
-            .held
-            .get(&passage)
-            .ok_or(Error::UnknownPassage)?;
-        let Some(player) = self.player.as_ref() else {
-            return Err(Error::NoPlayer);
-        };
-        let from = [player.position.x, player.position.y, player.position.z];
-        if !within_reach(&p, from) {
-            return Err(Error::TooFar { limit: REACH });
-        }
-        let player = self.player.as_mut().expect("checked above");
-        let [x, y, z] = carried(&p, from);
-        player.position = Motion::new(x, y, z);
-        let v = player.velocity;
-        let [vx, vy, vz] = turned(&p, [v.x, v.y, v.z]);
-        player.velocity = Motion::new(vx, vy, vz);
-        let o = self.previous_position;
-        let [ox, oy, oz] = carried(&p, [o.x, o.y, o.z]);
-        self.previous_position = Motion::new(ox, oy, oz);
-        let turn = yaw_turn(&p);
-        self.yaw += turn;
-        self.rope_rot_old.0 += turn;
-        self.passages.crossing = Some(passage);
-        self.passages.refused = None;
-        Ok(())
-    }
-
-    /// `ClientHost::last_passage_refusal`.
-    pub(super) fn last_passage_refusal(&self) -> Option<(PassageId, Refusal)> {
-        self.passages.refused
-    }
-
-    /// The server refused the window's crossing of passage `id`: the reason is kept for
-    /// the mods, and the position packet that follows puts the player back.
-    pub(super) fn remote_passage_refused(&mut self, id: u64, reason: u8) {
-        let Some(why) = refusal_named(reason) else {
-            log::debug!("Horizon: a passage refusal this build does not know: {reason}");
-            return;
-        };
-        self.passages.refused = Some((PassageId::from_raw(id), why));
-    }
-
     /// A guest's crossing that passed the hub's move check (`Hub::passage_leg`), decided
     /// from the `from` it names (`decide_passage_cross`): the hub then follows to where the
     /// server works out the player comes out. Otherwise refused by name, and the player is

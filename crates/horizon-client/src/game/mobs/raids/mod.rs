@@ -2,31 +2,23 @@
 //! their waves, boss bar, victory and the raiders' bookkeeping. The rules are
 //! `horizon_client::patrol` and `horizon_client::raid`; this is the game's
 //! side of them.
-use super::{Dim, Game, creatures::Finalized};
+use super::{Dim, Game};
 use horizon_client::mobs::villager as mobs_villager;
 use horizon_client::{
     effects::{EffectInstance, OmenTick},
-    mobs::{
-        Mob, Species, raider,
-        spawn_rules::{self, SpawnLevel},
-        spawn_selection::{Heightmap, NaturalLevel},
-    },
-    patrol::{GameplayAttributes, Member, PatrolLevel, PatrolSpawner},
+    mobs::{Mob, Species, raider, spawn_rules},
+    patrol::GameplayAttributes,
     raid::{self, Action, BarName, RaidLevel, RaidPlayer, RaiderInfo, RaiderType, Raids, Spawn},
     random_source,
 };
 use horizon_core::nbt::Tag;
-use horizon_core::{
-    geometry::Vec3,
-    random::{LegacyRandom, LevelRandom, RandomSource},
-};
+use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_gameplay::village_siege::{SiegeLevel, VillageSiege};
 use std::collections::{HashMap, HashSet};
 
 /// Patrol and raid state owned by the game.
 #[derive(Default)]
 pub(super) struct Raiding {
-    patrol: PatrolSpawner,
     siege: VillageSiege,
     /// The raids of the dimension the player is in, and that dimension.
     pub(super) raids: Raids,
@@ -69,6 +61,10 @@ impl Raiding {
 }
 
 pub(super) use horizon_gameplay::custom_spawner::{section, sections_to_village};
+
+fn block_of(p: Vec3) -> [i32; 3] {
+    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
+}
 
 /// The level as a raid sees it, with this tick's village data.
 struct Lvl<'a, 'g> {
@@ -118,110 +114,6 @@ impl RaidLevel for Lvl<'_, '_> {
             })
             .collect()
     }
-}
-
-/// The game level as the patrol spawner reads it.
-struct PatrolCx<'a, 'g, 'h> {
-    level: super::natural_spawning::GameLevel<'a, 'g>,
-    centers: HashSet<(i32, i32, i32)>,
-    can_spawn: &'h dyn Fn(&Game, [i32; 3]) -> bool,
-}
-impl SpawnLevel for PatrolCx<'_, '_, '_> {
-    fn within_world_border(&self, x: i32, z: i32) -> bool {
-        self.level.within_world_border(x, z)
-    }
-    fn state(&self, x: i32, y: i32, z: i32) -> horizon_world::registry::BlockStateId {
-        self.level.state(x, y, z)
-    }
-    fn facts(&self) -> &horizon_client::blocks::BlockFacts {
-        self.level.facts()
-    }
-    fn mob_data(&self) -> &horizon_client::mobs::data::MobData {
-        self.level.mob_data()
-    }
-    fn block_tag(&self, tag: &str, block: &str) -> bool {
-        self.level.block_tag(tag, block)
-    }
-    fn biome_tag(&self, tag: &str, x: i32, y: i32, z: i32) -> bool {
-        self.level.biome_tag(tag, x, y, z)
-    }
-    fn sky_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        self.level.sky_light(x, y, z)
-    }
-    fn block_light(&self, x: i32, y: i32, z: i32) -> i32 {
-        self.level.block_light(x, y, z)
-    }
-    fn sky_darken(&self) -> i32 {
-        SpawnLevel::sky_darken(&self.level)
-    }
-    fn thundering(&self) -> bool {
-        self.level.thundering()
-    }
-    fn sea_level(&self) -> i32 {
-        self.level.sea_level()
-    }
-    fn world_surface(&self, x: i32, z: i32) -> i32 {
-        self.level.world_surface(x, z)
-    }
-    fn peaceful(&self) -> bool {
-        self.level.peaceful()
-    }
-    fn dimension_type(&self) -> &horizon_world::dimension_type::DimensionFacts {
-        self.level.dimension_type()
-    }
-    fn surface_slime_chance(&self, x: i32, y: i32, z: i32) -> f32 {
-        self.level.surface_slime_chance(x, y, z)
-    }
-    fn world_seed(&self) -> i64 {
-        self.level.world_seed()
-    }
-    fn player_near(&self, x: f64, y: f64, z: f64, distance: f64) -> bool {
-        self.level.player_near(x, y, z, distance)
-    }
-}
-impl PatrolLevel for PatrolCx<'_, '_, '_> {
-    fn spawn_patrols(&self) -> bool {
-        self.level
-            .game
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::SPAWN_PATROLS)
-    }
-    fn bright_outside(&self) -> bool {
-        !self.level.game.dimension_type().has_fixed_time && self.level.game.sky_darken() < 4
-    }
-    /// `PatrolSpawner.tick` picks from `level.players()`: the local player
-    /// and every guest in the level.
-    fn patrol_players(&self) -> Vec<([i32; 3], bool)> {
-        self.level
-            .players
-            .iter()
-            .map(|p| (block_of(p.position), p.spectator))
-            .collect()
-    }
-    fn sections_to_village(&self, pos: [i32; 3]) -> i32 {
-        sections_to_village(&self.centers, section(pos))
-    }
-    fn has_chunk(&self, cx: i32, cz: i32) -> bool {
-        self.level.game.world.chunks.contains_key(&(cx, cz))
-    }
-    fn can_pillager_patrol_spawn(&self, pos: [i32; 3]) -> bool {
-        (self.can_spawn)(self.level.game, pos)
-    }
-    fn effective_difficulty(&self, pos: [i32; 3]) -> f32 {
-        self.level
-            .game
-            .local_difficulty([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])])
-            .effective
-    }
-    fn motion_blocking_no_leaves(&self, x: i32, z: i32) -> i32 {
-        self.level
-            .heightmap(Heightmap::MotionBlockingNoLeaves, x, z)
-    }
-}
-
-fn block_of(p: Vec3) -> [i32; 3] {
-    [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32]
 }
 
 impl Game<'_> {
@@ -989,80 +881,6 @@ impl Game<'_> {
         }
         out
     }
-    /// `PatrolSpawner.tick` (`horizon_client::patrol`) on the game level:
-    /// the pillagers it accepts are created after the pass, finalized for a
-    /// patrol.
-    pub(super) fn tick_patrol_spawner(&mut self) {
-        if self.dim != Dim::Overworld {
-            return;
-        }
-        let attributes = self.gameplay_attributes();
-        let biome_ok = |game: &Game, at: [i32; 3]| {
-            let biome = game
-                .world
-                .chunks
-                .get(&(at[0] >> 4, at[2] >> 4))
-                .map(|c| {
-                    game.res
-                        .biomes()
-                        .get(c.biome(at[0], at[1], at[2]))
-                        .name
-                        .clone()
-                })
-                .unwrap_or_default();
-            attributes.value(
-                horizon_client::patrol::CAN_PILLAGER_PATROL_SPAWN,
-                game.dim.id(),
-                &biome,
-                game.world.day_time,
-            )
-        };
-        let enemies = self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
-            && self
-                .session
-                .rules
-                .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS);
-        let mut random = std::mem::replace(
-            &mut self.world.random,
-            LevelRandom::for_level(LegacyRandom::new(0)),
-        );
-        let mut members: Vec<Member> = Vec::new();
-        let mut spawner = std::mem::take(&mut self.raiding.patrol);
-        {
-            let level = PatrolCx {
-                level: self.natural_level(),
-                centers: self.village_centers(),
-                can_spawn: &biome_ok,
-            };
-            let mut spawn = |l: &PatrolCx, m: Member, _: &mut horizon_core::random::LevelRandom| {
-                // EntityType.create makes no monsters in peaceful.
-                if l.level.game.difficulty_id() == 0 {
-                    return false;
-                }
-                members.push(m);
-                true
-            };
-            spawner.tick(&level, enemies, &mut random, &mut spawn);
-        }
-        self.raiding.patrol = spawner;
-        self.world.random = random;
-        for m in members {
-            let at = [
-                f64::from(m.pos[0]),
-                f64::from(m.pos[1]),
-                f64::from(m.pos[2]),
-            ];
-            self.spawn_event_mob("minecraft:pillager", at, m.leader, raider::Reason::Patrol);
-        }
-    }
-    /// `VillageSiege.tick`: at midnight one night in ten, 20 zombies spawn
-    /// two ticks apart near a village 32 blocks from a player standing in it.
-    pub(super) fn tick_village_siege(&mut self) {
-        horizon_gameplay::village_siege::tick(self);
-    }
     /// `ServerLevel.isVillage`: within one section of a village.
     fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         horizon_gameplay::village_siege::is_village(centers, pos)
@@ -1119,58 +937,6 @@ impl Game<'_> {
                 *self.stack_in_mut(slot) = None;
             }
         }
-    }
-}
-
-impl SiegeLevel for Game<'_> {
-    fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
-        Game::is_village(centers, pos)
-    }
-    fn siege(&mut self) -> &mut VillageSiege {
-        &mut self.raiding.siege
-    }
-    fn try_to_setup_siege(&mut self) -> bool {
-        Game::try_to_setup_siege(self)
-    }
-    fn try_spawn_siege_zombie(&mut self) {
-        Game::try_spawn_siege_zombie(self);
-    }
-    fn find_siege_spawn_pos(
-        &mut self,
-        centers: &HashSet<(i32, i32, i32)>,
-        spot: [i32; 3],
-    ) -> Option<[f64; 3]> {
-        Game::find_siege_spawn_pos(self, centers, spot)
-    }
-}
-
-/// `Raid.raidEvent`'s name: the raid title, the remaining-raiders line, or
-/// the victory and defeat lines.
-fn raid_name_tag(name: BarName) -> Tag {
-    let key = |k: &str| Tag::compound([("translate", Tag::String(k.into()))]);
-    match name {
-        BarName::Raid => key("event.minecraft.raid"),
-        BarName::Victory => key("event.minecraft.raid.victory.full"),
-        BarName::Defeat => key("event.minecraft.raid.defeat.full"),
-        BarName::Remaining(n) => Tag::compound([
-            ("translate", Tag::String("event.minecraft.raid".into())),
-            (
-                "extra",
-                Tag::List(vec![
-                    Tag::String(" - ".into()),
-                    Tag::compound([
-                        (
-                            "translate",
-                            Tag::String("event.minecraft.raid.raiders_remaining".into()),
-                        ),
-                        (
-                            "with",
-                            Tag::List(vec![Tag::String(n.to_string().as_str().into())]),
-                        ),
-                    ]),
-                ]),
-            ),
-        ]),
     }
 }
 
@@ -1261,6 +1027,59 @@ impl Game<'_> {
         Ok(state)
     }
 }
+
+impl SiegeLevel for Game<'_> {
+    fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
+        Game::is_village(centers, pos)
+    }
+    fn siege(&mut self) -> &mut VillageSiege {
+        &mut self.raiding.siege
+    }
+    fn try_to_setup_siege(&mut self) -> bool {
+        Game::try_to_setup_siege(self)
+    }
+    fn try_spawn_siege_zombie(&mut self) {
+        Game::try_spawn_siege_zombie(self);
+    }
+    fn find_siege_spawn_pos(
+        &mut self,
+        centers: &HashSet<(i32, i32, i32)>,
+        spot: [i32; 3],
+    ) -> Option<[f64; 3]> {
+        Game::find_siege_spawn_pos(self, centers, spot)
+    }
+}
+
+/// `Raid.raidEvent`'s name: the raid title, the remaining-raiders line, or
+/// the victory and defeat lines.
+fn raid_name_tag(name: BarName) -> Tag {
+    let key = |k: &str| Tag::compound([("translate", Tag::String(k.into()))]);
+    match name {
+        BarName::Raid => key("event.minecraft.raid"),
+        BarName::Victory => key("event.minecraft.raid.victory.full"),
+        BarName::Defeat => key("event.minecraft.raid.defeat.full"),
+        BarName::Remaining(n) => Tag::compound([
+            ("translate", Tag::String("event.minecraft.raid".into())),
+            (
+                "extra",
+                Tag::List(vec![
+                    Tag::String(" - ".into()),
+                    Tag::compound([
+                        (
+                            "translate",
+                            Tag::String("event.minecraft.raid.raiders_remaining".into()),
+                        ),
+                        (
+                            "with",
+                            Tag::List(vec![Tag::String(n.to_string().as_str().into())]),
+                        ),
+                    ]),
+                ]),
+            ),
+        ]),
+    }
+}
+
 
 
 #[cfg(test)]

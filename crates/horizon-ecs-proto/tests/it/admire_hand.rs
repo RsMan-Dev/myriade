@@ -4,7 +4,7 @@ use crate::common;
 use common::*;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
-use horizon_ecs_proto::goals::{equipped, Entered, Slot};
+use horizon_ecs_proto::goals::{equipped, interact, Entered, Online, Player, Slot};
 use horizon_ecs_proto::hostile::HurtBy;
 use horizon_ecs_proto::items;
 use horizon_ecs_proto::targeting::Who;

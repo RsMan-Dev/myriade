@@ -8,7 +8,6 @@
 use super::swallow_hold::Held;
 use super::*;
 use crate::cow::*;
-use crate::goals::*;
 use crate::rules::bounce_drag::{bounce_vy, bounces, drag_factor};
 
 #[derive(Clone, Copy, Debug)]

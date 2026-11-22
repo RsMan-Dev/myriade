@@ -3,7 +3,6 @@
 use crate::bridge::host::EcsWorld;
 use crate::cloud_tick;
 use crate::effect_cloud::CloudSpec;
-use crate::colony_register::MiscOut;
 use crate::end_crystal::Blow;
 use crate::end_crystal_tick;
 use crate::fangs_tick;

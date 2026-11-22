@@ -221,14 +221,3 @@ mod stack_limit_tests {
     }
 }
 
-/// `ShelfBlockEntity.getVisualRotationYInDegrees`: `facing.getOpposite().toYRot()`,
-/// where `Direction.toYRot` is `(data2d & 3) * 90` and `data2d` is north 2, south 0,
-/// west 1, east 3. A shelf's facing is always horizontal; anything else reads north.
-fn shelf_owner_yaw(facing: &str) -> f32 {
-    match facing {
-        "south" => 180.0,
-        "west" => 270.0,
-        "east" => 90.0,
-        _ => 0.0,
-    }
-}

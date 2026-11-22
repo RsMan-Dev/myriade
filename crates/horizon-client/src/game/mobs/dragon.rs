@@ -16,7 +16,6 @@ mod residency;
 mod save_lending;
 #[path = "dragon/walls.rs"]
 mod walls;
-use super::api_values::TryIntoApi;
 use super::commands::Target;
 use super::{
     Game,
@@ -37,7 +36,6 @@ use horizon_core::{
     geometry::{Aabb, Vec3, trig},
     random::{LegacyRandom, RandomSource},
 };
-use horizon_protocol::entity_data::Value;
 use mod_api::DragonPhase;
 
 /// `HealOrHarmMobEffect.applyInstantaneousEffect` at an `AreaEffectCloud`'s
@@ -91,22 +89,6 @@ fn breath_victims<T: Copy + PartialEq>(
     hit
 }
 
-/// `DragonFireball.onHit`: the cloud moves to the first living entity in the
-/// fireball's box inflated by (4, 2, 4) that is within 4 blocks of it.
-/// `feet` is the fireball's position (the bottom of its 1x1x1 box).
-fn fireball_cloud_origin(feet: [f64; 3], targets: &[(Aabb, Vec3)]) -> [f64; 3] {
-    let area = Aabb::new(
-        Vec3::new(feet[0] - 4.5, feet[1] - 2.0, feet[2] - 4.5),
-        Vec3::new(feet[0] + 4.5, feet[1] + 3.0, feet[2] + 4.5),
-    );
-    for (bounds, pos) in targets {
-        let (dx, dy, dz) = (pos.x - feet[0], pos.y - feet[1], pos.z - feet[2]);
-        if bounds.intersects(area) && dx * dx + dy * dy + dz * dz < 16.0 {
-            return [pos.x, pos.y, pos.z];
-        }
-    }
-    feet
-}
 
 /// Mob ids from here on are dragon parts (`SPECIAL + part`) and crystals
 /// (`SPECIAL + 16 + crystal`), so projectiles can target them.
@@ -664,15 +646,6 @@ impl Dragon {
     /// DragonFlightHistory.get(delay).
     fn sample(&self, delay: usize) -> (f64, f32) {
         self.history[(self.head + 64 - (delay & 63)) & 63]
-    }
-    /// `DragonFlightHistory.get(delay, partial)`, with
-    /// `EnderDragonRenderer.extractRenderState`'s frozen history on death.
-    fn sample_lerp(&self, delay: usize, partial: f32) -> (f64, f32) {
-        let partial = if self.alive() { partial } else { 0.0 };
-        let a = self.sample(delay);
-        let b = self.sample(delay + 1);
-        let yaw = b.1 + wrap(a.1 - b.1) * partial;
-        (b.0 + (a.0 - b.0) * f64::from(partial), yaw)
     }
     pub fn alive(&self) -> bool {
         self.health > 0.0
@@ -1290,11 +1263,6 @@ impl Game<'_> {
             FightWho::Host => super::commands::Target::Player,
             FightWho::Guest(conn) => super::commands::Target::Guest(conn),
         })
-    }
-    /// Names the acting player behind the blast about to go off (a large
-    /// fireball they shot), or no one, for the dragon's kill credit.
-    pub(super) fn set_blast_by_player(&mut self, by_player: bool) {
-        self.fight.blast_by = by_player.then(|| self.acting_player());
     }
     /// The players in the level the dragon sees (`level.players()`): the
     /// window's own, then every guest in the level.
@@ -2664,17 +2632,6 @@ impl Game<'_> {
         };
         super::view_vector(d.yaw, pitch).map(|v| v)
     }
-    /// `getHeadLookVector(1).normalize()`, which the phases' `doClientTick`s
-    /// take (a look the dragon has never turned from stays the zero vector).
-    fn dragon_look_normalised(&self) -> [f64; 3] {
-        let look = self.dragon_look();
-        let norm = (look[0] * look[0] + look[1] * look[1] + look[2] * look[2]).sqrt();
-        if norm < 1.0e-5 {
-            [0.0; 3]
-        } else {
-            [look[0] / norm, look[1] / norm, look[2] / norm]
-        }
-    }
     /// `EnderDragon.aiStep` (and `tickDeath`) for the dragon.
     fn tick_dragon(&mut self) {
         // Entity.baseTick: the saved invulnerability window counts down
@@ -3120,50 +3077,6 @@ impl Game<'_> {
         p.acceleration = 0.1;
         p.velocity = Vec3::new(n.x * 0.1, n.y * 0.1, n.z * 0.1);
         self.add_projectile(p);
-    }
-    /// `DragonFireball.onHit` where it burst (`next`): the dragon's breath
-    /// cloud and level event 2006, as the fireballs of the dragon's own list
-    /// burst before they joined the other projectiles.
-    pub(super) fn dragon_fireball_on_hit(&mut self, next: Vec3) {
-        let snap_targets: Vec<(Aabb, Vec3)> = self
-            .fight_players()
-            .iter()
-            .filter(|p| p.alive)
-            .map(|p| (p.bounds, p.position))
-            .chain(
-                self.remote_entities
-                    .iter()
-                    .filter(|m| m.alive())
-                    .map(|m| (m.bounds(), m.position)),
-            )
-            .collect();
-        let id = self.take_entity_id();
-        // `next` is the projectile box's bottom (its position), already the
-        // hit location vanilla uses; the old -0.5 was for a box-center position.
-        let feet = [next.x, next.y, next.z];
-        let at = fireball_cloud_origin(feet, &snap_targets);
-        self.breath_clouds.push(Breath {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            at,
-            motion: [0.0; 3],
-            radius: 3.0,
-            age: 0,
-            duration: 600,
-            from_dragon: false,
-            victims: Vec::new(),
-            potion: None,
-        });
-        self.level_event_at(
-            2006,
-            [
-                next.x.floor() as i32,
-                next.y.floor() as i32,
-                next.z.floor() as i32,
-            ],
-            1,
-        );
     }
     /// The dragon's breath clouds (`AreaEffectCloud` with instant damage at
     /// a quarter duration scale): shrinking, puffing particles, harming players and mobs.
@@ -4264,74 +4177,6 @@ impl Game<'_> {
         self.native_joins_flush(false, id).then_some(id)
     }
 
-    /// `handleAddEntity` for `minecraft:ender_dragon`. Its constructor
-    /// sets the full health and the hovering phase until the server's
-    /// synched data says otherwise.
-    pub(super) fn spawn_remote_dragon(&mut self, id: i32, position: [f64; 3], yaw: f32) {
-        let at = Vec3::new(position[0], position[1], position[2]);
-        let mut d = Dragon::new(at, yaw, i64::from(id));
-        d.id = id as u32;
-        d.phase = Phase::from_id(10);
-        d.join = horizon_client::join_seq::JoinSeq::next();
-        self.replace_resident_dragon(d);
-        self.place_dragon_parts();
-        if let Some(d) = self.dragon.as_mut() {
-            for part in &mut d.parts {
-                part.1 = part.0;
-            }
-        }
-    }
-    /// The remote dragon, if `id` is it or one of its parts.
-    fn remote_dragon_mut(&mut self, id: i32) -> Option<&mut Dragon> {
-        let Ok(uid) = u32::try_from(id) else {
-            return None;
-        };
-        self.dragon
-            .as_mut()
-            .filter(|d| d.id == uid || (d.id != 0 && (d.id + 1..=d.id + 8).contains(&uid)))
-    }
-    /// `handleSetEntityMotion`: the velocity its wings flap by.
-    pub(super) fn remote_dragon_motion(&mut self, id: i32, velocity: [f64; 3]) {
-        if let Some(d) = self.remote_dragon_mut(id) {
-            d.velocity = Vec3::new(velocity[0], velocity[1], velocity[2]);
-        }
-    }
-    /// `handleRemoveEntities`, or a crystal removed: the healing beam
-    /// keeps pointing at the same crystal.
-    pub(super) fn remove_remote_dragon(&mut self, id: i32) {
-        if self.dragon.as_ref().is_some_and(|d| d.id as i32 == id) {
-            self.discard_resident_dragon();
-            return;
-        }
-        let Some(index) = self.crystals.iter().position(|c| c.id as i32 == id) else {
-            return;
-        };
-        if let Some(d) = self.dragon.as_mut() {
-            match d.nearest_crystal {
-                Some(n) if n == index => d.nearest_crystal = None,
-                Some(n) if n > index => d.nearest_crystal = Some(n - 1),
-                _ => {}
-            }
-        }
-    }
-    /// The dragon's parts as a server's client attacks them: the server's
-    /// ids for `EnderDragonPart`s follow the dragon's.
-    pub(super) fn remote_dragon_part_hit(
-        &self,
-        eye: [f64; 3],
-        dir: [f64; 3],
-        reach: f64,
-    ) -> Option<(i32, f64, [f64; 3])> {
-        let d = self.dragon.as_ref().filter(|d| d.alive() && d.id != 0)?;
-        (0..8)
-            .filter_map(|i| {
-                let b = d.part_box(i);
-                let p = d.parts[i].0;
-                super::ray_box(eye, dir, reach, b)
-                    .map(|t| ((d.id + 1 + i as u32) as i32, t, [p.x, p.y, p.z]))
-            })
-            .min_by(|a, b| a.1.total_cmp(&b.1))
-    }
 }
 
 #[path = "dragon/crystal.rs"]

@@ -73,31 +73,6 @@ fn send_native_nearby(
     }
 }
 
-/// One of a packet's `count` particles (`handleParticleEvent`): its position
-/// and speed. DEFAULT (0) draws both from a Gaussian; ALTERNATIVE (1) and
-/// ALTERNATIVE_WITH_SPEED (2) spread over `[0, dist)`, the first keeping
-/// the speeds as they are, the second scaling each by `nextDouble`.
-fn spread(
-    r: &mut impl RandomSource,
-    randomization: i32,
-    pos: [f64; 3],
-    dist: [f64; 3],
-    speed: [f64; 3],
-) -> ([f64; 3], [f64; 3]) {
-    if matches!(randomization, 1 | 2) {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_double() * dist[k]);
-        let v = if randomization == 2 {
-            [0, 1, 2].map(|k| speed[k] * r.next_double())
-        } else {
-            speed
-        };
-        (at, v)
-    } else {
-        let at = [0, 1, 2].map(|k| pos[k] + r.next_gaussian() * dist[k]);
-        (at, [0, 1, 2].map(|k| r.next_gaussian() * speed[k]))
-    }
-}
-
 /// A protocol or mob-event listener as the API's plain particle data.
 pub(super) fn particle_position_source(source: &NetworkPositionSource) -> PositionSource {
     match source {
@@ -107,26 +82,6 @@ pub(super) fn particle_position_source(source: &NetworkPositionSource) -> Positi
             y_offset: *y_offset,
         },
     }
-}
-
-/// An ARGB colour as the options' RGBA.
-fn rgba(argb: i32) -> [f32; 4] {
-    let c = |shift: i32| ((argb >> shift) & 255) as f32 / 255.0;
-    [c(16), c(8), c(0), c(24)]
-}
-fn rgb(c: [f32; 4]) -> [f32; 3] {
-    [c[0], c[1], c[2]]
-}
-fn legacy_effect_options(particle: &Particle) -> Option<ParticleOptions> {
-    let ambient = match particle.id {
-        LEGACY_ENTITY_EFFECT_PARTICLE_ID => false,
-        LEGACY_AMBIENT_ENTITY_EFFECT_PARTICLE_ID => true,
-        _ => return None,
-    };
-    Some(ParticleOptions {
-        legacy_entity_effect: Some(ambient),
-        ..ParticleOptions::simple(ParticleType::EntityEffect)
-    })
 }
 
 /// `ServerLevel.sendParticles` of one soul particle moving by `velocity`
@@ -154,15 +109,6 @@ pub(super) fn send_soul_particle(host: &super::lan::LanHost, at: [f64; 3], veloc
             .sum();
         if distance < 32.0 * 32.0 {
             g.send(&packet);
-        }
-    }
-}
-
-impl Game<'_> {
-    /// A snowflake from a vehicle (`PowderSnowBlock.entityInside`), to every player around.
-    pub(super) fn lan_snowflake(&self, at: [f64; 3], velocity: [f64; 3]) {
-        if let Some(host) = self.lan.as_ref() {
-            send_snowflake_particle(host, at, velocity);
         }
     }
 }
@@ -329,7 +275,7 @@ impl Game<'_> {
     ) {
         // `particle_velocity` refuses no horizontal movement before any draw,
         // so a resting entity skips the sweep (most items, orbs and carts).
-        if (known_movement.x == 0.0 && known_movement.z == 0.0) {
+        if known_movement.x == 0.0 && known_movement.z == 0.0 {
             return;
         }
         let snow = horizon_client::powder_snow::contacts(previous, position, bounds, living, |p| {
@@ -379,35 +325,6 @@ impl Game<'_> {
     ) -> Option<Particle> {
         self.lan.as_ref()?.hub.particle(options, state)
     }
-
-    /// `PositionSource.getPosition`: a block's centre, or an entity's feet
-    /// raised by the option's offset. An entity this client does not have is
-    /// no destination at all: vanilla makes the particle and removes it on its
-    /// first tick, so nothing of it is ever drawn.
-    fn vibration_destination(&self, source: &NetworkPositionSource) -> Option<[f64; 3]> {
-        match source {
-            NetworkPositionSource::Block([x, y, z]) => Some([
-                f64::from(*x) + 0.5,
-                f64::from(*y) + 0.5,
-                f64::from(*z) + 0.5,
-            ]),
-            NetworkPositionSource::Entity { id, y_offset } => {
-                let id = u32::try_from(*id).ok()?;
-                self.remote_entities
-                    .iter()
-                    .find(|m| m.id == id && !m.removed)
-                    .map(|m| {
-                        [
-                            m.position.x,
-                            m.position.y + f64::from(*y_offset),
-                            m.position.z,
-                        ]
-                    })
-            }
-        }
-    }
-
-
 
     /// `ServerLevel.sendParticles` for the players a server serves: one
     /// `ClientboundLevelParticlesPacket` to each player in the level whose

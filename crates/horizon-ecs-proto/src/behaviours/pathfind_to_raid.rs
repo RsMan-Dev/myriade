@@ -5,7 +5,7 @@
 use super::*;
 use crate::poi::PoiRegistry;
 use crate::rules::move_towards_restriction::home_target;
-use crate::raids::{raid_centre, Raider};
+use crate::raids::raid_centre;
 use crate::spots::{pick_for, Pick};
 use crate::targeting::Target;
 use crate::{cow::*, goals::*};

@@ -3,22 +3,7 @@
 //! display and throw clicks, and a mouse button over the inventory (`click_inventory`).
 use super::*;
 
-/// `ArmorSlot.mayPlace`: the stack's own `equippable` slot is the slot's.
-fn armor_slot_accepts(items: &horizon_client::items::Items, stack: &ItemStack, slot: usize) -> bool {
-    let wanted = ["head", "chest", "legs", "feet"][slot - 500];
-    horizon_client::item_sync::equippable_slot(stack, items).as_deref() == Some(wanted)
-}
-
-/// `ItemStack.getMaxStackSize` of the stack a click merges into.
-fn merge_max(items: &horizon_client::items::Items, stack: &ItemStack) -> u32 {
-    horizon_client::menu::item_max_stack(items, stack)
-}
-
 impl Game<'_> {
-    /// `quickMoveStack` of the open plain menu for a shift-click.
-    pub(super) fn inventory_quick_move(&mut self, slot: usize) -> bool {
-        self.click_open_inventory(Some(slot), 0, horizon_client::menu::Input::QuickMove)
-    }
     /// `AbstractContainerMenu.clicked` on the open inventory, crafting table,
     /// chest, hopper, dispenser or furnace menu, run by the verified menu
     /// engine (`horizon_client::menu`). `slot` None is outside the window.

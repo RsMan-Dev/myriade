@@ -100,7 +100,6 @@ fn grudge(w: &World, e: Entity, p: Params) -> bool {
 fn pick(w: &World, e: Entity, p: Params) -> Option<u32> {
     let pos = w.get::<Pos>(e)?.0;
     let area = w.get::<Bounds>(e)?.0.inflate(Vec3::new(p.across, p.up, p.across));
-    let near = area.inflate(Vec3::new(1.0, 1.0, 1.0));
     let reach = p.range * p.range;
     let mut villagers = Vec::new();
     w.resource::<Index>().for_radius(pos.x, pos.z, 16.0, |c| {

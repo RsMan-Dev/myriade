@@ -36,6 +36,10 @@ fn frozen(w: &World, e: Entity) -> Option<SyncValue> {
 
 /// LivingEntity.DATA_HEALTH_ID: defined as 1, so 1 is not sent.
 fn health(w: &World, e: Entity) -> Option<SyncValue> {
+    // An item and an orb carry a `Health` too (`ItemEntity.health`), which is not synced: their index 9 does not exist.
+    if w.get::<crate::item::Item>(e).is_some() || w.get::<crate::orb::Orb>(e).is_some() {
+        return None;
+    }
     w.get::<Health>(e).map(|h| h.0.max(0.0)).filter(|h| *h != 1.0).map(SyncValue::Float)
 }
 

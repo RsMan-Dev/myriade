@@ -149,14 +149,6 @@ impl Game<'_> {
             check_interval: 0,
         })
     }
-    /// Moves the hanging entity `id` to the block `pos` (its saved `block_pos`); nothing when no such hanging is loaded.
-    pub(in crate::game) fn ecs_move_hanging(&mut self, id: u32, pos: [i32; 3]) {
-        let mut patch = horizon_core::nbt::Compound::new();
-        patch.insert("block_pos".into(), Tag::IntArray(pos.to_vec()));
-        if let Some(e) = self.ecs.entity_of(id) {
-            self.ecs.merge_nbt(e, &patch);
-        }
-    }
     /// Every item frame the ECS holds, read on demand (none is kept in a list).
     pub(in crate::game) fn ecs_frames(&self) -> Vec<ItemFrame> {
         ["minecraft:item_frame", "minecraft:glow_item_frame"]

@@ -159,21 +159,6 @@ impl Game<'_> {
             horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
         );
     }
-    /// `handleAddEntity` for a spawner a server sent: its item comes with the
-    /// entity data (`ItemStack.EMPTY` until then, which draws nothing).
-    pub(super) fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {
-        self.ominous_spawners.push(OminousItemSpawner {
-            attachment_lifetime: Default::default(),
-            join: Default::default(),
-            id,
-            item: ItemStack::new("minecraft:air", 1),
-            position,
-            spawn_item_after: 0,
-            tick_count: 0,
-            uuid: [0; 4],
-            raw: None,
-        });
-    }
     /// `spawnItem`: a projectile shot down, or an item entity; level event
     /// 3021 and the entity_place game event.
     fn spawn_ominous_item(&mut self, s: &OminousItemSpawner) {

@@ -184,7 +184,7 @@ fn follow_run(
             reqs.0.push(Req::Start(m, f.slot));
         }
     }
-    for (e, pos, sp, mut f, mut look, looking, baby) in &mut q {
+    for (e, pos, sp, f, mut look, looking, baby) in &mut q {
         let adult = f.adult.and_then(|a| others.get(a).ok().map(|(p, ce, g, h, s)| (p, ce, g, h, s, a)));
         let stays = baby
             && adult.is_some_and(|(ap, _, grown, h, s, _)| {

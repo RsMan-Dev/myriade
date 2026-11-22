@@ -47,7 +47,7 @@ impl EcsWorld {
     /// The living raiders of raid `raid`: entity, wave and health (a query of `Raider`, no scan of the world).
     pub fn raid_members(&self, raid: i32) -> Vec<(Entity, i32, f32)> {
         let w = self.world();
-        let Some(mut q) = w.try_query::<(Entity, &crate::raids::Raider, &crate::cow::Health)>() else { return Vec::new() };
+        let Some(q) = w.try_query::<(Entity, &crate::raids::Raider, &crate::cow::Health)>() else { return Vec::new() };
         q.iter_manual(w).filter(|(_, r, _)| r.raid == Some(raid)).map(|(e, r, h)| (e, r.wave, h.0)).collect()
     }
 

@@ -2,7 +2,6 @@
 //! the events they queued, read by `drain_cart`. The effects (sounds, drops, the screen, the blast) are the host's, read from `CartEvent`.
 use crate::bridge::host::EcsWorld;
 use crate::cart_variants::{self, HitResult, UseResult};
-use crate::host_out_cart_variants::{CartEvent, CartOut};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::mobs::MobWorld;

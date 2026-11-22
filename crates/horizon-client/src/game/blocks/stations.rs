@@ -8,16 +8,13 @@
 mod anvil;
 #[path = "stations/draw.rs"]
 mod draw;
-use super::api_values::{TryIntoApi, TryIntoEngine};
-use super::{Game, Screen};
+use super::Game;
 use horizon_client::{
-    block_entity_item, brewing,
+    brewing,
     containers::BlockEntity,
-    enchant::Enchantments,
     items::ItemStack,
     random_source,
     stations::{self, AnvilResult, EnchantOffers},
-    text::Text,
 };
 use horizon_core::random::{LegacyRandom, RandomSource};
 
@@ -71,13 +68,6 @@ impl EnchantBook {
         self.flip_a += (diff - self.flip_a) * 0.9;
         self.flip += self.flip_a;
     }
-    /// `EnchantmentScreen.extractBook`'s `open` and `flip` at the partial tick.
-    pub(super) fn at(&self, partial: f32) -> (f32, f32) {
-        (
-            self.o_open + (self.open - self.o_open) * partial,
-            self.o_flip + (self.flip - self.o_flip) * partial,
-        )
-    }
 }
 
 /// Slot ids of the open station: inputs from 600, the result at 650.
@@ -123,19 +113,6 @@ impl Kind {
             _ => 2,
         }
     }
-    fn texture(self) -> &'static str {
-        match self {
-            Self::Enchanting => "gui/container/enchanting_table",
-            Self::Anvil => "gui/container/anvil",
-            Self::Grindstone => "gui/container/grindstone",
-            Self::Smithing => "gui/container/smithing",
-            Self::Stonecutter => "gui/container/stonecutter",
-            Self::Merchant => "gui/container/villager",
-            Self::Beacon => "gui/container/beacon",
-            Self::Cartography => "gui/container/cartography_table",
-            Self::Loom => "gui/container/loom",
-        }
-    }
     pub(super) fn title_key(self) -> &'static str {
         match self {
             Self::Enchanting => "container.enchant",
@@ -163,10 +140,6 @@ impl Kind {
         };
         table[i.min(table.len() - 1)]
     }
-    /// Whether the menu has a result slot after its inputs.
-    pub(super) fn has_result(self) -> bool {
-        self.result_pos().is_some()
-    }
     fn result_pos(self) -> Option<(f32, f32)> {
         match self {
             Self::Enchanting => None,
@@ -181,65 +154,6 @@ impl Kind {
         }
     }
 }
-
-/// `CyclingSlotBackground`: the icons an empty slot cycles through, one every
-/// 30 ticks, the next fading in over 4 (`CyclingSlotBackground.tick` in
-/// `advance`, `CyclingSlotBackground.extractRenderState` in `shown`).
-#[derive(Default)]
-struct CyclingSlot {
-    icons: Vec<&'static str>,
-    tick: u32,
-    index: usize,
-    /// The client tick it was last advanced to.
-    at: Option<u64>,
-}
-impl CyclingSlot {
-    const CHANGE_TICKS: u32 = 30;
-    const FADE_TICKS: f32 = 4.0;
-    /// `CyclingSlotBackground.tick(newIcons)` for each client tick since the last call.
-    fn advance(&mut self, now: u64, icons: &[&'static str]) {
-        let ticks = self.at.map_or(0, |at| now.saturating_sub(at).min(600));
-        self.at = Some(now);
-        if self.icons != icons {
-            self.icons = icons.to_vec();
-            self.index = 0;
-        }
-        for _ in 0..ticks {
-            if !self.icons.is_empty() {
-                self.tick += 1;
-                if self.tick.is_multiple_of(Self::CHANGE_TICKS) {
-                    self.index = (self.index + 1) % self.icons.len();
-                }
-            }
-        }
-    }
-    /// What `CyclingSlotBackground.extractRenderState` draws for an empty slot: the icon before
-    /// this one fading out while this one fades in, with their alphas.
-    fn shown(&self, partial: f32) -> Vec<(&'static str, f32)> {
-        if self.icons.is_empty() {
-            return Vec::new();
-        }
-        let fading = self.icons.len() > 1 && self.tick >= Self::CHANGE_TICKS;
-        let alpha = if fading {
-            (((self.tick % Self::CHANGE_TICKS) as f32 + partial).min(Self::FADE_TICKS))
-                / Self::FADE_TICKS
-        } else {
-            1.0
-        };
-        let mut shown = Vec::new();
-        if alpha < 1.0 {
-            let previous = (self.index + self.icons.len() - 1) % self.icons.len();
-            shown.push((self.icons[previous], 1.0 - alpha));
-        }
-        shown.push((self.icons[self.index], alpha));
-        shown
-    }
-}
-/// `SmithingScreen`'s `EMPTY_SLOT_SMITHING_TEMPLATES`.
-const EMPTY_TEMPLATE_ICONS: [&str; 2] = [
-    "smithing_template_armor_trim",
-    "smithing_template_netherite_upgrade",
-];
 
 pub(super) struct Station {
     pub(super) kind: Kind,
@@ -256,14 +170,10 @@ pub(super) struct Station {
     pub(super) stone: horizon_client::menu::Stonecutter,
     pub(super) selected: Option<usize>,
     start: usize,
-    /// Stonecutter: the screen's `scrollOffs` (0 to 1) and `scrolling`, the
-    /// scroller held by the mouse.
+    /// Stonecutter: the screen's `scrollOffs` (0 to 1).
     scroll: f32,
-    scrolling: bool,
     /// Anvil: the input the rename box was last filled from.
     anvil_last: Option<ItemStack>,
-    /// Anvil on a server: the name last sent (the client menu's `itemName`).
-    pub(super) anvil_sent: Option<String>,
     /// Anvil on a server: the inputs and name the client's
     /// `AnvilUpdateEvent` was last asked about, and the result it left.
     anvil_answer: Option<(Vec<Option<ItemStack>>, String, AnvilResult)>,
@@ -272,12 +182,8 @@ pub(super) struct Station {
     pub(super) merchant: Option<Box<super::trading::MerchantState>>,
     /// Beacon menu: the selected primary and secondary power (EFFECTS index).
     pub(super) beacon: [Option<usize>; 2],
-    /// A server's beacon menu: the pyramid's levels (its data slot 0).
-    pub(super) beacon_levels: Option<i32>,
     /// The loom's patterns, selection and scroller (game/blocks/loom.rs).
     pub(super) loom: super::loom::LoomState,
-    /// The smithing table's three `CyclingSlotBackground`s: the template, base and additions slots.
-    cycling: [CyclingSlot; 3],
     /// The enchanting table's book (`EnchantmentScreen`'s flip and open state).
     pub(super) book: EnchantBook,
 }
@@ -296,16 +202,12 @@ impl Station {
             selected: None,
             start: 0,
             scroll: 0.0,
-            scrolling: false,
             anvil_last: None,
-            anvil_sent: None,
             anvil_answer: None,
             last_sound: 0,
             merchant: None,
             beacon: [None; 2],
-            beacon_levels: None,
             loom: Default::default(),
-            cycling: Default::default(),
             book: EnchantBook::new(random_source::create()),
         }
     }
@@ -317,117 +219,7 @@ impl Station {
         self.start = 0;
         self.scroll = 0.0;
     }
-    /// `StonecutterScreen.isScrollBarActive`.
-    fn stonecutter_scrolls(&self) -> bool {
-        self.inputs[0].is_some() && self.stone.recipes.len() > 12
-    }
-    /// Moves the stonecutter's scroller to `offs`, and its first shown
-    /// recipe (`startIndex`) with it.
-    fn stonecutter_scroll_to(&mut self, offs: f32) {
-        self.scroll = offs.clamp(0.0, 1.0);
-        self.start = stonecutter_start(self.stone.recipes.len(), self.scroll);
-    }
 }
-
-/// `at` is on one of a list's `rows`, with no row further that way.
-fn off_visible_rows(rows: &[[f32; 4]], at: (f32, f32), up: bool) -> bool {
-    let inside =
-        |r: &[f32; 4]| at.0 >= r[0] && at.0 < r[0] + r[2] && at.1 >= r[1] && at.1 < r[1] + r[3];
-    let Some(on) = rows.iter().find(|r| inside(r)) else {
-        return false;
-    };
-    !rows
-        .iter()
-        .any(|r| r[0] == on[0] && if up { r[1] < on[1] } else { r[1] > on[1] })
-}
-
-/// `StonecutterScreen.getOffscreenRows`: the recipe rows below the 4x3 grid.
-fn stonecutter_offscreen_rows(recipes: usize) -> i32 {
-    recipes.div_ceil(4) as i32 - 3
-}
-/// `startIndex` for a scroller position: the first recipe of the nearest row.
-fn stonecutter_start(recipes: usize, offs: f32) -> usize {
-    ((offs * stonecutter_offscreen_rows(recipes) as f32 + 0.5) as i32).max(0) as usize * 4
-}
-/// `StonecutterScreen.mouseDragged`: the scroller position under the cursor,
-/// `y` relative to the GUI origin (the 54-px track starts at 14).
-fn stonecutter_drag_offs(y: f32) -> f32 {
-    ((y - 14.0 - 7.5) / (54.0 - 15.0)).clamp(0.0, 1.0)
-}
-
-/// The 108x19 enchantment button `i` (relative to the GUI origin).
-fn enchant_button(i: usize) -> (f32, f32, f32, f32) {
-    (60.0, 14.0 + 19.0 * i as f32, 108.0, 19.0)
-}
-fn inside(p: (f32, f32), x: f32, y: f32, w: f32, h: f32) -> bool {
-    p.0 >= x && p.1 >= y && p.0 < x + w && p.1 < y + h
-}
-/// `EnchantmentNames` word list.
-const WORDS: &[&str] = &[
-    "the",
-    "elder",
-    "scrolls",
-    "klaatu",
-    "berata",
-    "niktu",
-    "xyzzy",
-    "bless",
-    "curse",
-    "light",
-    "darkness",
-    "fire",
-    "air",
-    "earth",
-    "water",
-    "hot",
-    "dry",
-    "cold",
-    "wet",
-    "ignite",
-    "snuff",
-    "embiggen",
-    "twist",
-    "shorten",
-    "stretch",
-    "fiddle",
-    "destroy",
-    "imbue",
-    "galvanize",
-    "enchant",
-    "free",
-    "limited",
-    "range",
-    "of",
-    "towards",
-    "inside",
-    "sphere",
-    "cube",
-    "self",
-    "other",
-    "ball",
-    "mental",
-    "physical",
-    "grow",
-    "shrink",
-    "demon",
-    "elemental",
-    "spirit",
-    "animal",
-    "creature",
-    "beast",
-    "humanoid",
-    "undead",
-    "fresh",
-    "stale",
-    "phnglui",
-    "mglwnafh",
-    "cthulhu",
-    "rlyeh",
-    "wgahnagl",
-    "fhtagn",
-    "baguette",
-];
-const GREY: u32 = 0xFF40_4040;
 
 impl Game<'_> {
     /// `EnchantmentScreen.containerTick`'s `tickBook` for an open enchanting table.
@@ -517,15 +309,6 @@ impl Game<'_> {
         }
         Some(v)
     }
-    /// How many slots `station_slots` lists, counted without building it
-    /// (`Game::slot_count` asks every frame): same branches, same order.
-    pub(super) fn station_slot_count(&self) -> Option<usize> {
-        if self.brewing_open() {
-            return Some(36 + 5);
-        }
-        let s = self.station.as_ref()?;
-        Some(36 + s.inputs.len() + usize::from(s.kind.result_pos().is_some()))
-    }
     pub(super) fn station_slot_position(&self, i: usize) -> Option<(f32, f32)> {
         if self.brewing_open() && (300..305).contains(&i) {
             return Some(
@@ -549,13 +332,6 @@ impl Game<'_> {
             RESULT => s.kind.result_pos(),
             _ if i >= INPUT && i < INPUT + s.inputs.len() => Some(s.kind.input_pos(i - INPUT)),
             _ => None,
-        }
-    }
-    pub(super) fn station_slot(&self, i: usize) -> &Option<ItemStack> {
-        match self.station.as_ref() {
-            Some(s) if i == RESULT => &s.result,
-            Some(s) if i >= INPUT && i < INPUT + s.inputs.len() => &s.inputs[i - INPUT],
-            _ => &self.scratch_slot,
         }
     }
     pub(super) fn station_slot_mut(&mut self, i: usize) -> &mut Option<ItemStack> {
@@ -903,95 +679,6 @@ impl Game<'_> {
                 .play("minecraft:entity.player.levelup", at, volume, 1.0);
         }
     }
-    /// Whether the result slot may be taken (`mayPickup`).
-    fn may_take_result(&self) -> bool {
-        let Some(s) = self.station.as_ref() else {
-            return false;
-        };
-        match s.kind {
-            Kind::Anvil => {
-                (self.creative || self.experience.level >= s.anvil.cost) && s.anvil.cost > 0
-            }
-            _ => true,
-        }
-    }
-    /// `EnchantmentMenu.clickMenuButton`.
-    fn click_enchant(&mut self, button: usize) {
-        let Some(s) = self.station.as_ref() else {
-            return;
-        };
-        let cost = s.offers.costs[button];
-        let lapis_needed = button as u32 + 1;
-        let Some(item) = s.inputs[0].clone() else {
-            return;
-        };
-        let lapis = s.inputs[1].as_ref().map_or(0, |l| l.count);
-        if lapis < lapis_needed && !self.creative {
-            return;
-        }
-        if cost <= 0
-            || (self.experience.level < lapis_needed as i32 || self.experience.level < cost)
-                && !self.creative
-        {
-            return;
-        }
-        let Some(enchanted) = self.table_enchant(self.level.xp_seed, button, cost, &item) else {
-            return;
-        };
-        let pos = s.pos;
-        let enchanted_item = enchanted.clone();
-        self.enchantment_performed(lapis_needed as i32);
-        self.level.xp_seed = self.world.random.next_int();
-        if let Some(s) = self.station.as_mut() {
-            s.inputs[0] = Some(enchanted);
-            if !self.creative
-                && let Some(l) = s.inputs[1].as_mut()
-            {
-                l.count -= lapis_needed;
-                if l.count == 0 {
-                    s.inputs[1] = None;
-                }
-            }
-        }
-        let pitch = self.world.random.next_float() * 0.1 + 0.9;
-        self.award_custom_stat("enchant_item", 1);
-        self.trigger_enchanted_item(&enchanted_item, lapis_needed as i32);
-        self.play_at("minecraft:block.enchantment_table.use", pos, 1.0, pitch);
-        self.station_changed();
-    }
-    /// Mouse click while a station or the brewing stand is open. True when handled.
-    /// A station's own buttons a controller can focus besides its slots
-    /// (GUI origin relative): offers, patterns, effects, enchantments and
-    /// stonecutter recipes.
-    pub(super) fn station_targets(&self) -> Vec<[f32; 4]> {
-        let Some(s) = self.station.as_ref() else {
-            return Vec::new();
-        };
-        match s.kind {
-            Kind::Merchant => self.merchant_targets(),
-            Kind::Loom => self.loom_targets(),
-            Kind::Beacon => self.beacon_targets(),
-            Kind::Enchanting => (0..3)
-                .map(|i| {
-                    let (x, y, w, h) = enchant_button(i);
-                    [x, y, w, h]
-                })
-                .collect(),
-            Kind::Stonecutter if s.inputs[0].is_some() => (s.start
-                ..(s.start + 12).min(s.stone.recipes.len()))
-                .map(|index| {
-                    let p = index - s.start;
-                    [
-                        52.0 + (p % 4) as f32 * 16.0,
-                        14.0 + (p / 4) as f32 * 18.0,
-                        16.0,
-                        18.0,
-                    ]
-                })
-                .collect(),
-            _ => Vec::new(),
-        }
-    }
     /// Recompute after slot changes; the anvil box follows its input item.
     fn station_after_input(&mut self) {
         let Some(s) = self.station.as_mut() else {
@@ -1008,78 +695,6 @@ impl Game<'_> {
         }
         self.station_changed();
     }
-    /// `StonecutterScreen.mouseScrolled`.
-    pub(super) fn station_scroll(&mut self, d: f32) {
-        self.merchant_scroll(d);
-        self.loom_scroll(d);
-        let Some(s) = self.station.as_mut() else {
-            return;
-        };
-        if s.kind != Kind::Stonecutter || !s.stonecutter_scrolls() {
-            return;
-        }
-        let rows = stonecutter_offscreen_rows(s.stone.recipes.len());
-        s.stonecutter_scroll_to(s.scroll - d / rows as f32);
-    }
-    /// A mouse button let go: no scroller is held any more.
-    pub(super) fn station_release(&mut self) {
-        self.loom_release();
-        if let Some(s) = self.station.as_mut() {
-            s.scrolling = false;
-            if let Some(m) = s.merchant.as_mut() {
-                m.dragging = false;
-            }
-        }
-    }
-    pub(super) fn station_text(&mut self, text: Option<&str>, backspace: bool) {
-        // The recipe book's search box takes scripted typing too.
-        if self.recipe_search_focused() {
-            self.recipe_text(text, backspace);
-            return;
-        }
-        let Some(s) = self.station.as_mut() else {
-            return;
-        };
-        // AnvilScreen's name box takes letters only while the input slot holds an item.
-        if s.inputs[0].is_some() {
-            if backspace {
-                s.name.pop();
-            } else if let Some(t) = text {
-                for c in t.chars().take(anvil::NAME_CHARS.saturating_sub(s.name.chars().count())) {
-                    s.name.push(c);
-                }
-            }
-        }
-        self.station_changed();
-    }
-
-    fn slot_position_any(&self, i: usize) -> Option<(f32, f32)> {
-        self.station_slot_position(i)
-            .or_else(|| (i < 36).then(|| self.slot_position(i)))
-    }
-
-    /// Menu state for the control socket.
-    pub(super) fn station_info(&self) -> serde_json::Value {
-        let Some(s) = self.station.as_ref() else {
-            return match self.container_kind() {
-                Some(BlockEntity::Brewing(b)) => {
-                    serde_json::json!({ "brew_time": b.brew_time, "fuel": b.fuel })
-                }
-                _ => serde_json::Value::Null,
-            };
-        };
-        let recipes = &self.stations().recipes.stonecutting;
-        serde_json::json!({
-            "costs": s.offers.costs,
-            "clues": s.offers.clues.iter().map(|c| c.as_ref().map(|(e, l)| format!("{e} {l}"))).collect::<Vec<_>>(),
-            "bookcases": s.bookcases,
-            "anvil_cost": s.anvil.cost,
-            "result": s.result.as_ref().map(|r| format!("{} x{}", r.item, r.count)),
-            "recipes": s.stone.recipes.iter().map(|&i| recipes[i].id.clone()).collect::<Vec<_>>(),
-            "selected": s.selected,
-        })
-    }
-
     // ---------------------------------------------------------------- brewing stand
 
     /// `BrewingStandBlockEntity.serverTick` of the brewing stand at `pos`, in

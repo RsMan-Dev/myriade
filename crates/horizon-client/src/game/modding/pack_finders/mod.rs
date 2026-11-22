@@ -1,6 +1,6 @@
 //! Mod-supplied repository sources. Discovery owns the metadata and retained
 //! readers; selection and resource/data reloads use the ordinary pack paths.
-use super::{Game, mods::ModsState};
+use super::mods::ModsState;
 use horizon_assets::resource_source::{ResourceSource, stays_inside};
 use horizon_client::datapack::DataPack;
 use mod_api::{
@@ -124,15 +124,4 @@ pub(super) fn data_repository(
     let mut packs = horizon_client::datapack::discover_with_features(world, resources);
     packs.extend(additional.iter().map(|pack| (**pack).clone()));
     packs
-}
-
-impl Game<'_> {
-    pub(super) fn discover_mod_packs(&mut self, kind: PackType) -> Vec<Found> {
-        if !mod_api::__private::listened(HookId::AddPackFinders) {
-            return Vec::new();
-        }
-        let mut registry = Registry::new(kind, self.mods.clone());
-        self.native_add_pack_finders(&mut registry);
-        registry.packs
-    }
 }

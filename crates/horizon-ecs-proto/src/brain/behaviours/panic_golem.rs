@@ -5,7 +5,6 @@ use crate::behaviours::summon_defender::{check, PANIC};
 use crate::brain::sensors::village_hostile;
 use crate::brain::*;
 use crate::cow::now_of;
-use bevy_ecs::prelude::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:villager_panic_golem",

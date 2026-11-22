@@ -3,82 +3,9 @@
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
 use super::{Game, Hit, InteractTarget};
-use horizon_assets::{
-    bake::bake_model, item_model::OwnerState, model::CuboidModel, resolve::ModelLibrary,
-};
-use horizon_client::{entities::ItemFrame, items::ItemStack};
+use horizon_client::items::ItemStack;
 use horizon_core::position::BlockPos;
 use horizon_ecs_proto::targeting::Who;
-/// A baked frame model: (corners in block units, unit UVs, sprite) per quad.
-pub(super) type FrameModel = Vec<([[f32; 3]; 4], [[f32; 2]; 4], String)>;
-
-/// Item-frame variants prepared together for one resource generation.
-pub(super) fn bake_frames(
-    source: &horizon_assets::resource_source::ResourceSource,
-) -> [FrameModel; 4] {
-    [
-        "item_frame",
-        "glow_item_frame",
-        "item_frame_map",
-        "glow_item_frame_map",
-    ]
-    .map(|name| bake_frame(source, name))
-}
-
-/// Bake `block/<name>` (item_frame / glow_item_frame) from the resources.
-pub(super) fn bake_frame(
-    root: &horizon_assets::resource_source::ResourceSource,
-    name: &str,
-) -> FrameModel {
-    let mut models = std::collections::BTreeMap::new();
-    let mut pending = vec![format!("minecraft:block/{name}")];
-    while let Some(model) = pending.pop() {
-        let Some((ns, path)) = model.split_once(':') else {
-            continue;
-        };
-        let Ok(text) = root.read_to_string(&format!("assets/{ns}/models/{path}.json")) else {
-            continue;
-        };
-        let Ok(m) = CuboidModel::from_json(&text) else {
-            continue;
-        };
-        if let Some(parent) = &m.parent {
-            pending.push(parent.clone());
-        }
-        models.insert(model, m);
-    }
-    let Ok(library) = ModelLibrary::new(models) else {
-        return Vec::new();
-    };
-    let Ok(resolved) = library.resolve(&format!("minecraft:block/{name}")) else {
-        return Vec::new();
-    };
-    let Ok(quads) = bake_model(&resolved) else {
-        return Vec::new();
-    };
-    let unit = if quads
-        .iter()
-        .flat_map(|q| q.positions)
-        .any(|p| p.iter().any(|v| *v > 1.5))
-    {
-        16.0
-    } else {
-        1.0
-    };
-    quads
-        .into_iter()
-        .map(|q| {
-            (
-                q.positions.map(|p| p.map(|v| v / unit)),
-                q.uv,
-                q.material
-                    .sprite
-                    .trim_start_matches("minecraft:")
-                    .to_owned(),
-            )
-        })
-        .collect()
-}
 pub(in crate::game) fn facing_of(face: [i32; 3]) -> u8 {
     match face {
         [0, -1, 0] => 0,
@@ -96,17 +23,6 @@ pub(super) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -> [f64; 3
         center[1],
         center[2] + f64::from(step[2]) * 0.15,
     ]
-}
-/// A frame's item, waiting for its model: the frames' borrow of `self` ends
-/// before `resolve_item` reads the pack.
-struct FramedItem {
-    stack: ItemStack,
-    id: u32,
-    matrix: glam::Mat4,
-    light: u8,
-    cull: bool,
-    kind: &'static str,
-    owner: OwnerState,
 }
 impl Game<'_> {
     /// Asks the mods whether the acting guest may place a hanging entity

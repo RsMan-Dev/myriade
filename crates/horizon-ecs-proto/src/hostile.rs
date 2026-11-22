@@ -6,11 +6,11 @@
 use crate::cow::*;
 use crate::goals::*;
 use crate::bridge::teams::allied;
-use crate::targeting::{self, Target, Who, info, player_box};
+use crate::targeting::{self, Target, Who, info};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::ParamSet;
 use crate::rules::hostile::{attack_damage, burn_chance, cooldown_expired_at_restart, eye_block, failures_before, far_repath_extra, health_after, melee_reach, melee_retry_wait, melee_wait, spread_damage, unreachable_too_long};
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Vec3;
 
 /// `MeleeAttackGoal`'s data (from the species: damage, interval, speed) and state.
 #[derive(Component, Clone, Copy, Debug)]

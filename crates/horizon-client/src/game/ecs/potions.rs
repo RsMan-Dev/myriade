@@ -159,26 +159,6 @@ impl Game<'_> {
         let breeze = self.ecs.kind_of(hit).is_some_and(|k| k.trim_start_matches("minecraft:") == "breeze");
         Some((self.ecs_link(hit), feet, breeze))
     }
-    /// The creatures in `area` for a cloud's victims: id, kind, and the feet's x and z, read from the spatial index.
-    pub(in crate::game) fn ecs_mobs_in(&mut self, area: Aabb) -> Vec<(u32, String, f64, f64)> {
-        let c = area.bottom_center();
-        let r = area.size().x.max(area.size().z) / 2.0 + area.size().y;
-        let q = Select { kind: None, tag: None, near: Some(([c.x, c.y, c.z], r)), limit: usize::MAX };
-        let found: Vec<Entity> = self
-            .ecs
-            .select(&q)
-            .into_iter()
-            .filter(|&e| self.ecs.bounds_of(e).is_some_and(|b| b.intersects(area)))
-            .collect();
-        found
-            .into_iter()
-            .filter_map(|e| {
-                let kind = self.ecs.kind_of(e)?.to_owned();
-                let feet = self.ecs.bounds_of(e)?.bottom_center();
-                Some((self.ecs_link(e), kind, feet.x, feet.z))
-            })
-            .collect()
-    }
     /// A sound at the ECS creature `mob`'s position, `volume` and `pitch` as the host plays them. `source` and `except_actor` are the
     /// host's arguments of `play_mob_bound_sound`; the audio has no entry for them yet (listed in the report).
     pub(in crate::game) fn ecs_mob_sound(&mut self, mob: u32, name: &str, source: usize, volume: f32, pitch: f32, except_actor: bool) {

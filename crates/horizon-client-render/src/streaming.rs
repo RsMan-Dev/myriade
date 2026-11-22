@@ -1411,20 +1411,6 @@ impl Streaming {
             z,
         )
     }
-    fn region(world: &World, x: i32, z: i32) -> Option<Arc<Region>> {
-        let mut region: Region = Default::default();
-        for dz in 0..3 {
-            for dx in 0..3 {
-                region[dz][dx] = Some(
-                    world
-                        .chunks
-                        .get(&(x + dx as i32 - 1, z + dz as i32 - 1))?
-                        .clone(),
-                );
-            }
-        }
-        Some(Arc::new(region))
-    }
     pub fn is_lit(&self, x: i32, z: i32) -> bool {
         self.lit.contains(&(x, z))
     }

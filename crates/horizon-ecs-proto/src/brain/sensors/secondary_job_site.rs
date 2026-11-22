@@ -4,7 +4,6 @@ use crate::behaviours::block_reach::block_at;
 use crate::behaviours::trade_offers::{self, Merchant};
 use crate::blocks;
 use crate::brain::*;
-use bevy_ecs::prelude::*;
 
 pub static SECONDARY_JOB_SITE: MemKey = MemKey::new("horizon:secondary_job_site", Shape::Blocks);
 pub static SENSOR: Sensor = Sensor { name: "horizon:secondary_job_site", mems: &[&SECONDARY_JOB_SITE], scan, ..Sensor::DEFAULT };

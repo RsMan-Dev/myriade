@@ -2,7 +2,6 @@
 //! 6 blocks), a ticker of `min` to `min + spread` ticks (40 to 80 by default) counts down (only while that holds); when it reaches zero
 //! that entity becomes the look target. Parameters are optional: an entry that gives none has the animals' (`Params::DEFAULT`).
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::rules::look_at_player_sometimes::wait_ticks;
 use crate::targeting::Who;

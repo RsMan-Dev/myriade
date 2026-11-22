@@ -8,7 +8,7 @@
 use crate::IFloor as _;
 use super::Def;
 use crate::behaviours::{breed, float, Cap, Entry};
-use crate::brain::behaviours::{do_nothing, follow_temptation, look_at_player, look_at_player_sometimes, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
+use crate::brain::behaviours::{do_nothing, follow_temptation, look_at_player, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
 use crate::brain::sensors::{hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
 use crate::rules::RuleEntry;

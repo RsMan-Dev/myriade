@@ -413,25 +413,6 @@ impl Game<'_> {
         self.lid_breaks_attached(area, root);
     }
 
-    /// An opening lid's push for the player this game moves itself, applied
-    /// to its own body. A client owns its player's position (the server
-    /// thread's guest included), so the push is the client's own
-    /// `Entity.move`; the other bodies are the server's to push. A shulker's
-    /// lid leaves the player out as `lid_push` does (`lid_spares`).
-    pub(super) fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
-        let Some(player) = self.player.as_ref() else {
-            return;
-        };
-        if player.spectator || !player.bounds().intersects(area) {
-            return;
-        }
-        // A player's `noPhysics` is its spectating, checked above.
-        if self.lid_spares(lid, self.lid_root(lid), MoveWho::Player, false) {
-            return;
-        }
-        self.shulker_push_player(lid.mover(), movement);
-    }
-
 
     /// The root vehicle of a shulker whose lid pushes, which the bodies
     /// sharing it are spared (`isPassengerOfSameVehicle`); none for a box.

@@ -4,117 +4,9 @@
 //! guest it targets until it lets go. What it then does to `Who::Player`
 //! (hits, pushes, fire, its projectiles) runs with that guest swapped in.
 use super::Game;
-use horizon_client::mobs::{Mob, MobEvent, PlayerView, Species, Who};
+use horizon_client::mobs::{Mob, MobEvent, PlayerView, Who};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::packets::play::{self, Clientbound as C};
-
-/// The guests mobs can see this tick, by connection.
-pub(super) type GuestViews = Vec<(u32, PlayerView)>;
-
-/// The player a mob sees this tick: `None` for the host, else a guest.
-/// A mob's target is one player (`Mob.getTarget` is an entity): while it has
-/// one, it keeps that player, host or guest, as long as they are in play, and
-/// its goals drop a target that stopped being valid; it never passes to
-/// another player. A mob that a guest hurt in the last 100 ticks
-/// (`LivingEntity.getLastHurtByMob`), or an angry golem, keeps that guest while
-/// they are still a valid target; otherwise it sees the nearest player
-/// (`TargetingConditions`: alive, neither creative nor spectator), or the
-/// nearest one that is not a spectator if none qualifies.
-pub(super) fn player_for(
-    m: &Mob,
-    host: Option<&PlayerView>,
-    guests: &GuestViews,
-    bound: Option<u32>,
-) -> Option<u32> {
-    // A tame cat reads its owner wherever they are while they sleep, or just
-    // woke up (`CatRelaxOnOwnerGoal` uses `getOwner`, not the nearest player).
-    if m.species() == Species::Cat
-        && m.extra.tame
-        && let Some(owner) = m.extra.owner
-    {
-        let asleep = |v: &PlayerView| v.uuid == owner && (v.sleeping || v.sleep_timer > 0);
-        if host.is_some_and(asleep) {
-            return None;
-        }
-        if let Some((conn, _)) = guests.iter().find(|(_, v)| asleep(v)) {
-            return Some(*conn);
-        }
-    }
-    // An iron golem's anger is for the player who hit it (`NeutralMob` keeps
-    // the angry-at UUID), and outlasts the 100 ticks of `getLastHurtByMob`:
-    // while it lasts, the golem keeps that player, not whoever is nearest.
-    let angry = m.species() == Species::IronGolem && m.extra.angry_at == Some(Who::Player);
-    let targeting = m.ai.target == Some(Who::Player)
-        || angry
-        || m.ai.last_hurt_by == Some(Who::Player) && m.age as i32 - m.ai.last_hurt_by_time <= 100;
-    // A tame wolf, cat or parrot sees its owner (`TamableAnimal.getOwner`), while they
-    // are in play, whoever is nearer. Not while it targets or was just hurt by
-    // a player: then `Who::Player` is that attacker, whoever it is, and the
-    // owner goals ignore it until the wolf lets go.
-    if !targeting
-        && matches!(m.species(), Species::Wolf | Species::Cat | Species::Parrot)
-        && m.extra.tame
-        && let Some(owner) = m.extra.owner
-    {
-        if host.is_some_and(|v| v.alive && v.uuid == owner) {
-            return None;
-        }
-        if let Some((conn, _)) = guests.iter().find(|(_, v)| v.alive && v.uuid == owner) {
-            return Some(*conn);
-        }
-    }
-    // A mob on a player's lead follows and measures its rope against the
-    // player who holds it, not whoever is nearest or in survival mode.
-    if m.extra.leash == Some(horizon_client::mobs::leash::Holder::Player)
-        && let Some(holder) = m.extra.leash_player
-    {
-        if host.is_some_and(|v| v.uuid == holder) {
-            return None;
-        }
-        if let Some((conn, _)) = guests.iter().find(|(_, v)| v.uuid == holder) {
-            return Some(*conn);
-        }
-    }
-    let aimed = m.ai.target == Some(Who::Player);
-    choose(m.position, targeting, aimed, host, guests, bound)
-}
-
-fn choose(
-    at: Vec3,
-    targeting: bool,
-    aimed: bool,
-    host: Option<&PlayerView>,
-    guests: &GuestViews,
-    bound: Option<u32>,
-) -> Option<u32> {
-    let targetable = |v: &PlayerView| v.alive && !v.creative && !v.spectator;
-    if aimed {
-        match bound {
-            Some(conn) if guests.iter().any(|(c, _)| *c == conn) => return Some(conn),
-            None if host.is_some() => return None,
-            _ => {}
-        }
-    }
-    if targeting
-        && let Some(conn) = bound
-        && guests.iter().any(|(c, v)| *c == conn && targetable(v))
-    {
-        return Some(conn);
-    }
-    let d = |v: &PlayerView| at.distance_squared(v.position);
-    let nearest = |ok: &dyn Fn(&PlayerView) -> bool| {
-        let mut best = host.filter(|v| ok(v)).map(|v| (None, d(v)));
-        for (conn, v) in guests.iter().filter(|(_, v)| ok(v)) {
-            if best.is_none_or(|(_, b)| d(v) < b) {
-                best = Some((Some(*conn), d(v)));
-            }
-        }
-        best
-    };
-    nearest(&targetable)
-        .or_else(|| nearest(&|v: &PlayerView| v.alive && !v.spectator))
-        .and_then(|(conn, _)| conn)
-}
 
 /// The events of a mob's tick that act on the player it sees.
 pub(super) fn acts_on_player(e: &MobEvent) -> bool {
@@ -155,45 +47,7 @@ pub(super) fn acts_on_player(e: &MobEvent) -> bool {
     )
 }
 
-/// A guest's `player_view`, taken with their state swapped in, as the mobs see
-/// them. Their last attacker and last victim stay: a tamed wolf defends and
-/// helps whoever owns it (`OwnerHurtByTargetGoal`, `OwnerHurtTargetGoal`), and
-/// the window's own player is a guest of its server thread.
-fn guest_view(mut v: PlayerView, uuid: u128, moved: [f64; 3]) -> PlayerView {
-    v.hero = false;
-    v.velocity = Vec3::new(moved[0], moved[1], moved[2]);
-    v.uuid = horizon_client::lan::playerdata::uuid_ints(uuid);
-    v.allies = Default::default();
-    v.remote = true;
-    v
-}
-
 impl Game<'_> {
-    /// How mobs see each guest in play (`player_view` with the guest swapped
-    /// in).
-    pub(super) fn lan_guest_views(&mut self) -> GuestViews {
-        let Some(host) = self.lan.as_ref() else {
-            return Vec::new();
-        };
-        let conns: Vec<(u32, u128, [f64; 3])> = host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| host.hub.here(g) && g.loaded && !g.dead && !g.is_fake())
-            .map(|g| {
-                let moved = [0, 1, 2].map(|k| g.position[k] - g.previous_position[k]);
-                (g.conn, g.uuid, moved)
-            })
-            .collect();
-        let mut views = Vec::new();
-        for (conn, uuid, moved) in conns {
-            if let Some(Some(v)) = self.as_guest(conn, |g| g.player_view()) {
-                views.push((conn, guest_view(v, uuid, moved)));
-            }
-        }
-        views
-    }
-
     /// The guest `conn`'s real identity — the uuid its lent view carries and
     /// its entity id — when the guest is a player the tick can name: a fake
     /// guest resolves as none, as the write handle refuses it (arismoko/horizon#1077).
@@ -211,12 +65,6 @@ impl Game<'_> {
         let uuid = horizon_client::lan::playerdata::uuid_ints(guest.uuid);
         let id = u32::try_from(guest.entity_id).ok()?;
         Some((uuid, id))
-    }
-
-    /// Runs `f` as each guest in play here, for what strikes every player in
-    /// an area (`Level.getEntities`), not only the window's own.
-    pub(super) fn each_guest_hit(&mut self, f: impl FnMut(&mut Self)) {
-        self.each_guest_hit_except(None, f);
     }
 
     /// [`Self::each_guest_hit`] leaving out the guest `except` (the one a

@@ -2,12 +2,9 @@
 use super::Game;
 use horizon_client::recipe_book::{
     settings_codec,
-    settings_sync::{CHANNEL, Message},
+    settings_sync::CHANNEL,
 };
-use horizon_protocol::packets::{
-    configuration::CustomPayload,
-    play::{Clientbound as C, Serverbound as S},
-};
+use horizon_protocol::packets::{configuration::CustomPayload, play::Clientbound as C};
 use std::{
     collections::BTreeSet,
     sync::atomic::{AtomicU64, Ordering},
@@ -48,15 +45,6 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn reset_book_view(&mut self) {
-        self.native_net.placement.client = Default::default();
-        self.native_net.placement.deadline = None;
-        self.clear_mod_book_placement_screen();
-        self.native_net.book_view = Default::default();
-        self.native_net.book_request = 0;
-        self.native_net.book_ready = false;
-        self.native_net.book_retry_at = None;
-    }
     pub(super) fn clear_guest_book_connection(&mut self, conn: u32) {
         self.guest_combat.remove(&conn);
         self.native_net.book_connections.remove(&conn);
@@ -78,41 +66,6 @@ impl Game<'_> {
             _ => return,
         };
         self.native_player_recipe_book_settings_change(uuid, name, book, open, filtering);
-    }
-
-    /// Authoritative view for a custom menu panel. None disables the panel
-    /// until negotiation and the initial snapshot finish.
-    pub fn custom_book_settings(
-        &self,
-        book: &mod_api::RecipeBookTypeKey,
-    ) -> Option<mod_api::RecipeBookSettings> {
-        let view = &self.native_net.book_view;
-        if !view.ready || !view.contains(book.as_str()) {
-            return None;
-        }
-        let flags = view.books.get(book.as_str());
-        Some(mod_api::RecipeBookSettings {
-            open: flags.open,
-            filtering: flags.filtering,
-        })
-    }
-    /// Queue intent without changing the authoritative or saved pair.
-    pub fn request_custom_book_settings(
-        &mut self,
-        book: &mod_api::RecipeBookTypeKey,
-        _flags: mod_api::RecipeBookSettings,
-    ) -> bool {
-        if self.custom_book_settings(book).is_none() {
-            return false;
-        }
-        let Some(number) = self.native_net.book_request.checked_add(1) else {
-            return false;
-        };
-        if self.native_net.book_view.epoch.is_none() {
-            return false;
-        }
-        self.native_net.book_request = number;
-        true
     }
 
     pub(super) fn sync_server_book_write(

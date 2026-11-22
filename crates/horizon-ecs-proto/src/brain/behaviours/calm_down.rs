@@ -3,7 +3,6 @@
 use crate::behaviours::schedule;
 use crate::brain::*;
 use crate::brain::sensors::village_hostile::NEAREST_HOSTILE;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::rules::calm_down::keeps_scared;
 use crate::targeting::info;

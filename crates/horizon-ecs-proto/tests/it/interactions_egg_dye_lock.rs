@@ -1,6 +1,7 @@
 //! A spawn egg on its own species, a collar dye, the golden dandelion on a baby. Expected values come from the jar
 //! (`SpawnEggItem.spawnOffspringFromSpawnEgg`, `Wolf.mobInteract`, `AgeableMob.mobInteract`).
 use crate::common;
+use bevy_ecs::prelude::{Entity, With};
 use common::*;
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::age_lock::AgeLocked;
@@ -75,7 +76,7 @@ fn golden_dandelion_locks_and_unlocks_a_baby() {
     assert!(click(&mut h));
     assert!(h.world.get::<AgeLocked>(cow).is_some());
     for _ in 0..50 {
-        h.step(None);
+        h.tick();
     }
     assert!(h.world.get::<AgeLocked>(cow).is_some(), "locked, it stays a baby");
     assert!(click(&mut h));
@@ -93,7 +94,7 @@ fn wolf_armor_is_placed_with_its_damage() {
     let wolf = h.spawn(mw, "minecraft:wolf", [0.5, 1.0, 0.5], None).expect("a wolf");
     h.world_mut().entity_mut(wolf).insert(Owner(Some(Who::Player(1))));
     let armor = items::item_id("minecraft:wolf_armor");
-    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: armor, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() });
+    h.set_player(Player { id: 1, x: 0.5, y: 1.0, z: 2.5, main: armor, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
     let mut stack = horizon_client_lib::items::ItemStack::new("minecraft:wolf_armor", 1);
     stack.damage = 10;
     assert!(h.interact_with(mw, wolf, 1, 0, stack, false));

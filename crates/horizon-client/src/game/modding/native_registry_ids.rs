@@ -1,7 +1,6 @@
 //! Network ids of registry entries for mods (`registry_protocol_id`).
 use super::Game;
 use horizon_core::identifier::Identifier;
-use horizon_protocol::registry::SyncedNames;
 
 impl Game<'_> {
     /// The network id of `name` in `registry`: a client's own connection's registries (never the

@@ -9,7 +9,6 @@ use super::swallow_hold::Held;
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
-use crate::host_out::HostOut;
 use horizon_core::geometry::Vec3;
 use crate::rules::push_on_touch::{knockback_factor, push_speed, push_vector};
 

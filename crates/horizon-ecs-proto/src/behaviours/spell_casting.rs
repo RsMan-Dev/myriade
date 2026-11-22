@@ -3,7 +3,6 @@
 //! spells (`spell_use`), counted down by this module's tick (`customServerAiStep`) and removed when it reaches 0 (the goal then ends).
 //! It knows no spell and no species. Not done: the look at a sheep (the wololo spell is not ported).
 use super::*;
-use crate::cow::*;
 use crate::goals::*;
 use crate::targeting::{self, Target};
 

@@ -8,7 +8,6 @@ use crate::brain::*;
 use crate::poi::PoiRegistry;
 use crate::rules::poi_competitor_scan::loses_to;
 use crate::targeting::Who;
-use bevy_ecs::prelude::*;
 
 pub struct Params {
     pub job: &'static MemKey,

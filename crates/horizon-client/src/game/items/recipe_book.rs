@@ -10,7 +10,6 @@ use horizon_client::{
     items::ItemStack,
     menu::place::PostPlace,
     recipe_book::{Book, BookType, ClientBook, Entry, GhostTarget},
-    text::Text,
 };
 use mod_api::{RecipeTransferCheck, RecipeTransferResult};
 use std::collections::BTreeSet;
@@ -35,10 +34,6 @@ pub(super) struct RecipeUi {
     client: ClientBook,
     client_known: Option<BTreeSet<String>>,
     client_version: u64,
-    /// The entries a server's packets carried, by display id: the book is
-    /// made with them over its own (`Book::use_server_entries`).
-    server_entries:
-        std::collections::BTreeMap<i32, horizon_protocol::packets::recipes::RecipeBookEntry>,
 }
 
 impl RecipeUi {
@@ -49,11 +44,6 @@ impl RecipeUi {
 }
 
 impl Game<'_> {
-    /// A viewer's transfer of a recipe by id, into a mod menu or a grid.
-    pub(in crate::game) fn transfer_recipe_id(&mut self, recipe: &str, max: bool) {
-        self.transfer_viewer_recipe_id(recipe, max);
-    }
-
     /// The vanilla book the open screen has, if any.
     pub(super) fn active_book(&self) -> Option<BookType> {
         if self.station.is_some() {
@@ -75,11 +65,6 @@ impl Game<'_> {
             _ => None,
         }
     }
-    /// The search box is client-only: no typed key reaches it on a server.
-    pub(super) fn recipe_search_focused(&self) -> bool {
-        false
-    }
-    pub(super) fn recipe_text(&mut self, _: Option<&str>, _: bool) {}
     // ---- recipes and what can be crafted ----
 
     /// Sends the client book what changed in the server's: the first time a
@@ -179,11 +164,6 @@ impl Game<'_> {
         self.recipe_ui.ghost.clear();
         self.place_book_recipe(BookType::Crafting, index, all);
     }
-    /// Whether the open menu is a content mod's menu type (a machine's, with or without a grid):
-    /// the server's menu on a server, the block's own in a solo world or on a LAN host.
-    fn mod_menu_open(&self) -> bool {
-        self.local_mod_menu().is_some()
-    }
     /// The content mod menu type and block of the menu this player has open when the game is
     /// its own server (a solo world, a LAN host's own player): the block container's menu type.
     fn local_mod_menu(&self) -> Option<(&'static str, [i32; 3])> {
@@ -217,23 +197,6 @@ impl Game<'_> {
             result: &mut result,
         });
         result
-    }
-    /// A viewer's transfer of a recipe by id (`transfer_recipe_id`): sent to the server, whose
-    /// `menu_transfer` parts on a mod menu answer first, then its grid transfer. Only a server
-    /// that takes viewer transfers is asked: elsewhere it shows as not into this menu.
-    pub(super) fn transfer_viewer_recipe_id(&mut self, recipe: &str, max: bool) {
-        let open = !self.spectator() && (self.mod_menu_open() || self.mod_recipe_screen());
-        if !open {
-            self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
-            return;
-        }
-        // The game is its own server: the mod menu's part answers first, as on a server,
-        // then the grid transfer.
-        if let Some(answer) = self.local_menu_transfer(recipe, max, false) {
-            self.show_transfer_result(answer);
-            return;
-        }
-        self.local_grid_transfer(recipe, max);
     }
     /// The display ids of `recipe_id` that the server sent and this book
     /// numbers the same way (`Book::confirmed_ids`): the entries
@@ -297,34 +260,6 @@ impl Game<'_> {
     fn show_transfer_result(&mut self, result: RecipeTransferResult) {
         if result == RecipeTransferResult::Moves {
         }
-    }
-
-    /// `RecipesClientHost::transfer_recipe_check`: the server's latest check of a viewer
-    /// transfer of `display_id` into the open crafting grid. Asked for when
-    /// there is no answer for what the client sees now (the window, its state
-    /// id, the inventory and the grid), and again every `CHECK_REFRESH` while
-    /// it is wanted, at most `CHECK_REFRESHES` times for that view: chests a
-    /// station takes from change where the client can't see them. One request
-    /// out at a time. None until the answer comes, outside a screen that takes
-    /// recipes, and on a server that doesn't advertise `horizon:recipe_check`.
-    pub(in crate::game) fn transfer_recipe_check(
-        &mut self,
-        display_id: i32,
-    ) -> Option<RecipeTransferCheck> {
-        // The game is its own server: a mod menu's part answers the dry run, as
-        // `horizon:recipe_check` asks it on a server; with none the check is as before.
-        if self.mod_menu_open() {
-            self.ensure_book();
-            let id = (self.recipe_ui.book.as_ref())
-                .and_then(|book| book.entries.iter().find(|e| e.display_id == display_id))
-                .map(|e| e.id.clone())?;
-            let result = self.local_menu_transfer(&id, false, true)?;
-            return Some(RecipeTransferCheck {
-                result,
-                missing_cells: Vec::new(),
-            });
-        }
-        None
     }
 
 
@@ -410,7 +345,6 @@ impl Game<'_> {
         &self,
         slot: &mod_api::RecipeSlotDisplay,
     ) -> Vec<ItemStack> {
-        let stocks = horizon_client::menu::place::Stacked::default();
-        resolve::Resolver::new(self, &stocks, &[]).resolve(slot)
+        resolve::Resolver::new(self).resolve(slot)
     }
 }

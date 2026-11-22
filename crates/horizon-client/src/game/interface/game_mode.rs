@@ -1,6 +1,6 @@
 //! Game modes beyond survival and creative (`GameType`): adventure players
 //! cannot build, spectators fly through blocks and only watch.
-use super::{Game, Screen};
+use super::Game;
 use horizon_client::{collisions::SceneCollisions, command::args::GameMode, items::ItemStack};
 use horizon_world::world_movement::in_range_of_ground;
 
@@ -16,51 +16,6 @@ pub(super) fn loads_chunks(spectators_generate_chunks: bool, spectator: bool) ->
     !spectator || spectators_generate_chunks
 }
 
-/// Fail closed at the new projectile caller when the existing matcher cannot
-/// evaluate an entire conjunct. This does not change held-item interpretation.
-pub(super) fn projectile_predicate_supported(tag: &horizon_core::nbt::Tag) -> bool {
-    use horizon_core::nbt::Tag;
-    let supported = |p: &Tag| {
-        matches!(p, Tag::Compound(_))
-            && ["nbt", "components", "predicates"]
-                .iter()
-                .all(|key| p.get(key).is_none())
-            && match p.get("blocks") {
-                None | Some(Tag::String(_)) => true,
-                Some(Tag::List(ids)) => ids.iter().all(|id| matches!(id, Tag::String(_))),
-                _ => false,
-            }
-            && match p.get("state") {
-                None => true,
-                Some(Tag::Compound(properties)) => properties.values().all(|value| match value {
-                    Tag::String(_) => true,
-                    Tag::Compound(_) => ["min", "max"].iter().all(|key| {
-                        value
-                            .get(key)
-                            .is_none_or(|bound| matches!(bound, Tag::String(_)))
-                    }),
-                    _ => false,
-                }),
-                _ => false,
-            }
-    };
-    match tag {
-        Tag::Compound(_) => supported(tag),
-        Tag::List(predicates) => !predicates.is_empty() && predicates.iter().all(supported),
-        _ => false,
-    }
-}
-/// `InventoryScreen.containerTick`: a survival inventory left open when the
-/// player gains infinite materials becomes the creative one, so the player
-/// stays in a menu. Vanilla has no other branch: a spectator's open inventory
-/// stays open too.
-fn inventory_after_mode(screen: Screen, creative: bool) -> Screen {
-    if screen == Screen::Inventory && creative {
-        Screen::Creative
-    } else {
-        screen
-    }
-}
 
 impl Game<'_> {
 
@@ -297,14 +252,6 @@ impl Game<'_> {
                 "minecraft:can_place_on",
                 relative(pos, face.opposite()),
             )
-    }
-    /// `ItemStack.canPlaceOnBlockInAdventureMode` of the stack a use names.
-    pub(super) fn stack_can_place_on_in_adventure(
-        &self,
-        stack: &ItemStack,
-        clicked: [i32; 3],
-    ) -> bool {
-        self.stack_adventure_predicate(stack, "minecraft:can_place_on", clicked)
     }
     /// `ItemStack.useOn`'s gate before any item's own `useOn`: a player who
     /// may build, or an adventure player whose held item's `can_place_on`

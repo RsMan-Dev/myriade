@@ -44,10 +44,6 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_stop_using(&mut self, id: u32) {
         self.ecs.stop_using(id);
     }
-    /// Whether a totem in a hand saves the ECS mob `id` from its death (`try_totem`, read before the death).
-    pub(in crate::game) fn ecs_totem_saves(&mut self, id: u32) -> bool {
-        self.ecs.try_totem(id)
-    }
 }
 
 #[cfg(test)]

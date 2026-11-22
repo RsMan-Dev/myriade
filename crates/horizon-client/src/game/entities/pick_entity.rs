@@ -2,8 +2,7 @@
 //! `ServerGamePacketListenerImpl.handlePickItemFromEntity`): the client aims,
 //! the server answers with `Entity.getPickResult`.
 use super::Game;
-use horizon_client::{items::ItemStack, save::uuid_text};
-use mod_api::{BlockPos, CrosshairTarget, EntityRef};
+use horizon_client::items::ItemStack;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct CrosshairEntityHit {
@@ -54,54 +53,6 @@ impl Game<'_> {
         nearest_entity(hits, self.block_distance())
     }
 
-    /// The ordinary block-or-entity pick (Minecraft.hitResult), using the
-    /// game's targeting ray, reach and occlusion. None without a client world
-    /// or on a miss. Entity hits carry this client level's epoch. Unlike
-    /// view_hit, this never traces distant terrain.
-    pub(super) fn crosshair_target(&self) -> Option<CrosshairTarget> {
-        use crate::game::api_values::TryIntoApi;
-        self.player.as_ref()?;
-        if let Some(hit) = self.crosshair_entity_hit() {
-            let (eye, direction) = self.aim()?;
-            let point = std::array::from_fn(|axis| eye[axis] + direction[axis] * hit.distance);
-            return Some(CrosshairTarget::Entity {
-                entity: EntityRef::new(self.native_lifecycle.epoch()?, hit.id as u32),
-                point,
-            });
-        }
-        let hit = self.pick()?;
-        Some(CrosshairTarget::Block {
-            pos: BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
-            state: self
-                .world
-                .block(hit.pos[0], hit.pos[1], hit.pos[2])
-                .try_into_api()
-                .ok()?,
-            hit: hit.native(),
-        })
-    }
-
-    /// The entity the crosshair hits before any block, as `Entity.getId`; an
-    /// entity with nothing to pick (a projectile, a player, the dragon) is
-    /// `Some(None)`. `None` when the view hits a block or nothing.
-    pub(super) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
-        self.crosshair_entity_hit()
-            .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
-    }
-    pub(super) fn pick_entity_hit(&self) -> Option<Option<i32>> {
-        self.pick_entity_hit_at().map(|hit| hit.1)
-    }
-
-    /// `ClientSuggestionProvider.getSelectedEntities`: the UUID
-    /// (`Entity.getStringUUID`) of the entity the crosshair hits before any
-    /// block (`Minecraft.hitResult` an `EntityHitResult`).
-    pub(super) fn crosshair_entity_uuid(&self) -> Option<String> {
-        self.crosshair_entity_hit()
-            .filter(|hit| hit.suggest_uuid)
-            .and_then(|hit| self.persist.uuids.get(&(hit.id as u32)).copied())
-            .map(uuid_text)
-    }
-
     /// `Entity.getPickResult` of the entity `id`: a mob's spawn egg, the item
     /// of a boat, minecart, armor stand, cushion, painting, item frame (the
     /// framed item when it holds one) or end crystal.
@@ -139,6 +90,14 @@ impl Game<'_> {
             return None;
         };
         Some(ItemStack::new(&item, 1))
+    }
+
+    /// The entity the crosshair hits before any block, as `Entity.getId`; an
+    /// entity with nothing to pick (a projectile, a player, the dragon) is
+    /// `Some(None)`. `None` when the view hits a block or nothing.
+    pub(super) fn pick_entity_hit_at(&self) -> Option<(f64, Option<i32>)> {
+        self.crosshair_entity_hit()
+            .map(|hit| (hit.distance, hit.pickable.then_some(hit.id)))
     }
 
     /// `Player.isWithinEntityInteractionRange(entity, 3.0)`: the entity's box

@@ -247,7 +247,7 @@ impl Index {
                 let far = (n.1 - z0).abs().max((n.1 - z1).abs());
                 (far < ro).then(|| ((ro * ro - far * far).sqrt(), n.0))
             });
-            let mut run = |lo: i64, hi: i64, f: &mut dyn FnMut(Entity)| {
+            let run = |lo: i64, hi: i64, f: &mut dyn FnMut(Entity)| {
                 for xx in lo..=hi {
                     for &e in &self.cells[(zz * w + xx) as usize] {
                         f(e);
@@ -338,12 +338,17 @@ pub(crate) fn reindex(
     mut moves: ResMut<crate::goals::CellMoves>,
     hazards: Res<Hazards>,
     mut events: ResMut<crate::goals::Events>,
-    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState), Changed<Bounds>>,
+    mut q: Query<(Entity, &Bounds, &mut Cell, Option<&Hazard>, Has<InFluid>, &mut FluidState, Has<crate::bridge::ids::NetId>), Changed<Bounds>>,
+    // A followed entity that moved is sent again (the tracker reads `Modified`); absent when no player ever followed one.
+    mut sent: Option<ResMut<crate::bridge::view::Modified>>,
     // Read only when the entity enters or leaves a fluid (rare): not part of the query that runs over every moved entity.
     all_modes: Query<&crate::locomotion::Modes>,
     mut commands: Commands,
 ) {
-    for (e, b, mut c, hz, in_fluid, mut fs) in &mut q {
+    for (e, b, mut c, hz, in_fluid, mut fs, followed) in &mut q {
+        if followed && let Some(m) = sent.as_mut() {
+            m.push(e);
+        }
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let cell = idx.cell_of((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if cell != c.0 {
@@ -392,6 +397,15 @@ pub(crate) fn reindex(
                 commands.entity(e).insert(Hazard(bits));
             }
         }
+    }
+}
+
+/// The hook of `Cell`: an entity that is despawned leaves its column, whoever despawns it (no caller has to remember). Nothing while the
+/// `Index` is out of the world (`zone_step` holds it and removes by hand).
+pub fn cell_removed(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let Some(c) = world.get::<Cell>(ctx.entity).map(|c| c.0).filter(|&c| c != u32::MAX) else { return };
+    if let Some(mut idx) = world.get_resource_mut::<Index>() {
+        idx.remove(ctx.entity, c);
     }
 }
 

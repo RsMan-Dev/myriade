@@ -4,7 +4,6 @@
 use crate::behaviours::block_reach::{look_block, walk_to};
 use crate::brain::behaviours::poi_validate::forget;
 use crate::brain::*;
-use bevy_ecs::prelude::*;
 
 pub struct Params {
     pub potential: &'static MemKey,

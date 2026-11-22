@@ -9,7 +9,7 @@ use horizon_client::{
     Result,
     entities::ArmorStand,
     items::ItemStack,
-    mobs::{Mob, Who, anim::Poses},
+    mobs::{Who, anim::Poses},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -23,7 +23,6 @@ use horizon_ecs_proto::{
     items::{item_id, item_name},
     stand::{self as ecs_stand, Blow, Stand as EcsStand},
 };
-use std::{collections::HashMap, sync::Arc};
 pub(super) const TYPE_ID: &str = "minecraft:armor_stand";
 /// Build the living-drops input at the loot-source boundary, before equipment pops.
 fn armor_stand_dying_drops<'a>(
@@ -142,20 +141,6 @@ fn armor_stand_cart_shove(
         cart_z: -za,
         stand_x: xa / 4.0,
         stand_z: za / 4.0,
-    })
-}
-/// `EquipmentLayerRenderer.getColorForLayer`: a dyeable layer (one with a
-/// colour when undyed) takes the stack's `minecraft:dyed_color`, else that
-/// colour; any other layer stays white, dyed or not. The result is in the
-/// renderer's byte order (R and B swapped).
-fn layer_color(undyed: Option<u32>, stack: Option<&ItemStack>) -> u32 {
-    let dyed = stack
-        .and_then(|s| s.data())
-        .and_then(|d| d.dyed_color)
-        .map(|c| c as u32 & 0xFF_FFFF);
-    undyed.map_or(0xFFFF_FFFF, |undyed| {
-        let c = dyed.unwrap_or(undyed);
-        0xFF00_0000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF
     })
 }
 
@@ -1630,46 +1615,6 @@ impl Game<'_> {
         }
     }
 }
-/// The stand's slot (`ArmorStand::SLOTS` order) for an item whose
-/// `equippable` slot is `equip` (`SmithingScreen.updateArmorStandPreview`):
-/// worn in a head, chest, legs or feet slot, else (no `equippable`, or any
-/// other slot: main hand, off hand, body, saddle) held in the left hand.
-fn preview_slot(equip: Option<&str>) -> usize {
-    match equip {
-        Some("feet") => 2,
-        Some("legs") => 3,
-        Some("chest") => 4,
-        Some("head") => 5,
-        _ => 1,
-    }
-}
-/// The `Pose` rotations on the parts of an armor stand model or its armor
-/// (`ArmorStandArmorModel.setupAnim`); the body also turns the sticks.
-fn apply_pose(poses: &mut Poses, pose: &[[f32; 3]; 6]) {
-    let parts: [&[&str]; 6] = [
-        &["head"],
-        &[
-            "body",
-            "right_body_stick",
-            "left_body_stick",
-            "shoulder_stick",
-        ],
-        &["left_arm"],
-        &["right_arm"],
-        &["left_leg"],
-        &["right_leg"],
-    ];
-    for (names, rotation) in parts.into_iter().zip(pose) {
-        for name in names {
-            if poses.has(name) {
-                let part = poses.get(name);
-                part[3] = rotation[0].to_radians();
-                part[4] = rotation[1].to_radians();
-                part[5] = rotation[2].to_radians();
-            }
-        }
-    }
-}
 fn overlaps(a: Aabb, b: Aabb) -> bool {
     let (a0, a1, b0, b1) = (
         a.min_position(),
@@ -1914,20 +1859,6 @@ fn stand_box(a: &ArmorStand) -> (f32, f32) {
         (false, false) => (0.5, 1.975),
     }
 }
-/// `AbstractSkullBlock.getType` of a skull item.
-pub(super) fn skull_kind(item: &str) -> Option<&'static str> {
-    Some(match item {
-        "minecraft:skeleton_skull" => "skeleton",
-        "minecraft:wither_skeleton_skull" => "wither_skeleton",
-        "minecraft:zombie_head" => "zombie",
-        "minecraft:creeper_head" => "creeper",
-        "minecraft:dragon_head" => "dragon",
-        "minecraft:piglin_head" => "piglin",
-        "minecraft:player_head" => "player",
-        _ => return None,
-    })
-}
-
 /// `ArmorStand.ignoreExplosion` (an invisible stand), and `hurtServer`
 /// refusing an invisible or marker stand: such a stand outlasts any blast.
 pub(super) fn spared_by_blast(a: &ArmorStand) -> bool {

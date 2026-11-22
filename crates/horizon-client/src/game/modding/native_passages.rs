@@ -65,17 +65,6 @@ enum Dirty {
     Removed(DimensionKey, [i32; 2]),
 }
 
-/// Why a client did not keep a passage its server sent (`remote_passage_sync`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum HeldRefusal {
-    /// Not a passage the server could have registered.
-    Bad(Refused),
-    /// Its chunk is not one the client holds.
-    ChunkNotHeld,
-    /// The client already holds a level's worth (256).
-    Full,
-}
-
 impl Passages {
     /// Level `key` closed (`LevelEvent.Unload`): its passages and their untold changes go.
     pub(in crate::game) fn retire_level(&mut self, key: DimensionKey) {
@@ -269,59 +258,6 @@ impl Game<'_> {
         }
     }
 
-    /// A `horizon:passage_sync` payload the server sent the window. Each passage is checked
-    /// as the server checks a registration, and kept only for a chunk the window holds and
-    /// within a level's 256; the refused ones are logged and returned with their number.
-    pub(super) fn remote_passage_sync(&mut self, data: &[u8]) -> Vec<(u64, HeldRefusal)> {
-        let message = match horizon_protocol::passage_sync::decode(data) {
-            Ok(message) => message,
-            Err(e) => {
-                log::debug!("Horizon: a bad passage sync: {e}");
-                return Vec::new();
-            }
-        };
-        let mut refused = Vec::new();
-        match message {
-            Message::Add(forms) => {
-                for f in forms {
-                    if let Err(why) = self.hold_passage(&f) {
-                        log::debug!("Horizon: passage {} not kept: {why:?}", f.id);
-                        refused.push((f.id, why));
-                    }
-                }
-            }
-            Message::Remove(ids) => {
-                for id in ids {
-                    self.passages.held.remove(&PassageId::from_raw(id));
-                }
-            }
-            Message::Refused { id, reason } => self.remote_passage_refused(id, reason),
-        }
-        refused
-    }
-
-    fn hold_passage(&mut self, f: &PassageForm) -> Result<(), HeldRefusal> {
-        let p = passage(f);
-        check(&p).map_err(HeldRefusal::Bad)?;
-        let [x, z] = p.chunk();
-        if !self.world.chunks.contains_key(&(x, z)) {
-            return Err(HeldRefusal::ChunkNotHeld);
-        }
-        let held = &mut self.passages.held;
-        let id = PassageId::from_raw(f.id);
-        if !held.contains_key(&id) && held.len() >= MAX_PER_LEVEL as usize {
-            return Err(HeldRefusal::Full);
-        }
-        held.insert(id, p);
-        Ok(())
-    }
-
-    /// The window forgot chunk `(x, z)`: the passages of that chunk go with it.
-    pub(super) fn forget_chunk_passages(&mut self, x: i32, z: i32) {
-        if !self.passages.held.is_empty() {
-            self.passages.held.retain(|_, p| p.chunk() != [x, z]);
-        }
-    }
 }
 
 /// The refusal for a passage that is not a rectangle the engine can carry a player through.
@@ -390,24 +326,6 @@ fn form(id: PassageId, p: &Passage) -> PassageForm {
     }
 }
 
-fn passage(f: &PassageForm) -> Passage {
-    let v = |[x, y, z]: [f64; 3]| Vec3::new(x, y, z);
-    Passage {
-        origin: v(f.origin),
-        axis_w: v(f.axis_w),
-        axis_h: v(f.axis_h),
-        width: f.width,
-        height: f.height,
-        destination: v(f.destination),
-        turn: match f.turn {
-            1 => PassageTurn::Clockwise90,
-            2 => PassageTurn::Clockwise180,
-            3 => PassageTurn::Counterclockwise90,
-            _ => PassageTurn::None,
-        },
-        destination_level: None,
-    }
-}
 
 #[cfg(test)]
 pub(in crate::game) mod tests {

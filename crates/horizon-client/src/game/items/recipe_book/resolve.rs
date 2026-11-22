@@ -1,25 +1,15 @@
 //! Resource-backed resolution of mod recipe displays.
 use crate::game::{Game, api_values::TryIntoEngine};
-use horizon_client::{crafting::Ingredient, items::ItemStack, menu::place::Stacked};
-use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
+use horizon_client::items::ItemStack;
+use mod_api::RecipeSlotDisplay as Slot;
 
 pub(super) struct Resolver<'a, 'w> {
     game: &'a Game<'w>,
-    stocks: &'a Stacked,
-    placement_stocks: &'a [(ItemStack, i32)],
 }
 
 impl<'a, 'w> Resolver<'a, 'w> {
-    pub(super) fn new(
-        game: &'a Game<'w>,
-        stocks: &'a Stacked,
-        placement_stocks: &'a [(ItemStack, i32)],
-    ) -> Self {
-        Self {
-            game,
-            stocks,
-            placement_stocks,
-        }
+    pub(super) fn new(game: &'a Game<'w>) -> Self {
+        Self { game }
     }
 
     pub(super) fn resolve(&self, slot: &Slot) -> Vec<ItemStack> {
@@ -129,19 +119,6 @@ impl<'a, 'w> Resolver<'a, 'w> {
         }
     }
 
-    pub(super) fn craftable(&self, ingredients: &[Ingredient]) -> bool {
-        self.stocks
-            .can_craft(&ingredients.iter().collect::<Vec<_>>())
-    }
-
-    pub(super) fn search_text(&self, stacks: &[ItemStack]) -> String {
-        stacks
-            .iter()
-            .map(|stack| horizon_client::stations::hover_name(&self.game.pack.names, stack))
-            .collect::<Vec<_>>()
-            .join(" ")
-            .to_lowercase()
-    }
 }
 
 fn dye_stack(target: &ItemStack, dye: usize) -> ItemStack {

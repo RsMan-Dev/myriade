@@ -13,7 +13,7 @@ use crate::lan::{
     hub::{AttachmentSnapshot, Hub},
 };
 use horizon_client::raw_payloads::Endpoint;
-use horizon_mod_runtime::attachments::{Attachments, Holder};
+use horizon_mod_runtime::attachments::Holder;
 use horizon_protocol::attachment_sync::{self, Message};
 use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
 

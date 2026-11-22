@@ -315,11 +315,9 @@ fn in_circ(x: f32) -> f32 {
 }
 
 struct UseParams {
-    raise: f32,
     raise_start: f32,
     raise_middle: f32,
     raise_end: f32,
-    sway: f32,
     lower: f32,
     raise_back: f32,
     sway_intensity: f32,
@@ -349,11 +347,9 @@ impl UseParams {
         let sway_intensity = 2.0 * out_circ(sway) - 2.0 * in_circ(raise_back);
         let degrees = PI / 180.0;
         Self {
-            raise,
             raise_start: progress(raise, 0.0, 0.5),
             raise_middle: progress(raise, 0.5, 0.8),
             raise_end: progress(raise, 0.8, 1.0),
-            sway,
             lower,
             raise_back,
             sway_intensity,

@@ -8,7 +8,6 @@ use super::trade_offers::{ensure_offers, lend, profession_name, variant_name, Me
 use super::*;
 use crate::cow::{Contact, FluidState, GrowAt, Health, HurtAt, Pos};
 use crate::goals::*;
-use bevy_ecs::prelude::*;
 use horizon_client_lib::{
     items::ItemStack,
     merchant::{Event, Session, TradeEnv},

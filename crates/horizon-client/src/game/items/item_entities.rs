@@ -35,19 +35,6 @@ macro_rules! item_refuses {
     }};
 }
 
-/// A dropped item's `bobOffs` (its bob and spin phase) from its random's draw `drawn`, or under
-/// `HORIZON_STILL` from a random seeded by its position alone: a client seeds an item's random
-/// with the server's entity id, which follows the order chunks load in and differs between
-/// launches. The draw is made either way, so the item's random stays where vanilla's would be.
-pub(super) fn bob_offset(position: Vec3, drawn: f32, still: bool) -> f32 {
-    let drawn = if still {
-        horizon_client::mobs::entity_random(0, position).next_float()
-    } else {
-        drawn
-    };
-    drawn * std::f32::consts::PI * 2.0
-}
-
 impl Game<'_> {
     pub(super) fn tick_items(&mut self) {
         let mut round = self.item_update_round();

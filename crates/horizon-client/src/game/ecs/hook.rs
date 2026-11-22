@@ -1,7 +1,7 @@
 //! The fishing hook of the ECS (`HookEvent`, `ecs_bridge/hook.rs`): the acting player's cast and reel, the bite and the hooking the
 //! events announce, and the catch of a reel (the loot, the rod's damage, the experience, the statistics) with the pull of what it held.
 use super::super::Game;
-use horizon_client::{advancements::EntityView, items::ItemStack, mobs::Who};
+use horizon_client::{advancements::EntityView, items::ItemStack};
 use horizon_core::{geometry::Vec3, random::LevelRandom};
 use horizon_ecs_proto::{host_out_hook::HookEvent, hook_extract::Retrieve, targeting::Who as EcsWho};
 use std::sync::Arc;
@@ -217,8 +217,4 @@ impl Game<'_> {
         self.ecs_with(|ecs, mw| ecs.weather_changed(mw));
     }
 
-    /// A block changed at `cell`: the hooks waiting on it are told.
-    pub(in crate::game) fn ecs_hook_block_changed(&mut self, cell: [i32; 3]) {
-        self.ecs_with(|ecs, mw| ecs.hook_block_changed(mw, cell));
-    }
 }

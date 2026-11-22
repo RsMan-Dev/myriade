@@ -4,7 +4,15 @@ use crate::common;
 use common::*;
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_ecs_proto::cow::*;
+use horizon_ecs_proto::goals::Entered;
 use horizon_ecs_proto::nbt::NbtData;
+
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:cow"])
+}
+fn species_named(name: &str) -> Species {
+    *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))
+}
 
 fn health_after(h: &mut Herd, e: bevy_ecs::entity::Entity, cause: Cause) -> f32 {
     h.world.resource_mut::<DamageQueue>().add(e, 1.0, cause);

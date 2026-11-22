@@ -210,17 +210,6 @@ pub(crate) struct LiveSectionObserver {
 }
 
 impl LiveSectionObserver {
-    pub(crate) fn new(
-        sections: std::rc::Rc<std::cell::RefCell<EntitySections>>,
-        scope: Scope,
-    ) -> Self {
-        Self {
-            sections,
-            scope,
-            current: None,
-        }
-    }
-
     fn tell(&mut self) {
         let Some(mut batch) = self.sections.borrow_mut().begin_telling() else {
             return;
@@ -478,24 +467,6 @@ impl Game<'_> {
         self.native_lifecycle
             .entity_sections
             .placed(scope, id, now.unwrap_or(at));
-    }
-
-    /// A client's entities after its tick: each one where its interpolation or its own move
-    /// put it (its live position, not the packet's), and this window's player.
-    pub(super) fn client_entity_sections_stepped(&mut self) {
-        let Some(scope) = self.entity_section_scope() else {
-            return;
-        };
-        let own = self.own_entity_id();
-        let mut sections = std::mem::take(&mut self.native_lifecycle.entity_sections);
-        if let Some(player) = self.player.as_ref()
-            && own > 0
-        {
-            let at = player.position;
-            sections.moved(scope, own as u32, None, [at.x, at.y, at.z]);
-        }
-        self.native_lifecycle.entity_sections = sections;
-        self.tell_entity_sections();
     }
 
     pub(super) fn tell_entity_sections(&mut self) {

@@ -6,9 +6,17 @@ use common::*;
 use horizon_ecs_proto::colony_register::MiscOut;
 use horizon_ecs_proto::cow::*;
 use horizon_ecs_proto::damage_link::{DamageLink, Verdict, verdict};
+use horizon_ecs_proto::goals::Entered;
 use horizon_ecs_proto::host_out_misc::MiscEvent;
 use horizon_ecs_proto::tear_down::{self, Crumbling};
 use horizon_ecs_proto::targeting::Who;
+
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:cow"])
+}
+fn species_named(name: &str) -> Species {
+    *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))
+}
 
 fn linked_cow(h: &mut Herd) -> Entity {
     let cow = spawn_species(&mut h.world, &species_named("minecraft:cow"), 0.5, 0.5, 5);

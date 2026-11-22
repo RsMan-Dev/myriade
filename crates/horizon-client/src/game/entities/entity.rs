@@ -14,7 +14,7 @@ use super::{
     boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
 };
 use horizon_client::entities::{
-    ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting,
+    ArmorStand, ExperienceOrb, ItemEntity, ItemFrame,
 };
 use horizon_client::entity_rules::EntityRules;
 use horizon_client::join_seq::JoinSeq;
@@ -37,23 +37,6 @@ pub(super) fn assign_stored_id(
 ) -> u32 {
     debug_assert!(*id != 0 || lifetime.is_none_or(|slot| !slot.is_bound()));
     super::lan_entities::assign_entity_id(next, id)
-}
-
-/// What `Entity.thunderHit` does to a kind: it sets the entity on fire and
-/// calls `hurtServer(lightning_bolt, 5)`, so a kind whose `hurtServer` does
-/// nothing (projectiles, rockets, TNT, falling blocks, armor stands here) stays
-/// untouched. A strike runs the stages in this order.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum ThunderHit {
-    Untouched,
-    /// Burns, takes 5 damage, and the kinds with their own `thunderHit` change.
-    Mob,
-    /// `VehicleEntity.hurtServer`: 5 x 10 is over the 40 that destroys it.
-    Vehicle,
-    /// `ExperienceOrb.hurtServer`: 5 damage off 5 health.
-    Orb,
-    /// `ItemEntity.hurtServer`: burns up unless fire resistant.
-    Item,
 }
 
 /// What a blast knows about itself, for the entities in its reach to answer.
@@ -131,10 +114,6 @@ pub(super) trait Entity: EntityRules {
     fn is_removed(&self) -> bool {
         false
     }
-    /// `instanceof LivingEntity`.
-    fn is_living(&self) -> bool {
-        false
-    }
     /// `Entity.isIgnoringBlockTriggers`.
     fn is_ignoring_block_triggers(&self) -> bool {
         false
@@ -149,14 +128,6 @@ pub(super) trait Entity: EntityRules {
     /// whose tick skips that step, says no.
     fn sweeps_blocks_inside(&self) -> bool {
         true
-    }
-    /// `Entity.thunderHit` for this kind.
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Untouched
-    }
-    /// The box a lightning strike tests against.
-    fn thunder_bounds(&self) -> Aabb {
-        self.bounds()
     }
     /// `Entity.ignoreExplosion`: the blast neither hurts nor pushes it. Also
     /// answers for what `getEntities(source, box)` never lists: the exploding
@@ -328,199 +299,6 @@ pub(super) trait Entity: EntityRules {
     fn piston_slime_bounce(&mut self, movement: Direction) {
         let velocity = self.velocity_mut();
         *velocity = piston_push::bounce_velocity(movement, *velocity);
-    }
-}
-
-/// Bounds and identity needed by the render occlusion culler. Moving renderers
-/// use interpolated entity bounds; attached entities use their own world bounds.
-pub(super) trait RenderEntityBounds {
-    fn render_id(&self) -> u32;
-    fn render_bounds(&self, alpha: f64) -> Aabb;
-    fn render_glowing(&self, game: &Game<'_>) -> bool {
-        game.tracked_entity_glowing(self.render_id())
-    }
-}
-
-impl RenderEntityBounds for Mob {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        // Keep models with large independent appendages on the old envelope:
-        // their tentacles and wings can extend several blocks past the entity
-        // dimensions. Equipment and custom rendering bypass this pre-check at
-        // the call site.
-        let (width, height, _) = self.awake_dims();
-        let at = self.previous.lerp(self.position, f64::from(alpha as f32));
-        if matches!(
-            self.species(),
-            Species::Guardian | Species::ElderGuardian | Species::Phantom
-        ) {
-            // The model's root scales its appendages too (the elder guardian
-            // uses 2.35), so the margin must grow along with the model.
-            let root_scale = self.kind.model.pose[6..]
-                .iter()
-                .copied()
-                .map(f32::abs)
-                .fold(1.0, f32::max);
-            let radius = width.max(height) * 2.5 + 3.0 * f64::from(root_scale * self.model_scale());
-            return Aabb::of_size(at, Vec3::new(radius * 2.0, radius * 2.0, radius * 2.0));
-        }
-
-        // Vanilla's ordinary models can rotate their head, limbs and death
-        // pose beyond the collision box. This envelope covers those poses while
-        // remaining close to the rendered mesh for the common upright mobs.
-        // A few quadruped death and riding poses reach several blocks past
-        // their standing width. Keep a bounded fallback radius for ordinary
-        // models while still shrinking the common pig/zombie envelope below
-        // the old five-block radius.
-        let horizontal = (width * 2.0).max(height * 1.5).max(3.5);
-        let vertical = height * 3.0 + 0.5;
-        Aabb::new(
-            at.subtract(Vec3::new(horizontal, vertical, horizontal)),
-            at.add_vector(Vec3::new(horizontal, vertical, horizontal)),
-        )
-    }
-
-    fn render_glowing(&self, _game: &Game<'_>) -> bool {
-        self.is_currently_glowing()
-    }
-}
-
-impl RenderEntityBounds for ArmorStand {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        let at = self.previous.lerp(self.position, alpha);
-        // ArmorStandRenderer poses the limbs, then attaches hand items, head
-        // items, armour and folded elytra. Those can extend well beyond the
-        // 0.5 x 1.975 collision box (especially raised arms and head banners).
-        // This axis-aligned envelope contains every vanilla pose while staying
-        // independent of the stand's yaw and partial-tick rotation.
-        let scale = if self.small { 0.5 } else { 1.0 };
-        let equipped = self.equipment.iter().any(Option::is_some);
-        let horizontal = if equipped { 2.0 } else { 1.5 * scale };
-        let lower = if equipped { -1.0 } else { -0.5 * scale };
-        let upper = 3.5 * scale
-            + if self.equipment[5].is_some() {
-                1.5
-            } else {
-                0.0
-            };
-        Aabb::new(
-            at.subtract(Vec3::new(horizontal, -lower, horizontal)),
-            at.add_vector(Vec3::new(horizontal, upper, horizontal)),
-        )
-    }
-}
-
-impl RenderEntityBounds for ItemEntity {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        let at = self.previous.lerp(self.position, alpha);
-        // DroppedItemRenderer bobs, spins, and fans out up to five item copies.
-        // The draw path uses the resolved model's exact posed extents; this
-        // fallback envelope also covers the largest vanilla ground item.
-        Aabb::new(
-            at.subtract(Vec3::new(0.75, 0.1, 0.75)),
-            at.add_vector(Vec3::new(0.75, 1.0, 0.75)),
-        )
-    }
-}
-
-impl RenderEntityBounds for Boat {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        let at = self.previous.lerp(self.position, alpha);
-        // The boat model turns with yaw and its animated paddles sweep outside
-        // the sized collision box. Hurt and bubble-column rotations are covered
-        // by this orientation-independent model envelope.
-        Aabb::new(
-            at.subtract(Vec3::new(1.75, 0.75, 1.75)),
-            at.add_vector(Vec3::new(1.75, 1.5, 1.75)),
-        )
-    }
-}
-
-impl RenderEntityBounds for Minecart {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, alpha: f64) -> Aabb {
-        let at = self.previous.lerp(self.position, alpha);
-        let offset = self.custom_offset.map_or_else(
-            || {
-                if self.kind == super::minecarts::CartKind::Hopper {
-                    1.0
-                } else {
-                    6.0
-                }
-            },
-            f64::from,
-        );
-        let display_shift = 0.75 * (offset - 8.0) / 16.0;
-        let display_low = at.y + 0.375 - 0.4 + display_shift;
-        let display_high = at.y + 0.375 + 0.4 + display_shift + 0.9;
-        Aabb::new(
-            Vec3::new(at.x - 1.25, (at.y - 0.5).min(display_low), at.z - 1.25),
-            Vec3::new(at.x + 1.25, (at.y + 1.0).max(display_high), at.z + 1.25),
-        )
-    }
-}
-
-fn aabb_from_extents(bounds: ([f64; 3], [f64; 3])) -> Aabb {
-    Aabb::new(
-        Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]),
-        Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]),
-    )
-}
-
-impl RenderEntityBounds for Painting {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, _alpha: f64) -> Aabb {
-        aabb_from_extents(self.bounds())
-    }
-}
-
-impl RenderEntityBounds for ItemFrame {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, _alpha: f64) -> Aabb {
-        let (lo, hi) = self.bounds();
-        let step = self.step().map(f64::from);
-        let center: [f64; 3] = std::array::from_fn(|axis| (lo[axis] + hi[axis]) * 0.5);
-        // Maps fill a full block, while the held item projects toward the
-        // camera from the frame plane. Include both in the occlusion envelope.
-        let half: [f64; 3] = std::array::from_fn(|axis| if step[axis] != 0.0 { 0.75 } else { 0.5 });
-        aabb_from_extents((
-            std::array::from_fn(|axis| center[axis] - half[axis]),
-            std::array::from_fn(|axis| center[axis] + half[axis]),
-        ))
-    }
-}
-
-impl RenderEntityBounds for Cushion {
-    fn render_id(&self) -> u32 {
-        self.id
-    }
-
-    fn render_bounds(&self, _alpha: f64) -> Aabb {
-        aabb_from_extents(self.bounds())
     }
 }
 
@@ -933,8 +711,6 @@ macro_rules! define_entity_handles {
         #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
         pub(super) enum EntityHandle {
             $($kind(usize),)*
-            /// An entity of P's ECS, by its network id: no typed list holds it.
-            Ecs(u32),
         }
 
         /// Allocation-free storage-order walk with stable IDs and verified index hints.
@@ -1049,8 +825,6 @@ macro_rules! define_entity_handles {
                         if self$(.$list)+.get(i).is_some_and(|e| e.id() == id) { Some(hint) }
                         else { self$(.$list)+.iter().position(|e| e.id() == id).map(EntityHandle::$kind) }
                     })*
-                    // An ECS entity has no index: its id is the handle.
-                    EntityHandle::Ecs(_) => Some(hint),
                 }
             }
 
@@ -1060,12 +834,6 @@ macro_rules! define_entity_handles {
                     $(EntityHandle::$kind(i) => {
                         self$(.$list)+.remove(i);
                     })*
-                    // No typed list holds an ECS entity: the level despawns it (`Entity.discard`).
-                    EntityHandle::Ecs(id) => {
-                        if let Some(e) = self.ecs.entity_of(id) {
-                            self.ecs.despawn(e);
-                        }
-                    }
                 }
             }
 
@@ -1158,7 +926,6 @@ macro_rules! match_entity {
             $($crate::game::entity::EntityHandle::$kind(i) => {
                 $crate::game::entity::entity_access!($borrow, $game$(.$list)+, i, $entity, $body)
             })*
-            $crate::game::entity::EntityHandle::Ecs(_) => unreachable!("an ECS entity has no typed body: its branch comes first"),
         }
     };
 }
@@ -1533,9 +1300,6 @@ impl Entity for Mob {
     fn is_removed(&self) -> bool {
         self.removed
     }
-    fn is_living(&self) -> bool {
-        true
-    }
     /// `Bat.isIgnoringBlockTriggers`.
     fn is_ignoring_block_triggers(&self) -> bool {
         self.species() == Species::Bat
@@ -1564,21 +1328,6 @@ impl Entity for Mob {
     }
     fn is_supported_by(&self, pos: BlockPos) -> bool {
         self.supporting == Some([pos.x, pos.y, pos.z])
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        if self.alive() {
-            ThunderHit::Mob
-        } else {
-            ThunderHit::Untouched
-        }
-    }
-    /// The kind's own size, as the strike has always read it.
-    fn thunder_bounds(&self) -> Aabb {
-        let (p, w) = (self.position, self.kind.width / 2.0);
-        Aabb::new(
-            Vec3::new(p.x - w, p.y, p.z - w),
-            Vec3::new(p.x + w, p.y + self.kind.height, p.z + w),
-        )
     }
 }
 
@@ -1646,9 +1395,6 @@ impl Entity for ItemEntity {
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::Item(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Item
     }
     fn ignores_explosion(&self, blast: &Blast) -> bool {
         blast.items_ignore
@@ -1727,9 +1473,6 @@ impl Entity for ExperienceOrb {
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::Orb(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Orb
     }
     fn explosion_eye_height(&self) -> f64 {
         f64::from(0.5f32 * 0.85f32)
@@ -1826,9 +1569,6 @@ impl Entity for Boat {
     fn selector_target(&self) -> Option<Target> {
         Some(Target::Boat(self.id))
     }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Vehicle
-    }
     fn ignores_explosion(&self, blast: &Blast) -> bool {
         blast.vehicles_ignore
     }
@@ -1908,9 +1648,6 @@ impl Entity for Minecart {
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::Cart(self.id))
-    }
-    fn thunder_hit(&self) -> ThunderHit {
-        ThunderHit::Vehicle
     }
     fn ignores_explosion(&self, blast: &Blast) -> bool {
         blast.vehicles_ignore
@@ -2040,9 +1777,6 @@ impl Entity for ArmorStand {
     /// Frost Walker while the stand is moving over open water.
     fn set_piston_on_ground(&mut self, on_ground: bool) {
         self.on_ground = on_ground;
-    }
-    fn is_living(&self) -> bool {
-        true
     }
     /// `ArmorStand.isIgnoringBlockTriggers`.
     fn is_ignoring_block_triggers(&self) -> bool {

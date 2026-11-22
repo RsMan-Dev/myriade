@@ -220,47 +220,6 @@ pub enum PipelineDrawError {
     CapacityExceeded,
 }
 
-/// What `owner` added to `pipelines` in `register_render_pipelines`, checked as it returns: a
-/// pipeline outside the mod's namespaces or whose id an earlier registration took is logged
-/// with the mod and dropped.
-pub(crate) fn validate_render_pipelines(
-    owner: &str,
-    previous: &[RenderPipeline],
-    pipelines: &mut Vec<RenderPipeline>,
-) {
-    validate_in(owner, previous, pipelines, &|namespace| {
-        crate::parts::owns_namespace(owner, namespace)
-    });
-}
-
-fn validate_in(
-    owner: &str,
-    previous: &[RenderPipeline],
-    pipelines: &mut Vec<RenderPipeline>,
-    owns: &dyn Fn(&str) -> bool,
-) {
-    let added = pipelines.split_off(previous.len().min(pipelines.len()));
-    for mut pipeline in added {
-        let refusal = if !owns(pipeline.id.namespace()) {
-            Some("its id is outside the mod's namespaces")
-        } else if pipelines.iter().any(|kept| kept.id == pipeline.id) {
-            Some("an earlier registration has that id")
-        } else {
-            None
-        };
-        match refusal {
-            Some(reason) => log::warn!(
-                "register_render_pipelines: mod {owner}: pipeline {} refused: {reason}",
-                pipeline.id
-            ),
-            None => {
-                pipeline.owner = owner.to_owned();
-                pipelines.push(pipeline);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

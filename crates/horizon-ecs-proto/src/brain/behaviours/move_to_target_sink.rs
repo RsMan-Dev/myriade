@@ -1,8 +1,6 @@
 //! `MoveToTargetSink`: walks to the walk target (a path asked for, made again when the target moves by more than 2 blocks), for
 //! its duration or until it is reached or the walk is over. `path` is present while it runs.
-use crate::IFloor as _;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::stop_nav;
 use crate::rules::move_to_target_sink as rules;
 

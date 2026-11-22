@@ -187,7 +187,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     ));
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
-    world.entity_mut(e).insert((Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id }));
+    world.entity_mut(e).insert(Item { stack, born: now, age_base: now, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
     set_resists(world, e, resists);
     crate::nbt::mark_saved(world, e, crate::species::lists::ITEM);
     world.resource_mut::<ItemIndex>().add(e, cell);

@@ -5,7 +5,7 @@ use super::act_phase::ActPhase;
 use crate::rules::warden_drop_invalid_target::cooldown_end;
 use super::suspect_anger::{self, Level, Suspects};
 use super::{params, Inst, Module};
-use crate::{cow::*, goals::*, targeting::{self, Target}};
+use crate::{cow::*, targeting::{self, Target}};
 use bevy_ecs::prelude::*;
 
 #[derive(Clone, Copy, Debug)]

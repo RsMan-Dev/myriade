@@ -7,7 +7,7 @@
 use super::*;
 use crate::cow::*;
 use crate::rules::ender_teleport::{random_offset, spot_box, spread_offset, towards_spot};
-use horizon_core::geometry::{Aabb, Vec3};
+use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

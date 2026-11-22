@@ -40,12 +40,6 @@ impl Game<'_> {
         ArrowShot { pickup: arrow.pickup, stack: arrow.pickup_item.clone(), fx, sound }
     }
 
-    /// The player `by` (the acting player or a guest) asks for the stuck arrows within `reach` of `feet`; the `PickedUp` events come
-    /// with `ecs_arrow_events`.
-    pub(in crate::game) fn ecs_arrow_pickup(&mut self, feet: [f64; 3], reach: f64, by: Who) {
-        self.ecs.arrow_pickup(feet, reach, by);
-    }
-
     /// The id a `Who` carries on the ECS and the mod API: a player's entity id, a mob's network id, 0 for none.
     pub(in crate::game) fn ecs_who_id(&mut self, who: Option<Who>) -> u32 {
         match who {

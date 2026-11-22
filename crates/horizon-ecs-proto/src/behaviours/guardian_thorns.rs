@@ -4,7 +4,6 @@
 //! The spikes' look (`SPIKES`, the client animation) is not ported here.
 use super::*;
 use crate::cow::*;
-use crate::goals::*;
 use crate::rules::guardian_thorns::{spikes_strike, THORNS};
 use crate::targeting::Who;
 

@@ -1,6 +1,5 @@
 //! `VillagerHostiles` (`hostile_sensor.rs`): the nearest visible creature whose type is in `types`, within that type's distance.
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::targeting::{info, Who};
 

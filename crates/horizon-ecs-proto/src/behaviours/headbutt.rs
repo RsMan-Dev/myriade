@@ -6,7 +6,7 @@ use super::*;
 use crate::hostile::Attack;
 use crate::rules::headbutt::throw_velocity;
 use crate::targeting::{Target, Who};
-use crate::{cow::*, goals::*};
+use crate::cow::*;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

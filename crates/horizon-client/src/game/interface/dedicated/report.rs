@@ -62,10 +62,6 @@ impl Recording {
         tick_profile::want_spans(tick_profile::SPANS_REPORT, true);
         Self::new(seconds, true)
     }
-    /// A recording beside a window: the calling thread's spans are on already (`spans::record_here`), the other threads' stay off.
-    pub(in crate::game) fn here(seconds: u32) -> Self {
-        Self::new(seconds, false)
-    }
     fn new(seconds: u32, all_threads: bool) -> Self {
         job_stats::enable(true);
         job_stats::take();

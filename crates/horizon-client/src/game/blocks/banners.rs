@@ -2,10 +2,7 @@
 //! banner item to the block when placed and back to the dropped item when
 //! broken (`copy_components` in the banner loot tables).
 use super::{Game, maps::MapBanner};
-use horizon_client::{
-    banner::{self, BannerLayer},
-    containers::BlockEntity,
-};
+use horizon_client::containers::BlockEntity;
 use horizon_core::nbt::Tag;
 
 #[cfg(test)]
@@ -13,14 +10,6 @@ use horizon_core::nbt::Tag;
 mod banner_nbt_tests;
 
 impl Game<'_> {
-    /// The pattern textures and tints of the banner at `pos`, bottom first.
-    pub(super) fn banner_layers_at(&self, pos: [i32; 3]) -> Vec<(String, u32)> {
-        let Some(BlockEntity::Banner(b)) = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
-        else {
-            return Vec::new();
-        };
-        layer_textures(&self.stations().banners, &b.layers)
-    }
     /// The banner at `pos` as a map marker source (`MapBanner.fromWorld`).
     pub(super) fn map_banner_at(&self, pos: [i32; 3]) -> Option<MapBanner> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -57,15 +46,4 @@ pub(super) fn map_banner(
             component => horizon_client::component::name_text(component).plain(),
         }),
     })
-}
-
-/// Texture names and tints of banner layers (`Sheets.getBannerSprite`).
-pub(super) fn layer_textures(
-    banners: &banner::Banners,
-    layers: &[BannerLayer],
-) -> Vec<(String, u32)> {
-    layers
-        .iter()
-        .map(|l| (banners.layer_texture(l), banner::dye_rgb(&l.color)))
-        .collect()
 }

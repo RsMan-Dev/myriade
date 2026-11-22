@@ -4,7 +4,7 @@ use common::*;
 use horizon_ecs_proto::behaviours::event_listen::Dancing;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
-use horizon_ecs_proto::goals::Entered;
+use horizon_ecs_proto::goals::{interact, Entered, Online, Player};
 use horizon_ecs_proto::items;
 
 #[test]

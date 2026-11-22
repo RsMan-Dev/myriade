@@ -23,7 +23,7 @@ fn with_mw() -> (&'static MobWorld<'static>, EcsWorld) {
 }
 
 fn online(h: &mut EcsWorld, id: u32, x: f64, y: f64, z: f64) {
-    h.set_player(Player { id, x, y, z, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None, killer: Default::default() });
+    h.set_player(Player { id, x, y, z, ..Default::default() }, PlayerFact { alive: true, targetable: true, hero: None });
 }
 
 #[test]

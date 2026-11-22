@@ -11,8 +11,7 @@
 use super::Game;
 use horizon_client::mobs::leash::{self, Holder};
 use horizon_core::geometry::Vec3;
-use horizon_core::nbt::Tag;
-use horizon_ecs_proto::{bridge::ids::id_of, leash::Holder as EcsHolder};
+use horizon_ecs_proto::leash::Holder as EcsHolder;
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.
 const WIDTH: f32 = 1.375;
@@ -44,17 +43,6 @@ impl Game<'_> {
         }
     }
 
-    /// The `leash` tag of the boat `id` about to be saved: the ECS's lead, under the vanilla key.
-    pub(super) fn write_boat_leash(&mut self, tag: &mut Tag, id: u32) {
-        let Some(e) = self.ecs.entity_of(id) else {
-            return;
-        };
-        if let Tag::Compound(map) = tag {
-            map.remove(&"leash".into());
-        }
-        self.ecs.leash_save(e, tag);
-    }
-
     /// Whether the acting player holds the lead of boat `id`.
     fn boat_led_by_player(&self, id: u32) -> bool {
         self.acting_player_uuid_id()
@@ -75,18 +63,6 @@ impl Game<'_> {
                     )
             })
             .map(|(id, _)| *id)
-    }
-
-    /// The fence post of the leash knot with this UUID (`ServerLevel.getEntity`):
-    /// a summoned or loaded `minecraft:leash_knot`, which sits on its block.
-    pub(super) fn knot_by_uuid(&self, uuid: [i32; 4]) -> Option<[i32; 3]> {
-        self.others
-            .iter()
-            .find(|o| o.kind == "minecraft:leash_knot" && self.persist.uuid_of(o.id) == Some(uuid))
-            .map(|o| {
-                let block = horizon_core::position::BlockPos::containing(o.position);
-                [block.x, block.y, block.z]
-            })
     }
 
     /// The boats on the acting player's lead within 16 blocks of a point
@@ -166,89 +142,6 @@ impl Game<'_> {
         }
     }
 
-    /// `Entity.interact`'s lead part for the boat `id`; whether it took
-    /// the click.
-    pub(super) fn interact_boat_leash(&mut self, id: u32) -> bool {
-        let item = self.held().map(|s| s.item.to_string());
-        let Some(c) = self.boat_centre_of(id) else {
-            return false;
-        };
-        let at = [c.x, c.y, c.z];
-        // The sneak branch: the player's mobs and boats on leads are re-tied
-        // to this boat.
-        let sneaking = self.sneak_held;
-        if sneaking
-            && self.tie_player_leads(glam::DVec3::new(c.x, c.y, c.z), Holder::Boat(id), None)
-        {
-            self.lead_game_event("minecraft:entity_action", at);
-            self.lead_sound("tied", at);
-            return true;
-        }
-        // Entity.shearOffAllLeashConnections: its own lead and every one
-        // hanging on it.
-        if item.as_deref() == Some("minecraft:shears") {
-            let held_mobs: Vec<u32> = self
-                .ecs_holder(Holder::Boat(id), None)
-                .map_or_else(Vec::new, |h| self.ecs_leashed_ids(h))
-                .into_iter()
-                .filter(|&m| self.ecs.boat_status(m).is_none())
-                .collect();
-            let mut held_boats = self.boats_on(Holder::Boat(id));
-            if self.ecs_leash_holder(id).is_some() {
-                held_boats.push(id);
-            }
-            if !held_mobs.is_empty() || !held_boats.is_empty() {
-                for m in held_mobs {
-                    self.break_leash(m, true, false);
-                }
-                self.drop_boat_leashes(&held_boats);
-                self.lead_game_event("minecraft:shear", at);
-                self.audio
-                    .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
-                self.damage_held_tool();
-                return true;
-            }
-        }
-        if self.boat_led_by_player(id) {
-            // hasInfiniteMaterials: removeLeash, else dropLeash.
-            let drop = !self.creative;
-            self.release_boat_leash(id, drop);
-            self.lead_game_event("minecraft:entity_interact", at);
-            self.lead_sound("untied", at);
-            return true;
-        }
-        let taken_by_player = matches!(self.ecs_leash_holder(id), Some(EcsHolder::Player(_)));
-        if item.as_deref() == Some("minecraft:lead") && !taken_by_player {
-            let player = self.player_center();
-            if self.boat_can_attach(id, player) {
-                self.release_boat_leash(id, true);
-                let player_uuid = self.acting_player_uuid();
-                if !self.ecs_take_lead(id, Holder::Player, Some(player_uuid)) {
-                    return true;
-                }
-                self.lead_sound("tied", at);
-                // The lead is always used up.
-                if let Some(stack) = self.held_mut().as_mut() {
-                    stack.count -= 1;
-                    if stack.count == 0 {
-                        *self.held_mut() = None;
-                    }
-                }
-                return true;
-            }
-        }
-        false
-    }
-
-    /// The leads on boats that hang on a player or a mob, for the entity
-    /// tracker: the holder's entity id (`ClientboundSetEntityLinkPacket`).
-    pub(super) fn boat_leash_link(&self, id: u32) -> Option<i32> {
-        match self.ecs_leash_holder(id)? {
-            EcsHolder::Player(p) => Some(p as i32),
-            EcsHolder::Entity(e) => self.ecs.world().and_then(|w| id_of(w, e)).map(|h| h as i32),
-            EcsHolder::Knot(p) => self.knot_ids.get(&p).map(|&k| k as i32),
-        }
-    }
 }
 
 #[cfg(test)]

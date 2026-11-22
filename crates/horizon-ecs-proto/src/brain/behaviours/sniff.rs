@@ -9,10 +9,8 @@
 use crate::behaviours::breed::Love;
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::{is_occupied, OCC_MOUNTED};
 use crate::rules::sniff as rules;
-use horizon_client_lib::blocks::Fluid;
 
 pub static SNIFFER_DIGGING: MemKey = MemKey::new("minecraft:sniffer_digging", Shape::Bool);
 pub static SNIFFER_SNIFFING_TARGET: MemKey = MemKey::new("minecraft:sniffer_sniffing_target", Shape::Block);

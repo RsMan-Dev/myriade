@@ -8,20 +8,16 @@
 //! (`entity_sections.rs`) while its tick is still running: a round keeps its entities while
 //! either hook is listened to.
 use super::Game;
-use horizon_client::mobs::MobType;
-use std::sync::Arc;
 
 /// The type of an entity in a round, as the hooks name it.
 pub(super) enum TickKind {
     Fixed(&'static str),
-    Mob(Arc<MobType>),
 }
 
 impl TickKind {
     fn id(&self) -> &str {
         match self {
             Self::Fixed(id) => id,
-            Self::Mob(kind) => &kind.id,
         }
     }
 }

@@ -49,16 +49,6 @@ impl Game<'_> {
         }
         self.set_event_ai_target(mob, Some(target), player);
     }
-    /// `PiglinAi.isBarterCurrency`: vanilla's answer (`BARTERING_ITEM`), then the
-    /// parts of the stack's item (`ItemPart::is_piglin_currency`). An item with no
-    /// part for it costs one table lookup.
-    pub(in crate::game) fn piglin_currency(&self, stack: &ItemStack) -> bool {
-        let mut currency = &*stack.item == BARTERING_ITEM;
-        if mod_api::__private::item_listens(mod_api::HookId::IsPiglinCurrency, &stack.item) {
-            self.native_is_piglin_currency(stack, &mut currency);
-        }
-        currency
-    }
     /// `PiglinAi.isWearingSafeArmor` for the acting player: a stack in an armour
     /// slot (feet, legs, chest, head, `EquipmentSlotGroup.ARMOR`'s order) in
     /// `#minecraft:piglin_safe_armor`, once the parts of its item answered

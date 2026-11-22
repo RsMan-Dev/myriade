@@ -6,7 +6,7 @@ use super::*;
 use crate::behaviours::avoid_entity::Avoiding;
 use crate::rules::forget_target::strength_passes;
 use crate::targeting::clear_target;
-use crate::{cow::*, goals::*};
+use crate::goals::*;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Params {

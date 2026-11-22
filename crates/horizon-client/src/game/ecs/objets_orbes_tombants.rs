@@ -47,9 +47,6 @@ impl Game<'_> {
         self.ecs.set_velocity(e, Vec3::new(velocity[0], velocity[1], velocity[2]));
         Some(self.ecs_id_of(e))
     }
-    pub(in crate::game) fn ecs_orb(&mut self, amount: u32, at: [f64; 3]) -> Option<u32> {
-        self.ecs_orb_moving(amount, at, [0.0; 3])
-    }
     /// `Player.drop` (`Entity.spawnAtLocation` when `hook` is false: a death's scatter, which `item_toss` does not hear). The thrower
     /// is kept on the stack; a mod's cancel removes it again.
     pub(in crate::game) fn ecs_toss(&mut self, thrown: ItemStack, at: [f64; 3], v: [f64; 3], thrower: Option<[i32; 4]>, hook: bool) -> Option<u32> {

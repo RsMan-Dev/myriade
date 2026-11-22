@@ -6,17 +6,12 @@
 use super::{Dim, Game};
 use horizon_client::{
     lan::conn::PlayerSender,
-    lod_net::{CHANNEL, Delivery, Job, Verdict, refusal, reply_id},
+    lod_net::{CHANNEL, Job, Verdict},
 };
 use horizon_protocol::{
     packets::{configuration::CustomPayload, play},
     text::translatable,
 };
-use std::sync::atomic::Ordering;
-
-/// Bytes a player's connection may have waiting before far terrain holds its
-/// replies back: a client that reads slowly gets the game's packets first.
-const BACKLOG: usize = 1 << 20;
 
 fn send(sender: &PlayerSender, data: Vec<u8>) {
     let packet = play::Clientbound::CustomPayload(CustomPayload {
@@ -79,31 +74,5 @@ impl Game<'_> {
                 translatable("multiplayer.disconnect.invalid_packet", &[]),
             ),
         }
-    }
-
-    /// The tiles the far terrain thread finished go to their players, once
-    /// their connections have room.
-    pub(super) fn flush_far_terrain(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        let Some(far) = host.far.as_mut() else {
-            return;
-        };
-        let guests = &host.hub.guests;
-        far.deliver_in_level(|conn, level, data| {
-            let Some(guest) = guests.iter().find(|g| g.conn == conn) else {
-                return Delivery::Gone;
-            };
-            if guest.sender.pending.load(Ordering::Relaxed) > BACKLOG {
-                return Delivery::Busy;
-            }
-            if guest.dimension == level && !host.hub.terrain_protected(conn, level) {
-                send(&guest.sender, std::mem::take(data));
-            } else if let Some(id) = reply_id(data) {
-                send(&guest.sender, refusal(id));
-            }
-            Delivery::Sent
-        });
     }
 }

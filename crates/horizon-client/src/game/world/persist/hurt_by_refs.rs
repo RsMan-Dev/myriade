@@ -48,23 +48,4 @@ impl Game<'_> {
             }
         }
     }
-    /// `EntityReference.getEntity` for `last_hurt_by_mob` read back from a save:
-    /// a mob whose reference names an entity now in the level (a mob, or the
-    /// player) takes it as `last_hurt_by`, and `baseTick` ends it as it does
-    /// any other. One naming nothing here stays a bare UUID, still saved. A
-    /// reference to the mob itself resolves like any other (`getEntity` looks
-    /// up the UUID and does not exclude the holder).
-    pub(in crate::game) fn resolve_last_hurt_by_refs(&mut self) {
-        let resolved: Vec<(usize, Who)> = self
-            .remote_entities
-            .iter()
-            .enumerate()
-            .filter_map(|(i, m)| Some((i, self.who_by_uuid(m.ai.last_hurt_by_ref?)?)))
-            .collect();
-        for (i, who) in resolved {
-            let ai = &mut self.remote_entities[i].ai;
-            ai.last_hurt_by = Some(who);
-            ai.last_hurt_by_ref = None;
-        }
-    }
 }

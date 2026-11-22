@@ -1,12 +1,8 @@
 //! Brushing suspicious sand and gravel: `BrushItem.onUseTick` and
 //! `BrushableBlockEntity`. The block's loot table stays in its saved block
 //! entity (like a decorated pot's) until the first counted stroke rolls it.
-use super::{Game, Hit, decorated_pot, view_vector};
-use horizon_client::{
-    containers::BlockEntity,
-    particles::{ParticleOptions, ParticleType},
-    save,
-};
+use super::{Game, Hit, decorated_pot};
+use horizon_client::{containers::BlockEntity, save};
 use horizon_core::random::RandomSource;
 use std::collections::HashMap;
 

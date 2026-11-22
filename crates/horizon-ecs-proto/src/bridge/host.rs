@@ -83,6 +83,7 @@ impl EcsWorld {
         let mut world = assemble::assemble(level);
         world.remove_resource::<Level>();
         zone::enable(&mut world, setup.simulation_radius);
+        world.init_resource::<view::Modified>();
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
         EcsWorld { world, schedule: crate::cow::schedule(), occ, half: HALF, spawned: setup.seed as u64, chunks: HashMap::new() }
     }

@@ -108,37 +108,6 @@ impl Game<'_> {
             }
         }
     }
-
-    /// `BlockState.isViewBlocking(level, pos, nearPlaneBox)`: stairs and
-    /// slabs (`NEAR_PLANE_INTERSECTS_OUTLINE`) block when the near plane
-    /// touches a box of their shape, snow only at eight layers, anything else
-    /// when it is suffocating.
-    pub(super) fn state_view_blocking(
-        &self,
-        state: horizon_world::registry::BlockStateId,
-        pos: [i32; 3],
-        near_plane: Aabb,
-    ) -> bool {
-        let name = self.res.facts().get(state).name.as_ref();
-        if name == "minecraft:snow" {
-            return self
-                .pack
-                .assets
-                .registry
-                .state(state)
-                .and_then(|s| s.properties.get("layers"))
-                .is_some_and(|l| l.parse::<i32>().is_ok_and(|l| l >= 8));
-        }
-        if (name.ends_with("_stairs") || name.ends_with("_slab"))
-            && name != "minecraft:petrified_oak_slab"
-        {
-            return self
-                .outline_boxes(pos)
-                .iter()
-                .any(|b| aabb(([b[0], b[1], b[2]], [b[3], b[4], b[5]])).intersects(near_plane));
-        }
-        self.state_suffocating(state)
-    }
 }
 
 impl Game<'_> {

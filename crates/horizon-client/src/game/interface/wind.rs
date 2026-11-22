@@ -4,13 +4,12 @@
 use super::Game;
 use super::entity::{Blast, Entity as _, for_each_entity_mut};
 use horizon_client::advancements::EntityView;
-use horizon_client::chunk::LevelShape;
 use horizon_client::join_seq::Joined as _;
 use horizon_client::{
     Result,
     items::ItemStack,
-    mobs::{Damage, DamageKind, Species, Who},
-    projectiles::{Hit, Projectile, ProjectileKind},
+    mobs::Who,
+    projectiles::{Projectile, ProjectileKind},
 };
 use horizon_core::{
     geometry::{Direction, Vec3},
@@ -19,40 +18,6 @@ use horizon_core::{
 };
 use horizon_world::level::PlayerContext;
 use std::collections::BTreeSet;
-
-/// `WindCharge.RADIUS` and the knockback multiplier of its damage calculator.
-const PLAYER_RADIUS: f32 = 1.2;
-const PLAYER_KNOCKBACK: f32 = 1.22;
-/// `BreezeWindCharge.RADIUS`.
-const BREEZE_RADIUS: f32 = 3.0;
-
-/// The wind charges that met a boat or a minecart in a tick's projectile pass,
-/// as they were before it: one whose vehicle an earlier charge of the tick
-/// breaks ticks again without it (`Game::broken_vehicle_retick`).
-pub(super) struct VehicleWinds {
-    before: Vec<Projectile>,
-}
-impl VehicleWinds {
-    /// `p` before its tick, when it may come to need a second one.
-    pub(super) fn before(&self, p: &Projectile) -> Option<Projectile> {
-        let wind = matches!(
-            p.kind,
-            ProjectileKind::WindCharge | ProjectileKind::BreezeWindCharge
-        );
-        (wind && p.guest.is_none()).then(|| p.clone())
-    }
-    /// Keeps `before` when the tick's `hit` is a boat or a minecart.
-    pub(super) fn met(&mut self, game: &Game<'_>, before: Option<Projectile>, hit: Hit) {
-        if let Hit::Entity {
-            who: Who::Mob(id), ..
-        } = hit
-            && game.ecs.is_vehicle(id)
-            && let Some(before) = before
-        {
-            self.before.push(before);
-        }
-    }
-}
 
 /// A burst `wind_burst` puts off until a guest's turn is over.
 pub(super) struct Burst {
@@ -90,25 +55,6 @@ pub(super) struct BurstCause {
 impl Source {
     pub(super) fn with_cause(self, cause: BurstCause) -> Self {
         Self { cause, ..self }
-    }
-    /// `WindCharge.explode` and `BreezeWindCharge.explode`: the charge itself
-    /// is the source, and a breeze's charge's indirect source is its breeze.
-    pub(super) fn charge(breeze: bool, silent: bool) -> Self {
-        Self {
-            sound: if breeze {
-                BREEZE_BURST
-            } else {
-                WIND_CHARGE_BURST
-            },
-            breeze,
-            wind_charge: !breeze,
-            mob: breeze,
-            silent,
-            cause: BurstCause {
-                source: None,
-                owner: None,
-            },
-        }
     }
     /// `WindChargedMobEffect.onMobRemoved`: the dying mob is the source, so it
     /// makes the breeze's sound while its blocks react whatever mob griefing
@@ -149,27 +95,6 @@ fn push_waits_for_tick<T: PartialOrd>(
     charge: Option<T>,
 ) -> bool {
     ticks_after_projectiles && charge.is_some_and(|c| joined < c)
-}
-/// `Projectile.deflect(REVERSE, entity, owner, false, 1.0)` of a breeze's
-/// deflection, through the one engine path (`Projectile::deflect`). The turn's
-/// float comes from the projectile's random. The owner stays; a hurting
-/// projectile's acceleration power halves (`onDeflection`).
-pub(super) fn reverse(p: &mut Projectile) {
-    let owner = (p.owner, p.owner_uuid, p.guest);
-    p.deflect(
-        horizon_client::projectiles::Turn::Reverse,
-        [1.0; 3],
-        owner,
-        false,
-    );
-}
-/// `AbstractWindCharge.tick`: a charge whose block Y is above the level's
-/// `getMaxY() + 30` bursts where it is, whatever it would have met. `shape`
-/// is the level's own height, not the chunks' widened column
-/// (`LevelShape::max_y` is `getMaxY() + 1`), and `getBlockY` is
-/// `floor(y)`, so `floor(y) > getMaxY() + 30` is `y >= max_y + 30`.
-pub(super) fn above_the_top(shape: LevelShape, y: f64) -> bool {
-    y >= f64::from(shape.max_y() + 30)
 }
 /// Whether a block reacts to a wind charge's burst by being used.
 fn triggers(name: &str) -> bool {
@@ -251,172 +176,6 @@ impl Game<'_> {
             }
         }
         Ok(true)
-    }
-    /// A wind charge meeting an entity or a block (or flying too high).
-    pub(super) fn wind_charge_hit(&mut self, p: &Projectile, hit: Hit) -> Result<()> {
-        let breeze = p.kind == ProjectileKind::BreezeWindCharge;
-        let (radius, knockback) = if breeze {
-            (BREEZE_RADIUS, 1.0)
-        } else {
-            (PLAYER_RADIUS, PLAYER_KNOCKBACK)
-        };
-        let center = match hit {
-            Hit::Entity { who, at } => {
-                self.wind_charge_damage(p, who);
-                [at.x, at.y, at.z]
-            }
-            // onHitBlock: a quarter of a block out along the face.
-            Hit::Block { at, face, .. } => [
-                at.x + f64::from(face[0]) * 0.25,
-                at.y + f64::from(face[1]) * 0.25,
-                at.z + f64::from(face[2]) * 0.25,
-            ],
-            Hit::None => return Ok(()),
-        };
-        // The charge owner is the indirect source of the explosion.
-        let owner = match p.owner {
-            Some(Who::Player) => Some(self.own_entity_id() as u32),
-            Some(Who::Mob(id)) => self.remote_entities.iter().any(|m| m.id == id).then_some(id),
-            None => None,
-        };
-        let cause = BurstCause {
-            source: Some(p.id),
-            owner,
-        };
-        self.creatures.wind_source = Some(p.join_seq());
-        let silent = self.entity_silent(p.id);
-        let burst = self.wind_burst(
-            center,
-            radius,
-            knockback,
-            Source {
-                cause,
-                ..Source::charge(breeze, silent)
-            },
-        );
-        self.creatures.wind_source = None;
-        burst
-    }
-    /// The boats and minecarts of this tick's projectile pass.
-    pub(super) fn vehicle_winds(&self) -> VehicleWinds {
-        VehicleWinds { before: Vec::new() }
-    }
-    /// The hit to resolve for `p`. Vanilla ticks its entities one after the
-    /// other, so a wind charge never meets a boat or a minecart that an earlier
-    /// charge of the same tick broke (`Entity.canBeHitByProjectile`: alive):
-    /// it flies on to the next one in its way, or past. Here the tick's hits
-    /// were all found first, so such a charge (`winds` holds it as it was
-    /// before the tick) ticks again now, without the broken vehicle. None: it
-    /// met nothing this time and flies on.
-    pub(super) fn broken_vehicle_retick(
-        &mut self,
-        p: Projectile,
-        hit: Hit,
-        winds: &mut VehicleWinds,
-    ) -> Option<(Projectile, Hit)> {
-        let Hit::Entity {
-            who: Who::Mob(id), ..
-        } = hit
-        else {
-            return Some((p, hit));
-        };
-        let Some(k) = winds.before.iter().position(|w| w.id == p.id) else {
-            return Some((p, hit));
-        };
-        let mut again = winds.before.swap_remove(k);
-        if self.ecs.is_vehicle(id) {
-            return Some((p, hit));
-        }
-        let (a, b) = (again.previous, again.position.add_vector(again.velocity));
-        let lo = Vec3::new(a.x.min(b.x), a.y.min(b.y), a.z.min(b.z));
-        let hi = Vec3::new(a.x.max(b.x), a.y.max(b.y), a.z.max(b.z));
-        let mut targets = self.projectile_targets(lo, hi);
-        if again.owner != Some(Who::Player) || super::lan_pvp::meets_players(&again.kind) {
-            targets.extend(self.lan_projectile_targets());
-        }
-        let border = Some(self.border.bounds());
-        let (mut keep, mut hit) = {
-            let w = self.mob_world_base(&[]);
-            again.tick(&super::creatures::ProjWorld {
-                w: &w,
-                targets: &targets,
-                border,
-            })
-        };
-        // The first run of this tick already gave these.
-        again.take_shoot_event();
-        again.bubble_surfaces.clear();
-        // AbstractWindCharge.tick: above the world's top it bursts.
-        if keep && above_the_top(self.world.shape, again.position.y) {
-            keep = false;
-            hit = Hit::Block {
-                pos: [0; 3],
-                at: again.position,
-                face: [0; 3],
-            };
-        }
-        if keep {
-            self.add_projectile(again.clone());
-        }
-        (hit != Hit::None).then_some((again, hit))
-    }
-    /// `AbstractWindCharge.onHitEntity`: one point of damage.
-    fn wind_charge_damage(&mut self, p: &Projectile, who: Who) {
-        let owner_breeze = matches!(p.owner, Some(Who::Mob(id))
-            if self.remote_entities.iter().any(|m| m.id == id && m.species() == Species::Breeze));
-        match who {
-            Who::Player => {
-                self.mob_hits_player_kind(
-                    1.0,
-                    [p.previous.x, p.previous.y, p.previous.z],
-                    "minecraft:wind_charge",
-                );
-            }
-            // An ender dragon part takes the point of damage too; a crystal is
-            // not hit (`AbstractWindCharge.canHitEntity`).
-            Who::Mob(id) if id >= super::dragon::SPECIAL => {
-                if id < super::dragon::SPECIAL + 8 {
-                    self.hit_special(
-                        id,
-                        1.0,
-                        p.owner == Some(Who::Player),
-                        horizon_client::mobs::DamageKind::WindCharge,
-                        Some(p),
-                    );
-                }
-            }
-            // A boat or a minecart (`VehicleEntity.hurtServer`) is hurt by the ECS.
-            Who::Mob(id) if !self.remote_entities.iter().any(|m| m.id == id) => {}
-            Who::Mob(id) => {
-                // AbstractWindCharge.onHitEntity: `damageSources().windCharge`
-                // (`minecraft:wind_charge`, whose message id is `mob`).
-                let source = Damage {
-                    kind: DamageKind::WindCharge,
-                    attacker: p.owner,
-                    from: Some([p.previous.x, p.previous.y, p.previous.z]),
-                    attacker_species: owner_breeze.then_some(Species::Breeze),
-                };
-                if let Some(m) = self.remote_entities.iter_mut().find(|m| m.id == id) {
-                    // Breeze.isInvulnerableTo: its own kind's charges.
-                    if owner_breeze && m.species() == Species::Breeze {
-                        return;
-                    }
-                    // Refused before the hurt, so the kill is not credited
-                    // either; the burst of `wind_charge_hit` still goes off.
-                    if horizon_client::mobs::wither::armor_refuses(m, &p.kind) {
-                        return;
-                    }
-                    m.damage(
-                        crate::game::entity::damage_level_of!(self, scoped),
-                        1.0,
-                        source,
-                    );
-                }
-                if p.owner == Some(Who::Player) {
-                    self.remember_mob_player_credit(id);
-                }
-            }
-        }
     }
     /// The exploded positions: rays through everything but the blocks that
     /// stop wind (`blocks_wind_charge_explosions`).

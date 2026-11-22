@@ -6,16 +6,8 @@
 //! objective displayed below names. Other players' names (on a LAN host
 //! or a server) show whenever `LivingEntityRenderer.shouldShowName` allows,
 //! and the player's own in third person with the `ownNameTag` extra.
-use super::{Game, view_vector};
-use horizon_client::{
-    mobs::{Mob, Who},
-    save::uuid_text,
-    scoreboard as sb,
-    text::Text,
-};
-
-/// The world size of one text pixel in a name tag: `Matrix4f.scale(0.025F, -0.025F, 0.025F)`.
-pub(super) const NAME_TAG_UNIT: f32 = 0.025;
+use super::Game;
+use horizon_client::mobs::{Mob, Who};
 
 impl Game<'_> {
     /// A named name tag names the mob under the crosshair.

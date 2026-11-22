@@ -482,20 +482,6 @@ impl Game<'_> {
         self.notify_block_clients((pos[0], pos[1], pos[2]));
         true
     }
-    /// `LevelRenderer.destroyBlockProgress` for this client's own view only.
-    pub(super) fn level_set_client_break_progress(
-        &mut self,
-        level: LevelRef,
-        breaker: i32,
-        pos: [i32; 3],
-        progress: i32,
-    ) -> bool {
-        if self.is_logical_server() || self.native_level_read_world(level).is_none() {
-            return false;
-        }
-        self.destroy_block_progress(breaker, pos, progress);
-        true
-    }
     /// `ItemStack.getDestroySpeed` of `tool` on the block at `pos`.
     pub(super) fn level_block_break_speed(
         &self,

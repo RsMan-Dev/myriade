@@ -408,18 +408,6 @@ impl Game<'_> {
         }
     }
 
-    /// `SignText.hasEditableText` of the side the player faces: if every line is
-    /// plain text, the editor rewrites nothing a player would miss.
-    pub(in crate::game) fn sign_side_has_editable_text(&self, key: (i32, i32, i32), front: bool) -> bool {
-        match self.world.block_entities.get(&key) {
-            Some(BlockEntity::Sign(sign)) => {
-                let side = if front { &sign.front } else { &sign.back };
-                side.has_editable_text()
-            }
-            _ => false,
-        }
-    }
-
     /// Run a sign's `run_command` line as the prefixed command vanilla runs
     /// it as: a leading slash is allowed, errors are not reported (the NULL
     /// source).
@@ -456,26 +444,6 @@ impl Game<'_> {
         horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid())
     }
 
-    /// `ServerPlayer.openTextEdit` for the guest whose action opened a sign:
-    /// the block, then the editor, on its client, and the guest may write on it.
-    pub(in crate::game) fn lan_open_sign_editor(&mut self, conn: u32, edit_pos: (i32, i32, i32), front: bool) {
-        let pos = [edit_pos.0, edit_pos.1, edit_pos.2];
-        if let Some(host) = self.lan.as_mut() {
-            if !host.hub.terrain_metadata_visible(conn, &self.world, pos) {
-                // The reservation taken for the guest must not outlive the denied editor.
-                self.world.block_entities.set_sign_editor(edit_pos, None);
-                return;
-            }
-            host.hub.send_block_correction(conn, &self.world, pos);
-            host.hub.send_to(
-                conn,
-                &C::OpenSignEditor(play::OpenSignEditor {
-                    pos,
-                    front,
-                }),
-            );
-        }
-    }
 }
 
 impl Game<'_> {

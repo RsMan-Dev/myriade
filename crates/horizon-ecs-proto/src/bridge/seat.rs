@@ -2,7 +2,7 @@
 //! may run vanilla's code take the `MobWorld` the same way `mount` does.
 use crate::bridge::host::EcsWorld;
 use crate::bridge::ids;
-use crate::seat::{self, SeatEvents};
+use crate::seat;
 use bevy_ecs::entity::Entity;
 use horizon_client_lib::mobs::MobWorld;
 

@@ -4,7 +4,7 @@
 //! carries nothing. The goal ticks once, at its start (as the `Mob`, which has no `canContinueToUse`): the block goes
 //! (air through `BlockChanges`), the block is carried, and the drop goal is armed.
 use super::*;
-use crate::{blocks, cow::*, goals::*};
+use crate::{cow::*, goals::*};
 use crate::rules::take_block::{reach_line, take_cell, take_wait};
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;

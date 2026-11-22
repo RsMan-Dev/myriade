@@ -4,12 +4,12 @@
 //! `ServerboundSetCommandMinecartPacket` with `handleSetCommandMinecart`.
 //! The state lives in the ECS cart (`cart_command`, `set_cart_command`), read
 //! as a copy and written back by id.
-use super::{Game, command_blocks::CommandBlockScreen, commands::{Target, execute::Source}};
+use super::{Game, commands::{Target, execute::Source}};
 use horizon_client::{
-    command_block::{CommandBlock, Mode},
+    command_block::CommandBlock,
     text::Text,
 };
-use horizon_protocol::packets::play::{self, Serverbound as S};
+use horizon_protocol::packets::play;
 
 impl Game<'_> {
     fn edit_command_cart<R>(&mut self, id: u32, edit: impl FnOnce(&mut CommandBlock) -> R) -> Option<R> {
@@ -114,32 +114,6 @@ impl Game<'_> {
         }
     }
 
-    /// `LocalPlayer.openMinecartCommandBlock`: the editor over the cart's
-    /// command (`MinecartCommandBlockEditScreen`).
-    pub(super) fn open_cart_command_block(&mut self, id: u32) {
-        let Some(block) = self.ecs.cart_command(id) else {
-            return;
-        };
-    }
-    /// The edit screen's Done for a cart (`populateAndSendPacket`, then
-    /// `onDone` clears the last output of a cart that no longer tracks it): a
-    /// server's client sends the packet, the window's own world applies it.
-    pub(super) fn set_command_minecart(&mut self, id: u32, s: &CommandBlockScreen) {
-        if !self.can_use_game_master_blocks() {
-            self.system_message(Text::translate("advMode.notAllowed", &[]));
-            return;
-        }
-        let command = s.command.clone();
-        let track_output = s.track_output;
-        // The output button set the cart's own flag as it was pressed.
-        self.edit_command_cart(id, |c| c.track_output = track_output);
-        {
-            self.apply_cart_command(id, command, track_output);
-        }
-        if !track_output {
-            self.edit_command_cart(id, |c| c.last_output = None);
-        }
-    }
     /// `ServerGamePacketListenerImpl.handleSetCommandMinecart` for a guest.
     pub(super) fn lan_set_command_minecart(&mut self, conn: u32, p: play::SetCommandMinecart) {
         let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {

@@ -2,7 +2,7 @@
 //! restent ensemble ; l'enfant naît à `now + 275 + rand(50)`, les parents se reposent 6000 ticks, l'enfant grandit en 24000.
 //! L'enfant reprend le lit le plus proche d'un parent (48 blocs, lit libre) ; des cœurs apparaissent (`events.host`).
 use crate::behaviours::bed::{bed_taken, NEAREST_BED};
-use crate::behaviours::{food_inventory, food_stock};
+use crate::behaviours::food_stock;
 use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::cow::*;
@@ -25,8 +25,6 @@ pub static BIRTH_DUE: MemKey = MemKey::new("horizon:birth_due", Shape::Unit);
 
 pub const REST: u64 = 6000;
 pub const GROWN: u64 = 24000;
-/// `villager.findNearestBed` puis rayon de recherche du lit de l'enfant (`nearest_poi`, 48 blocs).
-const BED_RANGE: f64 = 48.0;
 
 /// `MakeLove.start` : la naissance est planifiée (souvenir `BIRTH_DUE`, expire à l'échéance).
 pub fn start(w: &mut World, e: Entity, partner: Entity) {

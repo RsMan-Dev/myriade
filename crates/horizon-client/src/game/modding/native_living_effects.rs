@@ -230,44 +230,6 @@ impl Game<'_> {
         }
     }
 
-    /// `LivingEntity.getEffectBlendFactor(effect, partialTick)` on a client:
-    /// how far the effect has faded in, from 0 to 1, between the last tick
-    /// and the next at `partial`. Darkness fades in and out over 22 ticks and
-    /// nausea in over 150 and out over 20 (`MobEffect.setBlendDuration`), the
-    /// fades the fog, lightmap and screen spin draw. Other effects start at
-    /// 0 after a blended add and interpolate to their post-countdown target
-    /// during each client tick: 1 while active, 0 once expired. An unblended
-    /// add starts at its target immediately; an update preserves the old blend.
-    /// `partial` is not clamped. The registration-slot key is resolved at load.
-    /// 0 when the entity lacks the effect. None before effect resolution, for a stale
-    /// handle, or an entity other than the local player: the client keeps no
-    /// other entity's effects.
-    pub(super) fn living_effect_blend_factor(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-        partial: f32,
-    ) -> Option<f32> {
-        let def = mod_api::__private::effect_index(effect)
-            .and_then(horizon_client_core::potions::effect_by_index)?;
-        let Target::Player = self.native_living_read_target(living)? else {
-            return None;
-        };
-        let Some(e) = self.potions.effects.get_registered(def.index) else {
-            return Some(0.0);
-        };
-        Some(match def.id {
-            "darkness" => self.darkness_blend(partial),
-            "nausea" => 0.0,
-            _ => {
-                let (previous, current) = e.client_blend;
-                let previous = u8::from(previous) as f32;
-                let current = u8::from(current) as f32;
-                previous + partial * (current - previous)
-            }
-        })
-    }
-
     /// `LivingEntity.removeEffect(effect)` the way its running out goes
     /// (`LivingEntity.tickEffects` drops it): what the effect gave the
     /// player goes with it — the attribute modifiers recompute

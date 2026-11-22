@@ -18,10 +18,7 @@ impl Game<'_> {
         let (top, sources) = if pack_type == PackType::ClientResources {
             // A server has no client resource stack to read; only a client
             // selects the asset packs this asks about.
-            {
-                return None;
-            }
-            ("assets", vec![&self.pack.source])
+            return None;
         } else {
             let mut sources = Vec::new();
             if !self.cmds.vanilla_disabled {

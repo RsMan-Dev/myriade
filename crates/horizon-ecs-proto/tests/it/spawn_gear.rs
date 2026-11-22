@@ -9,6 +9,13 @@ use horizon_ecs_proto::spawn_finalize::{finalize, kind_of};
 use horizon_ecs_proto::spawn_gear::Halloween;
 use horizon_ecs_proto::spawn_reason::SpawnReason;
 
+fn skip() -> bool {
+    !have_data() || wrong_species(&["minecraft:zombie"])
+}
+fn species_named(name: &str) -> Species {
+    *species_table().0.iter().find(|s| s.name == name).unwrap_or_else(|| panic!("{name}"))
+}
+
 fn geared(h: &mut Herd, reason: SpawnReason, special: f32, seeds: u64) -> (usize, usize) {
     let (mut worn, mut armed) = (0, 0);
     for seed in 0..seeds {

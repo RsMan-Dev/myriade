@@ -45,14 +45,6 @@ impl Game<'_> {
             });
         }
     }
-    /// `sync_mob_death_protection` for the ECS entity `id`: its hands are read from its components, not from a mob.
-    pub(in crate::game) fn hand_protection_ecs(&self, id: u32) -> Option<horizon_client::mobs::HandProtection> {
-        let items = self.items();
-        let of = |s: Option<ItemStack>| s.and_then(|s| s.death_protection(items.get(&s.item)).map(<[_]>::to_vec));
-        let off = self.ecs_item(id, horizon_ecs_proto::goals::Slot::Off).map(|n| ItemStack::new(&n, 1));
-        let main = self.ecs_main_hand(id);
-        (main.is_some() || off.is_some()).then(|| horizon_client::mobs::HandProtection { main: of(main), off: of(off) })
-    }
     /// Whether either hand holds a death-protection item, for the next hurt:
     /// the window's player once a tick, a server's player for each of its
     /// turns.
@@ -85,7 +77,6 @@ impl Game<'_> {
         let _ = p.set_health(1.0, false);
         let body = Body {
             feet: [p.position.x, p.position.y, p.position.z],
-            protector: None,
         };
         // `checkTotemDeathProtection`: the selected slot first, then the
         // offhand. The copy of that stack is the protector (`protectionItem`)
@@ -118,10 +109,7 @@ impl Game<'_> {
         for effect in self.death_effects(&protector) {
             self.apply_consume_effect(&protector, &effect, None);
         }
-        Some(Body {
-            protector: Some(protector),
-            ..body
-        })
+        Some(body)
     }
     /// The window's player's totem: the server's half only; the client draws nothing.
     pub(super) fn tick_totem(&mut self) {
@@ -143,5 +131,4 @@ impl Game<'_> {
 #[derive(Clone)]
 pub(super) struct Body {
     pub feet: [f64; 3],
-    protector: Option<ItemStack>,
 }

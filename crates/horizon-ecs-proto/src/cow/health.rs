@@ -498,7 +498,6 @@ pub struct Intake(pub fn(&mut World, Entity, Cause));
 pub(crate) fn apply_damage(
     clock: Res<Clock>,
     mut queue: ResMut<DamageQueue>,
-    mut wheel: ResMut<Wheel>,
     mut q: Query<(&mut Health, &mut HurtAt, &Cell, &Pos, &mut Vel, &Contact, Option<&mut Rng>, Option<&Resist>, Option<&Immune>, Option<&crate::equipment::Armor>, Option<&SpeciesId>, Has<crate::behaviours::guardian_thorns::Spiky>, Has<Dying>, Has<crate::item::BlastResist>)>,
     species: Res<SpeciesTable>,
     mut hurts: ResMut<crate::goals::Hurts>,
@@ -673,7 +672,6 @@ pub(crate) fn apply_damage(
 pub(crate) fn hazard_tick(
     clock: Res<Clock>,
     level: Res<Level>,
-    table: Res<SpeciesTable>,
     mut wheel: ResMut<Wheel>,
     mut queue: ResMut<DamageQueue>,
     mut events: ResMut<crate::goals::Events>,

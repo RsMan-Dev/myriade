@@ -10,21 +10,6 @@ use horizon_client::{items::{ItemInfo, ItemStack}, mobs::spear_use};
 use mod_api::client::first_person::Hand;
 use horizon_core::use_animation::UseAnimation;
 
-#[derive(Clone, Copy)]
-pub(super) enum ItemUseState {
-    Spear(horizon_client::spear::UseTiming),
-    Other(UseAnimation),
-}
-
-impl ItemUseState {
-    pub(super) fn animation(self) -> UseAnimation {
-        match self {
-            Self::Spear(_) => UseAnimation::Spear,
-            Self::Other(animation) => animation,
-        }
-    }
-}
-
 /// Resolve USE_EFFECTS through the stack's component patch.
 pub(super) fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> bool {
     if stack.count == 0 {
@@ -43,53 +28,6 @@ pub(super) fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> b
 }
 
 impl Game<'_> {
-    /// Resolve an item's animation once for the caller's rendering decision.
-    pub(super) fn item_use_animation(&self, stack: &ItemStack) -> UseAnimation {
-        self.item_use_state(stack).animation()
-    }
-
-    /// Select the animation and its already decoded spear timing together,
-    /// before firing the scoped override. No stack view is built per frame.
-    pub(super) fn item_use_state(&self, stack: &ItemStack) -> ItemUseState {
-        let info = self.items().get(&stack.item);
-        let kinetic =
-            horizon_client::spear::UseTiming::of_stack(stack, info.and_then(|i| i.kinetic_timing));
-        let fixed = match &*stack.item {
-            "minecraft:bow" => Some(UseAnimation::Bow),
-            "minecraft:crossbow" => Some(UseAnimation::Crossbow),
-            "minecraft:trident" => Some(UseAnimation::Trident),
-            "minecraft:brush" => Some(UseAnimation::Brush),
-            "minecraft:spyglass" => Some(UseAnimation::Spyglass),
-            "minecraft:goat_horn" => Some(UseAnimation::TootHorn),
-            _ if info.is_some_and(|i| i.bundle) => Some(UseAnimation::Bundle),
-            _ => None,
-        };
-        let data = stack.data();
-        let mut animation = fixed.unwrap_or_else(|| {
-            if let Some(consumable) = self.consumable(stack) {
-                consumable.animation
-            } else if self.stack_can_perform(
-                stack,
-                super::item_abilities::ability::SHIELD_BLOCK,
-                data.is_some_and(|d| d.other("minecraft:blocks_attacks").is_some())
-                    || (data.is_none_or(|d| d.other("!minecraft:blocks_attacks").is_none())
-                        && info.is_some_and(|i| i.blocks_attacks.is_some())),
-            ) {
-                UseAnimation::Block
-            } else if kinetic.is_some() {
-                UseAnimation::Spear
-            } else {
-                UseAnimation::None
-            }
-        });
-        // A spear pose needs the effective stack's kinetic data, even when a
-        // scoped use_animation override requested it.
-        if animation == UseAnimation::Spear {
-            return kinetic.map_or(ItemUseState::Other(UseAnimation::None), ItemUseState::Spear);
-        }
-        ItemUseState::Other(animation)
-    }
-
     /// `LivingEntity.startUsingItem` for the acting player's hand: nothing
     /// when a use runs already or the hand is empty. The use lasts
     /// `getUseDuration` ticks, which mods may change or refuse
@@ -228,14 +166,6 @@ impl Game<'_> {
     /// (`UseRemainder.convertIntoRemainder`). Neither in creative mode. A
     /// remainder of a stack that is not emptied goes to the inventory on the
     /// server and arrives with its inventory update.
-    pub(super) fn finish_result(&self, stack: &ItemStack, info: &ItemInfo) -> Option<ItemStack> {
-        finish_remaining(
-            stack,
-            info.use_remainder.clone(),
-            self.creative,
-            self.consumable(stack).is_some(),
-        )
-    }
     /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far, as
     /// `updatingUsingItem` starts: a mod may change the ticks left, which
     /// moves the end. False when it ran the use out (`tick_ran_out`): the
@@ -1406,29 +1336,6 @@ pub(super) mod interact_vibration_tests {
             panic!("prepared resources failed to load")
         };
     }
-}
-
-/// What `Item.finishUsingItem` leaves in the hand: a stack that is not a
-/// consumable stays as it is; a consumable loses one, and once that empties
-/// the hand the stack's own `use_remainder` takes it (else `default`, the
-/// item's). Neither in creative mode.
-fn finish_remaining(
-    stack: &ItemStack,
-    default: Option<String>,
-    creative: bool,
-    consumable: bool,
-) -> Option<ItemStack> {
-    if creative || !consumable {
-        return Some(stack.clone());
-    }
-    let mut left = stack.clone();
-    left.count = left.count.saturating_sub(1);
-    if left.count > 0 {
-        return Some(left);
-    }
-    horizon_client::item_sync::use_remainder(stack, default)
-        .as_deref()
-        .map(|remainder| ItemStack::new(remainder, 1))
 }
 
 #[cfg(test)]

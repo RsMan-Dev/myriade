@@ -8,55 +8,6 @@ impl Game<'_> {
         &self.stations().enchantments
     }
 
-    pub(super) fn defer_world_entry(&mut self, entry: PendingWorldEntry) -> Result<bool> {
-        Ok(self.try_defer_world_entry(entry)?.is_none())
-    }
-
-    /// As `defer_world_entry`, handing `entry` back when nothing needs waiting for, so an entry
-    /// that carries what it can't rebuild (a replay already read) isn't lost.
-    pub(super) fn try_defer_world_entry(
-        &mut self,
-        entry: PendingWorldEntry,
-    ) -> Result<Option<PendingWorldEntry>> {
-        // The world resources load synchronously at start: nothing waits, the entry is handed back.
-        Ok(Some(entry))
-    }
-
-    pub(super) fn resume_world_entry(&mut self) -> Result<()> {
-        // A mod's read replay waiting here is told as failed before the error leaves; other
-        // entries stay as they were.
-        self.poll_integrated_start()?;
-        world_loading::preload_world_data(
-            false,
-            &self.options.resources,
-            &self.pack.data_changes,
-            self.pack.assets.registry,
-            &self.res.core.item_data,
-        );
-        match self.pending_entry.take() {
-            Some(PendingWorldEntry::Local {
-                folder,
-                name,
-                seed,
-                creative,
-                create,
-                existing_only,
-            }) => {
-                self.open_world_as(
-                    &folder,
-                    name.as_deref(),
-                    seed,
-                    creative,
-                    create.as_deref(),
-                    existing_only,
-                )?;
-            }
-            Some(PendingWorldEntry::Server { .. }) => {}
-            None => {}
-        }
-        Ok(())
-    }
-
     // ---- the world's data packs' content tables ---------------------------
 
     /// The content tables the world plays with: its data packs' over the
@@ -84,14 +35,6 @@ impl Game<'_> {
         }
     }
 
-    /// What the chunk and far-terrain workers mesh with: the pack's context,
-    /// over the world's biomes when it has its own.
-    pub(super) fn worker_context(&self) -> Arc<WorkerContext> {
-        match &self.world_biomes {
-            Some(table) => self.pack.context_with(table.clone()),
-            None => self.pack.context.clone(),
-        }
-    }
     pub(super) fn pack_files(&self) -> horizon_world::loot::PackOverlay<'_> {
         pack_files(&self.world_tables)
     }

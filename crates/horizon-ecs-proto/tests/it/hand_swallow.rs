@@ -6,7 +6,7 @@ use horizon_client_lib::mobs::sulfur_cube::archetype_of;
 use horizon_ecs_proto::behaviours::swallow_hold::Held;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
-use horizon_ecs_proto::goals::Entered;
+use horizon_ecs_proto::goals::{interact, Entered, Online, Player};
 use horizon_ecs_proto::items;
 
 #[test]

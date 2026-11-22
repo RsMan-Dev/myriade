@@ -6,19 +6,6 @@
 //! and `ItemEntity.hurtServer` post `entity_damage` for every hit they take.
 use super::commands::Target;
 use super::*;
-use horizon_client::mobs::Who;
-use horizon_client::projectiles::Projectile;
-
-/// The entity a projectile's damage names (`Projectile.getOwner`): a server's
-/// guest by connection, else the owner.
-pub(super) fn projectile_by(p: &Projectile) -> Option<Target> {
-    match (p.guest, p.owner) {
-        (Some(conn), _) => Some(Target::Guest(conn)),
-        (None, Some(Who::Player)) => Some(Target::Player),
-        (None, Some(Who::Mob(id))) => Some(Target::Mob(id)),
-        (None, None) => None,
-    }
-}
 
 /// The blocks a box less 1e-5 is in whose name is `name`: what
 /// `Entity.checkInsideBlocks` visits, each block once.
@@ -68,26 +55,6 @@ impl Game<'_> {
         });
         self.hurt_boat_result(id, damage, creative, who)
             .unwrap_or(false)
-    }
-    /// The cactus hits of one of `AbstractBoat.tick`'s `applyEffectsFromBlocks`:
-    /// `CactusBlock.entityInside` hurts the boat for 1 in every cactus its box
-    /// meets on its move (`steps`: where it started, then where it got to),
-    /// each once, while `Entity.checkInsideBlocks` walks them, before the
-    /// fire the walk queues. True when a hit broke it.
-    pub(super) fn boat_cactus_pass(&mut self, id: u32, steps: &[Aabb]) -> bool {
-        let mut seen: Vec<[i32; 3]> = Vec::new();
-        for &bounds in steps {
-            for cell in cells_named(self, bounds, "minecraft:cactus") {
-                if seen.contains(&cell) {
-                    continue;
-                }
-                seen.push(cell);
-                if self.burn_boat(id, 1.0, "minecraft:cactus") {
-                    return true;
-                }
-            }
-        }
-        false
     }
     /// `ExperienceOrb.tick`'s `applyEffectsFromBlocks` after its move: each
     /// cactus its box is in takes a point off its 5 health

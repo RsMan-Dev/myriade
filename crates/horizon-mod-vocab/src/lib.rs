@@ -7,7 +7,6 @@ extern crate self as mod_api;
 use std::sync::{Arc, OnceLock};
 
 use serde_json::{Map, Value};
-use std::time::Duration;
 
 mod generated_host {
     include!(concat!(env!("OUT_DIR"), "/mod_api_generated_host.rs"));

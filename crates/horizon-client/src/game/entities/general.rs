@@ -477,11 +477,6 @@ impl GeneralTypeCatalog {
         self.by_key.get(type_key).copied()
     }
 
-    /// How many types the registry froze; every slot is below this.
-    pub fn len(&self) -> usize {
-        self.entries.len()
-    }
-
     /// The type key a slot belongs to.
     pub fn key(&self, slot: usize) -> &str {
         &self.entries[slot].id

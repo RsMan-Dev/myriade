@@ -62,15 +62,6 @@ fn add_state<'a>(
     e
 }
 
-fn state(id: u32, kind: &str, position: [f64; 3], yaw: f32, on_ground: bool) -> EntityState {
-    let mut e = EntityState::default();
-    e.reset(id as i32, super::lan::entity_uuid(id), kind);
-    e.position = position;
-    e.yaw = yaw;
-    e.on_ground = on_ground;
-    e
-}
-
 /// `VehicleEntity`'s DATA_ID_HURT, DATA_ID_HURTDIR and DATA_ID_DAMAGE
 /// (entries 8 to 10) when they differ from their defaults (0, 1, 0).
 fn vehicle_meta(e: &mut EntityState, hurt_time: i32, hurt_dir: i32, damage: f32) {

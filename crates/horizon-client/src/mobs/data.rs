@@ -164,7 +164,6 @@ pub struct MobData {
 }
 impl MobData {
     pub fn load(root: &ResourceRoot, facts: &BlockFacts) -> Self {
-        let source = root.source();
         let root = root.prepared();
         let parsed: Option<Value> = fs::read(root.join("mob-data.json"))
             .ok()

@@ -10,30 +10,7 @@ use super::{
 use horizon_client::{mobs::Who, projectiles::Hit};
 use horizon_core::geometry::Vec3;
 
-/// The hit target state an independent projectile decided against before a hook.
-#[derive(PartialEq)]
-pub(super) enum ImpactTarget {
-    Block(horizon_world::registry::BlockStateId),
-    Entity(mod_api::EntityRef, [f64; 3]),
-}
-
 impl Game<'_> {
-    /// Snapshot the hit precondition so listener writes can invalidate its
-    /// application without rerunning the collision decision.
-    pub(super) fn native_impact_target(&self, hit: Hit) -> Option<ImpactTarget> {
-        let (entity, block, _, _) = self.pearl_hit(hit);
-        if let Some(id) = entity {
-            let entity = self.entity(id)?;
-            Some(ImpactTarget::Entity(entity, self.entity_position(entity)?))
-        } else if matches!(hit, Hit::Block { .. }) {
-            Some(ImpactTarget::Block(
-                self.world.block(block[0], block[1], block[2]),
-            ))
-        } else {
-            None
-        }
-    }
-
     /// Dispatch a hit for a projectile ticked outside the shared projectile list.
     /// The caller checks the server opt-in gate and exposes the live projectile
     /// before calling; misses never dispatch.

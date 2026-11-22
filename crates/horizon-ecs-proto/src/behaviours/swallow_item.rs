@@ -6,7 +6,6 @@
 //! DOUTE : le nom de l'objet et son archétype viennent de l'événement (`ItemTouch.name`, `ItemTouch.archetype`) : à fournir.
 use super::swallow_hold::{accepts, hold, may_search, Held};
 use super::*;
-use crate::cow::*;
 use crate::goals::*;
 use crate::item::Item;
 use crate::touch::Toucher;

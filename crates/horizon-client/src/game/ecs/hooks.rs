@@ -5,7 +5,7 @@ use crate::game::Game;
 use crate::game::native_namespaced_id::namespaced;
 use bevy_ecs::entity::Entity;
 use horizon_client::items::ItemStack;
-use horizon_ecs_proto::{goals, size::Size};
+use horizon_ecs_proto::goals;
 
 impl Game<'_> {
     /// The kind of the ECS entity `id` as the hook points name it (`minecraft:cow`); None when it has no view.
@@ -27,14 +27,6 @@ impl Game<'_> {
         };
         self.native_mob_spawned(self.dim.id(), &kind, pos, natural);
     }
-    /// `native_kill_event` for the ECS entity `id`, killed by the acting player's blow.
-    pub(in crate::game) fn native_ecs_kill(&mut self, id: u32) {
-        let Some(kind) = self.ecs_kind(id) else {
-            return;
-        };
-        let player = self.native_acting_id();
-        self.native_mob_killed(player, id, &kind);
-    }
     /// `native_hurt_enemy_event` for the ECS entity `id`, hit by the acting player holding `stack`.
     pub(in crate::game) fn native_ecs_hurt_enemy(&mut self, stack: &ItemStack, id: u32) {
         let Some(kind) = self.ecs_kind(id) else {
@@ -53,19 +45,6 @@ impl Game<'_> {
         let mut cancel = false;
         self.native_animal_tame(tamer, tamer_entity_id, id, &kind, &mut cancel);
         cancel
-    }
-    /// `MobSplitEvent` for the ECS entity `id` dying with `count` children: its size is its `Size` component.
-    pub(in crate::game) fn ecs_split_count(&mut self, id: u32, count: u32) -> u32 {
-        if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
-            return count;
-        }
-        let size = self.ecs.entity_of(id).and_then(|e| self.ecs.world()?.get::<Size>(e)).map(|s| s.0);
-        let (Some(kind), Some(size)) = (self.ecs_kind(id), size) else {
-            return count;
-        };
-        let (mut count, mut cancel) = (count, false);
-        self.native_mob_split(id, &kind, size, size / 2, &mut count, &mut cancel);
-        if cancel { 0 } else { count.min(64) }
     }
     /// `living_death_post` for the ECS entity `id`, dead and still in the level, after its loot and experience.
     pub(in crate::game) fn native_ecs_death_post(&mut self, id: u32, damage_type: &str, attacker: u32) {

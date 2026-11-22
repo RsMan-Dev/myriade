@@ -46,15 +46,6 @@ const GEYSER_SALT: i64 = -904_011_478;
 const EFFECT_APPLICATION_FREQUENCY_TICKS: i64 = 10;
 /// `PotentSulfurBlockEntity.EFFECT_DURATION_IN_TICKS`.
 const EFFECT_DURATION_IN_TICKS: i32 = 80;
-/// `PotentSulfurBlockEntity.PARTICLE_FREQUENCY_TICKS`.
-const PARTICLE_FREQUENCY_TICKS: i64 = 20;
-/// `PotentSulfurBlockEntity.SOUND_FREQUENCY_TICKS`.
-const SOUND_FREQUENCY_TICKS: i64 = 40;
-/// `SoundEvents.GEYSER_ERUPTION_ACTIVE`.
-const GEYSER_ERUPTION_ACTIVE: &str = "minecraft:block.potent_sulfur.geyser_eruption_active";
-/// `SoundEvents.GEYSER_CONTINUOUS_ACTIVE`.
-const GEYSER_CONTINUOUS_ACTIVE: &str =
-    "minecraft:block.potent_sulfur.geyser_continuous_eruption_active";
 
 /// `PotentSulfurState`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

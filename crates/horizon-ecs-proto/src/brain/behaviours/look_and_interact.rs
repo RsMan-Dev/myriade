@@ -2,7 +2,6 @@
 //! becomes the interaction target and the look target, at once.
 use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::rules::look_and_interact as rules;
 use crate::targeting::{info, Who};

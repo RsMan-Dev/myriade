@@ -78,16 +78,6 @@ impl Game<'_> {
         }
         true
     }
-    /// `JukeboxBlock.HAS_RECORD`, the state both clicks are decided by.
-    fn jukebox_has_record(&self, pos: [i32; 3]) -> bool {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        self.pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("has_record"))
-            .is_some_and(|v| v == "true")
-    }
     /// `JukeboxBlockEntity.notifyItemChangedInJukebox`: the block's
     /// `has_record`, then `BLOCK_CHANGE` with the state it now has.
     fn jukebox_record_changed(&mut self, pos: [i32; 3], has: bool) {
@@ -267,18 +257,6 @@ impl Game<'_> {
         );
         self.award_custom_stat("play_record", 1);
         Some(Answer::Success)
-    }
-    /// `JukeboxBlock.useItemOn` on this client's level for the main hand:
-    /// whether the jukebox at `pos` takes the click (`has_record` pops the
-    /// disc out, or a `jukebox_playable` item goes in). The server does the
-    /// rest, see `use_jukebox`.
-    pub(super) fn jukebox_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        if &*self.res.facts().get(state).name != "minecraft:jukebox" {
-            return false;
-        }
-        self.jukebox_has_record(pos)
-            || held.is_some_and(|stack| jukebox_playable(stack, self.res.items()).is_some())
     }
     /// Level event 1010: the song from the jukebox.
     fn start_song(&mut self, pos: [i32; 3], song: &str) {

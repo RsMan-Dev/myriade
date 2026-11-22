@@ -5,8 +5,7 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
-use crate::item::{self, Item};
-use horizon_client_lib::items::ItemStack;
+use crate::item;
 use horizon_core::geometry::Vec3;
 use crate::rules::play_with_items::throw_velocity;
 

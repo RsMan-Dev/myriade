@@ -25,24 +25,6 @@ fn interned_damage(ty: &str) -> &'static str {
     leaked
 }
 
-/// Queue bookkeeping for synchronous command damage, preserving prior requests
-/// and unrelated events. The existing game policy handles each extracted request.
-fn take_new_reinforcements(events: &mut Vec<MobEvent>, queued: usize) -> Vec<(u32, Who)> {
-    let mut requests = Vec::new();
-    let mut index = 0;
-    events.retain(|event| {
-        let new = index >= queued;
-        index += 1;
-        if new && let MobEvent::Reinforcements { mob, target } = event {
-            requests.push((*mob, *target));
-            false
-        } else {
-            true
-        }
-    });
-    requests
-}
-
 fn num(n: impl std::fmt::Display) -> Text {
     Text::literal(n.to_string())
 }
@@ -763,7 +745,6 @@ impl Game<'_> {
     ) -> R<Option<(i32, Text)>> {
         let name = self.target_name(target);
         let description = Self::attribute_description(attribute);
-        let short = attribute.trim_start_matches("minecraft:").to_owned();
         let no_attribute = |name: &Text, d: &Text| {
             text_error(
                 "commands.attribute.failed.no_attribute",

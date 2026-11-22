@@ -3,8 +3,7 @@
 //! it with its attribute damage (1 when none), then cools down for `cooldown` ticks (a memory with a deadline).
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::{AttackDamage, Bounds, Clock, DamageQueue, Pos};
-use crate::hostile::PlayerState;
+use crate::cow::{AttackDamage, Bounds};
 use crate::rules::melee_attack as rules;
 use crate::targeting::{self, Who};
 use horizon_core::geometry::Vec3;

@@ -114,7 +114,6 @@ fn charge_run(
     mut set: ParamSet<(targeting::Targets, ResMut<PlayerState>)>,
     clock: Res<Clock>,
     mut dmg: ResMut<DamageQueue>,
-    mut events: ResMut<Events>,
     mut reqs: ResMut<Requests>,
     mut q: Query<(Entity, &Pos, &Bounds, &Charger, &mut Vel, &AttackDamage, Option<&Target>), With<Charging>>,
     mut cmd: Commands,

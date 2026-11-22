@@ -25,20 +25,6 @@ pub(super) fn block_delay_passed(
 }
 
 impl Game<'_> {
-    /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever
-    /// shot it, because `applyItemBlocking` reads the direct entity's pierce level.
-    pub(super) fn arrow_hits_player(
-        &mut self,
-        amount: f32,
-        p: &horizon_client::projectiles::Projectile,
-    ) -> bool {
-        self.combat.piercing_hit = p.arrow.as_ref().is_some_and(|a| a.pierce > 0);
-        self.mob_hits_player(
-            amount,
-            [p.previous.x, p.previous.y, p.previous.z],
-            "minecraft:arrow",
-        )
-    }
     /// The stack in an inventory slot, the off hand at `OFFHAND_SLOT`.
     pub(super) fn stack_in(&self, slot: usize) -> Option<&ItemStack> {
         if slot == OFFHAND_SLOT {
@@ -314,49 +300,6 @@ impl Game<'_> {
             attack,
             outcome.blocked,
         );
-    }
-
-    /// The mob branch of `after_block` for the ECS mob `id`: its position, its weapon's disabling time and the Ravager's stun come
-    /// from its components (`shield_stun::on_blocked` by P, which also refuses while it roars); the knock-back stays here.
-    pub(in crate::game) fn after_block_ecs(
-        &mut self,
-        id: u32,
-        component: &horizon_client::items::BlocksAttacks,
-        outcome: &BlockOutcome,
-        at: Option<[f64; 3]>,
-        source: HurtSource<'_>,
-        attack: &Attack,
-    ) {
-        let (Some(mob), Some(pos)) = (self.ecs_mob(id), self.ecs.position(id)) else { return };
-        let (mx, mz) = (pos[0], pos[2]);
-        let warden = mob.species == Some(horizon_client::mobs::Species::Warden);
-        let disable = if warden {
-            5.0
-        } else {
-            self.ecs_main_hand(id).and_then(|s| self.items().get(&s.item).map(|i| i.disable_blocking_seconds)).unwrap_or(0.0)
-        };
-        if mob.species == Some(horizon_client::mobs::Species::Ravager) {
-            let e = self.ecs.entity_of(id);
-            let stunned = match (e, self.ecs.world_mut()) {
-                (Some(e), Some(w)) => horizon_ecs_proto::behaviours::shield_stun::on_blocked(w, e),
-                _ => false,
-            };
-            let roaring = self.ecs.is_roaring(id);
-            if !roaring && let Some(p) = self.player.as_mut() {
-                let (xd, zd) = (p.position.x - mx, p.position.z - mz);
-                let push = if stunned {
-                    let d = (xd * xd + zd * zd).sqrt().max(0.01);
-                    let k = (1.0 / d).min(1.0) * 0.05;
-                    horizon_core::geometry::Vec3::new(xd / d * k, 0.0, zd / d * k)
-                } else {
-                    let dd = (xd * xd + zd * zd).max(0.001);
-                    horizon_core::geometry::Vec3::new(xd / dd * 4.0, 0.2, zd / dd * 4.0)
-                };
-                p.velocity = p.velocity.add_vector(push);
-            }
-            return;
-        }
-        self.blocked_by_attacker(component, ([mx, mz], disable), outcome.fully_blocked, at, source, attack, outcome.blocked);
     }
 
     /// What a blocked melee hit does to the defender once the shield took

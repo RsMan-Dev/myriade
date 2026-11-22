@@ -11,7 +11,7 @@ use crate::brain::behaviours::{breeze, do_nothing, look_at_target_sink, run_one,
 use crate::brain::sensors::{attackable, hurt_by, living, nearest_players};
 use crate::brain::*;
 use crate::targeting::{self, Who};
-use bevy_ecs::prelude::{Entity, World};
+use bevy_ecs::prelude::World;
 
 const GOLEM: &str = "minecraft:iron_golem";
 /// `Breeze.canAttack`: players and iron golems.

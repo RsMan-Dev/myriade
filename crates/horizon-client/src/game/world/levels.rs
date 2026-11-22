@@ -1025,31 +1025,6 @@ impl Game<'_> {
         Some((tree, saved))
     }
 
-    /// An already-owned body changes level, never construction identity.
-    /// `PersistentEntitySectionManager.addEntityUuid` decides its residency:
-    /// a body whose UUID an earlier arrival took is retained off-level.
-    pub(super) fn admit_transferred_object(&mut self, mut object: persist::OffLevel) {
-        let id = match &mut object {
-            persist::OffLevel::Mob(mob) => {
-                self.rebind_transferred_entity(mob.id, mob);
-                mob.id
-            }
-            persist::OffLevel::Boat(boat) => {
-                self.rebind_transferred_entity(boat.id, boat);
-                boat.id
-            }
-        };
-        self.journal_arrival(id);
-        if self.uuid_admission_refused(self.persist.uuids.get(&id).copied()) {
-            self.persist.off_level.insert(id, object);
-            return;
-        }
-        match object {
-            persist::OffLevel::Mob(mob) => self.remote_entities.push(mob),
-            persist::OffLevel::Boat(boat) => self.boats.push(boat),
-        }
-    }
-
     /// Far terrain for a client in `dim`: the level in place may be another
     /// one, the server ticking its levels in turn.
     pub(super) fn lod_source_in(
@@ -1243,11 +1218,6 @@ impl Game<'_> {
             self.native_lifecycle_server_tick_end(paused);
         }
         Ok(())
-    }
-
-    /// `tick_server` as a server thread runs it, timed whenever spans are on.
-    pub(super) fn tick_server_timed(&mut self, paused: bool) -> Result<()> {
-        self.tick_server_spans(paused, |_| {})
     }
 
     /// `tick_server_timed`, handing the tick's timing to `record` while spans are on.
@@ -1643,32 +1613,6 @@ fn slowest_steps(notes: &[(f32, String)]) -> String {
         .map(|(ms, what)| format!("{what} {ms:.1}"))
         .collect();
     list.join(", ")
-}
-
-impl Game<'_> {
-    /// Rebind only an already-owning transfer, before installing it in this level.
-    /// Memory still belongs to the parked source until the caller moves it.
-    pub(super) fn rebind_transferred_entity(
-        &mut self,
-        id: u32,
-        entity: &mut impl horizon_mod_runtime::attachments::HasAttachmentLifetime,
-    ) {
-        let slot = entity.attachment_lifetime();
-        if !slot.is_bound() {
-            return;
-        }
-        let Some(level) = self.level(self.dim.id()) else {
-            return;
-        };
-        let Some(map) = self.entity_attachments.get_mut(&id) else {
-            return;
-        };
-        slot.bind(
-            map,
-            self.attachment_indexes.entry(self.dim).or_default(),
-            mod_api::AttachmentHolder::Entity(mod_api::EntityRef::new(level.epoch(), id)),
-        );
-    }
 }
 
 #[cfg(test)]

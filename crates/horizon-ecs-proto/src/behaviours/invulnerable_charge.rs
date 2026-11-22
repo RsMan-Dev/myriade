@@ -21,14 +21,13 @@ impl Params {
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Charge {
     until: u64,
-    slot: u8,
     p: &'static Params,
     done: bool,
 }
 impl Charge {
     /// A charge that is not running: the marker of the species that has the goal (its NBT owner), for a bare entity.
     pub fn idle() -> Self {
-        Self { until: 0, slot: 0, p: &Params::DEFAULT, done: true }
+        Self { until: 0, p: &Params::DEFAULT, done: true }
     }
 }
 pub static MODULE: Module = Module {
@@ -52,7 +51,7 @@ pub fn ends_at(w: &World, e: Entity) -> Option<u64> {
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
     let p = params::<Params>(p);
     let until = charge_until(now_of(w, e), p.ticks);
-    w.entity_mut(e).insert(Charge { until, slot: inst.slot, p, done: false });
+    w.entity_mut(e).insert(Charge { until, p, done: false });
     arm_at(w, e, until, Due::Goal(inst.slot));
     crate::goals::arm(w, e, inst.slot, 0);
 }

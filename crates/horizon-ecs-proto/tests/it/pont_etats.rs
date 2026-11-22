@@ -66,7 +66,8 @@ fn written_states_read_back() {
     h.set_custom_name(e, Some("Bessie".into()));
     assert_eq!(h.custom_name(e).as_deref(), Some("Bessie"));
     h.set_stuck(e, 3, 1);
-    assert_eq!(h.stuck(e), (3, 1));
+    let stuck = h.stuck(e);
+    assert_eq!((stuck.arrows, stuck.stingers), (3, 1));
     h.set_gliding(e, true);
     assert!(h.world().get::<FallFlying>(e).is_some());
     h.set_pose(e, Some(2));

@@ -1,9 +1,7 @@
 //! Retained copies feed the same per-view submission route as transient batches.
-use mod_api::{GroupError, InstanceGroupRef, ModelInstance, ModelRef};
+use mod_api::{ModelInstance, ModelRef};
 
 use glam::Mat4;
-
-const MOD_CAPACITY: usize = 65_536;
 
 struct Group {
     generation: u64,
@@ -17,7 +15,6 @@ struct Group {
 
 #[derive(Default)]
 pub(super) struct InstanceGroupStorage {
-    next: u64,
     groups: Vec<Option<Group>>,
 }
 impl InstanceGroupStorage {
@@ -33,12 +30,5 @@ impl InstanceGroupStorage {
                 *slot = None;
             }
         }
-    }
-    fn get(
-        &mut self,
-        _handle: InstanceGroupRef,
-        _model_generation: u64,
-    ) -> Result<&mut Group, GroupError> {
-        Err(GroupError::Stale)
     }
 }

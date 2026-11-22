@@ -2,32 +2,12 @@
 //! from a block face, boosting a gliding player, the 1.15 horizontal
 //! acceleration and 0.04 lift, the flight-duration lifetime, explosion
 //! damage with line of sight, and the client explosion (`createFireworks`).
-use super::{Game, Hit, view_vector};
-use horizon_client::{
-    items::ItemStack,
-    mobs::Who,
-    particles::{ParticleOptions, ParticleType},
-    random_source,
-    text::Text,
-};
+use super::{Game, Hit};
+use horizon_client::{items::ItemStack, mobs::Who, random_source, text::Text};
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::targeting;
 
-pub(super) const FIREWORK_EXPLODE_EVENT: i8 = 17;
-
 pub(super) use horizon_gameplay::fireworks::{Rocket, fireworks_of};
-/// `damageAmount * (float)Math.sqrt((5.0 - this.distanceTo(target)) / 5.0)`
-/// from the rocket at `from` to a target at `to`; `Entity.distanceTo` sums
-/// the squared offsets in floats.
-pub(super) fn blast_damage(damage: f32, from: Vec3, to: Vec3) -> f32 {
-    let (x, y, z) = (
-        (from.x - to.x) as f32,
-        (from.y - to.y) as f32,
-        (from.z - to.z) as f32,
-    );
-    let distance = f64::from(x * x + y * y + z * z).sqrt() as f32;
-    damage * ((5.0 - f64::from(distance)) / 5.0).sqrt() as f32
-}
 impl Game<'_> {
     /// The rocket a launch carries: its stars are the item's; the level draws its motion, UUID and lifetime.
     pub(super) fn new_rocket(&mut self, at: Vec3, stack: &ItemStack, attached: bool) -> Rocket {
@@ -127,46 +107,6 @@ impl Game<'_> {
         rocket.owner = owner;
         rocket.guest = self.lan_acting.filter(|_| owner == Some(Who::Player));
         self.push_rocket(rocket, stack);
-    }
-    /// `Entity.getHandHoldingItemAngle(Items.FIREWORK_ROCKET)` for the local
-    /// player: half a block out towards the hand holding the rocket while
-    /// gliding, zero otherwise. A rocket only in the offhand is in the arm
-    /// opposite the main one.
-    fn rocket_hand_angle(&self) -> [f64; 3] {
-        if !self.player.as_ref().is_some_and(|p| p.fall_flying) {
-            return [0.0; 3];
-        }
-        let is_rocket =
-            |s: Option<&ItemStack>| s.is_some_and(|s| &*s.item == "minecraft:firework_rocket");
-        let main = self.stack_in(self.selected);
-        let offhand_only = is_rocket(self.offhand.as_ref()) && !is_rocket(main);
-        let right = !offhand_only;
-        let arm = if right { 80 } else { -80 };
-        let v = view_vector(self.yaw + arm as f32, 0.0);
-        [v[0] * 0.5, v[1] * 0.5, v[2] * 0.5]
-    }
-    /// `FireworkRocketEntity.tick` for a rocket attached to the local player:
-    /// a glide is boosted towards the look, and the rocket sits at the rocket
-    /// hand with the player's motion.
-    pub(super) fn follow_own_player(&mut self, r: &mut Rocket) {
-        let hand = self.rocket_hand_angle();
-        // getLookAngle reads Mth's float sine table, as the server does; the
-        // f64 sin/cos of super::view_vector drift the boost off the server's
-        // path and trip the movement check while gliding under a rocket.
-        let look = horizon_world::view_direction::view_vector(self.pitch, self.yaw);
-        let Some(p) = self.player.as_mut() else {
-            return;
-        };
-        if p.fall_flying {
-            let m = p.velocity;
-            p.velocity = Vec3::new(
-                m.x + look.x * 0.1 + (look.x * 1.5 - m.x) * 0.5,
-                m.y + look.y * 0.1 + (look.y * 1.5 - m.y) * 0.5,
-                m.z + look.z * 0.1 + (look.z * 1.5 - m.z) * 0.5,
-            );
-        }
-        r.position = p.position.add_vector(Vec3::new(hand[0], hand[1], hand[2]));
-        r.velocity = p.velocity;
     }
     /// `FireworkRocketItem.use` while gliding: drop the player's leads, then a
     /// rocket attached to the player.

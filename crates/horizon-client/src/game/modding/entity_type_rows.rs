@@ -32,16 +32,6 @@ impl EntityTypeRows {
         out.living.sort();
         out
     }
-
-    /// Whether `id` is an entity type.
-    pub(in crate::game) fn contains(&self, id: &str) -> bool {
-        self.ids.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
-    }
-
-    /// Whether `id` is a living entity type.
-    pub(in crate::game) fn is_living(&self, id: &str) -> bool {
-        self.living.binary_search_by(|t| t.as_str().cmp(id)).is_ok()
-    }
 }
 
 /// Each root's rows, read on first use.

@@ -5,7 +5,7 @@
 //! The failed hop is read the tick after: the walk was asked and nothing follows a path. Move flag.
 use super::*;
 use crate::raids::{Patrol, Raider};
-use crate::rules::long_distance_patrol::{hop_speed, hop_xz, in_companion_box, patrol_target};
+use crate::rules::long_distance_patrol::{hop_speed, hop_xz, in_companion_box};
 use crate::targeting::Target;
 use crate::{blocks, cow::*, goals::*};
 use horizon_core::geometry::Vec3;

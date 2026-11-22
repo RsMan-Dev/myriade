@@ -1,6 +1,5 @@
 //! `HurtBySensor`: what hurt the entity in the last 40 ticks (whether it makes it panic, and who), seen at the next scan.
 use crate::brain::*;
-use crate::cow::*;
 
 pub static SENSOR: Sensor = Sensor { name: "minecraft:hurt_by", mems: &[&HURT_BY, &HURT_BY_ENTITY], scan, ..Sensor::DEFAULT };
 

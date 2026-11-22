@@ -2,7 +2,7 @@
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use super::Game;
 use horizon_core::geometry::Vec3;
-use horizon_core::random::{EntityRandom, RandomSource};
+use horizon_core::random::RandomSource;
 
 #[derive(Clone, Debug)]
 pub(super) struct Fangs {
@@ -13,13 +13,9 @@ pub(super) struct Fangs {
     pub pos: [f64; 3],
     pub yaw: f32,
     pub warmup: i32,
-    pub life: i32,
     pub owner: u32,
-    pub started: bool,
     /// `Entity.deltaMovement`, once a tick has read the loaded `Motion`.
     pub velocity: Option<Vec3>,
-    /// `Entity.random`. The attack sound's pitch is its first draw.
-    random: EntityRandom,
 }
 
 horizon_client::impl_joined!(Fangs);
@@ -28,18 +24,6 @@ horizon_mod_runtime::impl_attachment_lifetime!(Fangs);
 /// `EvokerFangs.handleEntityEvent`: `nextFloat() * 0.2 + 0.85`.
 pub(super) fn fang_attack_pitch(random: &mut impl RandomSource) -> f32 {
     random.next_float() * 0.2 + 0.85
-}
-/// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
-/// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
-pub(super) fn fang_crit(random: &mut impl RandomSource, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
-    let half = 0.5 * 0.5;
-    let x = pos[0] + (random.next_double() * 2.0 - 1.0) * half;
-    let y = pos[1] + 0.05 + random.next_double();
-    let z = pos[2] + (random.next_double() * 2.0 - 1.0) * half;
-    let xd = (random.next_double() * 2.0 - 1.0) * 0.3;
-    let yd = 0.3 + random.next_double() * 0.3;
-    let zd = (random.next_double() * 2.0 - 1.0) * 0.3;
-    ([x, y + 1.0, z], [xd, yd, zd])
 }
 #[derive(Default)]
 pub(super) struct FangState {
@@ -60,11 +44,8 @@ impl Game<'_> {
             pos: at,
             yaw,
             warmup: delay,
-            life: 22,
             owner,
-            started: false,
             velocity: None,
-            random: horizon_client::mobs::entity_random(id, Vec3::new(at[0], at[1], at[2])),
         });
     }
     /// `EvokerFangs` of an evoker's spell (`owner`: its id, 0 for none): the ECS spawns them and bites; the host shows the bite.

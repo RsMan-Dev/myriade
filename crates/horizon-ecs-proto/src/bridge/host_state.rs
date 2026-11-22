@@ -7,7 +7,7 @@ use crate::gliding;
 use crate::left_handed;
 use crate::no_gravity;
 use crate::pose_state;
-use crate::stuck::{self, Stuck};
+use crate::stuck;
 use bevy_ecs::entity::Entity;
 
 impl EcsWorld {

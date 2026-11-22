@@ -1,26 +1,6 @@
 //! Opt-in client targeting. Vanilla reach attributes and server attack validation stay intact.
-use super::{Game, Hit, commands::Target};
-use mod_api::{ClientTargeting, CrosshairTarget, EntityRef};
-
-fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f64; 3], f64)> {
-    if !reach.is_finite()
-        || reach < 0.0
-        || (0..3).any(|i| {
-            !eye[i].is_finite()
-                || !bounds[0][i].is_finite()
-                || !bounds[1][i].is_finite()
-                || bounds[0][i] > bounds[1][i]
-        })
-    {
-        return None;
-    }
-    let point = std::array::from_fn(|i| eye[i].clamp(bounds[0][i], bounds[1][i]));
-    let distance = (0..3)
-        .map(|i| (point[i] - eye[i]).powi(2))
-        .sum::<f64>()
-        .sqrt();
-    (distance <= reach).then_some((point, distance))
-}
+use super::{Game, Hit};
+use mod_api::ClientTargeting;
 
 impl Game<'_> {
     /// The same traversal without `filterHitResult`: the block hit that

@@ -6,23 +6,6 @@ use mod_api::{
 };
 
 impl Game<'_> {
-    pub(super) fn player_synced_recipe_book_settings(
-        &self,
-        player: PlayerRef,
-        book: &RecipeBookTypeKey,
-    ) -> Option<RecipeBookSettings> {
-        None::<()>?;
-        self.custom_book_settings(book)
-    }
-    pub(super) fn player_request_recipe_book_settings(
-        &mut self,
-        _player: PlayerRef,
-        _book: &RecipeBookTypeKey,
-        _settings: RecipeBookSettings,
-    ) -> bool {
-        false
-    }
-
     pub(super) fn player_set_recipe_book_settings(
         &mut self,
         player: PlayerRef,

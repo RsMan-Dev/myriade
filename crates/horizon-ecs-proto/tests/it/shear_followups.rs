@@ -1,8 +1,9 @@
 //! Shearing follow-ups: the stew a mooshroom keeps is saved (`stew_effects`), creative keeps the hand's item (`ItemUtils.createFilledResult`), the
 //! copper golem shears through the generic rule (also with no player), and a sulfur cube's block comes out at the top of its body.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
-use horizon_core::nbt::Tag;
+use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::behaviours::shear::shear_entity;
 use horizon_ecs_proto::behaviours::stew_flower::Stew;
 use horizon_ecs_proto::behaviours::Interaction;
@@ -35,9 +36,9 @@ fn the_kept_stew_effect_is_saved_and_restored() {
     let Some((mut h, e)) = spawn("minecraft:mooshroom", 31) else { return };
     h.world.entity_mut(e).insert(Stew("minecraft:night_vision", 100));
     let saved = nbt::save(&h.world, e).expect("an NBT");
-    let Some(Tag::List(list)) = saved.get("stew_effects") else { panic!("stew_effects is saved") };
+    let Some(Tag::List(list)) = saved.get(&JavaString::from("stew_effects")) else { panic!("stew_effects is saved") };
     let Some(Tag::Compound(entry)) = list.first() else { panic!("one entry") };
-    assert_eq!(entry.get("duration"), Some(&Tag::Int(100)));
+    assert_eq!(entry.get(&JavaString::from("duration")), Some(&Tag::Int(100)));
     let Some((mut g, f)) = spawn("minecraft:mooshroom", 32) else { return };
     assert!(g.world.get::<Stew>(f).is_none());
     nbt::load(&mut g.world, f, &saved);

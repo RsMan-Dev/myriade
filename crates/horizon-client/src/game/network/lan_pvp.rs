@@ -7,28 +7,8 @@
 use super::{Game, lan_mobs::guest_bounds, mace::Spared};
 use horizon_client::enchant::EffectContext;
 
-use horizon_client::{
-    Result,
-    health::HurtSource,
-    mobs::Who,
-    projectiles::{Hit, Projectile, ProjectileKind},
-    text::Text,
-};
+use horizon_client::{health::HurtSource, mobs::Who, text::Text};
 use horizon_core::geometry::{Aabb, Vec3};
-
-/// The player projectiles that meet other players: arrows (their hurt), and
-/// snowballs, eggs and mods' thrown types, which break on them
-/// (`Player.hurtServer` takes no 0 damage). Pearls, potions and wind charges
-/// fly past players as before.
-pub(super) fn meets_players(kind: &ProjectileKind) -> bool {
-    matches!(
-        kind,
-        ProjectileKind::Arrow { .. }
-            | ProjectileKind::Snowball
-            | ProjectileKind::Egg
-            | ProjectileKind::Thrown(_)
-    )
-}
 
 /// Who a player's attack lands on: a player by connection.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -256,27 +236,6 @@ impl Game<'_> {
                 .map(|g| (g.conn, g.entity_id as u32))
                 .collect()
         })
-    }
-
-    /// The player a player's projectile hit, when it hit one.
-    pub(super) fn projectile_pvp_victim(&self, p: &Projectile, hit: Hit) -> Option<Victim> {
-        if p.owner != Some(Who::Player) || !meets_players(&p.kind) {
-            return None;
-        }
-        let Hit::Entity { who, .. } = hit else {
-            return None;
-        };
-        match who {
-            Who::Player => None,
-            Who::Mob(id) => self
-                .lan
-                .as_ref()?
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.entity_id as u32 == id)
-                .map(|g| Victim::Guest(g.conn)),
-        }
     }
 
     /// `ServerPlayer.canHarmPlayer`: the `pvp` game rule is on, and the

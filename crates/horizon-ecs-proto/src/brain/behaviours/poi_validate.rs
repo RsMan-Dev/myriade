@@ -8,7 +8,6 @@ use crate::blocks::world_of;
 use crate::brain::*;
 use crate::cow::Pos;
 use crate::poi::PoiRegistry;
-use bevy_ecs::prelude::*;
 use crate::rules::poi_validate as rules;
 use horizon_world::poi::PoiType;
 

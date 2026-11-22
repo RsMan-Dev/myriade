@@ -365,34 +365,6 @@ impl Game<'_> {
         Some(gs.menu.slot_count() - 36)
     }
 
-    /// `LecternBlock.openScreen` for a guest: `minecraft:lectern` over the
-    /// block entity, with its book and page.
-    pub(super) fn lan_open_lectern(&mut self, conn: u32, key: (i32, i32, i32)) {
-        if !self.guest_may_open(conn, "minecraft:lectern", Some([key.0, key.1, key.2])) {
-            return;
-        }
-        // ServerPlayer.openMenu closes the menu that was open.
-        self.guest_close_all(conn);
-        let title = horizon_protocol::text::translatable("container.lectern", &[]);
-        let Some(window) = self
-            .lan
-            .as_mut()
-            .and_then(|host| host.hub.open_window(conn, "minecraft:lectern", title))
-        else {
-            return;
-        };
-        if let Some(host) = self.lan.as_mut() {
-            host.play.entry(conn).or_default().lectern = Some(GuestLectern {
-                window,
-                state: 0,
-                key,
-                sent: None,
-            });
-        }
-        self.lan_send_lectern(conn, true);
-        self.player_menu_opening(conn);
-    }
-
     /// The lectern's book and page for the client: everything (`all`), or
     /// what changed since it was last sent.
     fn lan_send_lectern(&mut self, conn: u32, all: bool) {

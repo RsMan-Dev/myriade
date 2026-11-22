@@ -5,7 +5,6 @@
 use super::*;
 use crate::cow::*;
 use crate::effects::{self, Kind};
-use crate::goals::*;
 use crate::targeting;
 use crate::rules::drink_potion::{beyond_11_blocks, healed, roll_hits, slowed};
 
@@ -133,7 +132,7 @@ fn finish(w: &mut World, e: Entity, d: Drinking, p: &'static Params) {
 }
 /// The draws of `Witch.aiStep`, in its order, each condition after its own draw (so a failed draw spends no later one).
 fn choose(w: &mut World, e: Entity) -> Option<Potion> {
-    let mut roll = |w: &mut World, p: f64| w.get_mut::<Rng>(e).is_some_and(|mut r| roll_hits(r.next_f64(), p));
+    let roll = |w: &mut World, p: f64| w.get_mut::<Rng>(e).is_some_and(|mut r| roll_hits(r.next_f64(), p));
     let in_water = w.get::<FluidState>(e).is_some_and(|f| f.eye_in_water);
     if roll(w, 0.15) && in_water && !effects::has(w, e, Kind::WaterBreathing) {
         return Some(Potion::WaterBreathing);

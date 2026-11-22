@@ -196,7 +196,7 @@ pub(crate) fn player_near(
         })
     };
     let mut test = |e: Entity, active: &mut Query<(&Bounds, &mut ActiveUntil, Option<&mut Stroll>, Option<&mut Rng>)>, wheel: &mut Wheel| {
-        let Ok((b, mut a, mut s, mut r)) = active.get_mut(e) else { return };
+        let Ok((b, mut a, s, r)) = active.get_mut(e) else { return };
         let (mn, mx) = (b.0.min_position(), b.0.max_position());
         let now_in = within((mn.x + mx.x) / 2.0, (mn.z + mx.z) / 2.0);
         if now_in && a.0 != u64::MAX {
@@ -252,7 +252,7 @@ pub(crate) fn pathfind(
     mut q: Query<(Entity, &Pos, &Body, &Contact, &mut Stroll, &mut Nav, Has<InFluid>, &Vel, &NavParams, Has<crate::locomotion::lava::StandsOnLava>, Has<crate::locomotion::climb::Climber>, Has<crate::behaviours::restrict_sun::AvoidSun>, Option<&crate::locomotion::swim::SwimParams>), (With<NeedsPath>, Or<(With<crate::locomotion::WalkMode>, With<crate::locomotion::LavaMode>, Without<crate::locomotion::Modes>)>)>,
 ) {
     let level = &*level;
-    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>| {
+    let one = |e: Entity, pos: &Pos, body: &Body, c: &Contact, s: &mut Stroll, nav: &mut Nav, fluid: bool, _vel: &Vel, sp: &NavParams, lava: bool, climber: bool, sunless: bool, swp: Option<&crate::locomotion::swim::SwimParams>| {
         let now = clock.of(e);
         let mw = level.mw.0;
         let pm = PathMob {

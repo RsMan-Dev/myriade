@@ -12,7 +12,7 @@ use horizon_perf_format::{
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::thread::{self, JoinHandle};
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(test)]
 mod tests;

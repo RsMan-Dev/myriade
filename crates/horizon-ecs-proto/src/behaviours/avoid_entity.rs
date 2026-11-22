@@ -4,8 +4,7 @@
 use super::*;
 use crate::rules::avoid_entity::{in_reach, run_speed};
 use crate::{cow::*, goals::*};
-use horizon_core::geometry::{Vec3, trig};
-use horizon_core::jmath;
+use horizon_core::geometry::Vec3;
 
 /// The range of the index scan: the widest `max_dist` a configuration may give (`Params` checks it).
 const REACH: f64 = 24.0;

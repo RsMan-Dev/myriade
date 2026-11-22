@@ -18,7 +18,7 @@ pub fn take(w: &mut World, e: Entity, item: &str, n: i32) -> bool {
     }
     let mut s = w.get::<Stock>(e).cloned().unwrap_or_default();
     let mut left = n;
-    for (name, c) in s.0.iter_mut().filter(|(name, _)| name == item) {
+    for (_, c) in s.0.iter_mut().filter(|(name, _)| name == item) {
         let t = left.min(i32::from(*c));
         *c -= t as u8;
         left -= t;

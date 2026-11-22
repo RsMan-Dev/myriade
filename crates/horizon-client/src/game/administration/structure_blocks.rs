@@ -7,7 +7,7 @@ use horizon_client::{
     containers::BlockEntity,
     save,
     structure_block::{
-        self, RenderMode, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType,
+        self, SCAN_CORNER_BLOCKS_RANGE, StructureBlock, StructureMode, UpdateType,
     },
     text::Text,
 };

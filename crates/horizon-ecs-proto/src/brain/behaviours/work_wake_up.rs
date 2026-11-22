@@ -2,7 +2,6 @@
 //! se réveille (`stop_sleeping`). Le lit est libéré par le retrait de `Sleeping`, comme `sleep_in_bed::stop`.
 use crate::behaviours::bed::Sleeping;
 use crate::brain::*;
-use bevy_ecs::prelude::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:villager_wake_up", one_shot: true, can_start, start, ..Behaviour::DEFAULT };
 

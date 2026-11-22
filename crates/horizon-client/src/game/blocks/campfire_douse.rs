@@ -2,7 +2,6 @@
 //! shovels) put on a lit campfire puts it out.
 use super::{Game, Hit};
 use horizon_client::{Result, items::ItemStack};
-use horizon_core::position::BlockPos;
 use horizon_world::chunk::BlockState;
 
 impl Game<'_> {

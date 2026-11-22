@@ -357,7 +357,7 @@ pub(crate) fn block_changes(
             }
         }
         // The paths that run near the change.
-        for (e, pos, s, mut nav) in &mut paths {
+        for (e, pos, s, nav) in &mut paths {
             let Some(path) = nav.path.as_ref().filter(|p| !p.is_done()) else { continue };
             let Some(end) = path.nodes.last() else { continue };
             let middle = Vec3::new(

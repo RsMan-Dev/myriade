@@ -5,7 +5,6 @@
 use crate::behaviours::Cap;
 use crate::brain::sensors::adult::species_has;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::targeting::{info, Who};
 

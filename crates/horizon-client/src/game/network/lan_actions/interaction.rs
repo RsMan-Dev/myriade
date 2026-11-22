@@ -16,7 +16,7 @@ impl Game<'_> {
                 ))
             })
         });
-        if let Some((entity, position, dimensions, death_canceled)) = removed {
+        if let Some((entity, position, _dimensions, death_canceled)) = removed {
             self.lan_entity_event(entity, 60, position);
 
             if !death_canceled {

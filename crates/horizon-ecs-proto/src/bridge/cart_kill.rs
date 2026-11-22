@@ -6,7 +6,7 @@ use crate::bridge::host::EcsWorld;
 use crate::boat_state::{BoatMarker, Chest};
 use crate::cart_state::{Cart, Contents};
 use crate::cow::{with_level_random, Pos};
-use crate::item::{spawn_at_location, Item};
+use crate::item::spawn_at_location;
 use crate::leash;
 use crate::loot::LevelRandom;
 use crate::minecart::{Fuse, Kind};

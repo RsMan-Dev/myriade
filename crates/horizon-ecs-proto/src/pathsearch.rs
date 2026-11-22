@@ -2,7 +2,7 @@
 use crate::IFloor as _;
 use crate::rules::pathsearch::type_on_below;
 use horizon_world::registry::BlockStateId;
-use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType, PATH_TYPES}};
+use horizon_client_lib::mobs::{MobWorld, data::{self, PathComputationType}, path::{Evaluator, Path, PathMob, PathNode, PathType}};
 use horizon_client_lib::blocks::Fluid;
 use horizon_client_lib::fast_hash::FxHashMap;
 use horizon_core::geometry::{Aabb, Vec3};

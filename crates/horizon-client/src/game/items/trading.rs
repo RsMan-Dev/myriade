@@ -4,7 +4,7 @@
 //! level-ups with new offers from the next trade set.
 use super::{
     Game,
-    stations::{INPUT, Kind, RESULT, Station},
+    stations::{Kind, Station},
 };
 use horizon_client::mobs::{Species, VILLAGER_TYPES, villager};
 use horizon_client::{
@@ -14,20 +14,10 @@ use horizon_client::{
     text::Text,
 };
 
-/// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
-const SHIFT: f32 = -50.0;
-const GREY: u32 = 0xFF40_4040;
-
 pub(super) struct MerchantState {
     /// The merchant's side of the menu: offers, experience, level, the
     /// selection hint and active offer (`horizon_client::merchant::Session`).
     pub(super) session: Box<merchant::Session>,
-    /// The offer list's scroll offset.
-    pub(super) scroll: usize,
-    /// The scroller is held by the mouse (`isDragging`).
-    pub(super) dragging: bool,
-    /// The offer button that keeps focus after a click (drawn highlighted).
-    pub(super) focused: Option<usize>,
     /// The trading mob (its offers and experience are written back on
     /// close) and its custom name.
     pub(super) mob: Option<u32>,
@@ -35,46 +25,9 @@ pub(super) struct MerchantState {
     /// style, else nothing (the profession's name is the default).
     pub(super) name: Option<Text>,
 }
-/// `Merchant.getDisplayName`: the merchant's custom name (style and all), else
-/// the profession's or the wandering trader's.
-pub(super) fn merchant_display_name(
-    progress: bool,
-    profession: &str,
-    custom: Option<Text>,
-) -> Text {
-    custom.unwrap_or_else(|| {
-        if progress {
-            Text::translate_with_fallback(
-                &format!("entity.minecraft.villager.{profession}"),
-                profession,
-                &[],
-            )
-        } else {
-            Text::translate_with_fallback(
-                "entity.minecraft.wandering_trader",
-                "Wandering Trader",
-                &[],
-            )
-        }
-    })
-}
-/// `MerchantScreen.extractLabels`: a villager's title is `merchant.title` with
-/// the name and its level, so the name keeps the style it was given.
-pub(super) fn merchant_title(progress: bool, level: i32, name: Text) -> Text {
-    // `extractLabels` joins the level for levels 1 to 5 only (`VillagerData`
-    // clamps a villager to 1; a level past 5 draws the name alone).
-    if !progress || !(1..=5).contains(&level) {
-        return name;
-    }
-    let level = Text::translate_with_fallback(&format!("merchant.level.{level}"), "", &[]);
-    Text::translate_with_fallback("merchant.title", "%s - %s", &[name, level])
-}
-impl MerchantState {
-    /// `Merchant.showProgressBar`: villagers only.
-    pub(super) fn progress(&self) -> bool {
-        self.session.show_progress()
-    }
-}
+/// The merchant screen is 100 px wider than the 176-px menus it shares an origin with.
+const SHIFT: f32 = -50.0;
+
 /// Player inventory slot positions in `MerchantMenu` (x from 108).
 pub(super) fn inventory_slot(i: usize) -> (f32, f32) {
     match i {
@@ -401,9 +354,6 @@ impl Game<'_> {
         self.remote_entities[index].extra.flag2 = true;
         self.open_merchant_state(MerchantState {
             session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
             mob: Some(id),
             name,
         });
@@ -449,115 +399,10 @@ impl Game<'_> {
         let Some(session) = self.ecs.merchant_session(id) else { return Ok(false) };
         self.open_merchant_state(MerchantState {
             session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
             mob: Some(id),
             name,
         });
         Ok(true)
-    }
-    /// `merchant_offers_generated` for the ECS trader `id`.
-    pub(super) fn merchant_offers_generated_ecs(&mut self, id: u32) {
-        self.ensure_offers_ecs(id);
-    }
-    /// `merchant_closed` for a session whose mob is the ECS trader `state.mob`: the mob keeps the special prices and the level.
-    pub(super) fn merchant_closed_ecs(&mut self, state: &mut MerchantState) {
-        self.merchant_sync_in_ecs(&mut state.session, state.mob);
-        for (id, r) in std::mem::take(&mut state.session.sequences) {
-            self.rand_sequences.give_back(id, r);
-        }
-        let Some(id) = state.mob else { return };
-        self.ecs.trade_close(id);
-        if state.session.villager && !self.ecs.trader_opaque(id) {
-            self.ecs.set_trade_level(id, state.session.level.max(1));
-        }
-    }
-    /// `merchant_sync_in` for an ECS trader: the offers, the xp, the random and the origin come from the bridge.
-    pub(super) fn merchant_sync_in_ecs(&self, session: &mut merchant::Session, mob: Option<u32>) {
-        let Some(id) = mob.filter(|id| self.ecs.is_active() && self.ecs.kind(*id).is_some()) else { return };
-        if let Some(offers) = self.ecs.trade_offers(id) {
-            session.offers = offers;
-        }
-        if let Some(random) = self.ecs.trade_random(id) {
-            session.random = random;
-        }
-        if let Some(time) = self.ecs.ambient_timer(id) {
-            session.ambient_sound_time = time;
-        }
-        session.origin = self.ecs.position(id).unwrap_or(session.origin);
-    }
-    /// `merchant_sync_out` for an ECS trader: the session goes back to the station, its random and its level to the bridge.
-    pub(super) fn merchant_sync_out_ecs(&mut self, session: Box<merchant::Session>) {
-        let mob = self.station.as_ref().and_then(|s| s.merchant.as_ref()).and_then(|m| m.mob);
-        let villager_unknown = mob.is_some_and(|id| self.ecs.is_villager(id) == Some(true) && self.ecs.trader_opaque(id));
-        if villager_unknown {
-            if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-                m.session = session;
-            }
-            return;
-        }
-        let (mut session, traded) = self.merchant_apply_ecs(session, mob);
-        self.merchant_traded_ecs(mob, &mut session.offers, &traded);
-        if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-            m.session = session;
-        }
-    }
-    /// `merchant_apply` for an ECS trader: the random, the level and the final offers are written to the bridge.
-    pub(super) fn merchant_apply_ecs(&mut self, session: Box<merchant::Session>, mob: Option<u32>) -> (Box<merchant::Session>, Vec<usize>) {
-        let mut session = session;
-        let events = std::mem::take(&mut session.events);
-        let mut traded = Vec::new();
-        let (villager, origin) = (session.villager, session.origin);
-        if let Some(id) = mob {
-            self.ecs.set_trade_random(id, session.random.clone());
-            self.ecs.set_ambient_timer(id, session.ambient_sound_time);
-            if villager {
-                self.ecs.set_trade_level(id, session.level.max(1));
-            }
-        }
-        for e in events {
-            match e {
-                merchant::Event::OffersRefreshed => {}
-                merchant::Event::Orb(v) => self.add_orb([origin[0], origin[1] + 0.5, origin[2]], v as u32),
-                merchant::Event::LevelUp(_) => {
-                    if let Some(e) = mob.and_then(|id| self.ecs.entity_of(id)) {
-                        self.ecs.add_effect_named(e, "regeneration", 200, 0);
-                    }
-                }
-                merchant::Event::TradeUpdated(yes, pitch) => {
-                    let sound = match (villager, yes) {
-                        (true, true) => "minecraft:entity.villager.yes",
-                        (true, false) => "minecraft:entity.villager.no",
-                        (false, true) => "minecraft:entity.wandering_trader.yes",
-                        (false, false) => "minecraft:entity.wandering_trader.no",
-                    };
-                    self.audio.play(sound, Some(origin), 1.0, pitch);
-                }
-                merchant::Event::Traded(index, _offer) => traded.push(index),
-                merchant::Event::TradeSound => {
-                    let sound = if villager { "minecraft:entity.villager.yes" } else { "minecraft:entity.wandering_trader.yes" };
-                    self.audio.play(sound, Some(origin), 1.0, 1.0);
-                }
-            }
-        }
-        if let Some(id) = mob {
-            self.ecs.trade_store(id, session.offers.clone(), session.xp);
-        }
-        (session, traded)
-    }
-    /// `merchant_traded` for an ECS trader: the same statistic and triggers, the kind and the trade hook read by id.
-    pub(super) fn merchant_traded_ecs(&mut self, mob: Option<u32>, offers: &mut [MerchantOffer], traded: &[usize]) {
-        for index in traded {
-            let Some(offer) = offers.get_mut(*index) else { continue };
-            self.award_custom_stat("traded_with_villager", 1);
-            let Some(id) = mob else { continue };
-            let kind = self.ecs.kind(id).map(str::to_owned);
-            self.trigger_trade(&self.ecs_predicate_view(id), &offer.result);
-            if let (Some(kind), Some(_)) = (kind, self.lan_acting) {
-                self.native_trade_with_villager(id, &kind, offer);
-            }
-        }
     }
     /// Apply the villager AI's request to generate its offers.
     pub(super) fn merchant_offers_generated(&mut self, mob: u32) {
@@ -622,50 +467,6 @@ impl Game<'_> {
         let trade = m.extra.trade.get_or_insert_default();
         trade.xp = session.xp;
         trade.offers = session.offers.clone();
-    }
-    /// Opens a merchant menu without a mob (horizon-ctl `trade`).
-    pub(super) fn open_merchant(&mut self, profession: &str, variant: &str, level: i32) {
-        let profession = if profession.contains(':') {
-            profession.to_owned()
-        } else {
-            format!("minecraft:{profession}")
-        };
-        let variant = format!("minecraft:{}", variant.trim_start_matches("minecraft:"));
-        let level = level.clamp(1, 5);
-        let origin = self
-            .player
-            .as_ref()
-            .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
-        let mut offers = Vec::new();
-        for l in 1..=level {
-            let set = self.stations().trades.set_for(&profession, l);
-            offers.extend(self.offers_from_set(&set, &variant, origin));
-        }
-        let mut session = merchant::Session::new(offers, true);
-        session.profession = profession;
-        session.variant = variant;
-        session.level = level;
-        session.xp = merchant::min_xp(level);
-        session.origin = origin;
-        self.open_merchant_state(MerchantState {
-            session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
-            mob: None,
-            name: None,
-        });
-    }
-    /// A server's trading window (no mob here: the server keeps it).
-    pub(super) fn open_remote_merchant(&mut self, session: merchant::Session, name: Option<Text>) {
-        self.open_merchant_state(MerchantState {
-            session: Box::new(session),
-            scroll: 0,
-            dragging: false,
-            focused: None,
-            mob: None,
-            name,
-        });
     }
     fn open_merchant_state(&mut self, state: MerchantState) {
         let mut s = Station::new_kind(Kind::Merchant, [0, 0, 0]);
@@ -803,86 +604,6 @@ impl Game<'_> {
             }
         }
     }
-    /// `MerchantMenu.tryMoveItems` for the selected offer (the select trade packet).
-    fn try_move_items(&mut self, index: usize) {
-        self.menu_session(|menu, env, _| {
-            menu.merchant_select(env, index);
-            Some(true)
-        });
-    }
-    /// Clicks on the offer list; true when one was hit. A press on the
-    /// scroller holds it (`MerchantScreen.mouseClicked`).
-    pub(super) fn merchant_click(&mut self, local: (f32, f32)) -> bool {
-        let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
-            return false;
-        };
-        m.dragging = on_scroller(local, m.session.offers.len());
-        if m.dragging {
-            return true;
-        }
-        for i in 0..7 {
-            let (x, y) = (5.0 + SHIFT, 18.0 + 20.0 * i as f32);
-            if local.0 >= x
-                && local.0 < x + 88.0
-                && local.1 >= y
-                && local.1 < y + 20.0
-                && i + m.scroll < m.session.offers.len()
-            {
-                let index = i + m.scroll;
-                if let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) {
-                    m.focused = Some(i);
-                }
-                self.audio
-                    .play("minecraft:ui.button.click", None, 0.25, 1.0);
-                self.try_move_items(index);
-                return true;
-            }
-        }
-        false
-    }
-    /// The offer buttons a controller can focus (GUI origin relative).
-    pub(super) fn merchant_targets(&self) -> Vec<[f32; 4]> {
-        let Some(m) = self.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
-            return Vec::new();
-        };
-        (0..7)
-            .filter(|i| i + m.scroll < m.session.offers.len())
-            .map(|i| [5.0 + SHIFT, 18.0 + 20.0 * i as f32, 88.0, 20.0])
-            .collect()
-    }
-    pub(super) fn merchant_scroll(&mut self, d: f32) {
-        let Some(m) = self.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
-            return;
-        };
-        if m.session.offers.len() > 7 {
-            let max = m.session.offers.len() - 7;
-            m.scroll = scrolled(m.scroll, max, d);
-        }
-    }
-}
-
-/// Whether a press at `local` (GUI origin relative) lands on the offer list's
-/// scroller, which only takes it when there are more than 7 offers.
-fn on_scroller(local: (f32, f32), offers: usize) -> bool {
-    let x = SHIFT + 94.0;
-    offers > 7
-        && local.0 > x
-        && local.0 < x + 6.0
-        && local.1 > 18.0
-        && local.1 <= 18.0 + 139.0 + 1.0
-}
-/// The first shown offer for the scroller dragged to `y` (GUI origin
-/// relative): the 139-px track starts at 18 and the scroller is 27 px tall.
-fn drag_scroll(y: f32, offers: usize) -> usize {
-    let max = offers.saturating_sub(7) as i32;
-    let offs = (y - 18.0 - 13.5) / (139.0 - 27.0);
-    ((offs * max as f32 + 0.5) as i32).clamp(0, max) as usize
-}
-
-/// `MerchantScreen.mouseScrolled`: `Mth.clamp((int)(scrollOff - scrollY), 0, max)`,
-/// so a fractional wheel step that truncates to zero does not move the list.
-fn scrolled(scroll: usize, max: usize, d: f32) -> usize {
-    ((scroll as f64 - f64::from(d)) as i32).clamp(0, max as i32) as usize
 }
 
 #[cfg(test)]

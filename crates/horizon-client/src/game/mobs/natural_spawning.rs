@@ -1,11 +1,7 @@
 //! The game's side of `NaturalSpawner` (`mobs::spawn_selection`): the level
 //! it reads, the spawning chunks and caps of `ServerChunkCache.tickChunks`,
 //! and the mobs it adds (finalized with the game's `finalizeSpawn`).
-use super::{
-    Dim, Game,
-    creatures::Finalized,
-    structures::reaches_in,
-};
+use super::{Dim, Game, structures::reaches_in};
 use horizon_client::vanillagen::VanillaTerrain;
 use horizon_client::{
     biome::{BiomeInfo, SpawnEntry},
@@ -17,9 +13,8 @@ use horizon_client::{
         seen_grid::SeenGrid,
         spawn_rules::{Reason, SpawnLevel},
         spawn_selection::{
-            self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers,
-            SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt,
-            StructureSpawns,
+            self, Category, Heightmap, NaturalLevel, PlayerSquares, SpawnCost, SpawnRequest,
+            StructureAt, StructureSpawns,
         },
     },
 };
@@ -27,7 +22,7 @@ use horizon_core::{
     biome::BiomeZoom,
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
-    random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
+    random::{LegacyRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
 use horizon_world::dimension_type::DimensionFacts;
 use horizon_ecs_proto::bridge::{host::Select, view};
@@ -78,8 +73,6 @@ pub(super) struct SpawnScratch {
     /// dx/dz order, that no earlier player's square holds.
     segments: Vec<Vec<(i32, i32)>>,
     stale: Vec<bool>,
-    /// The spawn state's allocations, reused across passes.
-    spawn_buffers: SpawnBuffers,
 }
 impl SpawnScratch {
     fn chunk(p: &LevelPlayer) -> (i32, i32) {
@@ -212,129 +205,6 @@ fn close_enough_for_spawning(p: &LevelPlayer, (cx, cz): (i32, i32)) -> bool {
     );
     !p.spectator && x * x + z * z < 16384.0
 }
-/// The chunks within 8 of a player, in `scratch.candidates`, and for each in
-/// `scratch.close` whether a non-spectator is within 128 blocks or `forced`
-/// says a ticket holds it for natural spawning. How many there are.
-/// `EntityGetter.getNearestPlayer(x, y, z, -1, false)`: the nearest
-/// non-spectator, alive or not.
-pub(super) fn nearest_player(
-    players: &[LevelPlayer],
-    x: f64,
-    y: f64,
-    z: f64,
-) -> Option<&LevelPlayer> {
-    let mut best: Option<(&LevelPlayer, f64)> = None;
-    for p in players.iter().filter(|p| !p.spectator) {
-        let d = p.distance_sqr(x, y, z);
-        if best.is_none_or(|(_, b)| d < b) {
-            best = Some((p, d));
-        }
-    }
-    best.map(|(p, _)| p)
-}
-
-/// [`nearest_player`] for many positions: the non-spectators by the 64-block
-/// square they stand in, searched ring by ring outwards from the position.
-/// Every mob asks each tick, and with players spread over the map that was a
-/// look at every player for every mob.
-pub(super) struct NearestPlayers<'p> {
-    players: &'p [LevelPlayer],
-    cells: horizon_client::fast_hash::FxHashMap<(i64, i64), Vec<usize>>,
-    /// The cells' bounding box: (x0, z0, x1, z1).
-    bounds: (i64, i64, i64, i64),
-    /// Few players, or one too far out for cells: every question scans.
-    scan: bool,
-}
-impl<'p> NearestPlayers<'p> {
-    const CELL: f64 = 64.0;
-    /// Further out than any world border: such positions are answered by a scan.
-    const FAR: f64 = 1.0e9;
-    pub(super) fn new(players: &'p [LevelPlayer]) -> Self {
-        let mut cells = horizon_client::fast_hash::FxHashMap::<(i64, i64), Vec<usize>>::default();
-        let mut bounds = (i64::MAX, i64::MAX, i64::MIN, i64::MIN);
-        let mut scan = players.len() <= 8;
-        for (i, p) in players.iter().enumerate().filter(|(_, p)| !p.spectator) {
-            if !(p.position.x.abs() < Self::FAR && p.position.z.abs() < Self::FAR) {
-                // Past any world border (or not a number): scans answer.
-                scan = true;
-                break;
-            }
-            let key = Self::cell(p.position.x, p.position.z);
-            cells.entry(key).or_default().push(i);
-            bounds = (
-                bounds.0.min(key.0),
-                bounds.1.min(key.1),
-                bounds.2.max(key.0),
-                bounds.3.max(key.1),
-            );
-        }
-        Self {
-            players,
-            cells,
-            bounds,
-            scan,
-        }
-    }
-    fn cell(x: f64, z: f64) -> (i64, i64) {
-        (
-            (x / Self::CELL).floor() as i64,
-            (z / Self::CELL).floor() as i64,
-        )
-    }
-    /// The same player [`nearest_player`] finds: the nearest, the first in
-    /// the list among equals.
-    pub(super) fn nearest(&self, x: f64, y: f64, z: f64) -> Option<&'p LevelPlayer> {
-        if self.scan || !(x.abs() < Self::FAR && z.abs() < Self::FAR) {
-            return nearest_player(self.players, x, y, z);
-        }
-        if self.cells.is_empty() {
-            return None;
-        }
-        let (qx, qz) = Self::cell(x, z);
-        let (x0, z0, x1, z1) = self.bounds;
-        let last = (qx - x0)
-            .abs()
-            .max((qx - x1).abs())
-            .max((qz - z0).abs())
-            .max((qz - z1).abs());
-        let mut best: Option<(usize, f64)> = None;
-        let mut looked = 0usize;
-        for ring in 0..=last {
-            let mut look = |kx: i64, kz: i64| {
-                looked += 1;
-                for &i in self.cells.get(&(kx, kz)).into_iter().flatten() {
-                    let d = self.players[i].distance_sqr(x, y, z);
-                    if best.is_none_or(|(b, bd)| d < bd || d == bd && i < b) {
-                        best = Some((i, d));
-                    }
-                }
-            };
-            if ring == 0 {
-                look(qx, qz);
-            } else {
-                for k in -ring..=ring {
-                    look(qx + k, qz - ring);
-                    look(qx + k, qz + ring);
-                }
-                for k in 1 - ring..ring {
-                    look(qx - ring, qz + k);
-                    look(qx + ring, qz + k);
-                }
-            }
-            // Everyone in a further ring is more than `ring` cells away on one
-            // axis, so further than the one found.
-            let bound = ring as f64 * Self::CELL;
-            if best.is_some_and(|(_, d)| d <= bound * bound) {
-                break;
-            }
-            if looked > self.players.len() * 4 {
-                return nearest_player(self.players, x, y, z);
-            }
-        }
-        best.map(|(i, _)| &self.players[i])
-    }
-}
-
 /// Up to this many players, a spawn start measures to every one.
 const PLAYERS_SCANNED: usize = 8;
 /// What a level reads of the game beyond its world view, for the serial pass (`&Game`, which also
@@ -527,8 +397,6 @@ pub(super) struct Level<'g, H> {
     /// The game's entities by box, built at the first box query (they do not change while
     /// the pass holds the game).
     pub(super) boxes: std::cell::OnceCell<MobBoxes>,
-    /// The `SpawnGroupData` the pack being spawned has so far.
-    pub(super) group: std::cell::RefCell<Option<horizon_client::mobs::finalize::Group>>,
     /// The entity types some biome of the level gives a spawn cost (the
     /// nether's few): for any other the cost is none wherever it stands, and
     /// spawning asks for one for every loaded mob each tick.
@@ -611,77 +479,6 @@ impl<H: LevelHost> Level<'_, H> {
         (mob.kind.id == entity && at == position && mob.yaw == yaw).then_some(mob)
     }
 }
-impl<'g, 'a> GameLevel<'g, 'a> {
-    /// Creates a mob the spawner accepted, finalized the game's way
-    /// (`finalizeSpawn` on this pass's level, its draws on the spawner's own
-    /// random, between its position draws, as vanilla interleaves them); the
-    /// caller adds it with [`Game::add_spawned`].
-    fn finalize_spawned<R: RandomSource>(
-        &self,
-        r: &SpawnRequest,
-        pending: &mut Vec<Mob>,
-        random: &mut R,
-    ) -> Option<Spawned> {
-        let mut mob = match self.take_checked(r.entity, r.position, r.yaw) {
-            Some(mob) => mob,
-            None => {
-                let kind = self.game.res.mob_types().get(r.entity)?.clone();
-                let [x, y, z] = r.position;
-                Mob::new(self.provisional_id(), kind, Vec3::new(x, y, z), r.yaw)
-            }
-        };
-        // NaturalSpawner.spawnCategoryForPosition passes each member the group
-        // data the previous one returned, starting from null; finalization
-        // reads what a listener leaves.
-        let mut group = if r.group_index == 0 {
-            None
-        } else {
-            self.group.borrow().clone()
-        };
-        let (outcome, difficulty) = self
-            .game
-            .finalize_spawn_event(&mut mob, r.reason, None, &mut group);
-        match outcome {
-            Finalized::Cancelled => return None,
-            Finalized::Skipped => {}
-            Finalized::Done => {
-                let mut level = PassLevel::new(self);
-                let mut cx = horizon_client::mobs::finalize::Ctx {
-                    level: &mut level,
-                    random,
-                    difficulty,
-                    created: Vec::new(),
-                    jockey_rider: None,
-                };
-                group = horizon_client::mobs::finalize::finalize(&mut cx, &mut mob, r.reason, group);
-                for m in cx.created {
-                    let bounds = m.bounds();
-                    self.pending.borrow_mut().push(bounds);
-                    self.pending_ids
-                        .borrow_mut()
-                        .push((m.kind.id.clone(), bounds));
-                    self.spawned.borrow_mut().push(m);
-                }
-            }
-        }
-        *self.group.borrow_mut() = group;
-        let bounds = mob.bounds();
-        let vanilla = spawn_selection::max_cluster_size(r.species);
-        let cluster_size = self
-            .game
-            .spawn_cluster_size(&mut mob, r.reason, None, vanilla);
-        // `TropicalFish.isSchool`: finalizeSpawn clears it for a loner, which
-        // ends the pack (`isMaxGroupSizeReached`).
-        let school = !mob.extra.lone;
-        pending.push(mob);
-        Some(Spawned {
-            bounds,
-            school,
-            cluster_size,
-        })
-    }
-}
-
 impl<'g, 'x, 'a> Level<'g, &'x Game<'a>> {
     /// The handle of this pass's level, which the spawn checks are told.
     fn level_ref(&self) -> mod_api::LevelRef {
@@ -1121,61 +918,9 @@ impl<'a> Game<'a> {
             rides: Default::default(),
             provisional: Default::default(),
             boxes: Default::default(),
-            group: Default::default(),
             costed: spawn_cost_types(world_biomes!(self)),
             spawner: None,
             checked: Default::default(),
-        }
-    }
-    /// Gives a spawn pass's provisional mobs (the `u32::MAX - n` ids
-    /// [`GameLevel`] hands out) their real ids in order, rewrites the mount
-    /// and rider links that reference them, and seats chicken jockeys on the
-    /// chickens already in the level. The old→new map comes back for the
-    /// pass's events.
-    pub(super) fn resolve_spawn_ids(
-        &mut self,
-        mut groups: [&mut [Mob]; 2],
-        _rides: &[(u32, u32)],
-    ) -> HashMap<u32, u32> {
-        let mut links: HashMap<u32, u32> = HashMap::new();
-        for group in groups.iter_mut() {
-            for mob in group.iter_mut() {
-                self.next_entity += 1;
-                links.insert(mob.id, self.next_entity);
-                mob.id = self.next_entity;
-            }
-        }
-        for group in groups.iter_mut() {
-            for mob in group.iter_mut() {
-                if let Some(m) = mob.extra.mount.as_mut()
-                    && let Some(&id) = links.get(m)
-                {
-                    *m = id;
-                }
-                if let Some(m) = mob.extra.rider.as_mut()
-                    && let Some(&id) = links.get(m)
-                {
-                    *m = id;
-                }
-            }
-        }
-        links
-    }
-    /// Adds the mobs a spawn pass created: ids and the links that need them
-    /// (finalizeSpawn's mounts ride by id, and its chickens carry their
-    /// zombie). Every mob arrives with a provisional id; real ones are
-    /// assigned in spawn order and the links rewritten.
-    pub(super) fn add_spawned(
-        &mut self,
-        pending: Vec<Mob>,
-        created: Vec<Mob>,
-        _rides: Vec<(u32, u32)>,
-        _persistent: bool,
-    ) {
-        // The mobs go into the ECS level, by kind and place (their rides and persistence are not carried yet).
-        for m in pending.iter().chain(created.iter()) {
-            let at = [m.position.x, m.position.y, m.position.z];
-            self.ecs_spawn_natural(&m.kind.id, at);
         }
     }
     /// Every player in the level in place: the local player, and the LAN
@@ -1274,200 +1019,6 @@ impl<'a> Game<'a> {
             |chunk| tickets.forces_natural_spawning(chunk),
             |(cx, cz)| levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.world, cx, cz),
         )
-    }
-    /// `NaturalSpawner.createState` for a pass over the level in place, under
-    /// its spawn limits (`SpawnPolicy`).
-    pub(super) fn natural_spawn_state(
-        &self,
-        level: &GameLevel<'_, '_>,
-        spawnable: i32,
-        players: Vec<SpawnPlayer>,
-        buffers: SpawnBuffers,
-        counted: &[Counted],
-    ) -> SpawnState {
-        SpawnState::new_in(level, spawnable, players, buffers, counted, |cx, cz| {
-            self.world.chunks.contains_key(&(cx, cz))
-        })
-        .with_limits(self.spawn_policy(self.dim.key()).limits)
-    }
-    /// The categories a pass over the level in place tries: none with the
-    /// `spawn_mobs` rule off, else `getFilteredSpawningCategories` with the
-    /// `spawn_monsters` rule, the persistent ones every 400 ticks, and the
-    /// level's spawn flags (`SpawnPolicy`) taking away.
-    pub(super) fn natural_categories(&self, state: &SpawnState) -> Vec<Category> {
-        let rules = &self.session.rules;
-        if !rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS) {
-            return Vec::new();
-        }
-        state.policy_categories(
-            self.spawn_policy(self.dim.key()).flags,
-            rules.bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS),
-            self.world.game_time % 400 == 0,
-        )
-    }
-    /// The tick's spawning phases in `ServerLevel.tick`'s order: the raids
-    /// tick first (`this.raids.tick`), then the chunk source's
-    /// (`getChunkSource().tick`): natural spawning, then the custom spawners
-    /// of `ServerChunkCache.tickChunks`. A wave that lands this tick therefore
-    /// joins before that tick's spawns, with the lower entity ids. Nothing spawns once the
-    /// entity ids are exhausted (`entity_ids_exhausted`).
-    pub(super) fn tick_spawners(&mut self) {
-        if self.entity_ids_exhausted() {
-            return;
-        }
-        let from = self.lan_synced_from();
-        horizon_client::spans::time("spawn_raids", || self.tick_raids());
-        // The ECS level's own natural pass (`spawning::step`, with its counts) replaces the host's.
-        if !self.ecs.is_active() {
-            horizon_client::spans::time("spawn_natural", || self.spawn_natural());
-        }
-        // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
-        if self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::SPAWN_MOBS)
-        {
-            horizon_client::spans::time("spawn_custom", || self.tick_custom_spawners());
-        }
-        self.lan_synced_since(from);
-    }
-    /// `ServerChunkCache.tickChunks`: the spawn state over the loaded mobs,
-    /// the categories under their global caps (creatures every 400 ticks),
-    /// then `tickSpawningChunk` in the shuffled spawning chunks of every
-    /// player: inhabited time, then `spawnForChunk`.
-    pub(super) fn spawn_natural(&mut self) {
-        // `tickChunks` does nothing in a Debug world.
-        if self.world_debug {
-            return;
-        }
-        let mut laps = horizon_client::spans::laps();
-        let mut players = self.level_players();
-        // Fake players (mods' bots) do not anchor natural spawning.
-        if let Some(h) = self.lan.as_ref() {
-            let fake: Vec<u128> = h
-                .hub
-                .guests
-                .iter()
-                .filter(|g| g.is_fake())
-                .map(|g| g.uuid)
-                .collect();
-            if !fake.is_empty() {
-                players.retain(|p| !fake.contains(&p.uuid));
-            }
-        }
-        if players.is_empty() {
-            return;
-        }
-        let mut scratch = std::mem::take(&mut self.spawn_scratch);
-        let spawnable = self.spawning_chunks(&players, &mut scratch);
-        laps.lap("sn_candidates");
-        for &key in &scratch.candidates {
-            *self.world.inhabited.entry(key).or_insert(0) += 1;
-        }
-        laps.lap("sn_inhabited");
-        let mut random = std::mem::replace(
-            &mut self.world.random,
-            horizon_core::random::LevelRandom::for_level(LegacyRandom::new(0)),
-        );
-        let mut pending = Vec::new();
-        let last_state;
-        let extras = {
-            let level = self.natural_level();
-            laps.lap("sn_level");
-            let counted: Vec<Counted> = self
-                .remote_entities
-                .iter()
-                .map(|m| Counted {
-                    entity: &m.kind.id,
-                    category: Category::from_name(&m.kind.category),
-                    block: [
-                        m.position.x.floor() as i32,
-                        m.position.y.floor() as i32,
-                        m.position.z.floor() as i32,
-                    ],
-                    is_mob: true,
-                    persistent: m.persistent
-                        || horizon_client::mobs::ai::requires_custom_persistence(m),
-                })
-                .collect();
-            let players = players
-                .iter()
-                .map(|p| SpawnPlayer {
-                    position: [p.position.x, p.position.y, p.position.z],
-                    spectator: p.spectator,
-                })
-                .collect();
-            laps.lap("sn_materialize");
-            let buffers = std::mem::take(&mut scratch.spawn_buffers);
-            let mut state = self.natural_spawn_state(&level, spawnable, players, buffers, &counted);
-            laps.lap("sn_state");
-            last_state = state.counts();
-            let categories = self.natural_categories(&state);
-            laps.lap("sn_categories");
-            // Util.shuffle.
-            for i in (1..scratch.candidates.len()).rev() {
-                let j = random.next_int_bound(i as i32 + 1).unwrap_or(0) as usize;
-                scratch.candidates.swap(i, j);
-            }
-            laps.lap("sn_shuffle");
-            spawn_selection::attempt_counters(false);
-            // The chunks' attempts in lanes, committed in the pass's order, where the parallel tick
-            // is on and nothing keeps the draws on this thread (`parallel::lanes_for`).
-            #[cfg(feature = "upstream-parallel-mobs")]
-            let lanes =
-                parallel::lanes_for(&level, scratch.candidates.len(), !categories.is_empty());
-            #[cfg(not(feature = "upstream-parallel-mobs"))]
-            let lanes: Option<usize> = None;
-            #[cfg(feature = "upstream-parallel-mobs")]
-            {
-                if let Some(lanes) = lanes {
-                    let proposed =
-                        parallel::propose(&level, &state, &categories, &scratch.candidates, lanes);
-                    laps.lap("sn_propose");
-                    parallel::commit(&level, &mut state, proposed, &mut pending);
-                    scratch.candidates.clear();
-                }
-            }
-            if lanes.is_none() && !categories.is_empty() {
-                for chunk in scratch.candidates.drain(..) {
-                    // ServerChunkCache.tickSpawningChunk gates the initial chunk too.
-                    if !level.can_spawn_in_chunk(chunk.0, chunk.1) {
-                        continue;
-                    }
-                    let mut spawn = |l: &GameLevel, r: &SpawnRequest, rng: &mut LevelRandom| {
-                        let spawned = l.finalize_spawned(r, &mut pending, rng);
-                        if let Some(s) = &spawned {
-                            l.pending.borrow_mut().push(s.bounds);
-                        }
-                        spawned
-                    };
-                    horizon_threads::work::set_chunk(chunk.0, chunk.1);
-                    spawn_selection::spawn_for_chunk(
-                        &level,
-                        &mut random,
-                        &mut state,
-                        &categories,
-                        chunk,
-                        &mut spawn,
-                        &mut |_| {},
-                    );
-                }
-            }
-            scratch.spawn_buffers = state.into_parts().1;
-            let created = std::mem::take(&mut *level.spawned.borrow_mut());
-            let rides = std::mem::take(&mut *level.rides.borrow_mut());
-            (created, rides)
-        };
-        horizon_threads::work::clear_work();
-        spawn_selection::attempt_counters(true);
-        laps.lap("sn_attempts");
-        self.world.random = random;
-        // ServerChunkCache.lastSpawnState, for the debug overlay.
-        self.spawn_counts.insert(self.dim, last_state);
-        let (created, rides) = extras;
-        self.add_spawned(pending, created, rides, false);
-        self.spawn_scratch = scratch;
-        laps.lap("sn_finalize");
     }
     /// `NoiseBasedChunkGenerator.spawnOriginalMobs`: creature packs for a
     /// freshly generated chunk, from the biome at its corner column's top,

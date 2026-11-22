@@ -10,7 +10,7 @@
 //! cooldowns follow their level; shared `Arrival`s hold each traveller's
 //! saved compound until its destination chunks are loaded.
 use super::entity::{Entity as _, entity_lists_of, for_each_entity};
-use super::{Dim, Game, Result, Screen};
+use super::{Dim, Game, Result};
 use horizon_client::fast_hash::FxHashMap;
 use horizon_client::mobs::{Species, spawn_rules};
 use horizon_client::nether_portal::{ENTITY_DELAY, PortalState};
@@ -18,7 +18,6 @@ use horizon_client::world::PendingEntity;
 use horizon_core::{
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
-    random::RandomSource,
 };
 use horizon_world::level::flags as level_flags;
 use std::collections::HashMap;
@@ -29,9 +28,6 @@ use {
         largest_rectangle_around, relative_position,
     },
 };
-
-#[path = "nether_portal/respawn_attributes.rs"]
-mod respawn_attributes;
 
 /// `Player.getDimensionChangingDelay`.
 pub(super) const PLAYER_DELAY: i32 = 10;
@@ -99,11 +95,6 @@ struct Arrival {
 pub(super) struct Portals {
     /// The player's.
     pub(super) player: PortalState,
-    /// `LocalPlayer.portalProcess.isInsidePortalThisTick`.
-    client_inside: bool,
-    /// Whether the last tick's `handlePortalTransitionEffect` found the
-    /// player inside a nether portal: it closes any screen opened meanwhile.
-    client_was_inside: bool,
     /// Items and mobs, by entity id.
     pub(super) entities: HashMap<u32, PortalState>,
     /// Positions before this tick's moves, by entity id.
@@ -131,8 +122,6 @@ pub(super) struct Portals {
     dirty: bool,
     /// Per-chunk portal palette masks, kept across ticks (portal_sections).
     pub(super) sections: horizon_client::portal_sections::PortalSections,
-    /// The attributes a respawn hands from the old player to the new one.
-    pub(super) respawn_attributes: respawn_attributes::RespawnAttributes,
 }
 
 fn rotate_y(v: Vec3, degrees: f32) -> Vec3 {
@@ -566,14 +555,6 @@ impl Game<'_> {
     }
 
     // ---- the player ----
-
-    /// Whether the inventory key opens nothing: vanilla opens the screen,
-    /// then `LocalPlayer.handlePortalTransitionEffect` closes it in the same
-    /// tick while the player stands in a nether portal, so it is never drawn.
-    /// The fading effect after leaving the portal closes nothing.
-    pub(super) fn in_portal_transition(&self) -> bool {
-        self.portals.client_was_inside
-    }
 
     /// Where to wait for the destination of `plan` to load, once its level
     /// is open: the portal its points of interest lead to, or the
@@ -1292,7 +1273,6 @@ impl Game<'_> {
         }
         enum List {
             Item,
-            Tnt,
             Trident,
             Rocket,
             Orb,
@@ -1328,10 +1308,6 @@ impl Game<'_> {
             List::Item => {
                 self.remove_dropped(i);
                 self.detach_entity(id);
-            }
-            List::Tnt => {
-                self.tnts.remove(i);
-                self.forget_entity(id);
             }
             List::Trident => {
                 self.tridents.remove(i);
@@ -1666,79 +1642,6 @@ impl Game<'_> {
             });
             self.put_back_dropped(items);
         }
-    }
-
-    /// `FallingBlockEntity.tick`: block effects mark its portal, then
-    /// `Entity.handlePortal` transfers it before the landing branch runs.
-    pub(in crate::game) fn falling_through_portal(
-        &mut self,
-        f: &mut super::FallingBlock,
-    ) -> Option<Dim> {
-        let mut sections = std::mem::take(&mut self.portals.sections);
-        let entry = self.swept_portal(f.previous, f.position, 0.98, 0.98, &mut sections);
-        self.portals.sections = sections;
-        let delay = self.dimension_changing_delay(f.id);
-        if let Some(entry) = entry {
-            f.portal.set_inside(entry, delay);
-        }
-        let entry = f.portal.handle(true, 0, delay)?;
-        let plan = self.entity_plan(entry, f.position, 0.98, 0.98, false);
-        // An untracked block (id 0) has no handle to ask about.
-        let allowed = if f.id == 0 {
-            self.may_enter(plan.dim)
-        } else {
-            self.with_entity_held_out(f.id, |game| game.may_travel_through(f.id, &plan))
-        };
-        if !allowed {
-            return None;
-        }
-        let uuid = f.saved.as_ref().map_or_else(
-            || {
-                if f.id == 0 {
-                    horizon_client::save::random_uuid()
-                } else {
-                    self.uuid_for(f.id)
-                }
-            },
-            |saved| saved.0,
-        );
-        let modelled = horizon_client::entity_nbt::falling_block_to_nbt(
-            self.state_to_nbt(f.state),
-            f.position,
-            f.velocity,
-            f.age,
-            f.drop_item,
-            f.damage,
-            f.fall_distance,
-            f.on_ground,
-            f.rotation,
-            uuid,
-        );
-        let mut tag = super::persist::with_raw(modelled, f.saved.as_ref().map(|s| &s.1));
-        if let Tag::Compound(fields) = &mut tag {
-            fields.insert("PortalCooldown".into(), Tag::Int(f.portal.cooldown));
-            if f.no_gravity {
-                fields.insert("NoGravity".into(), Tag::Byte(1));
-            } else {
-                fields.remove(&"NoGravity".into());
-            }
-        }
-        let transferred = if f.id != 0 {
-            super::persist::write_attachments(&mut tag, f.id, &self.entity_attachments);
-            let state = self.take_transferred_entity_state(f.id);
-            self.forget_entity(f.id);
-            Some(TransferredArrivalState::Entity(state))
-        } else {
-            None
-        };
-        self.portals.arrivals.push(Arrival {
-            tnt_used_portal: false,
-            plan,
-            tag,
-            transferred,
-        });
-        self.portals.dirty = true;
-        Some(plan.dim)
     }
 
     // ---- persistence ----

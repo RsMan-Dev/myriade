@@ -7,7 +7,7 @@
 use super::{Game, ray_box, view_vector};
 use horizon_client::{
     mobs::Who,
-    projectiles::{Projectile, ProjectileKind, Turn},
+    projectiles::{Projectile, ProjectileKind},
 };
 use horizon_core::geometry::{Aabb, Vec3};
 
@@ -27,34 +27,6 @@ pub(super) fn redirectable(p: &Projectile) -> bool {
                 | ProjectileKind::WindCharge
                 | ProjectileKind::BreezeWindCharge
         )
-}
-
-/// `Projectile.onRedirectProjectile`: another projectile hit `p`, which turns
-/// with `deflect(AIM_DEFLECT, hitter's owner, hitter's owner, true, 1.0)`.
-/// It flies along the owner's look (`Entity.getLookAngle`; unchanged when the
-/// owner is gone), is that owner's now, and its acceleration power is back
-/// to 0.1 (`AbstractHurtingProjectile.onDeflection` by an attack). A wind
-/// charge in its first five ticks refuses (`WindCharge.deflect`): false, and
-/// nothing changes.
-pub(super) fn aim_deflect(
-    p: &mut Projectile,
-    look: Option<Vec3>,
-    owner: Option<Who>,
-    owner_uuid: Option<[i32; 4]>,
-    guest: Option<u32>,
-) -> bool {
-    p.deflect(
-        Turn::Direction(look),
-        [1.0; 3],
-        (owner, owner_uuid, guest),
-        true,
-    )
-}
-
-/// A projectile a player's blow reaches: a redirectable one, or a shulker bullet
-/// (`isPickable` and `isAttackable`), which `ShulkerBullet.hurtServer` pops.
-pub(super) fn attackable(p: &Projectile) -> bool {
-    redirectable(p) || (!p.stuck && matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
 }
 
 impl Game<'_> {
@@ -161,34 +133,6 @@ impl Game<'_> {
             .sum();
         let range = self.entity_reach + 3.0;
         d2 < range * range
-    }
-
-    /// `Entity.getLookAngle` of a projectile's owner: the host, the guest who
-    /// threw it, or a mob; none when the owner is not here.
-    pub(super) fn owner_look(&self, owner: Option<Who>, guest: Option<u32>) -> Option<Vec3> {
-        let (pitch, yaw) = match (owner?, guest) {
-            (Who::Player, Some(conn)) => {
-                let lan = self.lan.as_ref()?;
-                let g = lan.hub.guests.iter().find(|g| g.conn == conn)?;
-                (g.pitch, g.yaw)
-            }
-            (Who::Player, None) => {
-                self.player.as_ref()?;
-                (self.pitch, self.yaw)
-            }
-            (Who::Mob(id), _) => {
-                let m = self.remote_entities.iter().find(|m| m.id == id)?;
-                (m.head_pitch, m.yaw)
-            }
-        };
-        Some(horizon_world::view_direction::view_vector(pitch, yaw))
-    }
-
-    /// `owner_look` of an ECS mob `id`: its facing is read from the view of its entity (yaw and pitch, not the head's pitch).
-    pub(in crate::game) fn owner_look_ecs(&self, id: u32) -> Option<Vec3> {
-        self.ecs.entity_of(id)?;
-        let [yaw, pitch] = self.ecs_mob_rotation(id);
-        Some(horizon_world::view_direction::view_vector(pitch, yaw))
     }
 
     /// `Player.attack` on a redirectable projectile: `onAttack` resets the

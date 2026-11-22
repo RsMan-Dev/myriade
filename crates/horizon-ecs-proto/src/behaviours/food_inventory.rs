@@ -1,7 +1,6 @@
 //! Inventaire du villageois (`SimpleContainer(8)`, `Villager.inventory`) : huit emplacements, composant à part, absent tant qu'il
 //! est vide. Les points de nourriture viennent des données (`villager::food_points`). Ramasser, manger, partager.
 use crate::behaviours::food_stock::{self as stock, Food};
-use crate::brain::*;
 use bevy_ecs::prelude::*;
 use crate::rules::food_inventory as rule;
 use horizon_client_lib::{items::Items, mobs::villager::food_points};

@@ -3,13 +3,6 @@ use super::Game;
 use horizon_core::random::RandomSource;
 
 impl Game<'_> {
-    /// `Fox.isConsumableFood`.
-    fn fox_food(&self, item: &str) -> bool {
-        horizon_gameplay::foxes::fox_food(self.items(), item)
-    }
-}
-
-impl Game<'_> {
     /// The fox's eating draws, in vanilla's order: the particles they place are the clients'.
     pub(in crate::game) fn fox_eat_particles(&mut self, id: u32) {
         let Some(m) = self

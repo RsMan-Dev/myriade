@@ -85,7 +85,7 @@ fn a_zombie_draws_its_reinforcement_base_at_the_spawn() {
     let mut seen = Vec::new();
     for k in 0..40 {
         let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 9 + k);
-        let kind = Finalize::Zombie { jockey: "minecraft:chicken", gear: None };
+        let kind = Finalize::Zombie { jockey: "minecraft:chicken" };
         finalize(&mut h.world, e, kind, None, horizon_ecs_proto::spawn_reason::SpawnReason::Spawner, 0.0, &mut LegacyRandom::new(500 + k as i64));
         let c = chance(&h.world, e, &Params::ZOMBIE);
         assert!((0.0..=0.100_000_002).contains(&c), "base {c} within [0, 0.1]");

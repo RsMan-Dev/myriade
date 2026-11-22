@@ -25,15 +25,6 @@ type Pos = (i32, i32, i32);
 /// The open `CommandBlockEditScreen`.
 pub(super) struct CommandBlockScreen {
     pos: Pos,
-    /// The command block minecart being edited (`MinecartCommandBlockEditScreen`);
-    /// `pos` is unused then.
-    cart: Option<u32>,
-    /// The command the block runs.
-    pub(super) command: String,
-    pub(super) track_output: bool,
-    mode: Mode,
-    conditional: bool,
-    auto: bool,
 }
 
 /// What `ServerboundSetCommandBlockPacket` carries.
@@ -49,10 +40,6 @@ pub(super) struct CommandBlockEdit {
 impl CommandBlockScreen {
     pub(super) fn pos(&self) -> Pos {
         self.pos
-    }
-    /// A minecart's edit screen, not a command block's.
-    pub(super) fn cart(&self) -> bool {
-        self.cart.is_some()
     }
 }
 

@@ -2,7 +2,7 @@
 //! sound, level event and item. `ecs_drop_block` is the host's call to P for a block that falls.
 use crate::game::Game;
 use horizon_core::{geometry::Vec3, nbt::{Compound, Tag}, position::BlockPos};
-use horizon_ecs_proto::{falling_block::FallSettings, host_out_falling::FallingEvent, targeting::Who};
+use horizon_ecs_proto::{host_out_falling::FallingEvent, targeting::Who};
 use horizon_world::{level::LevelEvent, registry::BlockStateId};
 
 impl Game<'_> {
@@ -36,19 +36,6 @@ impl Game<'_> {
             fields.extend(carried);
         }
         self.load_block_entity_tag(pos, tag);
-    }
-
-    /// `FallingBlock` dropped by P: the network id of the block, 0 when P refuses it. `data` is the block entity data it lands with.
-    pub(in crate::game) fn ecs_drop_block(&mut self, state: BlockStateId, at: [i32; 3], data: Option<Compound>, settings: FallSettings, speed: Vec3) -> u32 {
-        let mut next = self.next_entity;
-        let id = self.ecs_with(|ecs, mw| {
-            ecs.drop_block(mw, state, at, data, settings, speed, &mut || {
-                next += 1;
-                next
-            })
-        });
-        self.next_entity = next;
-        id
     }
 
     /// `Fallable.onBrokenAfterFall` of `state` at `at`, then its item when `drop` and the gamerule allows it.

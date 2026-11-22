@@ -4,7 +4,6 @@ use crate::behaviours::nearby_babies::NEARBY_BABIES;
 use crate::brain::*;
 use crate::cow::SpeciesId;
 use crate::targeting;
-use bevy_ecs::prelude::*;
 
 pub static SENSOR: Sensor = Sensor { name: "minecraft:villager_babies", mems: &[&NEARBY_BABIES], scan, ..Sensor::DEFAULT };
 

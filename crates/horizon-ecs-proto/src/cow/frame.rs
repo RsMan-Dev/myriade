@@ -28,7 +28,16 @@ use super::*;
 
 // ---- components: data only -------------------------------------------------------------------------------
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_add = entered)]
 pub struct Pos(pub Vec3);
+
+/// The hook of `Pos`: an entity that enters the world (spawned, loaded, arrived) is queued for the trackers, whoever made it. Only
+/// where a host listens (`Modified` exists); a sleeping one is dropped by `view` and queued again by `zone::wake`.
+fn entered(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if let Some(mut m) = world.get_resource_mut::<crate::bridge::view::Modified>() {
+        m.push(ctx.entity);
+    }
+}
 
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Vel(pub Vec3);
@@ -68,6 +77,7 @@ pub struct Anchor(pub [i32; 3]);
 
 /// The column of the spatial index the cow is listed in (`u32::MAX`: not yet).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_remove = super::index::cell_removed)]
 pub struct Cell(pub u32, pub [i32; 8], pub u32);
 
 #[derive(Component, Clone, Copy, Debug, Default)]

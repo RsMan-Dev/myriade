@@ -8,7 +8,7 @@ use crate::goals::{sparse_any, Events, Online};
 use crate::host_out_hook::{HookEvent, HookOut};
 use crate::targeting::Who;
 use crate::hostile::PlayerState;
-use crate::item::{Item, ItemIndex};
+use crate::item::ItemIndex;
 use crate::projectile::entity_hit;
 use crate::hook_wait::{Approach, Wait};
 use crate::rules::fishing_hook::{bite_impulse, buoyancy_force, path_margin, pull_toward};

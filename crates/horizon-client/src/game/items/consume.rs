@@ -7,7 +7,6 @@ use crate::game::api_values::TryIntoApi;
 use horizon_client::{
     items::{ConsumeEffect, ItemInfo, ItemStack},
     mobs::Who,
-    particles::{ParticleOptions, ParticleType},
 };
 use horizon_core::{
     geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,

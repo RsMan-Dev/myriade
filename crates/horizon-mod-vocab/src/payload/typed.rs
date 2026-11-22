@@ -8,8 +8,8 @@ use super::{
 };
 use crate::wire::{Reader, Wire, WireError, Writer};
 use crate::{
-    ClientHost, PAYLOAD_DECODE_BUDGET, PayloadCodec, PlayerRef, ServerHost, decode_payload,
-    encode_payload, payload_schema,
+    PAYLOAD_DECODE_BUDGET, PayloadCodec, PlayerRef, ServerHost, decode_payload, encode_payload,
+    payload_schema,
 };
 use std::{marker::PhantomData, sync::Arc};
 

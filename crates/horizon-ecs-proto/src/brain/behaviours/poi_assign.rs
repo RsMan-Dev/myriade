@@ -9,7 +9,6 @@ use crate::behaviours::trade_offers::{self, Merchant};
 use crate::brain::behaviours::poi_acquire::happy_particles;
 use crate::brain::*;
 use crate::cow::Pos;
-use bevy_ecs::prelude::*;
 use crate::rules::poi_assign as rules;
 use horizon_world::poi::PoiType;
 

@@ -7,7 +7,7 @@
 //! attempt comes `delay` ticks after the player's arrival; after an attempt that spawned (or hit the limit) the next one comes `1 + delay`
 //! ticks later, and after one that spawned nothing, one tick later. Not here: the spawn event of the level (its particles are the
 //! host's), the item of a spawner that displays one, the client's delay.
-use crate::cow::{species_table, Clock, Index, Pos, Species, SpeciesId};
+use crate::cow::{species_table, Clock, Pos, Species, SpeciesId};
 use crate::goals::{Events, Online};
 use crate::rules::spawn_spawner::{attempt_position, spawn_delay};
 pub use crate::rules::spawn_spawner::{weighted, weighted_index};

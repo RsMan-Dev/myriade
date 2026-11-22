@@ -12,56 +12,15 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub(super) struct Variant {
     pub id: Arc<str>,
-    pub asset: String,
     pub width: i32,
     pub height: i32,
-    /// `PaintingVariant.title` and `author`: text components.
-    pub title: Option<serde_json::Value>,
-    pub author: Option<serde_json::Value>,
 }
-/// Variants by id plus the `#minecraft:placeable` list.
+/// Variants by id.
 #[derive(Default)]
 pub(super) struct PaintingVariants {
     pub all: Vec<Variant>,
-    pub placeable: Vec<Arc<str>>,
 }
 impl PaintingVariants {
-    pub fn load(root: &std::path::Path) -> Self {
-        let data = root.join("data/minecraft");
-        let mut all = Vec::new();
-        if let Ok(folder) = horizon_world::json_folder::read(&data.join("painting_variant")) {
-            for file in &folder.files {
-                let name = file.name.as_str();
-                let Ok(v) =
-                    serde_json::from_slice::<serde_json::Value>(file.bytes().unwrap_or_default())
-                else {
-                    continue;
-                };
-                all.push(Variant {
-                    id: Arc::from(format!("minecraft:{name}")),
-                    asset: v["asset_id"]
-                        .as_str()
-                        .unwrap_or(name)
-                        .trim_start_matches("minecraft:")
-                        .to_owned(),
-                    width: v["width"].as_i64().unwrap_or(1) as i32,
-                    height: v["height"].as_i64().unwrap_or(1) as i32,
-                    title: v.get("title").cloned(),
-                    author: v.get("author").cloned(),
-                });
-            }
-        }
-        let placeable =
-            horizon_core::prepared_files::read(&data.join("tags/painting_variant/placeable.json"))
-                .ok()
-                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
-                .and_then(|v| v["values"].as_array().cloned())
-                .unwrap_or_default()
-                .iter()
-                .filter_map(|v| v.as_str().map(Arc::from))
-                .collect();
-        Self { all, placeable }
-    }
     pub fn get(&self, id: &str) -> Option<&Variant> {
         self.all.iter().find(|v| &*v.id == id)
     }
@@ -94,12 +53,6 @@ fn painting_facing(face: [i32; 3]) -> Option<u8> {
         [0, 0, -1] => 2,
         _ => 3,
     })
-}
-/// Whether the camera, at the origin of `corners`' space, is on the side of the quad
-/// that `normal` points to.
-fn faces_camera(corners: &[glam::DVec3; 4], normal: glam::DVec3) -> bool {
-    let centre = (corners[0] + corners[1] + corners[2] + corners[3]) / 4.0;
-    normal.dot(-centre) > 0.0
 }
 
 impl Game<'_> {

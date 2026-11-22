@@ -101,7 +101,7 @@ pub(crate) type OrderedItems = (
 pub(crate) fn run_island(
     ids: &[Entity],
     level: &Level,
-    table: &SpeciesTable,
+    _table: &SpeciesTable,
     idx: &Index,
     q: &Query<OrderedItems>,
     marked: &Query<Entity, With<Overlapping>>,

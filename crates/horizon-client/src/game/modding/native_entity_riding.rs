@@ -285,32 +285,6 @@ impl Game<'_> {
         let [_, [_, top, _]] = self.entity_bounding_box(vehicle)?;
         Some([x, top, z])
     }
-    /// A lead's live holder as a handle: `None` when it is out of reach.
-    fn native_leash_holder(
-        &self,
-        holder: Option<Holder>,
-        player: Option<[i32; 4]>,
-    ) -> Option<LeashHolder> {
-        Some(match holder {
-            None => LeashHolder::Unleashed,
-            Some(Holder::Knot(pos)) => LeashHolder::Knot(pos),
-            Some(Holder::Mob(id)) => {
-                let entity = self.entity(id)?;
-                if !matches!(self.native_entity_target(entity), Some(Target::Mob(_))) {
-                    return None;
-                }
-                LeashHolder::Entity(entity)
-            }
-            Some(Holder::Boat(id)) => {
-                let entity = self.entity(id)?;
-                if !matches!(self.native_entity_target(entity), Some(Target::Boat(_))) {
-                    return None;
-                }
-                LeashHolder::Entity(entity)
-            }
-            Some(Holder::Player) => LeashHolder::Entity(self.player(ints_uuid(player?))?.entity()),
-        })
-    }
     /// The live holder of a mob's or boat's lead (`Leashable.getLeashHolder`), or `Unleashed`
     /// when no lead exists. `None` means an entity that takes no lead, or that the entity,
     /// holder or saved holder is unavailable, stale or in a parked level. Does not load a level.

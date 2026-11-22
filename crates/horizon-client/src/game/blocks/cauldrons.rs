@@ -9,17 +9,6 @@ pub(super) fn is_under_water(facts: &BlockFacts, above: BlockStateId) -> bool {
 }
 
 impl Game<'_> {
-    /// What the cauldron at `pos` answers to `held` on a client, which only
-    /// asks (`CauldronInteractions` acts `if (!level.isClientSide())`). A
-    /// sneak with something in hand skips `useItemOn`
-    /// (`Player.isSecondaryUseActive`).
-    pub(super) fn cauldron_outcome(
-        &self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> horizon_client::cauldron::Outcome {
-        horizon_client::cauldron::Outcome::Pass
-    }
     /// `CauldronInteractions` for the held item aimed at a cauldron.
     pub(super) fn use_on_cauldron(&mut self, pos: [i32; 3]) -> Result<bool> {
         use horizon_client::cauldron::{self, Outcome};

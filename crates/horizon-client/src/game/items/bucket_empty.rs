@@ -4,7 +4,6 @@ use super::{Game, Hit};
 use crate::hand_use::{UseResult};
 use horizon_client::items::ItemStack;
 use horizon_core::{geometry::Direction, position::BlockPos};
-use horizon_world::level::BucketContent;
 use mod_api::HostTransaction;
 
 impl Game<'_> {

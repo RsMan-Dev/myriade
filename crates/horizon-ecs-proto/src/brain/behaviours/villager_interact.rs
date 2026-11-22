@@ -4,7 +4,6 @@
 use crate::behaviours::play_tag::INTERACTION_TARGET;
 use crate::brain::behaviours::look_at_entity::species_id;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::rules::villager_interact as rules;
 use crate::targeting::{info, Who};

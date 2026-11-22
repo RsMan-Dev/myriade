@@ -1,7 +1,6 @@
 //! The playable game loop: streaming world, player simulation at 20 ticks/s,
 //! block interaction, inventory and HUD.
 use horizon_client::item_names::Names;
-use motion_ids::{motion_at, motion_block_entity};
 use resource_load::{
     Progress, launch_world, load_resources, named_scope, synchronous_startup,
 };
@@ -113,7 +112,7 @@ pub(crate) use hit::Hit;
 use horizon_client::random_source;
 use horizon_client::hand_use::SwingAnimation;
 use mod_api::client::first_person::Hand;
-use resource_loader::{Loaded, LoaderMsg, PendingWorldEntry, write_report};
+use resource_loader::{Loaded, PendingWorldEntry};
 use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 use horizon_client::spans::{startup, time as span};
@@ -135,7 +134,6 @@ use horizon_client::{
     mobs::{Mob, MobType, MobTypes},
     motion::{MotionResources, PlayerMotion},
     save::{Level, Persistent, SaveDir},
-    spans,
     sprint::Keys,
     streaming::{Streaming, WorkerContext},
     testgen::TestTerrain,
@@ -144,7 +142,6 @@ use horizon_client::{
 };
 use horizon_client::fast_hash::FxHashMap;
 use horizon_core::{
-    biome::{BiomeZoom, obfuscate_seed},
     geometry::{Aabb, Direction},
     position::BlockPos,
 };
@@ -164,7 +161,6 @@ use std::{
     sync::{
         Arc,
         atomic::{AtomicU32, Ordering},
-        mpsc::{Receiver, TryRecvError},
     },
     thread::JoinHandle,
     time::{Duration, Instant},
@@ -174,11 +170,10 @@ use {
     horizon_world::{
         block_collision::BlockCollisionRegistry,
         collision_context::{CollisionContext, CollisionEntity, CollisionItem},
-        entity_move::MoverType,
         entity_obstruction::{EntityIdentity, EntityObstructionWorld, ObstructionEntity},
         fluid::FluidState,
         level::{
-            Behaviours, BucketContent, EntityQuery, Landing, LevelAccess, LevelEvent, PlaceContext,
+            Behaviours, BucketContent, EntityQuery, LevelAccess, LevelEvent, PlaceContext,
             PlaceOutcome, PlacementContext, PlayerContext, PlayerEffect, RandomTickMaskUpdate,
             Ticks, flags as level_flags,
         },
@@ -186,8 +181,6 @@ use {
     },
 };
 
-/// A frame's finished meshes up to this many upload at once, unqueued.
-const AUTO_UPLOADS_AT_ONCE: usize = 8;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Screen {
     Playing,
@@ -234,39 +227,6 @@ enum Screen {
     /// itself, takes input through the screen hooks, does not draw chat.
     Studio,
 }
-impl Screen {
-    /// The id native mods see for this screen (`ScreenView.id`, the
-    /// `screen_render_post` hook): one per variant, and a hook's contract, so
-    /// it stays the same from release to release. A new variant must add one.
-    fn id(self) -> &'static str {
-        match self {
-            Screen::Playing => "playing",
-            Screen::GameModeSwitcher => "game_mode_switcher",
-            Screen::EmoteWheel => "emote_wheel",
-            Screen::Paused => "paused",
-            Screen::Options => "options",
-            Screen::Chat => "chat",
-            Screen::Creative => "creative",
-            Screen::Inventory => "inventory",
-            Screen::Dead => "dead",
-            Screen::Stats => "stats",
-            Screen::Advancements => "advancements",
-            Screen::WorldOptions => "world_options",
-            Screen::Friends => "friends",
-            Screen::Social => "social",
-            Screen::CommandBlock => "command_block",
-            Screen::BlockEditor => "block_editor",
-            Screen::ServerLinks => "server_links",
-            Screen::ConfirmLink => "confirm_link",
-            Screen::DialogWarning => "dialog_warning",
-            Screen::Win => "win",
-            Screen::DebugOptions => "debug_options",
-            Screen::Mod => "mod",
-            Screen::HudEditor => "hud_editor",
-            Screen::Studio => "studio",
-        }
-    }
-}
 /// The vanilla `state` a `transformer` table entry offers to `ability`: hoe and
 /// shovel tables have one action each; the axe's strip, scrape and wax-off lists
 /// are one untagged list in `BlockTransformers.bootstrap`, so its particle names it.
@@ -297,11 +257,6 @@ struct Mining {
     per_tick: f32,
     ticks: u32,
 }
-impl Mining {
-    fn stage(&self) -> Option<u8> {
-        (self.progress > 0.0).then(|| ((self.progress * 10.0) as u8).min(9))
-    }
-}
 #[derive(Clone, Copy)]
 struct TransformContext<'a> {
     world: &'a World,
@@ -311,15 +266,6 @@ struct TransformContext<'a> {
     simulated: bool,
 }
 
-/// What a falling block's tick did (`FallingBlockEntity.tick`).
-enum FallStep {
-    Falling,
-    Gone,
-    /// Gave up falling: drops itself as an item here.
-    Dropped(Vec3),
-    /// Hit the ground in this block.
-    Landed([i32; 3]),
-}
 /// A guest's right click comes as one packet per hand and part
 /// (`Minecraft.startUseItem`): `ServerGamePacketListenerImpl.handleUseItemOn`
 /// does the block's and `ItemStack.useOn`'s part, `handleUseItem` the
@@ -498,21 +444,6 @@ fn server_only_block_use(
 }
 impl GameLevel<'_> {
     /// How many entities in `area` press plates and tripwires, or with
-    /// `LIVING` only the living ones; a constant so a list of other kinds
-    /// compiles to no loop at all.
-    fn count_triggers<const LIVING: bool>(&self, area: Aabb) -> usize {
-        use entity::{Entity as _, for_each_entity};
-        let mut count = 0;
-        for_each_entity!(self.entities(), entity => {
-            if (!LIVING || entity.is_living())
-                && entity.triggers_blocks()
-                && area.intersects(entity.bounds())
-            {
-                count += 1;
-            }
-        });
-        count
-    }
     /// Every entity box that blocks building: the players who aren't
     /// spectators, the minecarts and the `Blockers` (a removed mob or a marker
     /// armor stand, whose box is empty, doesn't).
@@ -594,39 +525,6 @@ struct FallingBlock {
     saved: Option<Box<([i32; 4], horizon_core::nbt::Tag)>>,
 }
 horizon_mod_runtime::impl_attachment_lifetime!(FallingBlock);
-
-impl FallingBlock {
-    /// Where `FallingBlockRenderer` draws the block's model corner, `alpha`
-    /// into the tick: centred on the entity, then moved by `offset`, the
-    /// block's random model offset (`ModelBlockRenderer.tesselateBlock`:
-    /// `BlockState.getOffset` of `BlockPos.containing(x, maxY, z)`), so a
-    /// pointed dripstone keeps the place it hung at while it falls.
-    fn model_origin(
-        &self,
-        alpha: f64,
-        offset: impl Fn(BlockStateId, i32, i32) -> Option<[f64; 3]>,
-    ) -> glam::DVec3 {
-        let [dx, dy, dz] = offset(
-            self.state,
-            self.position.x.floor() as i32,
-            self.position.z.floor() as i32,
-        )
-        .unwrap_or([0.0; 3]);
-        glam::DVec3::new(
-            self.previous.x + (self.position.x - self.previous.x) * alpha - 0.5 + dx,
-            self.previous.y + (self.position.y - self.previous.y) * alpha + dy,
-            self.previous.z + (self.position.z - self.previous.z) * alpha - 0.5 + dz,
-        )
-    }
-}
-
-/// `FallingBlockRenderer.shouldRender` drops a falling block whose own state is
-/// the state of the cell it is in (`level.getBlockState(entity.blockPosition())`):
-/// a `NoGravity` block, or one that has just landed, sits inside an identical
-/// block, and vanilla draws no model for it.
-fn falling_block_visible(state: BlockStateId, cell: BlockStateId) -> bool {
-    state != cell
-}
 
 /// The data loaded once at startup and never changed: blocks, items,
 /// recipes, biomes, mobs, collision and motion. Read-only and `Send + Sync`,
@@ -758,12 +656,6 @@ pub struct PackResources {
     environments: Option<Arc<[Environment; 3]>>,
 }
 
-/// A quick craft drag as the screen draws it: each dragged slot's count and
-/// whether the slot caps it (None: hidden), and what stays in hand.
-struct DragView {
-    slots: HashMap<usize, Option<(u32, bool)>>,
-    left: Option<u32>,
-}
 fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
     group == slot
         || group == "any"
@@ -1271,8 +1163,6 @@ struct Game<'a> {
     recipe_ui: recipe_book::RecipeUi,
     /// The player's fishing hook.
     hook: horizon_client::join_seq::ResidentSlot<fishing::Hook>,
-    /// The other players' hooks a server tracks to this client.
-    remote_hooks: Vec<fishing::RemoteHook>,
     tridents: horizon_client::join_seq::JoinList<trident::ThrownTrident>,
     rockets: horizon_client::join_seq::JoinList<fireworks::Rocket>,
     /// Ominous trial spawners' item spawners.
@@ -5782,7 +5672,6 @@ impl<'a> Game<'a> {
             spill: Default::default(),
             recipe_ui: Default::default(),
             hook: Default::default(),
-            remote_hooks: Vec::new(),
             tridents: Default::default(),
             rockets: Default::default(),
             ominous_spawners: Default::default(),

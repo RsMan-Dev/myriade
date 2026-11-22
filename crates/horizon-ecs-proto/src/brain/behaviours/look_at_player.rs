@@ -2,7 +2,6 @@
 //! player within 6 blocks, the nearest becomes the look target at once (`look_at_player_sometimes` waits 40 to 80 ticks first). "No look target"
 //! and "the visible list is present" are the entry's `needs`; a rider looks at nobody.
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::{d2, is_occupied, OCC_MOUNTED};
 use crate::rules::look_at_player as rules;
 use crate::targeting::{info, Who};

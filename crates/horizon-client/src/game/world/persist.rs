@@ -230,28 +230,6 @@ pub struct EntityMemory {
     pub(super) removals: Vec<super::commands::Target>,
 }
 
-impl EntityMemory {
-    /// Move object-owned save and dirty state, not either level's residency ledger.
-    /// The source still emits its leave and the destination its join.
-    pub(super) fn move_object_to(&mut self, id: u32, destination: &mut Self) {
-        if let Some(uuid) = self.uuids.remove(&id) {
-            destination.uuids.insert(id, uuid);
-        }
-        if let Some(raw) = self.raw.remove(&id) {
-            destination.raw.insert(id, raw);
-        }
-        if let Some(forced) = self.forced_meta.remove(&id) {
-            destination.forced_meta.insert(id, forced);
-        }
-        if let Some(slots) = self.passenger_slots.remove(&id) {
-            destination.passenger_slots.insert(id, slots);
-        }
-        if self.score_destroyed.remove(&id) {
-            destination.score_destroyed.insert(id);
-        }
-    }
-}
-
 /// Runtime ownership paired with serialized nodes by one object walk. UUIDs
 /// are admission identities, never keys for matching distinct object states.
 #[derive(Debug)]
@@ -935,14 +913,6 @@ impl Game<'_> {
         self.load_spit_or_bullet_transferred(tag, uuid, player_uuid, None);
     }
 
-    /// `ShulkerBullet.readAdditionalSaveData`'s `Target`, resolved over the UUID
-    /// bridge: the `Who` of the loaded player or mob that UUID names, or `None`
-    /// for one that is not here. Vanilla keeps the UUID and re-resolves it every
-    /// tick; a `Who` can only name an entity in the level, so a target that is
-    /// away leaves the bullet with none and it falls (`ShulkerBullet.tick`).
-    fn bullet_target(&self, tag: &Tag) -> Option<Who> {
-        self.who_by_uuid(entity_nbt::bullet_target(tag)?)
-    }
     /// A saved fireball or wind charge.
     pub(super) fn load_fireball(
         &mut self,
@@ -2088,31 +2058,6 @@ impl Game<'_> {
         self.persist.score_destroyed.retain(|id| alive.contains(id));
     }
 
-    /// A loaded projectile's `Owner`: living hit credit and vehicle collision identity.
-    fn claim_owner(&self, p: &mut horizon_client::projectiles::Projectile) {
-        let Some(uuid) = p.owner_uuid else {
-            return;
-        };
-        let guest = self.lan.as_ref().and_then(|host| {
-            let ints = horizon_client::lan::playerdata::uuid_ints;
-            host.hub
-                .guests
-                .iter()
-                .find(|g| ints(g.uuid) == uuid)
-                .map(|g| g.conn)
-        });
-        if guest.is_some() {
-            (p.owner, p.guest) = (Some(Who::Player), guest);
-        } else if p.owner.is_none() {
-            p.owner = self.mob_by_uuid(uuid).map(Who::Mob);
-        }
-        use super::commands::Target;
-        p.owner_vehicle =
-            match self.target_by_uuid(horizon_client::lan::playerdata::ints_uuid(uuid)) {
-                Some(Target::Boat(id) | Target::Cart(id)) => Some(id),
-                _ => None,
-            };
-    }
     /// Save and remove the entities of chunks that unloaded.
     pub(super) fn unload_entities(&mut self, unloaded: &[Arc<Chunk>]) {
         if unloaded.is_empty() {

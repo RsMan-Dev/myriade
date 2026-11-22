@@ -241,17 +241,6 @@ impl Game<'_> {
         self.native_lightning_strike(player, pos, cause, &mut cancel);
         !cancel
     }
-    /// `ClientLevel.addEntity` for a server's lightning bolt: on a client it
-    /// only flashes, sounds and draws (`LightningBolt.tick` off the server).
-    pub(super) fn spawn_remote_bolt(&mut self, id: u32, at: [f64; 3]) {
-        self.bolts.retain(|b| b.id != id);
-        // The client's own copy, constructed as on the server.
-        let mut random = EntityRandom::own(random_source::entity());
-        let seed = random.next_long();
-        let flashes = random.next_int_bound(3).unwrap_or(0) + 1;
-        self.lightning_seen[0] += 1;
-        self.bolts.push(Bolt { id, at, life: 2, flashes, seed, random });
-    }
     /// `spawnFire`: fire at the strike point and `extra` random neighbours
     /// (from the bolt's own `random`), wherever `BaseFireBlock.getState` fire
     /// can survive, when a player is within the fire-spread radius. Returns how

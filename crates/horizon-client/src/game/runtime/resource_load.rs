@@ -39,12 +39,6 @@ impl Progress {
     pub(super) fn set(&self, stage: u32) {
         self.value.store(stage, Ordering::Relaxed);
     }
-    pub(super) fn fraction(&self) -> f32 {
-        self.value.load(Ordering::Relaxed) as f32 / (self.lines.len() - 1) as f32
-    }
-    pub(super) fn line(&self) -> &'static str {
-        self.lines[(self.value.load(Ordering::Relaxed) as usize).min(self.lines.len() - 1)]
-    }
 }
 
 /// Harness and dedicated runs keep the fully-synchronous startup so their
@@ -465,13 +459,13 @@ pub(super) fn load_resources(
     additional_data: Vec<Arc<horizon_client::datapack::DataPack>>,
     launch_world: Option<&str>,
     vanilla_root: &std::path::Path,
-    settings: &Settings,
+    _settings: &Settings,
     started: Instant,
     role: impl Into<mods::LoadRole>,
     progress: &Progress,
 ) -> Result<Loaded> {
     let load_role: mods::LoadRole = role.into();
-    let role = load_role.execution;
+    let _role = load_role.execution;
     let mut root = resolved.prepared().to_path_buf();
     let threads = horizon_threads::sizing::for_pool_with(false, horizon_threads::sizing::Pool::Jobs);
     // One pool of workers for every level's streaming, the client's and the
@@ -480,7 +474,6 @@ pub(super) fn load_resources(
     // The core bundle loads on workers. A pack failure starts it again with the
     // game's own resources.
     let parallel = threads > 1;
-    let mut pack_error = None;
     let mut can_rollback = true;
     let (core, resolved) = loop {
         let core = std::thread::scope(|scope| {
@@ -516,7 +509,6 @@ pub(super) fn load_resources(
         log::warn!(
             "Horizon: resource packs failed to load ({failure}); using the default resources"
         );
-        pack_error = Some(failure);
         can_rollback = false;
         root = vanilla_root.to_path_buf();
         resolved = horizon_assets::resource_source::ResourceRoot::directory(root.clone());
@@ -527,7 +519,7 @@ pub(super) fn load_resources(
     log::info!("load core tables: {:.2}s", started.elapsed().as_secs_f32());
     let CoreTables {
         item_data,
-        item_defaults,
+        item_defaults: _,
         assets,
         gameplay:
             GameplayTables {
@@ -618,7 +610,6 @@ pub(super) fn load_resources(
     write_prepared_files(vanilla_root.to_path_buf());
     Ok(Loaded {
         root,
-        pack_error,
         resources,
         pack,
     })

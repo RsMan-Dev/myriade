@@ -675,29 +675,6 @@ impl Game<'_> {
         });
         true
     }
-    /// `LivingEntity.baseTick` for the mobs that ride a mount of the `dismounts_underwater` tag (a baby
-    /// zombie on a chicken): with their eyes in water they get off it.
-    pub(super) fn dismount_underwater_mob_riders(&mut self) {
-        if self.ecs.is_active() {
-            // P has no dismount of riders under water (grep empty in horizon-ecs-proto): `EcsLevel::dismount_underwater` (missing).
-            self.ecs.dismount_underwater();
-            return;
-        }
-        let blocked = self.mobs_below_off_level();
-        let swimmers: Vec<u32> = self
-            .remote_entities
-            .iter()
-            .filter(|m| !blocked.contains(&m.id) && m.alive() && m.fluids.eye_in_water)
-            .filter_map(|m| {
-                let mount = m.extra.mount?;
-                let under = self.remote_entities.iter().find(|v| v.id == mount)?;
-                dismounts_underwater(under.species()).then_some(m.id)
-            })
-            .collect();
-        for rider in swimmers {
-            self.dismount_mob(rider);
-        }
-    }
     /// `positionRider`: the player sits on the mount after it moves.
     pub(super) fn position_rider(&mut self) {
         if self.ecs.is_active() {
@@ -1061,20 +1038,6 @@ impl Game<'_> {
     fn jumps(species: Species) -> bool {
         equine::is_equine(species) || horizon_client::mobs::nautilus::is_nautilus(species)
     }
-    /// `Player.jumpableVehicle`: a saddled mount that jumps (not a pig or a
-    /// strider, which a saddle only steers).
-    pub(super) fn jumpable_mount(&self) -> bool {
-        if self.ecs.is_active() {
-            // P's saddle and jump test for the ECS mount (`EcsLevel::jumpable`, missing).
-            return self.riding.and_then(|id| self.ecs.entity_of(id)).is_some_and(|e| self.ecs.jumpable(e));
-        }
-        self.mount_index()
-            .is_some_and(|i| self.remote_entities[i].extra.saddled() && Self::jumps(self.remote_entities[i].species()))
-    }
-    /// `willPrioritizeJumpInfo`: charging a jump or recharging.
-    pub(super) fn mount_jumping(&self) -> bool {
-        self.mount.jump_scale > 0.0 || self.mount.jump_ticks < 0
-    }
 }
 
 /// The mount a rider gets off: its kind, where it stands, its box,
@@ -1359,50 +1322,6 @@ fn strider_dismount_location(
         }
     }
     (Vec3::new(strider.position.x, top, strider.position.z), None)
-}
-
-/// `ServerGamePacketListenerImpl.handlePlayerCommand` START_RIDING_JUMP on the
-/// vehicle `m` (`PlayerRideableJumping`): `canJump()`, a scale above zero and
-/// then the vehicle's own `handleStartJump`. Returns the sound the server has
-/// to play, with its volume — `AbstractHorse.playJumpSound` at 0.4, `Camel`'s
-/// dash at 1.0 — or None when the mount takes no such jump or plays its own
-/// dash sound (the nautilus does).
-///
-/// Nothing here moves the mount on its own: what a horse, camel or nautilus
-/// does with the jump is its `handleStartJump`, and the travel that follows
-/// (a dash, a rear) is the mount's own tick.
-pub(super) fn start_riding_jump(
-    m: &mut horizon_client::mobs::Mob,
-    data: i32,
-) -> Option<(&'static str, f32)> {
-    // PlayerRideableJumping.canJump: AbstractHorse.isSaddled, and a camel that
-    // is not refusing to move keeps its own gate.
-    if data <= 0 || !m.extra.saddled() {
-        return None;
-    }
-    if crate::mobs::camel::is_camel(m.species()) {
-        if crate::mobs::camel::refuse_to_move(m) {
-            return None;
-        }
-        // Camel.handleStartJump: the dash sound, the entity action and DASH.
-        crate::mobs::camel::set_dashing(m, true);
-        Some((crate::mobs::camel::voice(m, 3), 1.0))
-    } else if crate::mobs::nautilus::is_nautilus(m.species()) {
-        // AbstractNautilus.handleStartJump: DASH, and the dash sound it makes
-        // itself when the dash runs. The momentum is `onPlayerJump`'s pending
-        // scale, which the nautilus spends on its next travel; a guest's ride
-        // tick fills `Rider::jump` from the keys the host hears, so the scale
-        // its own bar charged comes from this packet.
-        crate::mobs::nautilus::on_player_jump(m, data);
-        None
-    } else if equine::is_equine(m.species()) {
-        // AbstractHorse.handleStartJump, which is onPlayerJump for the slide
-        // and the rear, then playJumpSound.
-        equine::on_player_jump(m);
-        Some((equine::jump_sound(m), 0.4))
-    } else {
-        None
-    }
 }
 
 #[cfg(test)]

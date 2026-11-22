@@ -79,29 +79,6 @@ impl Game<'_> {
             }
         }
     }
-    /// A server's light update changed the light of `sections` of the column `key`: their
-    /// `dynamic_light` cells asked again, each once, so this copy's own relights take what the
-    /// server's took (the server asked before it relit them). A Horizon addition: the contract
-    /// reads emission again on no light packet, but a part's answer may read data the client
-    /// receives later.
-    pub(super) fn ask_updated_light_emission(&mut self, key: (i32, i32), sections: &[usize]) {
-        if sections.is_empty() || !self.pack.context.light.any_dynamic() {
-            return;
-        }
-        let Some(chunk) = self.world.chunks.get(&key) else {
-            return;
-        };
-        let cells = self
-            .pack
-            .context
-            .light
-            .dynamic_cells(chunk, |s| sections.contains(&s));
-        let dimension = self.dim.level();
-        for (cell, [x, y, z], state) in cells {
-            let emission = self.ask_light_emission(dimension, x, y, z, state);
-            self.store_light_emission(key, cell, emission);
-        }
-    }
     /// One cell's answer stored in its chunk (`None` drops the one it had); the chunk is
     /// copied only when the answer changes.
     fn store_light_emission(&mut self, key: (i32, i32), cell: u32, emission: Option<u8>) {

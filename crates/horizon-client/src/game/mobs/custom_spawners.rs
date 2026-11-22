@@ -22,39 +22,6 @@ impl Game<'_> {
     pub(super) fn has_custom_spawner(&mut self, kind: SpawnerKind) -> bool {
         self.level_spawners().contains(&SpawnerEntry::Builtin(kind))
     }
-
-    /// `ServerLevel.tickCustomSpawners`: every spawner in the list, in order. A vanilla
-    /// spawner keeps the place the game ticks it today (the phantom spawner runs with
-    /// the stats, after the mobs: `spawn_phantoms`); a mod's spawner is the
-    /// `custom_spawner_tick` hook for its key.
-    pub(super) fn tick_custom_spawners(&mut self) {
-        self.level_spawners();
-        let dim = self.dim;
-        let spawn_enemies = self
-            .session
-            .rules
-            .bool_at(horizon_client::gamerules::vanilla::SPAWN_MONSTERS)
-            && self.session.difficulty != 0;
-        let mut at = 0;
-        while let Some(entry) = self.creatures.custom_spawners[&dim]
-            .entries()
-            .get(at)
-            .cloned()
-        {
-            at += 1;
-            match entry {
-                SpawnerEntry::Builtin(SpawnerKind::WanderingTrader) => self.tick_wandering_trader(),
-                SpawnerEntry::Builtin(SpawnerKind::Patrol) => self.tick_patrol_spawner(),
-                SpawnerEntry::Builtin(SpawnerKind::Cat) => self.tick_cat_spawner(),
-                SpawnerEntry::Builtin(SpawnerKind::VillageSiege) => self.tick_village_siege(),
-                SpawnerEntry::Mod(key) => {
-                    self.native_custom_spawner_tick(dim.id(), key, spawn_enemies)
-                }
-                // `Phantom` ticks in `spawn_phantoms`.
-                _ => {}
-            }
-        }
-    }
 }
 
 #[cfg(test)]

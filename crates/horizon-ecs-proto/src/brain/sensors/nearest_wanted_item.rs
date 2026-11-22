@@ -6,7 +6,6 @@ use crate::cow::Pos;
 use crate::item::{self, Item};
 use crate::items::{has_tag, item_id};
 use crate::targeting::Who;
-use bevy_ecs::prelude::*;
 use horizon_core::geometry::{Aabb, Vec3};
 
 /// The item entity the creature wants to take.

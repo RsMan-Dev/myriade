@@ -1,5 +1,5 @@
 //! The armadillo's scute wait is saved under the jar's `scute_time` (the ticks left) and a load gives it back as the due tick.
-use horizon_core::nbt::Tag;
+use horizon_core::nbt::{JavaString, Tag};
 use horizon_ecs_proto::{cow::*, gift_drop::GiftDue, nbt};
 
 #[test]
@@ -12,7 +12,7 @@ fn the_scute_wait_is_saved_and_loaded() {
     let sp = *table.iter().find(|s| s.name == "minecraft:armadillo").expect("the armadillo");
     let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 61);
     let saved = nbt::save(&h.world, e).expect("an NBT");
-    let Some(Tag::Int(left)) = saved.get("scute_time") else { panic!("scute_time is saved") };
+    let Some(Tag::Int(left)) = saved.get(&JavaString::from("scute_time")) else { panic!("scute_time is saved") };
     assert!((6000..12000).contains(left), "the first wait is 6000 + nextInt(6000), got {left}");
 
     let f = spawn_species(&mut h.world, &sp, 4.5, 4.5, 62);

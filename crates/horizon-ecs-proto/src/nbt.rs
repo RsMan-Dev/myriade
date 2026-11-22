@@ -383,6 +383,14 @@ fn write_pos(w: &World, e: Entity, c: &mut Compound) {
 
 fn read_pos(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Some(v) = tag_vec3(t) else { return false };
+    // The box follows the position (`Entity.setPos`): a restored species is built at height 1 and placed here.
+    let old = w.get::<Pos>(e).map(|p| p.0);
+    if let (Some(old), Some(b)) = (old, w.get::<crate::cow::Bounds>(e).map(|b| b.0)) {
+        let d = Vec3::new(v.x - old.x, v.y - old.y, v.z - old.z);
+        let (mn, mx) = (b.min_position(), b.max_position());
+        let moved = horizon_core::geometry::Aabb::new(Vec3::new(mn.x + d.x, mn.y + d.y, mn.z + d.z), Vec3::new(mx.x + d.x, mx.y + d.y, mx.z + d.z));
+        w.entity_mut(e).insert(crate::cow::Bounds(moved));
+    }
     w.entity_mut(e).insert(Pos(v));
     true
 }

@@ -11,7 +11,6 @@
 use super::*;
 use crate::cow::*;
 use crate::goals::*;
-use crate::hostile::PlayerState;
 use crate::rules::ocelot_attack::{cool_down, melee_reach2, pounce_speed, strike_amount};
 use crate::targeting::{self, Target, TargetWatchers, Who};
 

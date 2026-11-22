@@ -3,14 +3,7 @@
 //! (`BundleContents.Mutable.removeOne`). Moving off the bundle clears the
 //! selection. On a server the selection is sent to it (`ServerboundSelectBundleItemPacket`).
 use super::Game;
-use horizon_client::bundle::{Contents, toggle_selected};
-use horizon_protocol::packets::play::{self, Serverbound as S};
-
-#[derive(Default)]
-pub(super) struct BundleMouse {
-    /// The slot under the cursor at the last tick (`AbstractContainerScreen.hoveredSlot`).
-    hovered: Option<usize>,
-}
+use horizon_client::bundle::toggle_selected;
 
 impl Game<'_> {
     /// A slot a bundle can be selected in: the player's inventory and off hand in any

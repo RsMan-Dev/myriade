@@ -1,6 +1,5 @@
 //! `RandomStroll.stroll`: a walk target within `h` x `v` blocks (none if no spot is standable), unless there is one.
 use crate::brain::*;
-use crate::cow::*;
 
 #[derive(Clone, Copy)]
 pub struct Params {

@@ -11,7 +11,6 @@ use crate::behaviours::shear::ShearDef;
 use crate::behaviours::swallow_hold::{release, Held, SearchAfter};
 use crate::rules::RuleEntry;
 use crate::size::{SizeParams, SIZE};
-use bevy_ecs::prelude::*;
 
 /// `SulfurCube.shear`: the held block comes out (an item thrown from the top of its body) and it does not search for 100 ticks.
 /// The item leaves from the default passenger attachment of the jar (the body's height above the feet, `EntityAttachments.createDefault`).

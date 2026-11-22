@@ -9,7 +9,7 @@ use crate::blocks;
 use crate::brain::*;
 use crate::cow::now_of;
 use crate::goals::with_rng;
-use crate::rules::bonemeal::{self as rules, CYCLE_EVERY, MAX_CYCLES};
+use crate::rules::bonemeal::{self as rules, CYCLE_EVERY};
 use bevy_ecs::prelude::Component;
 use horizon_client_lib::mobs::MobWorld;
 use horizon_world::registry::BlockStateId;

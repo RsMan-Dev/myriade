@@ -7,7 +7,6 @@
 use super::*;
 use crate::rules::bat_flutter;
 use crate::{cow::*, goals::*};
-use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]

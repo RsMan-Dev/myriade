@@ -20,26 +20,6 @@ pub(in crate::game) struct ListenedRolls<'g, 'a, 'h> {
     attacker: Option<EntityRef>,
 }
 
-impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
-    /// A death's rolls: its attacker is the blow's causing entity.
-    pub(in crate::game) fn new(
-        game: &'g mut Game<'a>,
-        entity: LivingRef,
-        source: &'h HurtSource<'h>,
-    ) -> Self {
-        let attacker = u32::try_from(source.causing)
-            .ok()
-            .filter(|id| *id != 0)
-            .map(|id| EntityRef::new(entity.entity().epoch(), id));
-        Self {
-            game,
-            entity,
-            source,
-            attacker,
-        }
-    }
-}
-
 impl DeathRolls for ListenedRolls<'_, '_, '_> {
     fn sequences(&mut self) -> &mut RandomSequences {
         &mut self.game.rand_sequences

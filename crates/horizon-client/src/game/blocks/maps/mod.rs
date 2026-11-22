@@ -20,8 +20,6 @@ pub(super) enum Key {
     Player(u32),
     /// A named entry of an item's `minecraft:map_decorations`.
     Item(JavaString),
-    /// A decoration a server sent (`addClientSideDecorations`).
-    Remote,
     Banner([i32; 3]),
     Frame(i32),
 }
@@ -664,17 +662,6 @@ impl Default for Maps {
         }
     }
 }
-/// `MapColor.getColorFromPackedId` as RGBA bytes (NONE is transparent).
-fn packed_rgba(packed: u8) -> [u8; 4] {
-    let id = usize::from(packed >> 2);
-    if id == 0 || id >= MAP_COLORS.len() {
-        return [0; 4];
-    }
-    let modifier = [180u32, 220, 255, 135][usize::from(packed & 3)];
-    let col = MAP_COLORS[id];
-    let ch = |s: u32| ((col >> s & 255) * modifier / 255) as u8;
-    [ch(16), ch(8), ch(0), 255]
-}
 /// `get(DataComponents.MAP_ID)`: the map id any stack carries. Filled maps
 /// (explorer maps included) carry one; a command can give it to any item.
 pub(super) fn map_id(stack: &ItemStack) -> Option<i32> {
@@ -723,32 +710,6 @@ const DECORATION_TYPES: [(&str, &str); 40] = [
     ("mineshaft", "map/decorations/mineshaft"),
     ("ocean_ruin_warm", "map/decorations/warm_ocean_ruins"),
 ];
-/// `MapDecorationType.showOnItemFrame` is false for the player arrows and the two markers.
-/// `MapRenderer.render`'s pose for decoration `d` in map pixels (0..128,
-/// y down) at depth `z`: its quad is (-1, -1) to (1, 1) under it.
-pub(super) fn decoration_pose(d: &Decoration, z: f32) -> glam::Mat4 {
-    decoration_pose_at(d.x, d.y, d.rot, z)
-}
-/// [`decoration_pose`] for a decoration at `x`, `y` (half map pixels) turned `rot`.
-pub(super) fn decoration_pose_at(x: i8, y: i8, rot: u8, z: f32) -> glam::Mat4 {
-    glam::Mat4::from_translation(glam::Vec3::new(
-        f32::from(x) / 2.0 + 64.0,
-        f32::from(y) / 2.0 + 64.0,
-        z,
-    )) * glam::Mat4::from_rotation_z((f32::from(rot) * 360.0 / 16.0).to_radians())
-        * glam::Mat4::from_scale(glam::Vec3::splat(4.0))
-        * glam::Mat4::from_translation(glam::Vec3::new(-0.125, 0.125, 0.0))
-}
-pub(super) fn shown_on_frame(sprite: &str) -> bool {
-    // A mod's type says for itself (`showOnItemFrame`).
-    if let Some(shown) = horizon_client::map_decoration_types::registered().shown_on_frame(sprite) {
-        return shown;
-    }
-    !matches!(
-        decoration_type(sprite),
-        Some("player" | "red_marker" | "blue_marker" | "player_off_map" | "player_off_limits")
-    )
-}
 /// `MapDecorationType.trackCount`: the players' arrows, the markers, the
 /// frames and the banners count toward a map's limit, the structures do not.
 fn tracks_count(sprite: &str) -> bool {
@@ -1332,24 +1293,6 @@ impl Game<'_> {
         for id in held {
             self.update_map(id);
         }
-    }
-    /// The maps the player carries, for `status`: how many of their pixels
-    /// are drawn, and their decorations.
-    pub(super) fn maps_status(&self) -> Vec<serde_json::Value> {
-        self.inventory
-            .iter()
-            .chain(std::iter::once(&self.offhand))
-            .flatten()
-            .filter_map(map_id)
-            .filter_map(|id| {
-                let m = self.maps.data.get(&id)?;
-                Some(serde_json::json!({
-                    "id": id,
-                    "pixels": m.colors.iter().filter(|&&c| c != 0).count(),
-                    "decorations": m.decorations.iter().map(|d| d.sprite).collect::<Vec<_>>(),
-                }))
-            })
-            .collect()
     }
     /// `ServerPlayer.synchronizeSpecialItemUpdates` for each map the guest
     /// carries, and every 10 ticks (`ServerEntity.sendChanges`) for each map

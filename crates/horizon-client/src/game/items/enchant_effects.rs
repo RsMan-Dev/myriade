@@ -8,7 +8,6 @@
 //! `minecraft:location_changed` disk effect (frost walker).
 use super::Game;
 use super::durability::Wearer;
-use horizon_ecs_proto::{bridge::host::HurtSource, goals::Slot};
 use horizon_client::{
     enchant::{EffectContext, Enchantments, level_value},
     items::{ItemStack, Items},
@@ -749,21 +748,6 @@ impl Game<'_> {
             }
         });
     }
-    /// `thorns` for the ECS mob `attacker`: its random and its hurt go through the bridge.
-    pub(super) fn thorns_ecs(&mut self, attacker: u32) {
-        self.player_thorns(|g, min, max| {
-            let Some(random) = g.ecs_next_float(attacker) else { return };
-            let damage = random * (max - min) + min;
-            let Some(p) = g.player.as_ref() else { return };
-            let player = p.entity_id as u32;
-            let alive = g.mob_alive(attacker);
-            g.ecs_hurt(attacker, damage, HurtSource::Player(player));
-            if alive && !g.mob_alive(attacker) {
-                g.native_ecs_kill(attacker);
-            }
-            g.remember_mob_player_credit(attacker);
-        });
-    }
     /// The victim's side of thorns when another player hit this one: the
     /// damage each piece deals that player, rolled from the attacker's own
     /// random (a player's, which no level draw shares).
@@ -959,130 +943,6 @@ impl Game<'_> {
                 }
             }
         }
-    }
-    /// `mob_post_attack` for the ECS mob `target`: the hands are read by the bridge, the armour by its item name.
-    pub(super) fn mob_post_attack_ecs(
-        &mut self,
-        target: u32,
-        attacker: Option<Who>,
-        direct: Option<&str>,
-        damage_type: Option<&str>,
-    ) {
-        use horizon_client::mobs::finalize as f;
-        let Some(kind) = self.ecs.kind(target).map(str::to_owned) else { return };
-        let kind = format!("minecraft:{}", kind.trim_start_matches("minecraft:"));
-        let attacker_kind = match attacker {
-            Some(Who::Player) => self.player.as_ref().map(|_| "minecraft:player".to_owned()),
-            Some(Who::Mob(id)) => self.ecs.kind(id).map(|k| format!("minecraft:{}", k.trim_start_matches("minecraft:"))),
-            None => None,
-        };
-        let attacker = attacker.filter(|_| attacker_kind.is_some());
-        let direct = direct.or(attacker_kind.as_deref());
-        // EquipmentSlot.VALUES: the hands, then the feet up to the head.
-        for (slot, name, hand) in [
-            (Slot::Main, MOB_SLOTS[f::MAINHAND], true),
-            (Slot::Off, MOB_SLOTS[f::OFFHAND], true),
-            (Slot::Feet, MOB_SLOTS[f::FEET], false),
-            (Slot::Legs, MOB_SLOTS[f::LEGS], false),
-            (Slot::Chest, MOB_SLOTS[f::CHEST], false),
-            (Slot::Head, MOB_SLOTS[f::HEAD], false),
-        ] {
-            let Some(item) = self.ecs_item(target, slot) else { continue };
-            let stack = ItemStack::new(&item, 1);
-            let mut effects = Vec::new();
-            for (enchantment, level) in stack.enchantments() {
-                let Some(def) = world_stations!(self).enchantments.get(enchantment) else { continue };
-                if !def.slots.iter().any(|s| s == name || s == "any" || (s == "armor" && !hand) || (s == "hand" && hand)) {
-                    continue;
-                }
-                for effect in def.effects["minecraft:post_attack"].as_array().into_iter().flatten() {
-                    if effect["enchanted"] == "victim" {
-                        effects.push((effect.clone(), *level));
-                    }
-                }
-            }
-            for (effect, level) in effects {
-                let ctx = EffectContext {
-                    this: Some(&kind),
-                    attacker: attacker_kind.as_deref(),
-                    direct_attacker: direct,
-                    is_direct: direct.is_some() && direct == attacker_kind.as_deref(),
-                    damage_type,
-                    items: Some(world_items!(self)),
-                    ..Default::default()
-                };
-                let ok = effect.get("requirements").is_none_or(|r| {
-                    world_stations!(self).enchantments.condition(r, level, &ctx, &mut self.world.random)
-                });
-                if ok && effect["affected"] == "attacker" && let Some(attacker) = attacker {
-                    self.victim_effect_ecs(&effect["effect"], level, target, slot, attacker);
-                }
-            }
-        }
-    }
-    /// `victim_effect` for an ECS wearer: the attacker's random and the hurt go through the bridge.
-    fn victim_effect_ecs(&mut self, effect: &Value, level: u32, wearer: u32, slot: Slot, attacker: Who) {
-        match effect["type"].as_str().map(|t| t.trim_start_matches("minecraft:")) {
-            Some("all_of") => {
-                for e in effect["effects"].as_array().into_iter().flatten() {
-                    self.victim_effect_ecs(e, level, wearer, slot, attacker);
-                }
-            }
-            Some("damage_entity") => {
-                let min = level_value(&effect["min_damage"], level);
-                let max = level_value(&effect["max_damage"], level);
-                let random = match attacker {
-                    Who::Player => random_source::entity().next_float(),
-                    Who::Mob(id) => match self.ecs_next_float(id) {
-                        Some(random) => random,
-                        None => return,
-                    },
-                };
-                let damage = random * (max - min) + min;
-                let Some(m) = self.ecs_mob(wearer) else { return };
-                let from = [m.at.x, m.at.y, m.at.z];
-                let kind = effect["damage_type"].as_str().unwrap_or("minecraft:thorns");
-                match attacker {
-                    Who::Player => self.mob_hits_player_caused(damage, from, kind, Some(wearer)),
-                    Who::Mob(id) => self.ecs_hurt(id, damage, HurtSource::Entity(wearer)),
-                }
-            }
-            Some("change_item_damage") => {
-                let amount = level_value(&effect["amount"], level) as u32;
-                self.wear_mob_piece_ecs(wearer, slot, amount);
-            }
-            _ => {}
-        }
-    }
-    /// `wear_mob_piece` for an ECS wearer: the piece is read by its item name, so only a break (the piece leaves the slot) is written.
-    fn wear_mob_piece_ecs(&mut self, id: u32, slot: Slot, amount: u32) {
-        let index = horizon_ecs_proto::equipment_drop::index(slot);
-        let Some(stack) = self.ecs.equipment_stack(id, index) else { return };
-        if amount == 0 || !horizon_client::stations::is_damageable(world_items!(self), &stack) {
-            return;
-        }
-        let loss = self.durability_loss(&stack, amount, Wearer::Living(id));
-        if loss == 0 {
-            return;
-        }
-        let max = world_items!(self).get(&stack.item).map_or(0, |i| i.max_damage);
-        if stack.damage + loss < max {
-            self.ecs.damage_equipment(id, index, loss as i32);
-            return;
-        }
-        let Some(at) = self.ecs.position(id) else { return };
-        self.ecs_take(id, slot);
-        // LivingEntity.entityEventForEquipmentBreak
-        let event = match slot {
-            Slot::Main => 47,
-            Slot::Off => 48,
-            Slot::Feet => 52,
-            Slot::Legs => 51,
-            Slot::Chest => 50,
-            Slot::Head => 49,
-            _ => return,
-        };
-        self.lan_entity_event(id as i32, event, at);
     }
     /// `DamageEntity.apply`, `ChangeItemDamage.apply` (on the piece) and
     /// `AllOf` for one `post_attack` effect of the piece the mob `wearer` has

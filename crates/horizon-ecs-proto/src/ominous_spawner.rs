@@ -5,8 +5,7 @@
 use crate::cow::{after, now_of, Clock, OwnTime, Pos};
 use crate::goals::{next_uid, Events, Uid};
 use crate::item::spawn_at_location;
-use crate::projectile::{launch, Flight};
-use crate::projectile_more;
+use crate::projectile::launch;
 use crate::rules::ominous_spawner::{about_to_spawn_delay, drop_delay, particle_count, particle_wait, shoot_down};
 use crate::spawn_spawner::SpawnerRng;
 use bevy_ecs::prelude::*;

@@ -422,7 +422,6 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
             Stashed::Crowded => drop(em.insert(Crowded)),
             Stashed::Flying => drop(em.insert(crate::projectile::Flying)),
             Stashed::TridentFlying => drop(em.insert(crate::trident::TridentFlying)),
-            Stashed::Moving => drop(em.insert(Moving)),
         }
     }
     // The world may have changed under it while it slept (a block, a fluid): its physics looks again.
@@ -435,6 +434,10 @@ pub fn wake(world: &mut World, e: Entity, now: u64) {
     for (rem, due) in wheel {
         let stale = matches!((due, melee), (Due::Goal(s), Some(m)) if s == m);
         wh.push(if stale { now + 1 } else { now + rem }, e, due);
+    }
+    // Its trackers dropped it while it slept (or never had it): it is sent again to whoever sees it now.
+    if let Some(mut m) = world.get_resource_mut::<crate::bridge::view::Modified>() {
+        m.push(e);
     }
     crate::despawn::on_wake(world, e);
     crate::spring_trap::on_wake(world, e);

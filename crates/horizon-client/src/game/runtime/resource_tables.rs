@@ -79,18 +79,6 @@ impl Resources {
 }
 
 impl PackResources {
-    /// Everything a pack overlay at `root` provides, over `assets` loaded from it.
-    pub(super) fn load(
-        root: &horizon_assets::resource_source::ResourceRoot,
-        assets: Arc<Assets>,
-        biomes: Arc<Biomes>,
-        light: Arc<LightTables>,
-    ) -> Result<Self> {
-        api_values::resolve_block_definitions(assets.registry)?;
-        mods::extend_poi_types(assets.registry);
-        mods::register_cauldron_fluid_contents(assets.registry);
-        Ok(Self::assemble(root, assets, biomes, light))
-    }
     /// The workers' context over `biomes`: this pack's own when `biomes` is
     /// the table it was built with, else the same parts with that table.
     pub(super) fn context_with(&self, biomes: Arc<Biomes>) -> Arc<WorkerContext> {

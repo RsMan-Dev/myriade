@@ -238,12 +238,6 @@ fn equine(s: Species) -> bool {
             | Species::TraderLlama
     )
 }
-/// Mobs with species-specific body equipment.
-pub(super) fn body_equipment_species(s: Species) -> bool {
-    equine(s)
-        || matches!(s, Species::Wolf | Species::HappyGhast | Species::SulfurCube)
-        || horizon_client::mobs::nautilus::is_nautilus(s)
-}
 /// What a mob holds in a slot.
 pub(super) fn mob_slot_item(m: &Mob, slot: Slot) -> Option<Arc<str>> {
     let x = &m.extra;
@@ -373,7 +367,7 @@ impl Game<'_> {
 
     /// The dispenser level events: 1000 click, 1001 fail, 1002 launch, 1004
     /// firework shoot, 1018 blaze shoot and 2000 smoke shot out of the front.
-    pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, data: i32) {
+    pub(super) fn dispenser_event(&mut self, id: i32, pos: Pos, _data: i32) {
         let c = Self::center(pos);
         match id {
             1000 => self

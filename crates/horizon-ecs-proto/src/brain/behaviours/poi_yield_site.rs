@@ -7,7 +7,6 @@ use crate::brain::*;
 use crate::goals::stop_nav;
 use crate::poi::PoiRegistry;
 use crate::targeting::Who;
-use bevy_ecs::prelude::*;
 
 pub struct Params {
     pub job: &'static MemKey,

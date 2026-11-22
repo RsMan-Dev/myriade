@@ -19,35 +19,6 @@ pub fn status_color(status: BorderStatus) -> u32 {
     }
 }
 
-/// `Math.min(double, double)`, including the signed-zero rule.
-pub(crate) fn jmin(a: f64, b: f64) -> f64 {
-    if a.is_nan() {
-        a
-    } else if a == 0.0 && b == 0.0 && b.is_sign_negative() {
-        b
-    } else if a <= b {
-        a
-    } else {
-        b
-    }
-}
-/// `Math.max(double, double)`, including the signed-zero rule.
-pub(crate) fn jmax(a: f64, b: f64) -> f64 {
-    if a.is_nan() {
-        a
-    } else if a == 0.0 && b == 0.0 && a.is_sign_negative() {
-        b
-    } else if a >= b {
-        a
-    } else {
-        b
-    }
-}
-/// `Mth.clamp(double, double, double)`.
-pub(crate) fn jclamp(v: f64, lo: f64, hi: f64) -> f64 {
-    if v < lo { lo } else { jmin(v, hi) }
-}
-
 #[derive(Clone, Debug)]
 pub struct WorldBorder {
     geometry: BorderGeometry,

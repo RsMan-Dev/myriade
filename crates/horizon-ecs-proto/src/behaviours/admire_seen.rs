@@ -2,7 +2,7 @@
 //! off hand make the animal walk to it for `duration` ticks; it gives up when the item is too far, after `tired` ticks of trying
 //! (then no goal for `walk_off` ticks), or when the off hand is filled. Woken by `arm` and by a dropped item (`item_dropped`).
 use super::*;
-use crate::rules::admire_seen::{self, Step, EYE, RANGE, SPEED};
+use crate::rules::admire_seen::{self, Step, SPEED};
 use crate::{cow::*, goals::*, item};
 use horizon_core::geometry::Vec3;
 

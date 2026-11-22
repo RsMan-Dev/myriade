@@ -8,7 +8,6 @@ use super::{
     test_entities::{aabb_of, inflate},
 };
 use horizon_client::{
-    component::name_text,
     containers::BlockEntity,
     structure_block::rotation_from_ordinal,
     test_instance_block::{Data, Status, TestInstanceBlock},
@@ -25,9 +24,6 @@ use {
 };
 
 type Pos = (i32, i32, i32);
-
-/// `GameTestBlockHighlightRenderer.highlightPos`'s colour, 1610678016: ARGB 0x6000FF00.
-const HIGHLIGHT_FILL: u32 = 0x6000_FF00;
 
 /// `ServerboundTestInstanceBlockActionPacket.Action`.
 const INIT: i32 = 0;

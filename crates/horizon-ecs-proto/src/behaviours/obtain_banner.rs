@@ -82,7 +82,7 @@ fn wave_has_leader(w: &World, e: Entity) -> bool {
     let Some(me) = w.get::<Raider>(e) else { return false };
     let Some(raid) = me.raid else { return false };
     let wave = me.wave;
-    let Some(mut q) = w.try_query::<(&Raider, &Health)>() else { return false };
+    let Some(q) = w.try_query::<(&Raider, &Health)>() else { return false };
     q.iter_manual(w).any(|(r, h)| r.raid == Some(raid) && r.wave == wave && r.leader && h.0 > 0.0)
 }
 /// `Raider.pickUpItem` of the ominous banner: what the head wore may drop (`DropChances`), the head takes the banner, `Raid.setLeader` (the

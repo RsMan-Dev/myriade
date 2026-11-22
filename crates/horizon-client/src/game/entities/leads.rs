@@ -7,7 +7,6 @@ use horizon_client::mobs::MobEvent;
 use horizon_client::{
     items::ItemStack,
     mobs::leash::{self, Holder, Pending},
-    pose::Pose,
 };
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::leash::Holder as EcsHolder;
@@ -33,44 +32,6 @@ pub(in crate::game) enum LeashInteraction {
     WithoutItem,
 }
 
-/// `Vec3.yRot(angle)`.
-/// `LocalPlayer.getRopeHoldPosition`'s `Mth.lerp(partialTick * 0.5F, getYRot(),
-/// yRotO)` and the same for the pitch, in radians.
-fn rope_hold_angles(now: (f32, f32), old: (f32, f32), alpha: f32) -> (f64, f64) {
-    let t = alpha * 0.5;
-    let lerp = |a: f32, b: f32| a + t * (b - a);
-    (
-        f64::from(lerp(now.0, old.0) * (std::f32::consts::PI / 180.0)),
-        f64::from(lerp(now.1, old.1) * (std::f32::consts::PI / 180.0)),
-    )
-}
-fn rot_y(v: glam::DVec3, angle: f64) -> glam::DVec3 {
-    let (s, c) = (angle.sin(), angle.cos());
-    glam::DVec3::new(v.x * c + v.z * s, v.y, v.z * c - v.x * s)
-}
-/// `Entity.getRopeHoldPosition` of a boat: 0.7 of its eye height (0.5625) up.
-fn boat_hold() -> glam::DVec3 {
-    glam::DVec3::new(0.0, f64::from(0.5625_f32) * 0.7, 0.0)
-}
-fn pack_light(light: u8) -> u32 {
-    (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
-}
-fn abgr(r: f32, g: f32, b: f32) -> u32 {
-    let c = |v: f32| (v * 255.0) as u32 & 255;
-    0xFF00_0000 | c(b) << 16 | c(g) << 8 | c(r)
-}
-/// One leashed entity's rope, as `EntityRenderer.extractRenderState` reads it.
-struct Rope {
-    holder: Holder,
-    /// `getPosition(partialTicks)`.
-    here: glam::DVec3,
-    /// `getPreciseBodyRotation` in radians.
-    body: f64,
-    /// `getLeashOffset`.
-    offset: [f64; 3],
-    /// `getQuadLeashOffsets`, when the entity supports a quad lead.
-    quad: Option<[[f64; 3]; 4]>,
-}
 /// Whether a mob's lead is held by `acting` (`getLeashHolder() == player`).
 fn held_by_acting_player(
     leash: Option<Holder>,
@@ -78,41 +39,6 @@ fn held_by_acting_player(
     acting: [i32; 4],
 ) -> bool {
     leash == Some(Holder::Player) && leash_player.is_none_or(|p| p == acting)
-}
-
-/// Resolve a `Pending` leash holder loaded from NBT.
-fn resolve_pending_leash(
-    pending: Pending,
-    player_uuid: [i32; 4],
-    owner_uuid: Option<[i32; 4]>,
-    is_guest: impl FnOnce([i32; 4]) -> bool,
-    mob_by_uuid: impl FnOnce([i32; 4]) -> Option<u32>,
-    boat_by_uuid: impl FnOnce([i32; 4]) -> Option<u32>,
-    knot_by_uuid: impl FnOnce([i32; 4]) -> Option<[i32; 3]>,
-) -> Option<(Holder, Option<[i32; 4]>)> {
-    match pending {
-        Pending::Knot(p) => Some((Holder::Knot(p), None)),
-        Pending::Uuid(u) if is_guest(u) || owner_uuid == Some(u) => Some((Holder::Player, Some(u))),
-        // Old integrated worlds wrote offline_uuid("Player") for every holder.
-        // Only that known sentinel can be mapped to the integrated owner; a
-        // different level player UUID may belong to somebody else. Old guest
-        // leashes lost their real UUID, so this owner recovery is best effort.
-        Pending::Uuid(u)
-            if u == player_uuid
-                && u == horizon_client::lan::playerdata::uuid_ints(
-                    horizon_protocol::crypto::offline_uuid("Player"),
-                )
-                && owner_uuid.is_some() =>
-        {
-            Some((Holder::Player, owner_uuid))
-        }
-        // `Leashable.restoreLeashFromSave`: `ServerLevel.getEntity(uuid)`, a
-        // leash knot included.
-        Pending::Uuid(u) => mob_by_uuid(u)
-            .map(|id| (Holder::Mob(id), None))
-            .or_else(|| boat_by_uuid(u).map(|id| (Holder::Boat(id), None)))
-            .or_else(|| knot_by_uuid(u).map(|p| (Holder::Knot(p), None))),
-    }
 }
 
 /// Write a mob's `leash` NBT entry into `tag`.
@@ -555,71 +481,6 @@ impl Game<'_> {
         for stack in drops {
             if stack.count > 0 && &*stack.item != "minecraft:air" {
                 self.spawn_item_own(stack, at, 10);
-            }
-        }
-    }
-    /// Holders read from a save become real once the entity is found; a
-    /// holder that never shows up drops the lead after 100 ticks.
-    pub(super) fn tick_leads(&mut self) {
-        // A corpse gone without dropping its lead takes its killer along.
-        // Only this level's: the others' mobs aren't in place.
-        if !self.lead_killers.is_empty() {
-            let (mobs, dim, ecs) = (&self.remote_entities, self.dim, &self.ecs);
-            let on = ecs.is_active();
-            self.lead_killers.retain(|id, (_, at)| {
-                *at != dim || if on { ecs.exists(*id) } else { mobs.iter().any(|m| m.id == *id && !m.removed) }
-            });
-        }
-        // The ECS's leads are P's: its tick holds them and its snap (`leash::tick`, leash.rs:171, called by
-        // `mount::ridden_drive`, mount.rs:298) breaks them, so the host has no holder left to read here.
-        // Holders loaded from a save have no ECS route yet (see the report).
-        if self.ecs.is_active() {
-            return;
-        }
-        let player_uuid = self.level.player_uuid.unwrap_or([0, 0, 0, 1]);
-        let owner_uuid = self
-            .serving
-            .as_ref()
-            .map(|s| s.owner)
-            .or_else(|| self.lan.as_ref().and_then(|h| h.hub.singleplayer_owner))
-            .map(horizon_client::lan::playerdata::uuid_ints);
-        for i in 0..self.remote_entities.len() {
-            let Some(pending) = self.remote_entities[i].extra.leash_pending else {
-                continue;
-            };
-            let holder = resolve_pending_leash(
-                pending,
-                player_uuid,
-                owner_uuid,
-                |u| {
-                    self.lan.as_ref().is_some_and(|h| {
-                        h.hub
-                            .guests
-                            .iter()
-                            .any(|g| horizon_client::lan::playerdata::uuid_ints(g.uuid) == u)
-                    })
-                },
-                |u| self.mob_by_uuid(u),
-                |u| self.boat_by_uuid(u),
-                |u| self.knot_by_uuid(u),
-            );
-            if let Some((Holder::Knot(_), _)) = holder {
-                self.forget_untied_knots();
-            }
-            let m = &mut self.remote_entities[i];
-            if let Some((h, player)) = holder {
-                if h == Holder::Player {
-                    m.extra.leash_player = player;
-                }
-                m.extra.leash = Some(h);
-                m.extra.leash_pending = None;
-                if let Holder::Knot(fence) = h {
-                    self.tie_knot(fence);
-                }
-            } else if m.age > 100 {
-                m.extra.leash_pending = None;
-                let at = [m.position.x, m.position.y, m.position.z];
-                self.drop_lead_item(at);
             }
         }
     }

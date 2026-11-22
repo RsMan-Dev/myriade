@@ -1,7 +1,6 @@
 //! The uuid of each player the host connected (`PlayerUuids`), and the owners and leads that name a player or an entity by uuid and wait
 //! for it. The save names a holder by its uuid alone (`EntityReference`, online or not): read back, the owner is the player when it has
 //! joined, the entity when it is loaded, else it waits here. Nothing is dropped: a player stays `Who::Player(id)` / `Holder::Player(id)`.
-use crate::bridge::uuids::from_words;
 use crate::leash::{attach, Holder};
 use crate::projectile::Projectile;
 use crate::tame::Owner;

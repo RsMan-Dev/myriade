@@ -1,6 +1,5 @@
 //! `SetEntityLookTarget` sink (`LookAtTargetSink`): looks at the look target while it is visible, for its duration.
 use crate::brain::*;
-use crate::cow::*;
 
 pub static BEHAVIOUR: Behaviour = Behaviour { name: "minecraft:look_at_target_sink", mems: &[&LOOK_TARGET, &VISIBLE_MOBS], tick, stop, ..Behaviour::DEFAULT };
 pub fn tracker_visible(w: &mut World, e: Entity, t: Tracker) -> bool {

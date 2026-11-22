@@ -187,26 +187,19 @@ impl Game<'_> {
     /// block that joined before `cut` and has not ticked this tick.
     pub(super) fn run_ordered_ticks(&mut self, cut: JoinSeq, late: bool) -> Result<()> {
         let _span = horizon_client::spans::guard("ordered_ticks");
-        let mut first_error = None;
+        let first_error = None;
         let mut followed = None;
         let entity_ticking = self.entity_ticking_area();
         // Who ticks in this run, sorted once: entities that join meanwhile are
         // at or above `born`, so the set cannot grow, only lose the removed.
-        let (done, born, announced) =
-            (self.ordered.done, self.ordered.born, self.ordered.announced);
+        let (done, born) = (self.ordered.done, self.ordered.born);
         let wanted = |j: JoinSeq| done.is_none_or(|d| j > d) && j < cut && j < born;
         let mut pending = std::mem::take(&mut self.ordered.pending_buf);
         pending.clear();
         let ordered = &self.ordered;
         let mut offer = |join: JoinSeq, kind: Pending| {
             let j = ordered.tick_key(join);
-            // Orbs are announced after their tick, always; TNT and falling
-            // blocks that joined since the last packets wait for them.
-            let right_pass = match kind {
-                Pending::Orb => !late,
-                _ => late == (j >= announced),
-            };
-            if right_pass && wanted(j) {
+            if !late && wanted(j) {
                 pending.push((j, kind, join));
             }
         };

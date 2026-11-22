@@ -14,7 +14,7 @@ mod viewed_areas;
 
 use super::{
     Game,
-    native_living_effects::{active_effect, mob_effect},
+    native_living_effects::active_effect,
     shield::OFFHAND_SLOT,
 };
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
@@ -314,23 +314,6 @@ fn mob_variant_meta(
         }
         _ => {}
     }
-}
-
-/// A mob's synched data as ServerEntity sends it (only the values that differ
-/// from the defaults the client constructs), with vanilla's entry indices:
-/// Entity 0..=7, LivingEntity 8..=14, Mob 15, then the subclasses.
-/// `defaults` gets the defaults of the entries that can go back to theirs.
-pub(super) fn mob_meta(
-    m: &Mob,
-    hub: &Hub,
-    player_entity: Option<i32>,
-    game_time: i64,
-    meta: &mut Vec<(u8, i32, Value)>,
-    defaults: &mut Vec<(u8, i32, Value)>,
-) {
-    let effects = mob_effect_meta(m, hub);
-    let sync = hub.sync_data();
-    mob_meta_sync(m, sync, effects, player_entity, game_time, meta, defaults);
 }
 
 /// DATA_EFFECT_PARTICLES and DATA_EFFECT_AMBIENCE_ID of a mob's effects as the hub makes them:
@@ -1060,12 +1043,6 @@ fn mob_equipment(
     }
 }
 
-pub const HELP: &[&str] = &[
-    "lan open [PORT] [commands] [force]  open the world to the network (PORT 0 picks one)",
-    "lan close                      stop hosting",
-    "lan status                     the hosting state and the guests",
-];
-
 /// With the game mode forced, the guests online take the default mode
 /// (setting a mode does nothing when it is already theirs). A world open to
 /// LAN is an integrated server, which leaves out the players who have game
@@ -1115,109 +1092,6 @@ impl Game<'_> {
         }
     }
 
-    /// `horizon-ctl lan ...`.
-    pub(super) fn lan_control(&mut self, words: &[&str]) -> Result<Option<serde_json::Value>> {
-        use serde_json::json;
-        if words[0] != "lan" {
-            return Ok(None);
-        }
-        if let Some(server) = &self.integrated
-            && words.get(1) == Some(&"status")
-        {
-            // The hub is the server thread's.
-            let status = server
-                .call(|g| g.lan_status())
-                .ok_or(super::integrated::NO_ANSWER)?;
-            return Ok(Some(status));
-        }
-        match words.get(1).copied() {
-            Some("open") => {
-                let port = words.get(2).map_or(Ok(0), |p| p.parse::<u16>())?;
-                self.lan_open(LanSettings {
-                    port: if port == 0 {
-                        lan::available_port()
-                    } else {
-                        port
-                    },
-                    guest_commands: words.contains(&"commands"),
-                    force_game_mode: words.contains(&"force"),
-                })?;
-                Ok(Some(json!({ "ok": true, "port": self.lan_port() })))
-            }
-            Some("close") => {
-                self.lan_close(true);
-                Ok(Some(json!({ "ok": true })))
-            }
-            Some("status") => Ok(Some(self.lan_status())),
-            _ => Err("lan open|close|status|op".into()),
-        }
-    }
-
-    /// `horizon-ctl lan status`.
-    fn lan_status(&self) -> serde_json::Value {
-        use serde_json::json;
-        match &self.lan {
-            Some(h) if !self.serving() || self.published_port().is_some() => json!({
-                "open": true,
-                // The owner's profile name.
-                "host": self.options.player_name(),
-                "port": h.settings.port,
-                // The server's own world: its finished chunks and how many it
-                // has generated or loaded so far.
-                "world": {
-                    "chunks": self.world.chunks.len(),
-                    "generated": self.streaming.generated_total,
-                },
-                "guests": h.hub.guests.iter().map(|g| json!({
-                    "name": g.name,
-                    "position": g.position,
-                    "placed": g.placed,
-                    "loaded": g.loaded,
-                    "game_mode": g.game_mode,
-                    // ItemCooldowns: the ticks the shield an axe disabled stays down.
-                    "shield_cooldown": h.play.get(&g.conn).map_or(0, |p| p.shield_cooldown),
-                    // The item the server has this guest using: its slot and ticks.
-                    "using": h.play.get(&g.conn).and_then(|p| p.using())
-                        .map(|(slot, ticks)| json!({ "slot": slot, "ticks": ticks })),
-                    "sneaking": g.sneaking,
-                    // The server's Elytra glide (shared flag 7).
-                    "fall_flying": g.fall_flying,
-                    "sleeping": g.bed,
-                    "health": g.health,
-                    // The server's body: its air supply and golden hearts.
-                    "air": g.motion.as_ref().map(|m| m.air),
-                    "absorption": g.motion.as_ref().map(|m| m.health.absorption()),
-                    // FoodData: food level, saturation and exhaustion.
-                    "food": [
-                        f64::from(g.food),
-                        f64::from(g.saturation),
-                        g.motion.as_ref().map_or(0.0, |m| f64::from(m.health.food.exhaustion)),
-                    ],
-                    "chunks": g.sent_chunks.len(),
-                    "tracked": g.tracker.len(),
-                })).collect::<Vec<_>>(),
-            }),
-            _ => json!({ "open": false }),
-        }
-    }
-
-    pub(super) fn lan_open(&mut self, settings: LanSettings) -> Result<()> {
-        let port = if let Some(server) = &self.integrated {
-            // ShareToLanScreen: IntegratedServer.publishServer.
-            server
-                .call(move |g| g.publish(settings))
-                .ok_or(super::integrated::NO_ANSWER)??
-        } else if self.serving() {
-            return self.publish(settings).map(drop).map_err(Into::into);
-        } else {
-            return Err("no world of this game to open".into());
-        };
-        self.system_message(Text::translate(
-            "menu.multiplayerOptions.publish.started.lan",
-            &[Text::literal(port.to_string())],
-        ));
-        Ok(())
-    }
     pub(super) fn start_lan_hub(
         &mut self,
         settings: LanSettings,
@@ -1818,33 +1692,6 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_ref() {
             host.hub.lan.shared.set_enable_status(enable);
         }
-    }
-
-    /// New command access and game mode forcing settings of the open world.
-    pub(super) fn lan_apply_settings(&mut self, guest_commands: bool, force: bool) {
-        if let Some(server) = &self.integrated {
-            server.call(move |g| g.lan_apply_settings(guest_commands, force));
-            return;
-        }
-        // An integrated server gives guests commands only where the world
-        // allows them (IntegratedServer.getCustomPermissionLevel).
-        let effective = guest_commands && (!self.serving() || self.allow_commands());
-        if let Some(host) = self.lan.as_mut() {
-            host.settings.guest_commands = guest_commands;
-            host.hub.config.guest_commands = effective;
-        }
-        self.set_force_game_mode(force);
-        self.resend_commands_filtered();
-    }
-
-    pub(super) fn lan_port(&self) -> Option<u16> {
-        if let Some(server) = &self.integrated {
-            return server.published();
-        }
-        if self.serving() {
-            return self.published_port();
-        }
-        self.lan.as_ref().map(|h| h.settings.port)
     }
 
     /// The entities guests track: mobs, items and the rest (game/network/lan_entities.rs).
@@ -3177,7 +3024,7 @@ impl Game<'_> {
         }
     }
     /// `Level.broadcastEntityEvent` for the guests.
-    pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, at: [f64; 3]) {
+    pub(in crate::game) fn lan_entity_event(&mut self, id: i32, event: i8, _at: [f64; 3]) {
         // The guests' hurt and death animations do not depend on the audio capture: a hosted world queues them whenever it is open.
         if self.audio.capture.is_some() || self.lan.is_some() {
             self.lan_entity_events.push((id, event));
@@ -3463,17 +3310,6 @@ impl Game<'_> {
         }
     }
 
-    pub(super) fn bed_facing(&self, head: [i32; 3]) -> i32 {
-        let state = self.world.block(head[0], head[1], head[2]);
-        let facing = self
-            .pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("facing"))
-            .map(String::as_str);
-        horizon_client::mobs::villager::bed_facing_code(facing)
-    }
 }
 
 impl Game<'_> {

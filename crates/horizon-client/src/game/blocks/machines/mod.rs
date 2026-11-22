@@ -1177,11 +1177,6 @@ impl Game<'_> {
             matches!(entities.get(p), Some(BlockEntity::Chest(items)) if items.len() == HOPPER_SLOTS)
         });
     }
-    /// `HopperBlockEntity.tryMoveItems` with `suckInItems`.
-    pub(super) fn hopper_try_move_items(&mut self, pos: Pos) {
-        let state = self.world.block(pos.0, pos.1, pos.2);
-        self.hopper_try_move_items_with_state(pos, state);
-    }
     fn hopper_try_move_items_with_state(&mut self, pos: Pos, state: BlockStateId) {
         let c = self.containers();
         let enabled = c.prop(state, "enabled") != Some("false");
@@ -1920,78 +1915,6 @@ impl Game<'_> {
         }
         false
     }
-    /// `suck_item_entities` for a hopper minecart, which first asks the item
-    /// columns whether any item's box reaches the columns of the box: an item
-    /// that meets it reaches one of them. The columns follow the item list's
-    /// stamp, so any write since they were built (an item's move, an
-    /// explosion's push, a command, a pickup) makes them scan, then rebuild.
-    fn cart_suck_items(&mut self, hopper: &View, min: [f64; 3], max: [f64; 3]) -> bool {
-        if !self
-            .pickup_columns
-            .get_or_insert_with(Default::default)
-            .may_reach_area(
-                &self.dropped,
-                (min[0].floor() as i32, max[0].floor() as i32),
-                (min[2].floor() as i32, max[2].floor() as i32),
-            )
-        {
-            return false;
-        }
-        self.suck_item_entities(None, hopper, min, max)
-    }
-    /// `MinecartHopper.tick`'s `tryConsumeItems` for whichever path ticks the
-    /// cart. `ServerLevel.tickNonPassenger` ticks the vehicle, then its
-    /// passengers, so a ridden cart pulls too; Horizon ticks that one in its
-    /// rider's turn (`tick_cart_riding`). `alive` is `isAlive` after the move.
-    pub(super) fn hopper_cart_tick(&mut self, cart: &mut super::minecarts::Minecart, alive: bool) {
-        if alive && cart.kind == super::minecarts::CartKind::Hopper && cart.enabled {
-            self.hopper_cart_suck(cart);
-        }
-    }
-    /// `MinecartHopper.tick`'s `tryConsumeItems` (`suckInItems`) for an enabled
-    /// hopper minecart: one item from the container above, else the item
-    /// entities over it or touching it, each tick without a cooldown.
-    /// `consumedItemThisFrame` in 26.3 caps a tick at one item: the tick tries
-    /// once, and `makeStepAlongTrack` may try again, but only one succeeds.
-    pub(super) fn hopper_cart_suck(&mut self, cart: &mut super::minecarts::Minecart) {
-        if !self.unpack_ticked_cart_loot(cart) {
-            return;
-        }
-        // The cart's slots are edited as a container under the placeholder key
-        // its menu uses; when that menu is open the placeholder is the live copy.
-        let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, cart.id as i32);
-        let (view, open) = self.lend_items(key, &mut cart.items);
-        let p = cart.position;
-        // getLevelY is the cart's y + 0.5, so the container is the block at
-        // y + 1.5, and Hopper.SUCK_AABB (moved by getLevel - 0.5) starts 11/16
-        // above the cart.
-        let above = (
-            p.x.floor() as i32,
-            (p.y + 1.5).floor() as i32,
-            p.z.floor() as i32,
-        );
-        let at = [p.x, p.y + 1.5, p.z];
-        let took = match self.suck_from_container(above, at, &view) {
-            Some(took) => took,
-            None => self.cart_suck_items(
-                &view,
-                [p.x - 0.5, p.y + 11.0 / 16.0, p.z - 0.5],
-                [p.x + 0.5, p.y + 2.0, p.z + 0.5],
-            ),
-        };
-        if !took {
-            // The cart's own box, inflated by 0.25 sideways.
-            let b = cart.bounds();
-            let (lo, hi) = (b.min_position(), b.max_position());
-            self.cart_suck_items(
-                &view,
-                [lo.x - 0.25, lo.y, lo.z - 0.25],
-                [hi.x + 0.25, hi.y, hi.z + 0.25],
-            );
-        }
-        self.reclaim_items(key, open, &mut cart.items);
-    }
-
     // ---- dispensers and droppers ----
 
     /// `DispenserBlock.dispenseFrom` / `DropperBlock.dispenseFrom`.
@@ -2086,82 +2009,6 @@ impl Game<'_> {
     }
 }
 
-// ---- hopper, dispenser and dropper screens ----
-
-/// Which machine screen the open container uses.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Screen {
-    Hopper,
-    Dispenser,
-    Dropper,
-}
-
-impl Game<'_> {
-    pub(super) fn machine_layout_selector(&self) -> Option<bool> {
-        self.machine_screen().map(|s| s == Screen::Hopper)
-    }
-    fn machine_screen(&self) -> Option<Screen> {
-        let key = self.container?;
-        // A mod's screen over a hopper or dispenser menu lays out its own slots.
-        if self.native_screen_inventory_y().is_some() {
-            return None;
-        }
-        if key.1 == super::minecarts::CART_KEY_Y {
-            return (self.open_cart_kind() == Some(super::minecarts::CartKind::Hopper))
-                .then_some(Screen::Hopper);
-        }
-        let state = self.world.block(key.0, key.1, key.2);
-        match &*self.res.facts().get(state).name {
-            "minecraft:hopper" => Some(Screen::Hopper),
-            "minecraft:dispenser" => Some(Screen::Dispenser),
-            "minecraft:dropper" => Some(Screen::Dropper),
-            _ => None,
-        }
-    }
-    /// `imageHeight` of the open screen (HopperScreen is 133 tall).
-    pub(super) fn screen_height(&self) -> f32 {
-        if let Some(height) = self.native_screen_height() {
-            return height;
-        }
-        if self
-            .station
-            .as_ref()
-            .is_some_and(|s| s.kind == super::stations::Kind::Beacon)
-        {
-            return super::beacon::HEIGHT;
-        }
-        if let Some(rows) = self.chest_rows() {
-            // ContainerScreen: 114 + 18 per row.
-            return 114.0 + rows as f32 * 18.0;
-        }
-        if self.container_block_is_shulker() {
-            return 167.0;
-        }
-        if self.machine_screen() == Some(Screen::Hopper) {
-            133.0
-        } else {
-            166.0
-        }
-    }
-    /// HopperMenu / DispenserMenu slot layouts; None for other screens.
-    pub(super) fn machine_slot_position(&self, i: usize) -> Option<(f32, f32)> {
-        let screen = self.machine_screen()?;
-        let inventory_y = if screen == Screen::Hopper { 51.0 } else { 84.0 };
-        Some(match i {
-            0..9 => (8.0 + i as f32 * 18.0, inventory_y + 58.0),
-            9..36 => (
-                8.0 + ((i - 9) % 9) as f32 * 18.0,
-                inventory_y + ((i - 9) / 9) as f32 * 18.0,
-            ),
-            300..500 if screen == Screen::Hopper => (44.0 + (i - 300) as f32 * 18.0, 20.0),
-            300..500 => (
-                62.0 + ((i - 300) % 3) as f32 * 18.0,
-                17.0 + ((i - 300) / 3) as f32 * 18.0,
-            ),
-            _ => return None,
-        })
-    }
-}
 
 #[cfg(test)]
 mod brewing_fuel_transfer_tests {

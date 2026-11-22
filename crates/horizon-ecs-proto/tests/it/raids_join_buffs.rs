@@ -8,7 +8,7 @@ use horizon_ecs_proto::host_out::HostEvent;
 use horizon_ecs_proto::raid_buffs::{RaidBuff, RaidBuffRules};
 use horizon_ecs_proto::raids::{self, RaidView};
 
-fn world() -> (&'static horizon_client_lib::mobs::world::MobWorld<'static>, EcsWorld) {
+fn world() -> (&'static horizon_client_lib::mobs::MobWorld<'static>, EcsWorld) {
     let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
     let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
     let h = EcsWorld::new(&HostSetup { seed: 7, dimension: "overworld", simulation_radius: 4 }, mw, types, &tags);

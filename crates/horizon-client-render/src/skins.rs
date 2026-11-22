@@ -661,35 +661,9 @@ struct HeadProfile {
     skin: Option<(String, String)>,
 }
 
-fn prepare_head(profile: &serde_json::Value) -> HeadProfile {
-    let info = parse_profile(profile);
-    let skin = info.textures.as_ref().and_then(|(value, signature)| {
-        let url = unpack(value, *signature, texture_uris()).skin?;
-        let location = skin_location(&texture_hash(&url)?);
-        Some((url, location))
-    });
-    HeadProfile { info, skin }
-}
-
 #[derive(Default)]
 struct HeadProfiles {
-    entries: std::collections::HashMap<serde_json::Value, std::sync::Arc<HeadProfile>>,
     nbt: std::collections::HashMap<horizon_core::nbt::Tag, std::sync::Arc<serde_json::Value>>,
-    resolved: [std::collections::HashMap<String, std::sync::Arc<HeadProfile>>; 2],
-}
-
-impl HeadProfiles {
-    fn get(&mut self, profile: &serde_json::Value) -> std::sync::Arc<HeadProfile> {
-        if let Some(parsed) = self.entries.get(profile) {
-            return parsed.clone();
-        }
-        if self.entries.len() >= MAX_HEAD_PROFILES {
-            self.entries.clear();
-        }
-        let parsed = std::sync::Arc::new(prepare_head(profile));
-        self.entries.insert(profile.clone(), parsed.clone());
-        parsed
-    }
 }
 
 impl Resolver {

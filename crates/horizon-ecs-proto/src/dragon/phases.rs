@@ -153,10 +153,6 @@ fn put(w: &mut World, e: Entity, s: PhaseState) {
     *w.get_mut::<PhaseData>(e).expect("phase data").0 = s;
 }
 
-fn target(w: &World, e: Entity) -> Option<Vec3> {
-    w.get::<PhaseData>(e).and_then(|d| d.0.target)
-}
-
 /// Lance `f` avec le graphe de vol et l'aléa propre du dragon (`flight::DragonRng`, `d.random` de Horizon).
 fn fly<T>(w: &mut World, e: Entity, f: impl FnOnce(&FlightNodes, &mut LegacyRandom) -> T) -> T {
     w.resource_scope::<FlightNodes, _>(|w, g| {

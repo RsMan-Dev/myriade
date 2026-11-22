@@ -121,17 +121,6 @@ impl Game<'_> {
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
         true
     }
-    /// `ComposterBlock.useItemOn` on a client's level: whether `held` is
-    /// compostable and the composter at `pos` below level 8 (SUCCESS).
-    pub(super) fn composter_takes(&self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
-        self.composter_level(pos).is_some_and(|level| level < 8)
-            && held.is_some_and(|stack| {
-                self.res
-                    .items()
-                    .get(&stack.item)
-                    .is_some_and(|i| i.compostable.is_some())
-            })
-    }
     /// `HopperBlockEntity.addItem` into the composter's `InputContainer`
     /// (levels 0 to 6; one item, compostable, from above): the remainder.
     pub(super) fn composter_container_insert(
@@ -224,77 +213,6 @@ impl Game<'_> {
             }
         });
         let _ = self.process_level_events();
-    }
-    /// `WorkAtComposter.compostItems` for the villager at `mob`: a full
-    /// composter is emptied, then up to 20 wheat or beetroot seeds go in
-    /// (keeping 10 of each kind) until the composter reaches level 7. Level
-    /// event 1500 plays once, at the end.
-    pub(super) fn villager_compost_items(&mut self, mob: usize, pos: [i32; 3]) {
-        let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let Some(mut before) = self.composter_level(pos) else {
-            return;
-        };
-        if before == 8 {
-            self.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
-            let _ = self.process_level_events();
-            before = 0;
-        }
-        let mut remaining = 20;
-        let mut amounts: Vec<(std::sync::Arc<str>, i32)> = Vec::new();
-        // Pin one world generation for the whole work batch, including callbacks.
-        let maps = std::sync::Arc::clone(self.mob_map_snapshot());
-        let slots = villager::ext(&self.remote_entities[mob]).map_or(0, |e| e.inventory.len());
-        'slots: for slot in (0..slots).rev() {
-            if remaining <= 0 {
-                break;
-            }
-            let stack = villager::ext_mut(&mut self.remote_entities[mob]).inventory[slot].clone();
-            if !maps.villager_compostable(&stack.item) {
-                continue;
-            }
-            let known = amounts.iter().position(|(item, _)| *item == stack.item);
-            let total = known.map_or(0, |k| amounts[k].1) + stack.count as i32;
-            match known {
-                Some(k) => amounts[k].1 = total,
-                None => amounts.push((stack.item.clone(), total)),
-            }
-            let uses = (total - 10).min(remaining).min(stack.count as i32);
-            if uses <= 0 {
-                continue;
-            }
-            remaining -= uses;
-            for _ in 0..uses {
-                self.villager_insert_item(mob, slot, &stack, pos);
-                if self.composter_level(pos) == Some(7) {
-                    break 'slots;
-                }
-            }
-        }
-        let after = self.composter_level(pos).unwrap_or(before);
-        self.with_level(|b, level, ticks| {
-            b.composter_fill_effects(level, ticks, at, after != before)
-        });
-        let _ = self.process_level_events();
-    }
-    /// `ComposterBlock.insertItem` with a villager's stack: below level 7 a
-    /// compostable item is used up and may add a layer.
-    fn villager_insert_item(&mut self, mob: usize, slot: usize, stack: &ItemStack, pos: [i32; 3]) {
-        if self.composter_level(pos).is_none_or(|level| level >= 7) {
-            return;
-        }
-        let Some(layers) = self.compostable(stack) else {
-            return;
-        };
-        let layers = self.composter_layers(pos, &layers);
-        let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
-        self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-        let _ = self.process_level_events();
-        let inventory = &mut villager::ext_mut(&mut self.remote_entities[mob]).inventory;
-        inventory[slot].count -= 1;
-        if inventory[slot].count == 0 {
-            inventory.remove(slot);
-        }
     }
     /// `villager_compost_items` for the ECS villager `id`: the same batch, its stacks read from the bridge (`ecs.inventory_stacks`)
     /// and taken one by one (`ecs.inventory_take`); the level side is shared with the client's copy.

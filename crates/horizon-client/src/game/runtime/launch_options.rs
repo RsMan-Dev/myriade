@@ -17,14 +17,9 @@ pub(crate) struct Options {
     /// `--pregen`: enable the command even when the saved Extras switch is off.
     pub(super) pregen: bool,
     pub(super) frames: Option<u64>,
-    /// A splitscreen player: the split window paces every player's frames, not each its own.
-    pub(super) paced_by_split: bool,
     /// A splitscreen player other than P1: its windows are the split's (P1 alone decides
     /// fullscreen; this game neither asks for it nor adopts it into its options).
     pub(super) split_guest: bool,
-    /// A splitscreen guest drawn in Window 1, the game's own window: its F11 leaves that
-    /// window to P1.
-    pub(super) split_in_main_window: bool,
     /// `--world-frames N`: exit after N frames drawn in the world (smoke runs; the world may load slowly).
     pub(super) world_frames: Option<u64>,
     pub(super) screenshot_after: Option<u64>,
@@ -156,11 +151,6 @@ impl Options {
         }
         Ok(o)
     }
-    /// Explicit timeouts apply to every run; only frame-limited runs get a default.
-    pub(super) fn time_limit(&self) -> Option<Duration> {
-        self.timeout
-            .or(self.frames.map(|_| Duration::from_secs(120)))
-    }
     /// The command line alone: no file is read and nothing changes. `None` for `--help` and
     /// `--launch-api`, which print and end the run.
     #[cfg(test)]
@@ -193,9 +183,7 @@ impl Options {
             test_terrain: false,
             pregen: false,
             frames: None,
-            paced_by_split: false,
             split_guest: false,
-            split_in_main_window: false,
             world_frames: None,
             screenshot_after: None,
             timeout: None,

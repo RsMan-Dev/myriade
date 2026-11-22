@@ -2524,14 +2524,6 @@ pub(in crate::game) fn darkness_blend_tick(
     (current, next)
 }
 
-/// A new darkness instance's `BlendState`: from nothing, or, when the server
-/// asked for no blending, at once (`MobEffectInstance.skipBlending`'s
-/// `BlendState.setImmediate`).
-pub(super) fn darkness_blend_added(e: &EffectInstance, blend: bool) -> (f32, f32) {
-    let factor = if blend { 0.0 } else { darkness_target(e) };
-    (factor, factor)
-}
-
 /// `Bee.isFlapping` (flying, every other tick) and `Bat.isFlapping`
 /// (awake, every tenth tick). Bird distance thresholds run in mob movement.
 fn flaps(species: Species, resting: bool, on_ground: bool, age: u32) -> bool {

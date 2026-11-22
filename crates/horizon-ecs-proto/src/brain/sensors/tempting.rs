@@ -4,8 +4,7 @@
 //! yet (`Sensor.scan` takes the entity only), so they are written on the entity by `equip` (BESOIN DU CADRE in the notes).
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::*;
-use crate::goals::{d2, item_id, Online};
+use crate::goals::{d2, Online};
 use crate::hostile::PlayerState;
 use crate::targeting::Who;
 use horizon_core::geometry::Vec3;

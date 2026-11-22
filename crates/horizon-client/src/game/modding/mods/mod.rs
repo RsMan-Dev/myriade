@@ -4,10 +4,7 @@
 //! or wasm (`horizon-mod-wasm`, loaded at startup); any other executable file is refused.
 use super::{Game, execution_role::ExecutionRole, registration_capability_coverage as coverage};
 mod menu_books;
-use horizon_client::{
-    lang,
-    mod_list::{self, Installed},
-};
+use horizon_client::mod_list::{self, Installed};
 use horizon_mod_package::manifest::{MissingJar, collect_jar_requirements, missing_jars};
 use horizon_world::{
     item_defaults::ItemData,
@@ -95,9 +92,6 @@ pub(super) struct ModsState {
     /// The content mods the loaded resources were built with: a switch the
     /// game can apply live moves it to the player's choice (`switch_mods`).
     pub(super) applied: Option<std::collections::BTreeSet<String>>,
-    /// A live switch's resource reload is running: when it applied, the server
-    /// reloads its data from the new root. Its start, for the log.
-    pub(super) live: Option<std::time::Instant>,
     /// The content mods installed, and those of them with only assets and
     /// data (`mod_content::live_switch`): they switch with a world open.
     pub(super) content_ids: std::collections::BTreeSet<String>,
@@ -378,15 +372,6 @@ pub(super) fn register_gui_layers(role: ExecutionRole) {
     let mut layers = Vec::new();
     Game::native_register_gui_layers(&RegistrationContext::new(), &mut layers);
     horizon_client::gui_layers::register(layers);
-}
-/// The native mods' debug renderers now (`native_register_debug_renderers`), asked at each
-/// refresh of the list (`Game::refresh_debug_renderers`).
-pub(super) fn debug_renderers(role: ExecutionRole) -> Vec<mod_api::DebugRenderer> {
-    let mut renderers = Vec::new();
-    if role.is_client() {
-        Game::native_register_debug_renderers(&RegistrationContext::new(), &mut renderers);
-    }
-    renderers
 }
 /// The native mods' numeric item model properties
 /// (`native_register_range_select_item_model_property`), kept once at start, before
@@ -1240,7 +1225,6 @@ fn not_built(
 
 pub(super) struct PreparedLoopContext {
     game: Arc<horizon_world::native_load_context::LoopContext>,
-    audio: Option<horizon_world::native_load_context::LoopContext>,
     /// A server's context for the features it generates (`alter_ground`).
     worldgen: Option<horizon_world::native_load_context::WorldgenContext>,
 }
@@ -1297,17 +1281,8 @@ impl Game<'_> {
         context: horizon_world::native_load_context::LoopContext,
     ) -> PreparedLoopContext {
         let game = Arc::new(context);
-        let audio = self
-            .options
-            .execution_role
-            .is_client()
-            .then(|| game.as_ref().clone());
         let worldgen = self.is_logical_server().then(|| game.worldgen_context());
-        PreparedLoopContext {
-            game,
-            audio,
-            worldgen,
-        }
+        PreparedLoopContext { game, worldgen }
     }
 
     pub(super) fn install_loop_context(&mut self, context: PreparedLoopContext) {
@@ -1419,108 +1394,6 @@ impl Game<'_> {
         self.settings
             .mods
             .apply_dependency_notices(&self.mods.load_notices.lock().unwrap());
-    }
-    /// The content mods the resources load with: the ones applied, which a
-    /// switch that needs a restart doesn't change.
-    pub(super) fn applied_mods(&self) -> std::collections::BTreeSet<String> {
-        self.mods
-            .applied
-            .clone()
-            .unwrap_or_else(|| self.settings.mods.enabled.clone())
-    }
-    /// The player turned content mods on or off (Options > Mods, or an
-    /// install from Browse Mods): those with only assets and data apply now
-    /// (docs/design/mod-hotload.md), through the resource reload and then the
-    /// server's data reload (`mods_reloaded`); those that add blocks, items or
-    /// worldgen wait for a restart, and the Mods page says so.
-    pub(super) fn switch_mods(&mut self) {
-        let Some(applied) = self.mods.applied.clone() else {
-            return;
-        };
-        let wanted = self.settings.mods.enabled.clone();
-        if applied == wanted {
-            return;
-        }
-        // Native mods' `mod.<id>` lines follow the player's choice as they are
-        // (`sync_native_switches`); a content mod with blocks, items or
-        // worldgen keeps the state it loaded with until a restart.
-        let content = &self.mods.content_ids;
-        let mut next = wanted.clone();
-
-        for id in applied.symmetric_difference(&wanted) {
-            if !content.contains(id) || self.mods.live_ids.contains(id) {
-                continue;
-            }
-            log::info!("Horizon: mod {id} needs a restart to switch");
-            if applied.contains(id) {
-                next.insert(id.clone());
-            } else {
-                next.remove(id);
-            }
-        }
-        let changed = applied
-            .symmetric_difference(&next)
-            .any(|id| content.contains(id));
-        if !changed {
-            self.mods.applied = Some(next);
-            return;
-        }
-        log::info!(
-            "Horizon: content mods switched live: {:?} -> {:?}",
-            applied,
-            next
-        );
-        self.mods.applied = Some(next);
-        self.mods.live = Some(std::time::Instant::now());
-        self.mods_reloaded(true);
-    }
-    /// A live switch's resources applied: the server reloads its data packs
-    /// from the new root, as `/reload` does (recipes, tags, loot tables,
-    /// advancements, functions), and sends them to its players.
-    pub(super) fn mods_reloaded(&mut self, applied: bool) {
-        let Some(started) = self.mods.live.take() else {
-            return;
-        };
-        let resources_ms = started.elapsed().as_millis();
-        if !applied {
-            return;
-        }
-        let root = self.options.resources.clone();
-        let data_source = self.pack.data_source.clone();
-        let data_changes = self.pack.data_changes.clone();
-        let additional_data = self.pack.additional_data.clone();
-        let enabled = self.applied_mods();
-        let selected = self.mods.selected.clone();
-        let refused = self.mods.refused.clone();
-        let reload = move |g: &mut Game<'_>| {
-            let at = std::time::Instant::now();
-            g.options.resources = root;
-            g.pack.data_source = data_source;
-            g.pack.data_changes = data_changes;
-            g.pack.additional_data = additional_data;
-            g.settings.mods.enabled = enabled.clone();
-            g.mods.applied = Some(enabled);
-            g.mods.selected = selected;
-            g.mods.refused = refused;
-            g.mods.data_switched = true;
-            if g.world_root.as_os_str().is_empty() {
-                return;
-            }
-            if let Err(error) = g.reload_datapacks(true, &g.level.enabled_features.clone()) {
-                log::warn!("Horizon: content mods data reload failed: {error}");
-                return;
-            }
-            log::info!(
-                "Horizon: content mods switched live: server data reloaded in {} ms",
-                at.elapsed().as_millis()
-            );
-        };
-        log::info!("Horizon: content mods switched live: resources reloaded in {resources_ms} ms");
-        if let Some(server) = &self.integrated {
-            server.post(reload);
-        } else {
-            reload(self);
-        }
     }
     /// Apply the player's switches at the canonical native and wasm dispatch boundary.
     pub(super) fn sync_native_switches(&self) {

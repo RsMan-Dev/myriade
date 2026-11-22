@@ -364,7 +364,7 @@ impl Game<'_> {
     fn stab_mob_ecs(&mut self, id: u32, base_damage: f32, deals_damage: bool, deals_knockback: bool, dismounts: bool) -> bool {
         let Some(kind) = self.ecs.kind(id) else { return false };
         let kind = format!("minecraft:{}", kind.trim_start_matches("minecraft:"));
-        let Some((attacker, from)) = self.player.as_ref().map(|p| (p.entity_id, [p.position.x, p.position.y, p.position.z])) else {
+        let Some(attacker) = self.player.as_ref().map(|p| p.entity_id) else {
             return false;
         };
         let magic_boost = self.enchant_damage_bonus(&kind, Some(id));
@@ -513,13 +513,6 @@ impl Game<'_> {
         {
             self.kinetic_feedback.insert(entity, now);
         }
-    }
-
-    /// `getTicksSinceLastKineticHitFeedback` of this window's player.
-    pub(super) fn kinetic_hit_ticks(&self, partial: f32) -> f32 {
-        self.kinetic_feedback
-            .get(&OWN)
-            .map_or(0.0, |&t| (self.world.game_time - t) as f32 + partial)
     }
 
     /// `LivingEntity.handleEntityEvent(2)` on a server's client: the

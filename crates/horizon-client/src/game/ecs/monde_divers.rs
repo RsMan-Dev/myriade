@@ -6,16 +6,12 @@ use crate::game::Game;
 use crate::mobs::{MobWorld, Who};
 use bevy_ecs::entity::Entity;
 use horizon_client::ecs_bridge::EcsLevel;
-use horizon_core::geometry::Aabb;
 use horizon_ecs_proto::{
     behaviours::vibration_listen::{Cfg, Vibration},
-    bridge::{host::Select, view::EntityView},
+    bridge::view::EntityView,
     targeting,
 };
 use std::mem;
-
-/// Metres added to the reach of a box query: an entity's box reaches past its position.
-const BOX_MARGIN: f64 = 2.0;
 
 impl Game<'_> {
     /// Runs `f` on the level with the mob world lent for the call: the level leaves the game for the call, as `tick_ecs` does.
@@ -88,11 +84,5 @@ impl Game<'_> {
     /// event, its jukebox listening) is P's to apply.
     pub(in crate::game) fn ecs_allays_hear(&mut self, event: &'static str, at: [f64; 3]) {
         self.ecs_with(|ecs, mw| ecs.allays_hear(mw, event, at));
-    }
-    /// `sculk_mob_died` for an ECS creature `id`: `minecraft:entity_die` at its position, from its own context.
-    pub(in crate::game) fn ecs_mob_died(&mut self, id: u32) {
-        let Some(at) = self.ecs_view(id).map(|v| v.position) else { return };
-        let ctx = self.who_context(Some(Who::Mob(id)), None);
-        self.post_game_event("minecraft:entity_die", at, ctx);
     }
 }

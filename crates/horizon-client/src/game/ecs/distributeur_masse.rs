@@ -12,7 +12,6 @@ use horizon_ecs_proto::{
         ids::id_of,
     },
     cow::{Bounds, GrowAt, Health, Pos, TypeName},
-    despawn::Persistent,
     goals::{self, Slot},
     items::{item_id, item_name},
     leash::{self, Holder},
@@ -31,7 +30,6 @@ pub(in crate::game) struct EcsMob {
     pub alive: bool,
     pub baby: bool,
     pub tame: bool,
-    pub persistent: bool,
 }
 
 /// The species of each vanilla id, built once from the table of the species.
@@ -76,7 +74,6 @@ impl Game<'_> {
             alive: w.get::<Health>(e).is_some_and(|h| h.0 > 0.0),
             baby: w.get::<GrowAt>(e).is_some(),
             tame: w.get::<Owner>(e).is_some_and(|o| o.0.is_some()),
-            persistent: w.get::<Persistent>(e).is_some(),
         })
     }
     /// The item in a slot of the entity `id`, by its name; None when the slot is empty.

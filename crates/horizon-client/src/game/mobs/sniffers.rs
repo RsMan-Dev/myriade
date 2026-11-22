@@ -1,22 +1,10 @@
-//! Sniffers on the game side: the egg a bred pair lays
-//! (`Sniffer.spawnChildFromBreeding`), the snifflet that hatches from an
-//! egg block (`SnifferEggBlock.tick`) and the dust and sound of digging.
+//! Sniffers on the game side: the snifflet that hatches from an egg block
+//! (`SnifferEggBlock.tick`).
 use super::Game;
-use horizon_client::{
-    items::ItemStack,
-    mobs::{Mob, Species, Who, sniffer},
-};
+use horizon_client::mobs::{Species, Who, sniffer};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
 impl Game<'_> {
-    /// The egg item at the parent (`Sniffer.spawnChildFromBreeding`; the
-    /// brain already played the plop and dropped the experience).
-    pub(super) fn lay_sniffer_egg(&mut self, parent: &Mob) {
-        let at = [parent.position.x, parent.position.y, parent.position.z];
-        // new ItemEntity(level, x, y, z, stack): the little push is the item's
-        // own random's, not the level's.
-        self.spawn_item_own(ItemStack::new("minecraft:sniffer_egg", 1), at, 10);
-    }
     /// A snifflet where the egg was.
     pub(super) fn hatch_sniffer(&mut self, pos: [i32; 3]) {
         let at = [

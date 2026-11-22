@@ -1,10 +1,11 @@
 //! `Mob.attemptToShearEquipment` on the happy ghast: shears take the harness off an adult nobody rides; the food (`Animal.mobInteract`) ages a baby up.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::harness_worn::Harness;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;
-use horizon_ecs_proto::goals::Entered;
+use horizon_ecs_proto::goals::{interact, Entered, Online, Player};
 use horizon_ecs_proto::items;
 
 fn ghast(h: &mut Herd) -> Option<Entity> {

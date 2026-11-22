@@ -566,7 +566,7 @@ fn drop_horn(w: &mut World, e: Entity, pos: Vec3) -> Option<&'static str> {
         _ => true,
     };
     let (vx, vy, vz) = with_rng(w, e, |r| {
-        let mut between = |min: f64, max: f64| (r.next_f64() * (max - min) + min);
+        let mut between = |min: f64, max: f64| r.next_f64() * (max - min) + min;
         (between(-0.2, 0.2), between(0.3, 0.7), between(-0.2, 0.2))
     });
     let bit = if left { 1 } else { 2 };

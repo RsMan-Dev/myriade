@@ -3,7 +3,7 @@
 //! blocks of the owner, and looks at the owner before that. It ends when the owner wakes, the cat is ordered to sit, or another cat lies
 //! within the box of the bed. Wake-up: the owner entering the 10-block watch (the fallback of the fiche; the sleep is not an event yet).
 //! The morning gift is NOT ported (its items and its teleport are absent from the frame; the draw of `next_float` is missing with it).
-use super::cat_state::{self as cs, OwnerAsleep};
+use super::cat_state as cs;
 use super::*;
 use crate::rules::cat_relax_on_owner::{goal_behind_bed, goal_f, lies_down};
 use crate::{cow::*, goals::*, tame, targeting::Who};

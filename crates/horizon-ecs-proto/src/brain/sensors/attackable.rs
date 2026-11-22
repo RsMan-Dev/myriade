@@ -3,7 +3,6 @@
 //! species (the breeze: iron golems). Written to `nearest_attackable`, erased when none.
 use crate::behaviours::Cap;
 use crate::brain::*;
-use crate::cow::*;
 use crate::goals::d2;
 use crate::targeting::{self, Eye, FollowRange, Who};
 

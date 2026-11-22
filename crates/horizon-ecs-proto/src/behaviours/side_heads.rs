@@ -46,7 +46,6 @@ impl Params {
 #[derive(Clone, Copy, Debug)]
 pub struct Head {
     p: Params,
-    slot: u8,
     mask: crate::species::SpeciesSet,
     due: u64,
     target: Option<Who>,
@@ -69,7 +68,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     let p = *params::<Params>(p);
     let mask = species_mask(&p);
     let due = now_of(w, e) + 1;
-    let head = Head { p, slot: inst.slot, mask, due, target: None, idle: 0 };
+    let head = Head { p, mask, due, target: None, idle: 0 };
     match w.get_mut::<Heads>(e) {
         Some(mut hs) => hs.0.push(head),
         None => {

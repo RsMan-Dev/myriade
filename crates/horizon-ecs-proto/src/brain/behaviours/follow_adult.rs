@@ -7,7 +7,7 @@ use crate::brain::*;
 use crate::cow::{Pos, GrowAt};
 use crate::goals::d2;
 use crate::rules::follow_adult as rules;
-use crate::targeting::{info, Who};
+use crate::targeting::info;
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:baby_follow_adult",

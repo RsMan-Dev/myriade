@@ -68,9 +68,6 @@ pub(super) struct TravelMarks {
 #[derive(Default)]
 pub(super) struct AdvState {
     pub(super) tree: Arc<Tree>,
-    /// `ClientAdvancements`: a server's tree carries each advancement's
-    /// place on its tab (`DisplayInfo` x, y), in tree order.
-    pub(super) positions: Option<Vec<(f32, f32)>>,
     pub(super) progress: Progress,
     pub(super) loaded: bool,
     /// Awards skip the toast (`/advancement grant ... everything`).
@@ -714,16 +711,6 @@ impl Game<'_> {
                 .map(|m| self.mob_entity(m))
                 .chain(self.rider_entity(b.id))
                 .collect(),
-            ..Default::default()
-        }
-    }
-    /// A dropped item as the predicates see it.
-    pub(super) fn item_entity_view(&self, e: &horizon_client::entities::ItemEntity) -> EntityView {
-        EntityView {
-            kind: "minecraft:item".into(),
-            position: [e.position.x, e.position.y, e.position.z],
-            on_ground: e.on_ground,
-            on_fire: e.fire_ticks > 0,
             ..Default::default()
         }
     }
@@ -2039,37 +2026,6 @@ impl Game<'_> {
                 && adv::conditions(&c["location"], &location, w)
         });
     }
-    /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
-    /// not hit (`bystander`), each tested from this player's position.
-    pub(super) fn trigger_lightning_strike(&mut self, bolt: &EntityView, viewers: &[EntityView]) {
-        let me = self.player_entity_for("minecraft:lightning_strike");
-        let (bolt, viewers) = (bolt.clone(), viewers.to_vec());
-        self.trigger("minecraft:lightning_strike", move |c, w| {
-            let pctx = adv::Entities {
-                this: Some(&me),
-                origin: me.position,
-                tool: None,
-                block_pos: None,
-            };
-            let bctx = adv::Entities {
-                this: Some(&bolt),
-                ..pctx
-            };
-            adv::conditions(&c["player"], &pctx, w)
-                && adv::conditions(&c["lightning"], &bctx, w)
-                && (c["bystander"].is_null()
-                    || viewers.iter().any(|v| {
-                        adv::conditions(
-                            &c["bystander"],
-                            &adv::Entities {
-                                this: Some(v),
-                                ..pctx
-                            },
-                            w,
-                        )
-                    }))
-        });
-    }
     /// `ChanneledLightningTrigger`: each victim condition matched by some
     /// mob the bolt hit, from the player who channelled it.
     pub(in crate::game) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
@@ -2215,48 +2171,6 @@ impl Game<'_> {
             };
             adv::conditions(&c["player"], &pctx, w)
                 && adv::id_matches(&c["loot_tables"], "loot_table", &table, w)
-        });
-    }
-    /// `BredAnimalsTrigger`.
-    pub(super) fn trigger_bred(
-        &mut self,
-        parent: &EntityView,
-        partner: &EntityView,
-        child: Option<&EntityView>,
-    ) {
-        let me = self.player_entity_for("minecraft:bred_animals");
-        let (parent, partner, child) = (parent.clone(), partner.clone(), child.cloned());
-        self.trigger("minecraft:bred_animals", move |c, w| {
-            let ctx = |e: &EntityView| {
-                adv::Entities {
-                    this: Some(e),
-                    origin: me.position,
-                    tool: None,
-                    block_pos: None,
-                }
-                .this
-                .map(|_| ())
-            };
-            let _ = ctx;
-            let test = |key: &str, e: Option<&EntityView>| {
-                c[key].is_null()
-                    || e.is_some_and(|e| {
-                        adv::conditions(
-                            &c[key],
-                            &adv::Entities {
-                                this: Some(e),
-                                origin: me.position,
-                                tool: None,
-                                block_pos: None,
-                            },
-                            w,
-                        )
-                    })
-            };
-            // matches(parent, partner, child) or (partner, parent, child).
-            (test("parent", Some(&parent)) && test("partner", Some(&partner))
-                || test("parent", Some(&partner)) && test("partner", Some(&parent)))
-                && test("child", child.as_ref())
         });
     }
     /// `ChangeDimensionTrigger`, and `ServerPlayer.enteredNetherPosition`: the

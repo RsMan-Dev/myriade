@@ -17,7 +17,7 @@ use horizon_client::{
     blocks::Fluid,
     collisions::{EntityCollisions, SceneCollisions},
     items::ItemStack,
-    motion::{BubbleColumn, RiddenBoat, bubble_column_at},
+    motion::RiddenBoat,
 };
 use horizon_core::{
     geometry::{Aabb, ShapeOp, Vec3, VoxelShape, trig},
@@ -534,110 +534,6 @@ impl Game<'_> {
             }
         }
     }
-    /// Refuse a removed tick target before carrying its slot into the clone.
-    pub(super) fn store_boat_back(&mut self, index: usize, boat: Boat) -> bool {
-        if self
-            .persist
-            .removals
-            .contains(&super::commands::Target::Boat(boat.id))
-        {
-            return false;
-        }
-        self.boats.store_back(index, boat)
-    }
-    /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window
-    /// does not tick (`tick_boat` sets it for the others): a client's boats
-    /// other than the one it drives, and a server's boats its players drive.
-    pub(super) fn refresh_boat_status(&mut self, i: usize) {
-        let b = &self.boats[i];
-        let mut probe = Boat::new(b.id, b.wood.clone(), b.position, b.yaw);
-        let status = self.boat_status(&mut probe);
-        self.boats.update(i, |b| b.status = status);
-        // `oldStatus = status` runs on every boat, so the next tick has one.
-        self.boats.update(i, |b| b.status_known = true);
-        self.boats.update(i, Boat::tick_submersion);
-    }
-    /// `BubbleColumnBlock.entityInside`: the bubble columns boat `i` touches
-    /// (its box deflated by 1e-5 as `Entity.checkInsideBlocks` does), in x, y,
-    /// z order.
-    pub(super) fn boat_bubble_columns(&self, i: usize) -> Vec<BubbleColumn> {
-        let b = self.boats[i].bounds().deflate(Vec3::new(
-            f64::from(1.0e-5f32),
-            f64::from(1.0e-5f32),
-            f64::from(1.0e-5f32),
-        ));
-        let (lo, hi) = (b.min_position(), b.max_position());
-        let mut columns = Vec::new();
-        // Entity.checkInsideBlocks floors both ends of the deflated box.
-        // Narrowing ceil(max) before subtracting one wraps at i32::MIN,
-        // turning a tiny box into a scan of the entire integer Y domain.
-        for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
-            for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
-                for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
-                    if let Some(column) = bubble_column_at(
-                        &self.world,
-                        self.pack.assets.registry,
-                        self.res.facts(),
-                        self.collision,
-                        BlockPos::new(x, y, z),
-                    ) {
-                        columns.push(column);
-                    }
-                }
-            }
-        }
-        columns
-    }
-    /// `AbstractBoat.onAboveBubbleColumn`: whether the splash comes up, one
-    /// time in a hundred for a boat that is not under water.
-    pub(super) fn boat_splash_roll(&mut self, i: usize) -> bool {
-        !self.boats[i].under_water() && self.world.random.next_int_bound(100).unwrap_or(1) == 0
-    }
-    /// `AbstractBoat.onAboveBubbleColumn`: on the server (this window
-    /// simulates the boat) the column is remembered, the countdown starts and
-    /// the splash's game event goes to the listeners (its sound and particle
-    /// are the client's).
-    fn boat_above_bubble_column(&mut self, i: usize, drag_down: bool) {
-        self.boats.update(i, |b| {
-            b.above_bubble_column = true;
-            b.bubble_down = drag_down;
-            if b.bubble_time == 0 {
-                b.bubble_time = BUBBLE_TIME;
-            }
-        });
-        if !self.boat_splash_roll(i) {
-            return;
-        }
-        let (id, p) = (self.boats[i].id, self.boats[i].position);
-        // `playLocalSound` pitch, then the particle's x and z: the three
-        // `nextFloat()` of `onAboveBubbleColumn` are drawn on the server too.
-        for _ in 0..3 {
-            self.world.random.next_float();
-        }
-        // Entity.gameEvent(SPLASH, getControllingPassenger()): the window's
-        // own player when it drives the boat.
-        let ctx = if self.riding == Some(id) && self.player.is_some() {
-            self.player_context(None)
-        } else {
-            self.who_context(None, None)
-        };
-        self.post_game_event("minecraft:splash", [p.x, p.y, p.z], ctx);
-    }
-    /// `AbstractBoat.handleBubbleColumnEffect`: an up column throws the boat
-    /// up at 0.6, a down column pulls it down by 0.7.
-    pub(super) fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
-        if self.riding != Some(self.boats[i].id) {
-            return;
-        }
-        self.boats.update(i, |b| {
-            if drag_down {
-                // movement.add(0.0, -0.7, 0.0)
-                b.velocity.y += -0.7;
-            } else {
-                b.velocity.y = 0.6;
-            }
-        });
-    }
     /// `Entity.lavaHurt`'s sound once the hurt went through.
     pub(in crate::game) fn lava_hurt_sound(&mut self, at: [f64; 3]) {
         let pitch = 2.0 + self.world.random.next_float() * 0.4;
@@ -981,19 +877,6 @@ impl Game<'_> {
             HitResult::Hurt => Some(false),
             HitResult::Broken { .. } => Some(true),
         }
-    }
-    /// `VehicleEntity.hurtServer` for fire (`inFire`, `onFire`) or a cactus, which an `Invulnerable` boat ignores.
-    /// True when the boat broke.
-    pub(super) fn burn_boat(&mut self, id: u32, damage: f32, damage_type: &str) -> bool {
-        let invulnerable = self.saved_refuses_damage(id, damage_type, false);
-        let kind = self.ecs_view(id).map_or("", |v| v.kind).to_owned();
-        let source = horizon_client::health::HurtSource {
-            damage_type,
-            causing: 0,
-            direct: 0,
-            position: None,
-        };
-        !self.native_nonliving_invulnerable(id, &kind, source, invulnerable) && self.hurt_boat(id, damage, false)
     }
     /// Hurts the boat `id` from a non-player source; true when it was removed.
     pub(super) fn hurt_boat(&mut self, id: u32, damage: f32, creative: bool) -> bool {

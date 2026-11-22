@@ -1,6 +1,7 @@
 //! Copper golem shears (`CopperGolem.mobInteract`, `shear`, `readyForShearing`): the poppy on the antenna (`Saddle` slot) comes off and falls;
 //! a golem with no flower, or with another item there, is not sheared. Expected values come from the jar.
 use crate::common;
+use bevy_ecs::entity::Entity;
 use common::*;
 use horizon_ecs_proto::behaviours::Interaction;
 use horizon_ecs_proto::cow::*;

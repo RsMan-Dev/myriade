@@ -183,20 +183,6 @@ impl Game<'_> {
         }
     }
 
-    /// The window's `Client` and `Common` configs, once: after client setup
-    /// and before its title, connection or ordinary runtime callbacks.
-    pub(super) fn native_configs_client_start(&mut self) {
-        // Other local players share the process's client setup, not another
-        // Client/Common load or a second config watcher.
-        if self.options.split_guest {
-            return;
-        }
-        if !self.native_configs.started {
-            use mod_api::ConfigKind::{Client, Common};
-            self.native_configs_load(&[Client, Common], None);
-        }
-    }
-
 
     /// A server about to open `world`: a dedicated server loads its
     /// `Common` configs too, a single player's server thread only `Server`.

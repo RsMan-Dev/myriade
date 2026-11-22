@@ -2,7 +2,6 @@
 //! standalone component, `Lifespan(until)`, in the creature's own time; the module only ticks the component, it has no goal (`can_use` never).
 use super::*;
 use crate::cow::*;
-use crate::goals::*;
 
 /// The tick (the world's) from which the creature is hurt each tick.
 #[derive(Component, Clone, Copy, Debug)]
