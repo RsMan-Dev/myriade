@@ -172,7 +172,7 @@ mod tests {
         with_game(|game| {
             game.ecs = level(game);
             let at = [0.5, 64.0, 0.5];
-            let id = game.ecs_drop(ItemStack::new("minecraft:stone".into(), 3), at, [0.0; 3]).unwrap();
+            let id = game.ecs_drop_after(ItemStack::new("minecraft:stone".into(), 3), at, [0.0; 3], 0).unwrap();
             assert_eq!(game.ecs.kind(id), Some("minecraft:item"));
             game.ecs_player_pickups(at);
             assert!(!game.ecs.exists(id), "the stack was taken: the level no longer holds it");
@@ -196,6 +196,11 @@ mod tests {
     fn a_falling_block_lands_as_a_set_block() {
         with_game(|game| {
             game.ecs = level(game);
+            if game.world.chunks.get(&(0, 0)).is_none() {
+                game.world.chunks.insert((0, 0), std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
+            }
+            let stone = game.pack.assets.registry.default_state("minecraft:stone").unwrap();
+            game.world.set(0, 60, 0, stone).unwrap();
             let mut state = Compound::new();
             state.insert("Name".into(), Tag::String("minecraft:sand".into()));
             let mut c = Compound::new();

@@ -57,6 +57,9 @@ mod tests {
     fn an_ecs_mob_starts_the_use_of_the_item_in_its_hand() {
         let (mut g, id) = ecs_game_with("minecraft:cow", [0.0, 64.0, 0.0]);
         g.ecs_set_slot(id, Slot::Main, &ItemStack::new("minecraft:apple", 1));
+        let stack = g.ecs_hand_stack(id, false);
+        assert!(stack.is_some(), "hand stack read back");
+        assert!(g.use_duration(&stack.unwrap()) > 0, "apple use duration");
         assert!(g.start_mob_using_item_ecs(id, Hand::Main));
         assert!(g.mob_item_use_remaining_ecs(id).is_some_and(|t| t > 0));
     }

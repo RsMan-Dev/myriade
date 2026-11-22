@@ -37,7 +37,8 @@ impl Game<'_> {
                 .orbs
                 .iter()
                 .find(|o| o.id == id)
-                .map(|o| [o.position.x, o.position.y, o.position.z]),
+                .map(|o| [o.position.x, o.position.y, o.position.z])
+                .or_else(|| self.ecs_view(id).map(|v| v.position)),
             Target::Projectile(id) => self.ecs_view(id).map(|v| v.position),
             Target::Stand(id) => self
                 .armor_stands
@@ -162,7 +163,9 @@ impl Game<'_> {
                 .others
                 .iter()
                 .find(|o| o.id == id)
-                .map_or_else(String::new, |o| o.kind.clone()),
+                .map(|o| o.kind.clone())
+                .or_else(|| self.ecs.kind(id).map(str::to_owned))
+                .unwrap_or_default(),
             Target::Crystal(_) => "minecraft:end_crystal".into(),
             // `EnderDragonPart` takes its parent's type.
             Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon".into(),

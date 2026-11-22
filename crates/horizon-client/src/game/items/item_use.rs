@@ -63,7 +63,7 @@ impl Game<'_> {
     /// goat horns, 0 for the rest, then a mod's answer. A `consumable` or
     /// `blocks_attacks` the server's patch adds counts as the item's own
     /// (`Item.getUseDuration` reads the stack's components).
-    pub(super) fn use_duration(&self, stack: &ItemStack) -> i32 {
+    pub(in crate::game) fn use_duration(&self, stack: &ItemStack) -> i32 {
         let info = self.items().get(&stack.item);
         let (patched_ticks, patched_blocks) = horizon_client::item_sync::patched_use(stack);
         let mut duration = match &*stack.item {

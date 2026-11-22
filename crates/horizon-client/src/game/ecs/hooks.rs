@@ -122,6 +122,11 @@ mod tests {
             game.ecs_with(|ecs, mw| ecs.kill(mw, id));
             assert!(game.ecs.entity_of(id).is_some());
             game.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
+            for _ in 0..40 {
+                game.ecs_with(|ecs, mw| {
+                    ecs.step(mw);
+                });
+            }
             assert!(game.ecs.entity_of(id).is_none());
         });
     }

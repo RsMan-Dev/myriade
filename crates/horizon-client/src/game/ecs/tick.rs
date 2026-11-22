@@ -96,6 +96,10 @@ impl Game<'_> {
         // A creature far from every player sleeps (`zone`): the level's tests stand a player at the origin, as a game always has one.
         let player = horizon_ecs_proto::goals::Player { id: 1, x: 0.5, y: 64.0, z: 0.5, ..Default::default() };
         ecs.set_player(player, horizon_ecs_proto::bridge::host::PlayerFact { alive: true, targetable: true, hero: None });
+        // The zone learns the players' places at a tick (`zone_step`, then the list refresh): two ticks, so what is spawned next is awake.
+        for _ in 0..2 {
+            ecs.step(&self.mob_world_base(&[]));
+        }
         ecs
     }
 

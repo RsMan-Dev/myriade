@@ -86,6 +86,12 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_set_slot(&mut self, id: u32, slot: Slot, stack: &ItemStack) {
         let Some(e) = self.ecs.entity_of(id) else { return };
         self.ecs.equip(e, slot, item_id(&stack.item));
+        if slot == Slot::Main {
+            if let Some(w) = self.ecs.world_mut() {
+                goals::set_main_hand(w, e, Some(stack.clone()));
+            }
+            self.ecs.put_equipment_slot(id, 0, Some(stack.clone()));
+        }
         self.ecs.set_persistent(e);
     }
     /// `setItemSlot(slot, EMPTY)` on the entity `id`: the item it held comes back as one stack.

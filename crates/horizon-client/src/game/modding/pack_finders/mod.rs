@@ -82,6 +82,10 @@ impl PackFinders for Registry {
         if !matches!(self.kind, PackType::ClientResources | PackType::ServerData) {
             return Err(PackFinderError::InvalidMetadata);
         }
+        // `Pack.readPackMetadata`: a layer without a readable `pack.mcmeta` is no pack.
+        if source.read("pack.mcmeta").ok().and_then(|bytes| horizon_client::pack_meta::parse_meta(&bytes)).is_none() {
+            return Err(PackFinderError::InvalidMetadata);
+        }
         let feature = match entry.source {
             PackSource::BuiltIn => false,
             PackSource::Feature => true,
