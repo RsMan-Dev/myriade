@@ -1,0 +1,7 @@
+Vanilla 26.3 behaviour probe: the reference for tests/it/all_species_behaviour.rs, measured in the real dedicated server.
+Probe.java: main class in front of the vanilla jar; gets the MinecraftServer from the "Server thread" (reflection), then on that
+thread calls tickServer itself: 8 parcels 160 blocks apart, one species at a time, 400 ticks, alone then with a dummy ServerPlayer
+4 blocks away (fake Connection, hurtServer cancelled, not flagged invulnerable so it stays targetable). Measures.java: the bench measures.
+Run: tools/vanilla-probe/run.sh (SP=scratch dir, PROBE_SPECIES=minecraft:cow,... optional) -> $SP/vanilla-behaviour.tsv, log in $SP/vanilla-probe-run/server.log.
+Needs the JDK 25 and runtime/vanilla-26.3 (server jar + client/libraries); port 25581; the world is deleted at the end.
+Spawn: EntityType.create + finalizeSpawn(COMMAND), made adult, yaw 0, jockeys removed; speed = displacement per tick; mob_griefing off, time frozen (PROBE_TIME, default 18000 = midnight; PROBE_SEED fixes the per-mob random).
