@@ -1234,8 +1234,9 @@ impl Game<'_> {
             // Remove only the resident body: no death, drops, or discard effects.
             match target {
                 Target::Stand(_) => self.armor_stands.retain(|e| e.id != id),
-                Target::Frame(_) => self.item_frames.retain(|e| e.id != id),
-                Target::Painting(_) => self.paintings.retain(|e| e.id != id),
+                Target::Frame(_) | Target::Painting(_) => {
+                    self.ecs_remove_hanging(id);
+                }
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
                 Target::Other(_) => self.others.retain(|e| e.id != id),
                 Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),

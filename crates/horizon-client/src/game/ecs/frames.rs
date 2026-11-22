@@ -149,6 +149,21 @@ impl Game<'_> {
             check_interval: 0,
         })
     }
+    /// A frame or painting leaves the level without drops (`Entity.discard`).
+    pub(in crate::game) fn ecs_remove_hanging(&mut self, id: u32) -> bool {
+        let Some(e) = self.ecs.entity_of(id) else {
+            return false;
+        };
+        self.ecs.despawn(e);
+        self.native_entity_left(id);
+        true
+    }
+    /// The block position of the hanging entity `id` in the ECS level.
+    pub(in crate::game) fn ecs_hanging_pos(&self, id: u32) -> Option<[i32; 3]> {
+        let c = self.ecs.entity_nbt(self.ecs.entity_of(id)?)?;
+        let Some(Tag::IntArray(p)) = c.get(&JavaString::from("block_pos")) else { return None };
+        <[i32; 3]>::try_from(p.as_slice()).ok()
+    }
     /// Every item frame the ECS holds, read on demand (none is kept in a list).
     pub(in crate::game) fn ecs_frames(&self) -> Vec<ItemFrame> {
         ["minecraft:item_frame", "minecraft:glow_item_frame"]

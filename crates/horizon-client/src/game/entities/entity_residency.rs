@@ -45,8 +45,6 @@ macro_rules! resident_owners {
             ($this)
             Mob => Mob: remote_entities,
             Stand => Stand: armor_stands,
-            Frame => Frame: item_frames,
-            Painting => Painting: paintings,
             Boat => Boat: boats,
             Other => Other: others,
             Fangs => Fangs: fangs.list,

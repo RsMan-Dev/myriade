@@ -19,8 +19,8 @@ impl Game<'_> {
             Target::General(_) => return None,
             Target::Frame(id) => {
                 if self
-                    .item_frames
-                    .iter()
+                    .ecs_frames()
+                    .into_iter()
                     .any(|frame| frame.id == id && frame.glow)
                 {
                     "minecraft:glow_item_frame"

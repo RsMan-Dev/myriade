@@ -418,14 +418,6 @@ pub(super) fn write_attachments(
     }
 }
 
-fn painting_center(p: &horizon_client::entities::Painting) -> Vec3 {
-    let (lo, hi) = p.bounds();
-    Vec3::new(
-        (lo[0] + hi[0]) / 2.0,
-        (lo[1] + hi[1]) / 2.0,
-        (lo[2] + hi[2]) / 2.0,
-    )
-}
 pub(in crate::game) fn block_entity_pos(tag: &Tag) -> [i32; 3] {
     [tag.get("x"), tag.get("y"), tag.get("z")]
         .map(|v| horizon_client::save::number(v).unwrap_or(0) as i32)
@@ -848,25 +840,11 @@ impl Game<'_> {
                     self.load_crystal(tag, uuid);
                 }
             }
-            "minecraft:item_frame" | "minecraft:glow_item_frame" => {
-                if let Some(state) = transferred.take() {
-                    self.load_item_frame_transferred(tag, uuid, Some(state));
-                } else {
-                    self.load_item_frame(tag, uuid);
-                }
-            }
             "minecraft:cushion" => {
                 if let Some(state) = transferred.take() {
                     self.load_cushion_transferred(tag, uuid, Some(state));
                 } else {
                     self.load_cushion(tag, uuid);
-                }
-            }
-            "minecraft:painting" => {
-                if let Some(state) = transferred.take() {
-                    self.load_painting_transferred(tag, uuid, key, Some(state));
-                } else {
-                    self.load_painting(tag, uuid, key);
                 }
             }
             _ => return Err(tag),
@@ -1020,29 +998,6 @@ impl Game<'_> {
         }
     }
 
-    /// A saved item frame.
-    pub(super) fn load_item_frame(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_item_frame_transferred(tag, uuid, None)
-    }
-    pub(super) fn load_item_frame_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        self.next_entity += 1;
-        if let Some(mut f) = entity_nbt::item_frame_from_nbt(&tag, self.next_entity) {
-            let item = f.item.take();
-            f.set_item(item);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(f.id, state);
-            }
-            self.remember(f.id, uuid, tag);
-            self.bind_saved_entity_attachments(f.id, &mut f.attachment_lifetime);
-            self.item_frames.push(f);
-        }
-    }
-
     /// A saved cushion.
     pub(super) fn load_cushion(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
         self.load_cushion_transferred(tag, uuid, None)
@@ -1060,46 +1015,6 @@ impl Game<'_> {
             }
             self.remember(c.id, uuid, tag);
             self.cushions.push(c);
-        }
-    }
-
-    /// A saved painting, or its compound when its block position is unreadable.
-    pub(super) fn load_painting(&mut self, tag: Tag, uuid: Option<[i32; 4]>, key: ChunkKey) {
-        self.load_painting_transferred(tag, uuid, key, None)
-    }
-    pub(super) fn load_painting_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        key: ChunkKey,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) {
-        // Painting.readAdditionalSaveData: a `variant` that does not resolve
-        // leaves Painting.defineSynchedData's VariantUtils.getAny in place.
-        if let Some((pos, facing, variant)) = entity_nbt::painting_from_nbt(&tag)
-            && let Some(v) = self.painting_variants.saved_or_default(variant.as_deref())
-        {
-            self.next_entity += 1;
-            let id = self.next_entity;
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
-            self.remember(id, uuid, tag);
-            let mut painting = horizon_client::entities::Painting {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id,
-                pos,
-                facing,
-                variant: v.id,
-                width: v.width,
-                height: v.height,
-                check_interval: 0,
-            };
-            self.bind_saved_entity_attachments(id, &mut painting.attachment_lifetime);
-            self.paintings.push(painting);
-        } else {
-            self.persist.unknown.entry(key).or_default().push(tag);
         }
     }
 
@@ -1732,28 +1647,6 @@ impl Game<'_> {
                     .push((s.id, s.join_seq(), tag));
             }
         }
-        for f in &self.item_frames {
-            let (lo, hi) = f.bounds();
-            let at = Vec3::new(
-                (lo[0] + hi[0]) / 2.0,
-                (lo[1] + hi[1]) / 2.0,
-                (lo[2] + hi[2]) / 2.0,
-            );
-            if keys.contains(&chunk_of(at)) {
-                let uuid = self
-                    .persist
-                    .uuids
-                    .get(&f.id)
-                    .copied()
-                    .unwrap_or_else(random_uuid);
-                let mut tag = entity_nbt::item_frame_to_nbt(f, uuid, self.persist.raw.get(&f.id));
-                write_attachments(&mut tag, f.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((f.id, f.join_seq(), tag));
-            }
-        }
         for c in &self.cushions {
             if keys.contains(&chunk_of(c.position)) {
                 let uuid = self
@@ -1768,23 +1661,6 @@ impl Game<'_> {
                     .entry(chunk_of(c.position))
                     .or_default()
                     .push((c.id, c.join_seq(), tag));
-            }
-        }
-        for p in &self.paintings {
-            let at = painting_center(p);
-            if keys.contains(&chunk_of(at)) {
-                let uuid = self
-                    .persist
-                    .uuids
-                    .get(&p.id)
-                    .copied()
-                    .unwrap_or_else(random_uuid);
-                let mut tag = entity_nbt::painting_to_nbt(p, uuid, self.persist.raw.get(&p.id));
-                write_attachments(&mut tag, p.id, &self.entity_attachments);
-                roots
-                    .entry(chunk_of(at))
-                    .or_default()
-                    .push((p.id, p.join_seq(), tag));
             }
         }
         for f in &self.fangs.list {

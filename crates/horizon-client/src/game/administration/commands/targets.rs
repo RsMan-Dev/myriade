@@ -38,7 +38,7 @@ impl Game<'_> {
                 .iter()
                 .find(|a| a.id == id)
                 .map(|a| [a.position.x, a.position.y, a.position.z]),
-            Target::Frame(id) => self.item_frames.iter().find(|f| f.id == id).map(|f| {
+            Target::Frame(id) => self.ecs_frames().into_iter().find(|f| f.id == id).map(|f| {
                 let (lo, hi) = f.bounds();
                 [
                     (lo[0] + hi[0]) / 2.0,
@@ -46,7 +46,7 @@ impl Game<'_> {
                     (lo[2] + hi[2]) / 2.0,
                 ]
             }),
-            Target::Painting(id) => self.paintings.iter().find(|p| p.id == id).map(|p| {
+            Target::Painting(id) => self.ecs_paintings().into_iter().find(|p| p.id == id).map(|p| {
                 let (lo, hi) = p.bounds();
                 [
                     (lo[0] + hi[0]) / 2.0,
@@ -119,7 +119,7 @@ impl Game<'_> {
             Target::Stand(_) => "minecraft:armor_stand".into(),
             Target::General(id) => self.ecs_mob_kind(id).unwrap_or_default().into(),
             Target::Frame(id) => {
-                if self.item_frames.iter().any(|f| f.id == id && f.glow) {
+                if self.ecs_frames().into_iter().any(|f| f.id == id && f.glow) {
                     "minecraft:glow_item_frame".into()
                 } else {
                     "minecraft:item_frame".into()

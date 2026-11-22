@@ -1315,8 +1315,8 @@ impl Game<'_> {
         let now = self.world.game_time;
         if now % 10 == 0 && host.hub.here(g) {
             let framed: Vec<(i32, Framed, bool)> = self
-                .item_frames
-                .iter()
+                .ecs_frames()
+                .into_iter()
                 // ServerEntity.sendChanges: only a framed MapItem (a filled
                 // map), not any stack that carries a map id.
                 .filter_map(|f| {
@@ -1570,7 +1570,6 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-mod live_frame_tests;
 #[cfg(test)]
 mod native_read_tests;
 #[cfg(test)]

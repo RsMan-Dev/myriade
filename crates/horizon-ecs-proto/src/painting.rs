@@ -52,6 +52,27 @@ fn hang_motive(w: &mut World, pos: [i32; 3], face: u8, index: u16, size: Size, w
     e
 }
 
+/// `Painting.setVariant`-like: the motive `name` takes the place of the current one when the wall holds for its footprint. False for an
+/// unknown motive, a wall that does not hold, or `e` not a painting.
+pub fn set_motive(w: &mut World, e: Entity, name: &str) -> bool {
+    let (Some(a), Some((index, size))) = (w.get::<Attached>(e).copied(), motive(w, name)) else { return false };
+    if !w.get::<Motive>(e).is_some() || !fits(w, a.pos, a.face, size) {
+        return false;
+    }
+    w.entity_mut(e).insert((Motive(index), size));
+    true
+}
+
+/// The saved `facing` of a painting on the 3D `face` (`FACING_2D`).
+pub fn saved_facing(face: u8) -> u8 {
+    FACING_2D[usize::from(face % 6)]
+}
+
+/// The 3D face of a painting's saved `facing` (the inverse of `FACING_2D` over the horizontal faces); None for a value no face has.
+pub fn face_of_saved(v: u8) -> Option<u8> {
+    (2..6).find(|&f| FACING_2D[usize::from(f)] == v)
+}
+
 /// `Painting.create` once the motive is chosen: hung on `face` of the block `pos` when the wall holds for its footprint. None for an
 /// unknown motive or a wall that does not hold.
 pub fn place(w: &mut World, pos: [i32; 3], face: u8, name: &str, who: Option<Who>) -> Option<Entity> {

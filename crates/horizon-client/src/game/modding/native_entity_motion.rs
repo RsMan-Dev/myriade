@@ -239,8 +239,8 @@ impl Game<'_> {
                 let (dragon, part) = self.resident_dragon_part(id)?;
                 return Some(corners(dragon.part_geometry(part).1));
             }
-            Target::Frame(id) => self.item_frames.iter().find(|f| f.id == id)?.bounds(),
-            Target::Painting(id) => self.paintings.iter().find(|p| p.id == id)?.bounds(),
+            Target::Frame(id) => self.ecs_frames().into_iter().find(|f| f.id == id)?.bounds(),
+            Target::Painting(id) => self.ecs_paintings().into_iter().find(|p| p.id == id)?.bounds(),
             _ => return None,
         };
         Some([lo, hi])

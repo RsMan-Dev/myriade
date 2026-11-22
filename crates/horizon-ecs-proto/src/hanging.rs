@@ -93,6 +93,27 @@ pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>
     e
 }
 
+/// `setPos` and `setDirection` of a hanging entity: it moves to `pos` on `face` when the wall of its footprint holds there, and its support
+/// index follows. False when the wall does not hold, or `e` hangs on nothing.
+pub fn set_placement(w: &mut World, e: Entity, pos: [i32; 3], face: u8) -> bool {
+    let Some(a) = w.get::<Attached>(e).copied() else { return false };
+    let size = size_of(w, e);
+    if !w.get_resource::<Walls>().map_or(true, |f| (f.0)(w, pos, face, size)) {
+        return false;
+    }
+    let index = &mut w.resource_mut::<AttachIndex>().0;
+    if let Some(list) = index.get_mut(&support(a.pos, a.face)) {
+        list.retain(|&o| o != e);
+    }
+    index.entry(support(pos, face)).or_default().push(e);
+    if let Some(mut at) = w.get_mut::<Attached>(e) {
+        (at.pos, at.face) = (pos, face);
+    }
+    let centre = Vec3::new(f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5);
+    w.entity_mut(e).insert(crate::cow::Pos(centre));
+    true
+}
+
 /// The other hanging entities whose footprint shares a cell with `e`'s (same face: the cells of one plane).
 fn overlapping(w: &World, e: Entity) -> Vec<Entity> {
     let Some(a) = w.get::<Attached>(e).copied() else { return Vec::new() };

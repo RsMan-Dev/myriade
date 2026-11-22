@@ -44,3 +44,5 @@ mod boats;
 mod sorties;
 #[cfg(test)]
 pub(in crate::game) mod test_support;
+#[cfg(test)]
+mod objets_sol_nbt_tests;

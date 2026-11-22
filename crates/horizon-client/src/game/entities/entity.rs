@@ -200,17 +200,7 @@ pub(super) trait Entity: EntityRules {
         (water, lava)
     }
     /// `BubbleColumnBlock.entityInside` through `applyEffectsFromBlocks`: a
-    /// column lifts or drags every kind alike.
-    fn push_by_bubble_column(
-        &mut self,
-        world: &horizon_client::world::World,
-        registry: &horizon_world::registry::BlockRegistry,
-        facts: &horizon_client::blocks::BlockFacts,
-        collision: &horizon_world::block_collision::BlockCollisionRegistry<'_>,
-    ) -> bool {
-        self.push_by_bubble_column_over(world, registry, facts, collision, |_| {})
-    }
-    /// [`Entity::push_by_bubble_column`], telling `surface` the position of
+    /// column lifts or drags every kind alike, telling `surface` the position of
     /// each column block it lies in (for the bubbles at the top).
     fn push_by_bubble_column_over(
         &mut self,
@@ -303,64 +293,6 @@ pub(super) trait Entity: EntityRules {
 }
 
 
-/// The item's view of the shared inside walk: its box, its life, the batch's
-/// blocks, and the part's contact, fired mid-walk over a lent level. An item
-/// has no per-block vanilla arms of its own in the walk: its fire, lava and
-/// cactus contacts are its own tick's (`ItemEntity::environment_tick`), kept
-/// where they were.
-pub(in crate::game) struct ItemInside<'a, 'g> {
-    pub(in crate::game) game: &'a mut Game<'g>,
-    pub(in crate::game) item: &'a mut ItemEntity,
-}
-
-impl horizon_client::block_contact::InsideWalk for ItemInside<'_, '_> {
-    type Error = ();
-    fn bounds_at(&self, at: Vec3) -> Aabb {
-        let b = self.item.bounds();
-        let d = at.subtract(self.item.position);
-        Aabb::new(
-            b.min_position().add_vector(d),
-            b.max_position().add_vector(d),
-        )
-    }
-    fn is_alive(&self) -> bool {
-        self.item.health > 0
-    }
-    fn block(&self, at: horizon_core::position::BlockPos) -> horizon_world::registry::BlockStateId {
-        self.game.world.block(at.x, at.y, at.z)
-    }
-    fn is_air(&self, state: horizon_world::registry::BlockStateId) -> bool {
-        self.game.pack.assets.registry.state(state).is_none_or(|d| {
-            matches!(
-                d.name.as_str(),
-                "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
-            )
-        })
-    }
-    fn inside_shape(
-        &mut self,
-        _state: horizon_world::registry::BlockStateId,
-        _at: horizon_core::position::BlockPos,
-    ) -> horizon_client::block_contact::InsideShape {
-        // `getEntityInsideCollisionShape` is the whole block for every block
-        // an item meets, as the item's own sweep always treated it.
-        horizon_client::block_contact::InsideShape::Full
-    }
-    fn entity_inside(
-        &mut self,
-        at: horizon_core::position::BlockPos,
-        state: horizon_world::registry::BlockStateId,
-        _step: i32,
-        precise: bool,
-        effects: &mut mod_api::InsideEffects,
-    ) -> std::result::Result<(), ()> {
-        let id = self.item.id;
-        self.game
-            .fire_batch_inside(id as i32, "minecraft:item", state, at, precise, effects);
-        Ok(())
-    }
-}
-
 /// The fields every kind stores under the same names.
 macro_rules! stored_motion {
     () => {
@@ -383,192 +315,6 @@ macro_rules! stored_motion {
             &mut self.velocity
         }
     };
-}
-
-/// One `ItemEntity.tick`, with the fluid push and the bubble column decided by
-/// the `Entity` defaults every kind shares: fluids, move, column, settle,
-/// fluids again. Returns false when the item should be removed. A server's tick
-/// runs the halves itself, with the landing's `Block.fallOn` between them.
-impl Game<'_> {
-    /// Tick an item owned by the caller. The results are ordinary survival,
-    /// explicit consumption by a block-contact handler, and the fall it landed
-    /// with on a server (its block's `fallOn` is the caller's). `escape_speed`:
-    /// the item is inside a block and moves without physics this tick, pushed
-    /// out at this speed.
-    /// The item's `Entity.checkInsideBlocks`, run at its batch with the part's
-    /// contact fired mid-walk: the shared sweep over the item's move, the staged
-    /// fire over a lent level (as `item_fall_on` lends one), and the flush of
-    /// the queued writes into this item, its own tick. Nothing runs without a
-    /// listening part: one `any_inside` test is the whole cost.
-    pub(in crate::game) fn sweep_item_inside(&mut self, item: &mut ItemEntity) {
-        if !horizon_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.any_inside)())
-        {
-            return;
-        }
-        let mut effects = mod_api::InsideEffects::default();
-        let mut inside = ItemInside { game: self, item };
-        let movement = horizon_world::entity_move::MovementRecord {
-            from: inside.item.previous,
-            to: inside.item.position,
-            original: None,
-        };
-        let mut visited = crate::fast_hash::FxHashSet::default();
-        let _ = horizon_client::block_contact::sweep_movements(
-            &mut inside,
-            &[movement],
-            &mut visited,
-            &mut effects,
-        );
-        let ItemInside { game, item } = inside;
-        // `applyAndClear`: the writes apply in the collector's order, in this
-        // item's tick, until it is destroyed.
-        for planned in effects.take_planned() {
-            if item.health <= 0 {
-                break;
-            }
-            if let mod_api::PlannedInside::Write(write) = planned {
-                game.apply_item_write(item, write);
-            }
-        }
-    }
-
-    /// A typed entity write an `entity_inside` part queued for an item, applied
-    /// in its own tick. An item takes no effects and keeps no stuck multiplier
-    /// (its tick's friction reads none): `StuckIn` scales the movement once,
-    /// `AddEffect` is skipped, as vanilla's items keep no effect list.
-    fn apply_item_write(&mut self, item: &mut ItemEntity, write: mod_api::EntityWrite) {
-        let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
-        match write {
-            mod_api::EntityWrite::Push(v) => {
-                item.velocity = item.velocity.add_vector(triple(v));
-            }
-            mod_api::EntityWrite::SetMovement(v) => item.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
-                item.velocity = Vec3::new(
-                    item.velocity.x * v[0],
-                    item.velocity.y * v[1],
-                    item.velocity.z * v[2],
-                );
-            }
-            mod_api::EntityWrite::Hurt { amount, .. } => {
-                let _ = item.hurt(amount as i32);
-            }
-            mod_api::EntityWrite::ResetFallDistance => item.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => item.fire_ticks = ticks,
-            mod_api::EntityWrite::AddEffect { .. } => {}
-        }
-    }
-
-    /// An `entity_inside` part's contact for a kind the batch ticks, fired
-    /// mid-walk over a lent level, the whole callback staged: only an answering
-    /// callback's writes join the walk, and a panic there is contained, leaving
-    /// the batch's rows and the level as they were. The level is lent and given
-    /// back per contact, as `item_fall_on` lends its own (arismoko/horizon#2194's carrier
-    /// discipline).
-    pub(in crate::game) fn fire_batch_inside(
-        &mut self,
-        entity: i32,
-        kind: &'static str,
-        state: horizon_world::registry::BlockStateId,
-        at: horizon_core::position::BlockPos,
-        precise: bool,
-        effects: &mut mod_api::InsideEffects,
-    ) {
-        let Some(dimension) = horizon_client::block_contact::current_level() else {
-            return;
-        };
-        if !horizon_client::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.inside_listens)(state))
-        {
-            return;
-        }
-        let mut staged = mod_api::InsideEffects::default();
-        let mut writes = Vec::new();
-        let mut lent = horizon_client::health::LentLevel::take(&mut self.world);
-        let mut level = horizon_client::health::DamageLevel::lent(
-            &self.world,
-            self.pack.assets.registry,
-            &mut lent,
-            Some(world_items!(self)),
-            Some(&self.pack.block_registries),
-            &self.damage_hooks,
-        );
-        if let Some(hooks) = horizon_client::block_contact::HOOKS.get() {
-            (hooks.inside_fire)(
-                &mut level,
-                dimension,
-                entity,
-                kind,
-                state,
-                at,
-                precise,
-                &mut staged,
-                &mut writes,
-            );
-        }
-        lent.give_back(&mut self.world);
-        effects.absorb_step(staged);
-        horizon_client::block_contact::inside_written(state, at, writes);
-    }
-
-    pub(super) fn tick_item_with_block_contacts(
-        &mut self,
-        item: &mut ItemEntity,
-        escape_speed: Option<f32>,
-        entity_boxes: &[Aabb],
-        client: bool,
-        splash: &mut impl FnMut(horizon_client::entities::ItemSplash),
-    ) -> (bool, bool, super::ahead::Landed) {
-        let no_physics = escape_speed.is_some();
-        let (step, landed) = self
-            .item_tables()
-            .move_item(item, escape_speed, entity_boxes, splash);
-        let landed = landed.filter(|_| !client);
-        if !client && let Some((on, distance)) = step.landed() {
-            self.item_fall_on(item.id, on, distance);
-        }
-        if !client {
-            // `Entity.applyEffectsFromBlocks`' checkInsideBlocks, at the batch.
-            self.sweep_item_inside(item);
-        }
-        if let Some(pos) = step.vertical_contact {
-            let state = self.world.block(pos.x, pos.y, pos.z);
-            let position = item.position;
-            let mut discarded = false;
-            if crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::ItemAfterVerticalCollision,
-                state,
-            ) {
-                let mut stack = Some(item.stack.clone());
-                self.native_item_after_vertical_collision(
-                    crate::game::native_hooks::ItemAfterVerticalCollisionCall {
-                        dimension: self.dim.id(),
-                        client,
-                        entity: item.id,
-                        state,
-                        block_pos: [pos.x, pos.y, pos.z],
-                        item_pos: [position.x, position.y, position.z],
-                        stack: &mut stack,
-                        discard: &mut discarded,
-                    },
-                );
-                match stack {
-                    Some(stack) => item.stack = stack,
-                    None => discarded = true,
-                }
-            }
-            if discarded || item.stack.count == 0 {
-                return (false, true, landed);
-            }
-        }
-        let alive = self
-            .item_tables()
-            .settle_item(item, no_physics, step, splash);
-        (alive, false, landed)
-    }
 }
 
 /// The game's lists of entities, in the order systems walk them. Hands them to
@@ -1067,8 +813,8 @@ impl Game<'_> {
         self.cushions
             .iter()
             .map(|e| e.id)
-            .chain(self.item_frames.iter().map(|e| e.id))
-            .chain(self.paintings.iter().map(|e| e.id))
+            .chain(self.ecs_frames().into_iter().map(|e| e.id))
+            .chain(self.ecs_paintings().into_iter().map(|e| e.id))
             .chain(self.others.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
@@ -1236,82 +982,6 @@ impl Entity for Mob {
     }
     fn is_supported_by(&self, pos: BlockPos) -> bool {
         self.supporting == Some([pos.x, pos.y, pos.z])
-    }
-}
-
-impl Entity for ItemEntity {
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn fluid_eye_y(&self) -> f64 {
-        ItemEntity::fluid_eye_y(self)
-    }
-    fn native_type(&self) -> Cow<'static, str> {
-        "minecraft:item".into()
-    }
-    fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let _ = (game, index, keys);
-        None
-    }
-    fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        _player_uuid: Option<[i32; 4]>,
-        tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Result<(), Tag> {
-        let _ = (game, kind, uuid, transferred);
-        Err(tag)
-    }
-    stored_motion!();
-    fn portal_size(&self) -> Option<(f32, f32)> {
-        Some((0.25, 0.25))
-    }
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Item(self.id))
-    }
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        blast.items_ignore
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        0.2125
-    }
-    fn bounds(&self) -> Aabb {
-        ItemEntity::bounds(self)
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        ItemEntity::piston_slime_bounce(self, movement);
     }
 }
 

@@ -114,7 +114,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
         game.native_level_opened(Dim::Overworld);
         for (n, kind) in [
             "armor_stand",
-            "item_frame",
             "oak_boat",
             "arrow",
             "small_fireball",
@@ -159,7 +158,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
             ]);
             match kind {
                 "armor_stand" => game.load_armor_stand(tag, Some(uuid)),
-                "item_frame" => game.load_item_frame(tag, Some(uuid)),
                 "oak_boat" => game.load_boat(tag, Some(uuid), "minecraft:oak_boat"),
                 "arrow" => game.load_arrow(tag, Some(uuid), None),
                 "small_fireball" => game.load_fireball(tag, Some(uuid), None),

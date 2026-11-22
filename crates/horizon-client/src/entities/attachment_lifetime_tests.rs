@@ -83,7 +83,6 @@ fn reusable_entity_lifetimes_cover_clone_moves_and_vec_destruction() {
             ]),
         ),
     ]);
-    exercise(entity_nbt::item_entity_from_nbt(&saved, 1, 0.0).unwrap());
     exercise(entity_nbt::orbs_from_nbt(&saved).pop().unwrap());
     exercise(ArmorStand::new(1, Vec3::ZERO, 0.0));
     exercise(Painting {

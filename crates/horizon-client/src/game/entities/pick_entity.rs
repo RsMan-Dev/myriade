@@ -75,14 +75,14 @@ impl Game<'_> {
             "minecraft:armor_stand".to_owned()
         } else if let Some(c) = self.cushions.iter().find(|c| c.id == id) {
             c.item()
-        } else if let Some(f) = self.item_frames.iter().find(|f| f.id == id) {
+        } else if let Some(f) = self.ecs_frames().into_iter().find(|f| f.id == id) {
             // ItemFrame.getPickResult: what it frames, else the frame itself.
             return Some(
                 f.item
                     .clone()
                     .unwrap_or_else(|| ItemStack::new(f.kind(), 1)),
             );
-        } else if self.paintings.iter().any(|p| p.id == id) {
+        } else if self.ecs_paintings().into_iter().any(|p| p.id == id) {
             "minecraft:painting".to_owned()
         } else if self.crystals.iter().any(|c| c.id == id) {
             "minecraft:end_crystal".to_owned()

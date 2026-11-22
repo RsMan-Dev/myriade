@@ -111,11 +111,11 @@ impl Game<'_> {
         let at = self.target_position(target)?;
         let [x, y, z] = match target {
             Target::Frame(id) => {
-                let frame = self.item_frames.iter().find(|frame| frame.id == id)?;
+                let frame = self.ecs_frames().into_iter().find(|frame| frame.id == id)?;
                 super::frames::hanging_drop_position(at, frame.step())
             }
             Target::Painting(id) => {
-                let painting = self.paintings.iter().find(|painting| painting.id == id)?;
+                let painting = self.ecs_paintings().into_iter().find(|painting| painting.id == id)?;
                 super::frames::hanging_drop_position(at, painting.step())
             }
             _ => at,
@@ -512,40 +512,16 @@ mod tests {
     #[ignore = "daily"]
     fn spawn_at_location_offsets_hanging_entities_out_from_the_wall() {
         use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::entities::{ItemFrame, Painting};
+        use crate::game::ecs::test_support::{hang_test_frame, hang_test_painting};
         use horizon_client::items::ItemStack;
         use horizon_core::geometry::Vec3;
 
         with_game(|game| {
-            for (id, glow, facing) in [(12, false, 5), (13, true, 4)] {
-                game.item_frames.push(ItemFrame {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id,
-                    pos: [0, 64, 0],
-                    facing,
-                    glow,
-                    item: None,
-                    rotation: 0,
-                    drop_chance: 1.0,
-                    fixed: false,
-                    invisible: false,
-                    check_interval: 0,
-                    custom_name: None,
-                    random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-                });
-            }
-            game.paintings.push(Painting {
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                id: 14,
-                pos: [0, 64, 0],
-                facing: 2,
-                variant: "minecraft:kebab".into(),
-                width: 1,
-                height: 1,
-                check_interval: 0,
-            });
+            game.ecs = game.test_ecs_level();
+            game.next_entity = 11;
+            assert_eq!(hang_test_frame(game, [0, 64, 0], 5, false), Some(12));
+            assert_eq!(hang_test_frame(game, [0, 64, 0], 4, true), Some(13));
+            assert_eq!(hang_test_painting(game, [0, 64, 0], 2, "minecraft:kebab"), Some(14));
             // East frame, west glow frame, north painting. Expected origins
             // are the hanging center plus 0.15 facing out and the 0.5 Y offset.
             for (id, expected) in [

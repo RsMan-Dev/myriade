@@ -7,25 +7,6 @@ use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 use std::sync::Arc;
 
-/// `ItemEntity.addAdditionalSaveData` saves `Age` as a short, so the star's
-/// negative age is still there after a save and load.
-#[test]
-fn a_stars_negative_age_survives_item_nbt() {
-    let mut star = ItemEntity::new(
-        7,
-        ItemStack::new("minecraft:nether_star", 1),
-        Vec3::new(4.5, 200.0, 4.5),
-        Vec3::ZERO,
-        0.0,
-    );
-    star.age = -6000;
-    let tag = crate::entity_nbt::item_entity_to_nbt(&star, [1, 2, 3, 4], None);
-    assert_eq!(tag.get("Age"), Some(&Tag::Short(-6000)));
-    let loaded = crate::entity_nbt::item_entity_from_nbt(&tag, 7, 0.0).unwrap();
-    assert_eq!(loaded.age, -6000);
-    assert_eq!(&*loaded.stack.item, "minecraft:nether_star");
-}
-
 /// Stack-only loot edits must not inherit a custom item entity's initial age.
 #[test]
 #[ignore = "daily"]

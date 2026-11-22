@@ -72,11 +72,11 @@ impl Game<'_> {
                 entities.push(EntityRef::new(epoch, id));
             }
         };
-        for frame in self.item_frames.iter() {
+        for frame in self.ecs_frames().into_iter() {
             let (lo, hi) = frame.bounds();
             listed(frame.id, lo, hi, entities);
         }
-        for painting in self.paintings.iter() {
+        for painting in self.ecs_paintings().into_iter() {
             let (lo, hi) = painting.bounds();
             listed(painting.id, lo, hi, entities);
         }

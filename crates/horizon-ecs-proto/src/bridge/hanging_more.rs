@@ -3,7 +3,7 @@
 //! the bool. The host decides first whether the player may interact (`mayInteract`) and checks the map markers limit at `Put`.
 use crate::bridge::host::EcsWorld;
 use crate::frame_item;
-use crate::hanging::Size;
+use crate::hanging::{self, Attached, Size};
 use crate::painting::{self, Motives};
 use crate::targeting::Who;
 use bevy_ecs::entity::Entity;
@@ -88,5 +88,18 @@ impl EcsWorld {
     /// `/invisible` on the frame `e`: its `invisible` flag takes `on`. False when `e` is not a frame.
     pub fn set_frame_invisible(&mut self, mw: &MobWorld<'_>, e: Entity, on: bool) -> bool {
         self.lent(mw, |w| frame_item::set_invisible(w, e, on))
+    }
+
+    /// `Entity.setDirection` of the hanging entity `e` to `face`, its place kept; false when the wall does not hold there.
+    pub fn set_hanging_facing(&mut self, mw: &MobWorld<'_>, e: Entity, face: u8) -> bool {
+        self.lent(mw, |w| {
+            let Some(pos) = w.get::<Attached>(e).map(|a| a.pos) else { return false };
+            hanging::set_placement(w, e, pos, face)
+        })
+    }
+
+    /// `ItemFrame.setRotation` on the frame `e`: its rotation takes `rotation % 8`. False when `e` is not a frame.
+    pub fn set_frame_rotation(&mut self, mw: &MobWorld<'_>, e: Entity, rotation: u8) -> bool {
+        self.lent(mw, |w| frame_item::set_rotation(w, e, rotation))
     }
 }

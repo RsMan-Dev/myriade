@@ -114,8 +114,6 @@ impl Game<'_> {
             m.custom_name_text = name;
         } else if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
             a.custom_name = name;
-        } else if let Some(f) = self.item_frames.iter_mut().find(|f| f.id == id) {
-            f.custom_name = saved.clone();
         }
         self.put_saved(id, "CustomName", saved);
         true

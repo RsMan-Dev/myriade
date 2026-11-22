@@ -45,7 +45,7 @@ impl Hooks for Probe {
 }
 
 #[test]
-#[ignore = "daily"]
+#[ignore = "hook not emitted by the ECS yet"]
 fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity() {
     crate::game::in_own_process(
         "game::item_contact_tests::the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entity",

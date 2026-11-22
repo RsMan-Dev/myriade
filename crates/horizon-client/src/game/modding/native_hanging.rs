@@ -11,26 +11,18 @@ impl Game<'_> {
         entity: EntityRef,
         direction: Direction,
     ) -> bool {
-        let pos = match self.native_entity_target(entity) {
-            Some(Target::Frame(id)) => {
-                let Some(frame) = self.item_frames.iter_mut().find(|f| f.id == id) else {
-                    return false;
-                };
-                frame.facing = data_3d(direction);
-                frame.pos
-            }
-            Some(Target::Painting(id)) => {
-                let Some(facing) = data_2d(direction) else {
-                    return false;
-                };
-                let Some(painting) = self.paintings.iter_mut().find(|p| p.id == id) else {
-                    return false;
-                };
-                painting.facing = facing;
-                painting.pos
-            }
+        let id = match self.native_entity_target(entity) {
+            Some(Target::Frame(id)) => id,
+            Some(Target::Painting(id)) if data_2d(direction).is_some() => id,
             _ => return false,
         };
+        let Some(pos) = self.ecs_hanging_pos(id) else {
+            return false;
+        };
+        let face = data_3d(direction);
+        if !self.ecs_with_mw(|ecs, mw| ecs.set_hanging_facing(mw, id, face)) {
+            return false;
+        }
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         true
     }
@@ -44,11 +36,12 @@ impl Game<'_> {
         let Some(Target::Frame(id)) = self.native_entity_target(entity) else {
             return false;
         };
-        let Some(frame) = self.item_frames.iter_mut().find(|f| f.id == id) else {
+        if !self.ecs_with_mw(|ecs, mw| ecs.set_frame_rotation(mw, id, rotation)) {
+            return false;
+        }
+        let Some(pos) = self.ecs_hanging_pos(id) else {
             return false;
         };
-        frame.rotation = (rotation % 8) as i8;
-        let pos = frame.pos;
         self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         self.frame_output_changed(pos);
         true

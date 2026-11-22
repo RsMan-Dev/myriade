@@ -110,8 +110,8 @@ impl Game<'_> {
 enum Apart {
     Crystal(usize),
     Cushion(usize),
-    Painting(usize),
-    Frame(usize),
+    Painting(u32),
+    Frame(u32),
     Dragon,
 }
 
@@ -292,11 +292,11 @@ impl Game<'_> {
         for (i, c) in self.cushions.iter().enumerate() {
             offer(Slot::Apart(Apart::Cushion(i)), c.id, c.join);
         }
-        for (i, p) in self.paintings.iter().enumerate() {
-            offer(Slot::Apart(Apart::Painting(i)), p.id, p.join);
+        for p in self.ecs_paintings() {
+            offer(Slot::Apart(Apart::Painting(p.id)), p.id, p.join);
         }
-        for (i, f) in self.item_frames.iter().enumerate() {
-            offer(Slot::Apart(Apart::Frame(i)), f.id, f.join);
+        for f in self.ecs_frames() {
+            offer(Slot::Apart(Apart::Frame(f.id)), f.id, f.join);
         }
         if let Some(d) = self.dragon.as_ref() {
             offer(Slot::Apart(Apart::Dragon), d.id, d.join);
@@ -333,17 +333,18 @@ impl Game<'_> {
             Slot::Apart(Apart::Cushion(i)) => {
                 ("minecraft:cushion".into(), self.cushions[i].position)
             }
-            Slot::Apart(Apart::Painting(i)) => {
-                ("minecraft:painting".into(), block(self.paintings[i].pos))
+            Slot::Apart(Apart::Painting(id)) => {
+                let pos = self.ecs_paintings().into_iter().find(|p| p.id == id).map_or([0; 3], |p| p.pos);
+                ("minecraft:painting".into(), block(pos))
             }
-            Slot::Apart(Apart::Frame(i)) => {
-                let f = &self.item_frames[i];
-                let kind = if f.glow {
+            Slot::Apart(Apart::Frame(id)) => {
+                let (glow, pos) = self.ecs_frames().into_iter().find(|f| f.id == id).map_or((false, [0; 3]), |f| (f.glow, f.pos));
+                let kind = if glow {
                     "minecraft:glow_item_frame"
                 } else {
                     "minecraft:item_frame"
                 };
-                (kind.into(), block(f.pos))
+                (kind.into(), block(pos))
             }
             Slot::Apart(Apart::Dragon) => (
                 "minecraft:ender_dragon".into(),
@@ -357,8 +358,9 @@ impl Game<'_> {
             Slot::Walk(h) => self.discard_entity(h),
             Slot::Apart(Apart::Crystal(i)) => drop(self.crystals.remove(i)),
             Slot::Apart(Apart::Cushion(i)) => drop(self.cushions.remove(i)),
-            Slot::Apart(Apart::Painting(i)) => drop(self.paintings.remove(i)),
-            Slot::Apart(Apart::Frame(i)) => drop(self.item_frames.remove(i)),
+            Slot::Apart(Apart::Painting(id) | Apart::Frame(id)) => {
+                self.ecs_remove_hanging(id);
+            }
             Slot::Apart(Apart::Dragon) => self.discard_resident_dragon(),
         }
     }
@@ -425,6 +427,7 @@ impl Game<'_> {
     /// commit holds the rest: the root commit's own telling.
     pub(in crate::game) fn leaves_now(&mut self) {
         use super::entity::Entity;
+        let hanging: Vec<u32> = self.ecs_paintings().iter().map(|p| p.id).chain(self.ecs_frames().iter().map(|f| f.id)).collect();
         for l in &mut self.persist.live {
             l.2 = false;
         }
@@ -439,8 +442,7 @@ impl Game<'_> {
         });
         self.crystals.iter().for_each(|c| seen(c.id));
         self.cushions.iter().for_each(|c| seen(c.id));
-        self.paintings.iter().for_each(|p| seen(p.id));
-        self.item_frames.iter().for_each(|f| seen(f.id));
+        hanging.into_iter().for_each(|id| seen(id));
         if let Some(d) = self.dragon.as_ref() {
             seen(d.id);
         }
@@ -604,35 +606,6 @@ mod tests {
                     check_interval: 0,
                     custom_name: None,
                 });
-                game.paintings.push(horizon_client::entities::Painting {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 6,
-                    pos: [0; 3],
-                    facing: 0,
-                    variant: "minecraft:kebab".into(),
-                    width: 1,
-                    height: 1,
-                    check_interval: 0,
-                });
-                game.item_frames.push(horizon_client::entities::ItemFrame {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: base + 7,
-                    pos: [0; 3],
-                    facing: 0,
-                    glow: false,
-                    item: None,
-                    rotation: 0,
-                    drop_chance: 1.0,
-                    fixed: false,
-                    invisible: false,
-                    custom_name: None,
-                    random: horizon_core::random::EntityRandom::own(
-                        horizon_core::random::LegacyRandom::new(0),
-                    ),
-                    check_interval: 0,
-                });
                 let mut dragon = super::super::dragon::Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = base + 8;
                 dragon.join = horizon_client::join_seq::JoinSeq::next();
@@ -646,15 +619,13 @@ mod tests {
                     &[
                         (base + 4, "minecraft:end_crystal".into(), true),
                         (base + 5, "minecraft:cushion".into(), true),
-                        (base + 6, "minecraft:painting".into(), true),
-                        (base + 7, "minecraft:item_frame".into(), true),
                         (base + 8, "minecraft:ender_dragon".into(), true)
                     ]
                 );
                 drop(seen);
                 game.native_joins_flush(false, 0);
                 game.native_joins_flush(false, 0);
-                assert_eq!(joins.lock().unwrap().len(), 8);
+                assert_eq!(joins.lock().unwrap().len(), 6);
             });
         });
     }

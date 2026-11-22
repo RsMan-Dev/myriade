@@ -866,8 +866,8 @@ impl Game<'_> {
         for_each_entity!(entity_lists_of!(self), entity => {
             candidates.extend(entity.selector_target());
         });
-        candidates.extend(self.item_frames.iter().map(|f| Target::Frame(f.id)));
-        candidates.extend(self.paintings.iter().map(|p| Target::Painting(p.id)));
+        candidates.extend(self.ecs_frames().into_iter().map(|f| Target::Frame(f.id)));
+        candidates.extend(self.ecs_paintings().into_iter().map(|p| Target::Painting(p.id)));
         candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
         candidates.extend(self.others.iter().map(|o| Target::Other(o.id)));
         candidates.extend(self.fangs.list.iter().map(|f| Target::Fangs(f.id)));
@@ -2141,12 +2141,14 @@ impl Game<'_> {
             Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
             Target::Frame(id) => {
                 // ItemFrame.onKilled.
-                if let Some(frame) = self.item_frames.iter().find(|f| f.id == id).cloned() {
+                if let Some(frame) = self.ecs_frames().into_iter().find(|f| f.id == id) {
                     self.remove_framed_map(&frame);
                 }
-                self.item_frames.retain(|f| f.id != id);
+                self.ecs_remove_hanging(id);
             }
-            Target::Painting(id) => self.paintings.retain(|p| p.id != id),
+            Target::Painting(id) => {
+                self.ecs_remove_hanging(id);
+            }
             Target::Boat(_) | Target::Cart(_) => {
                 if !self.kill_vehicle_object(t) {
                     return;

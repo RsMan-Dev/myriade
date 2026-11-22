@@ -97,6 +97,13 @@ pub fn rotate(w: &mut World, e: Entity, who: Option<Who>) -> bool {
     true
 }
 
+/// `ItemFrame.setRotation`: the rotation takes `rotation % 8`. No event, as the setter sends none; False when `e` is not a frame.
+pub fn set_rotation(w: &mut World, e: Entity, rotation: u8) -> bool {
+    let Some(mut h) = w.get_mut::<Held>(e) else { return false };
+    h.rotation = rotation % 8;
+    true
+}
+
 /// `ItemFrame.setItem` on an empty frame: it takes `stack` (the caller takes it from the hand). The host consumes the `Put`. False
 /// when the frame holds an item already.
 pub fn put(w: &mut World, e: Entity, stack: ItemStack, who: Option<Who>) -> bool {

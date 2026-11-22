@@ -178,13 +178,13 @@ impl Game<'_> {
             }
             Target::Frame(id) => {
                 let uuid = self.uuid_for(id);
-                let f = self.item_frames.iter().find(|f| f.id == id)?;
-                entity_nbt::item_frame_to_nbt(f, uuid, self.persist.raw.get(&id))
+                let f = self.ecs_frames().into_iter().find(|f| f.id == id)?;
+                entity_nbt::item_frame_to_nbt(&f, uuid, self.persist.raw.get(&id))
             }
             Target::Painting(id) => {
                 let uuid = self.uuid_for(id);
-                let p = self.paintings.iter().find(|p| p.id == id)?;
-                entity_nbt::painting_to_nbt(p, uuid, self.persist.raw.get(&id))
+                let p = self.ecs_paintings().into_iter().find(|p| p.id == id)?;
+                entity_nbt::painting_to_nbt(&p, uuid, self.persist.raw.get(&id))
             }
             Target::Boat(id) | Target::Cart(id) => {
                 let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
@@ -532,32 +532,7 @@ impl Game<'_> {
                     horizon_client::join_seq::store_back(slot, new);
                 }
             }
-            Target::Frame(id) => {
-                let mut new = entity_nbt::item_frame_from_nbt(&tag, id).ok_or_else(stale)?;
-                if let Some(i) = self.item_frames.iter().position(|f| f.id == id) {
-                    let old = &self.item_frames[i];
-                    // Entity.load cannot change the runtime type; saveWithoutId
-                    // deliberately omitted the decoder's type discriminator.
-                    new.glow = old.glow;
-                    new.join = old.join;
-                    // ItemFrame.readAdditionalSaveData: ItemStack.matches includes
-                    // count, item and components, before adopting the new stack.
-                    // It compares the stack as read; setItem keeps one of it
-                    // only after, as `new.item` already does.
-                    let read = tag.get("Item").and_then(save::item_from_nbt);
-                    if old.item.as_ref().is_some_and(|a| {
-                        read.as_ref()
-                            .is_none_or(|b| a.count != b.count || !a.same_item_same_components(b))
-                    }) {
-                        let old = old.clone();
-                        self.remove_framed_map(&old);
-                    }
-                    let item = new.item.take();
-                    new.set_item(item);
-                    horizon_client::join_seq::store_back(&mut self.item_frames[i], new);
-                }
-            }
-            Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
+            Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) | Target::Frame(id) | Target::Painting(id) => {
                 let uuid = self.uuid_for(id);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 let Tag::Compound(patch) = &tag else {
@@ -566,27 +541,6 @@ impl Game<'_> {
                 if !self.ecs_merge_mob(id, patch) {
                     return Err(stale());
                 }
-            }
-            Target::Painting(id) => {
-                // Painting.readAdditionalSaveData over HangingEntity's: the
-                // facing, the block it hangs on and a known variant
-                // (`VariantUtils.readVariant(..).ifPresent`: an unknown or
-                // unreadable one keeps the painting's).
-                let uuid = self.uuid_for(id);
-                let (pos, facing) =
-                    entity_nbt::painting_placement_from_nbt(&tag).ok_or_else(stale)?;
-                let known = entity_nbt::painting_from_nbt(&tag)
-                    .and_then(|(_, _, v)| self.painting_variants.get(&v?).cloned());
-                let p = self
-                    .paintings
-                    .iter_mut()
-                    .find(|p| p.id == id)
-                    .ok_or_else(stale)?;
-                (p.pos, p.facing) = (pos, facing);
-                if let Some(v) = known {
-                    (p.variant, p.width, p.height) = (v.id, v.width, v.height);
-                }
-                set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
             }
             _ => return Err(stale()),
         }
@@ -1207,9 +1161,9 @@ impl Game<'_> {
             Some(Target::Item(id))
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Some(Target::Stand(id))
-        } else if self.item_frames.iter().any(|f| f.id == id) {
+        } else if self.ecs_frames().into_iter().any(|f| f.id == id) {
             Some(Target::Frame(id))
-        } else if self.paintings.iter().any(|p| p.id == id) {
+        } else if self.ecs_paintings().into_iter().any(|p| p.id == id) {
             Some(Target::Painting(id))
         } else if self.ecs.boat_status(id).is_some() {
             Some(Target::Boat(id))

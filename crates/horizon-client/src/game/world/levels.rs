@@ -90,8 +90,8 @@ macro_rules! entity_count_view {
                 ("minecraft:experience_orb", $level.ecs.species_count("minecraft:experience_orb")),
                 ("minecraft:boat", $level.boats.len()),
                 ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
-                ("minecraft:painting", $level.paintings.len()),
-                ("minecraft:item_frame", $level.item_frames.len()),
+                ("minecraft:painting", $level.ecs.species_count("minecraft:painting")),
+                ("minecraft:item_frame", $level.ecs.species_count("minecraft:item_frame") + $level.ecs.species_count("minecraft:glow_item_frame")),
                 ("minecraft:armor_stand", $level.armor_stands.len()),
                 ("minecraft:trident", $level.ecs.species_count("minecraft:trident")),
                 ("minecraft:firework_rocket", $level.ecs.species_count("minecraft:firework_rocket")),
@@ -872,8 +872,6 @@ impl Game<'_> {
         swap(&mut self.level_events, &mut p.level_events);
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.portals.sections, &mut p.portal_sections);
-        swap(&mut self.paintings, &mut p.paintings);
-        swap(&mut self.item_frames, &mut p.item_frames);
         swap(&mut self.armor_stands, &mut p.armor_stands);
         swap(&mut self.cushions, &mut p.cushions);
         swap(&mut self.others, &mut p.others);

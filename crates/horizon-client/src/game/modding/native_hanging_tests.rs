@@ -2,7 +2,7 @@
 //! painting turn and their bounds follow, a painting refuses up and down, a frame's item turns
 //! with vanilla's wrap, and another kind is refused.
 use super::native_entity_refs::tests::with_game;
-use horizon_client::entities::{ItemFrame, Painting};
+use crate::game::ecs::test_support::{hang_test_frame, hang_test_painting};
 use horizon_core::geometry::Direction;
 
 const FRAME: u32 = 900;
@@ -18,34 +18,11 @@ fn with_hanging(test: impl FnOnce(&mut super::Game<'_>)) {
 }
 
 fn with_hanging_in(game: &mut super::Game<'_>) {
-    game.item_frames.push(ItemFrame {
-        attachment_lifetime: Default::default(),
-        join: Default::default(),
-        id: FRAME,
-        pos: [4, 70, 4],
-        facing: 3,
-        glow: false,
-        item: None,
-        rotation: 0,
-        drop_chance: 1.0,
-        fixed: false,
-        invisible: false,
-        custom_name: None,
-        random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-        check_interval: 0,
-    });
-    game.paintings.push(Painting {
-        attachment_lifetime: Default::default(),
-        join: Default::default(),
-        id: PAINTING,
-        pos: [4, 70, 6],
-        facing: 0,
-        variant: "minecraft:kebab".into(),
-        width: 1,
-        height: 1,
-        check_interval: 0,
-    });
-    game.next_entity = game.next_entity.max(PAINTING);
+    game.ecs = game.test_ecs_level();
+    game.next_entity = FRAME - 1;
+    assert_eq!(hang_test_frame(game, [4, 70, 4], 3, false), Some(FRAME));
+    game.next_entity = PAINTING - 1;
+    assert_eq!(hang_test_painting(game, [4, 70, 6], 3, "minecraft:kebab"), Some(PAINTING));
 }
 
 /// Which axes of a box are thin (a hanging entity's depth).
@@ -58,17 +35,17 @@ fn thin((lo, hi): ([f64; 3], [f64; 3])) -> [bool; 3] {
 fn a_frame_turns_to_every_direction_and_its_bounds_follow() {
     with_hanging(|game| {
         let frame = game.entity(FRAME).expect("the frame's handle");
-        assert_eq!(thin(game.item_frames[0].bounds()), [false, false, true]);
+        assert_eq!(thin(game.ecs_frames()[0].bounds()), [false, false, true]);
         assert!(game.entity_set_hanging_direction(frame, Direction::West));
-        assert_eq!(game.item_frames[0].facing, 4);
-        assert_eq!(thin(game.item_frames[0].bounds()), [true, false, false]);
+        assert_eq!(game.ecs_frames()[0].facing, 4);
+        assert_eq!(thin(game.ecs_frames()[0].bounds()), [true, false, false]);
         assert!(game.entity_set_hanging_direction(frame, Direction::Up));
-        assert_eq!(game.item_frames[0].facing, 1);
-        assert_eq!(thin(game.item_frames[0].bounds()), [false, true, false]);
+        assert_eq!(game.ecs_frames()[0].facing, 1);
+        assert_eq!(thin(game.ecs_frames()[0].bounds()), [false, true, false]);
         assert!(game.entity_set_hanging_direction(frame, Direction::Down));
-        assert_eq!(game.item_frames[0].facing, 0);
+        assert_eq!(game.ecs_frames()[0].facing, 0);
         assert!(game.entity_set_hanging_direction(frame, Direction::South));
-        assert_eq!(game.item_frames[0].facing, 3);
+        assert_eq!(game.ecs_frames()[0].facing, 3);
     });
 }
 
@@ -79,14 +56,14 @@ fn a_painting_turns_only_to_a_horizontal_direction() {
         let painting = game.entity(PAINTING).expect("the painting's handle");
         // Its 2D data value: south 0, west 1, north 2, east 3.
         assert!(game.entity_set_hanging_direction(painting, Direction::East));
-        assert_eq!(game.paintings[0].facing, 3);
-        assert_eq!(thin(game.paintings[0].bounds()), [true, false, false]);
+        assert_eq!(game.ecs_paintings()[0].facing, 3);
+        assert_eq!(thin(game.ecs_paintings()[0].bounds()), [true, false, false]);
         assert!(game.entity_set_hanging_direction(painting, Direction::North));
-        assert_eq!(game.paintings[0].facing, 2);
+        assert_eq!(game.ecs_paintings()[0].facing, 2);
         assert!(!game.entity_set_hanging_direction(painting, Direction::Up));
         assert!(!game.entity_set_hanging_direction(painting, Direction::Down));
         assert_eq!(
-            game.paintings[0].facing, 2,
+            game.ecs_paintings()[0].facing, 2,
             "a refused direction changes nothing"
         );
     });
@@ -99,12 +76,12 @@ fn a_frames_item_turns_with_vanillas_wrap_and_other_kinds_are_refused() {
         let frame = game.entity(FRAME).expect("the frame's handle");
         let painting = game.entity(PAINTING).expect("the painting's handle");
         assert!(game.entity_set_item_frame_rotation(frame, 5));
-        assert_eq!(game.item_frames[0].rotation, 5);
+        assert_eq!(game.ecs_frames()[0].rotation, 5);
         // ItemFrame.setRotation keeps `rotation % 8`.
         assert!(game.entity_set_item_frame_rotation(frame, 13));
-        assert_eq!(game.item_frames[0].rotation, 5);
+        assert_eq!(game.ecs_frames()[0].rotation, 5);
         assert!(game.entity_set_item_frame_rotation(frame, 8));
-        assert_eq!(game.item_frames[0].rotation, 0);
+        assert_eq!(game.ecs_frames()[0].rotation, 0);
         // A painting has no item to turn.
         assert!(!game.entity_set_item_frame_rotation(painting, 2));
     });

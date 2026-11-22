@@ -58,10 +58,10 @@ fn tp_moves_a_frame_and_a_painting() {
     assert!(game.run_command("summon minecraft:item_frame 0 2 2 {Facing:3b}"));
     assert!(game.run_command("tp @e[type=minecraft:painting,limit=1] 3 2 0"));
     assert!(game.run_command("tp @e[type=minecraft:item_frame,limit=1] 3 2 2"));
-    assert_eq!(game.paintings.len(), 1);
-    assert_eq!(game.paintings[0].pos, [3, 2, 0]);
-    assert_eq!(game.item_frames.len(), 1);
-    assert_eq!(game.item_frames[0].pos, [3, 2, 2]);
+    assert_eq!(game.ecs_paintings().len(), 1);
+    assert_eq!(game.ecs_paintings()[0].pos, [3, 2, 0]);
+    assert_eq!(game.ecs_frames().len(), 1);
+    assert_eq!(game.ecs_frames()[0].pos, [3, 2, 2]);
 }
 
 /// `Entity.teleportTo(ServerLevel, ..)` -> `teleportCrossDimension` for a
@@ -101,7 +101,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
     }
     assert!(game.armor_stands.is_empty(), "the stand left the overworld");
     assert!(game.ecs.item_ids().is_empty(), "the item left the overworld");
-    assert!(game.item_frames.is_empty(), "the frame left the overworld");
+    assert!(game.ecs_frames().is_empty(), "the frame left the overworld");
     assert!(
         game.creatures.projectiles.is_empty(),
         "the arrow left the overworld"
@@ -119,7 +119,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
         [item.position.x, item.position.y, item.position.z],
         [11.5, 64.0, 0.5]
     );
-    let frame = game.item_frames.first().expect("frame crossed");
+    let frame = game.ecs_frames().first().cloned().expect("frame crossed");
     assert_eq!(frame.pos, [12, 64, 0]);
     let arrow = game
         .creatures

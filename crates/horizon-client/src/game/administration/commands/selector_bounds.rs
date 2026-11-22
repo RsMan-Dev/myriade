@@ -45,13 +45,13 @@ impl Game<'_> {
             Target::Tnt(id) | Target::Falling(id) => self.ecs.bounds(id),
             Target::Rocket(id) | Target::Trident(id) => self.ecs.bounds(id),
             Target::Frame(id) => self
-                .item_frames
-                .iter()
+                .ecs_frames()
+                .into_iter()
                 .find(|e| e.id == id)
                 .map(|e| extents(e.bounds())),
             Target::Painting(id) => self
-                .paintings
-                .iter()
+                .ecs_paintings()
+                .into_iter()
                 .find(|e| e.id == id)
                 .map(|e| extents(e.bounds())),
             Target::Cushion(id) => self

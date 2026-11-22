@@ -458,8 +458,6 @@ impl Game<'_> {
         apart!(
             self.crystals,
             self.cushions,
-            self.paintings,
-            self.item_frames,
             self.others,
             self.breath_clouds,
             self.fangs.list,

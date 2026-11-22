@@ -78,6 +78,18 @@ impl EcsLevel {
         self.ecs_mut().is_some_and(|w| w.set_frame_fixed(mw, e, on))
     }
 
+    /// `Entity.setDirection` of the hanging entity `id` to `face`; false when it is unknown or the wall does not hold there.
+    pub fn set_hanging_facing(&mut self, mw: &MobWorld<'_>, id: u32, face: u8) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.set_hanging_facing(mw, e, face))
+    }
+
+    /// The rotation of the frame `id` takes `rotation % 8`; false when the frame is unknown or not a frame.
+    pub fn set_frame_rotation(&mut self, mw: &MobWorld<'_>, id: u32, rotation: u8) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.set_frame_rotation(mw, e, rotation))
+    }
+
     /// The `invisible` flag of the frame `id` takes `on`; false when the frame is unknown or not a frame.
     pub fn set_frame_invisible(&mut self, mw: &MobWorld<'_>, id: u32, on: bool) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

@@ -1683,10 +1683,10 @@ impl Game<'_> {
                 Vec3::new(hi[0], hi[1], hi[2]),
             )
         };
-        for f in self.item_frames.iter() {
+        for f in self.ecs_frames().into_iter() {
             offer(Some(Target::Frame(f.id)), aabb(f.bounds()));
         }
-        for p in self.paintings.iter() {
+        for p in self.ecs_paintings().into_iter() {
             offer(Some(Target::Painting(p.id)), aabb(p.bounds()));
         }
         for c in self.crystals.iter() {

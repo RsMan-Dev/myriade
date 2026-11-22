@@ -1044,9 +1044,7 @@ struct Game<'a> {
     tickets: horizon_client::ticket_levels::ChunkTickets,
     random_tick_sections: horizon_client::random_tick_sections::RandomTickSections,
     level_events: Vec<LevelEvent>,
-    paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     painting_variants: paintings::PaintingVariants,
-    item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
     armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
     /// Worn armor as of the last equipment check (frost walker).
     location_armor: [Option<ItemStack>; 4],
@@ -3943,8 +3941,6 @@ impl Game<'_> {
         self.carts.clear();
         self.armor_stands.clear();
         self.cushions.clear();
-        self.item_frames.clear();
-        self.paintings.clear();
         self.others.clear();
         self.dragon.discard();
         self.crystals.clear();
@@ -5467,9 +5463,7 @@ impl<'a> Game<'a> {
             tickets: Default::default(),
             random_tick_sections: Default::default(),
             level_events: Vec::new(),
-            paintings: Default::default(),
             painting_variants: Default::default(),
-            item_frames: Default::default(),
             armor_stands: Default::default(),
             location_armor: Default::default(),
             cushions: Default::default(),
