@@ -1367,6 +1367,10 @@ pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
 fn start_goal(w: &mut World, e: Entity, slot: u8) {
+    // `Mob.serverAiStep` is not run without effective AI (`Mob.isNoAi`): the selectors tick nothing, so no goal starts.
+    if w.get::<crate::dragon::flight::NoAi>(e).is_some() {
+        return;
+    }
     // One lookup of the selector: the module, whether it runs, whether its flags are free.
     let (free, m, inst, when) = {
         let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };
@@ -1449,6 +1453,17 @@ pub fn set_disabled_flags(w: &mut World, e: Entity, mask: u8) {
             start_goal(w, e, s);
         }
     }
+}
+/// Hook of `NoAi` added: the goals running stop (the selector is no longer ticked, so nothing would end them).
+pub(crate) fn stop_all_goals(mut world: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    let e = ctx.entity;
+    world.commands().queue(move |w: &mut World| {
+        for slot in 0..MAX_ENTRIES as u8 {
+            if w.get::<GoalSet>(e).is_some_and(|g| g.slot_running(slot)) {
+                end_goal(w, e, slot);
+            }
+        }
+    });
 }
 pub(crate) fn end_goal(w: &mut World, e: Entity, slot: u8) {
     let Some(mut g) = w.get_mut::<GoalSet>(e) else { return };

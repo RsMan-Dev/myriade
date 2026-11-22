@@ -41,7 +41,7 @@ fn travel(
     mut par: crate::cow::OrdCmds,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, Has<Following>),
-        (With<Moving>, Without<Overlapping>, With<crate::locomotion::LavaMode>),
+        (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<crate::locomotion::LavaMode>),
     >,
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, following) in &mut q {

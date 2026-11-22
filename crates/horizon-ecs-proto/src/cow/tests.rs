@@ -568,3 +568,71 @@ fn a_cow_leaving_a_standing_player_stops_being_active() {
     let until = herd.world.get::<ActiveUntil>(e).unwrap().0;
     assert!(until != u64::MAX && until <= herd.world.resource::<Clock>().0 + 100, "still active without end: {until}");
 }
+
+/// `Mob.isNoAi`: `LivingEntity.aiStep` runs no `travel` (no gravity), so the mob hangs where it was put, while the same mob falls and lands without
+/// the flag. `Entity.saveWithoutId` writes `onGround()` (the landed one 1b, the hanging one 0b); a mob at rest keeps `Motion` y = (0 - 0.08) * 0.98
+/// (`LivingEntity.travelInAir`: the move zeroes y on the floor, then gravity, then the 0.98 drag).
+#[test]
+fn no_ai_mob_does_not_fall_and_a_landed_mob_saves_on_ground() {
+    if crate::cow::skip_unless_walker("no_ai_mob_does_not_fall") || std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+        return;
+    }
+    let mut herd = Herd::new_awake(0, 6.0, true, false, 3);
+    let mut put = |herd: &mut Herd, x: f64, no_ai: bool| {
+        let e = herd.world.spawn(cow_bundle(x, 0.5, 21)).id();
+        herd.teleport(e, Vec3::new(x, 6.0, 0.5));
+        herd.world.entity_mut(e).insert((ActiveUntil(0), crate::nbt::Saved));
+        if no_ai {
+            herd.world.entity_mut(e).insert(crate::dragon::flight::NoAi);
+        }
+        e
+    };
+    let (free, frozen) = (put(&mut herd, 0.5, false), put(&mut herd, 8.5, true));
+    for _ in 0..60 {
+        herd.tick();
+    }
+    assert!(herd.world.get::<Pos>(free).unwrap().0.y < 5.0, "the control mob did not fall");
+    assert_eq!(herd.world.get::<Pos>(frozen).unwrap().0.y, 6.0, "the NoAI mob moved");
+    let key = |herd: &Herd, e: Entity, k: &str| crate::nbt::save(&herd.world, e).unwrap().get(&k.into()).cloned();
+    assert_eq!(key(&herd, free, "OnGround"), Some(horizon_core::nbt::Tag::Byte(1)));
+    assert_eq!(key(&herd, frozen, "OnGround"), Some(horizon_core::nbt::Tag::Byte(0)));
+    let vy = herd.world.get::<Vel>(free).unwrap().0.y;
+    assert!((vy - (-0.08 * f64::from(0.98_f32))).abs() < 1e-12, "resting Motion y {vy}");
+}
+
+/// `Entity.load` reads `OnGround` and poses it as the contact: a mob saved landed (1b) is loaded and saved again as 1b, with no tick.
+#[test]
+fn on_ground_loads_into_the_contact_and_saves_back() {
+    let mut herd = Herd::new_awake(0, 6.0, true, false, 3);
+    let e = herd.world.spawn(cow_bundle(0.5, 0.5, 21)).id();
+    herd.world.entity_mut(e).insert(crate::nbt::Saved);
+    let mut c = horizon_core::nbt::Compound::new();
+    c.insert("OnGround".into(), horizon_core::nbt::Tag::Byte(1));
+    crate::nbt::load(&mut herd.world, e, &c);
+    assert!(herd.world.get::<crate::cow::Contact>(e).unwrap().on_ground, "OnGround 1b was not posed on the contact");
+    let saved = crate::nbt::save(&herd.world, e).unwrap();
+    assert_eq!(saved.get(&"OnGround".into()).cloned(), Some(horizon_core::nbt::Tag::Byte(1)));
+}
+
+/// `Mob.isNoAi`: the move control that starts a hop is ticked by `Mob.serverAiStep`, and the jump impulse is `travel`'s, both filtered without
+/// AI. A slime posed with the flag never rises (its `Motion` y is never positive), while the same slime without it hops.
+#[test]
+fn no_ai_slime_does_not_hop_and_its_witness_does() {
+    if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+        return;
+    }
+    let mut herd = Herd::with_slab_awake(60, true, false);
+    crate::goals::set_lazy_look(&mut herd.world, false);
+    let sp = *herd.world.resource::<crate::cow::SpeciesTable>().0.iter().find(|s| s.name == "minecraft:slime").unwrap();
+    let free = crate::size::spawn_sized(&mut herd.world, &sp, 0.5, 0.5, 61, 2);
+    let frozen = crate::size::spawn_sized(&mut herd.world, &sp, 8.5, 0.5, 62, 2);
+    herd.world.entity_mut(frozen).insert(crate::dragon::flight::NoAi);
+    let (mut rose_free, mut rose_frozen) = (0, 0);
+    for _ in 0..200 {
+        herd.tick();
+        rose_free += usize::from(herd.world.get::<Vel>(free).unwrap().0.y > 0.0);
+        rose_frozen += usize::from(herd.world.get::<Vel>(frozen).unwrap().0.y > 0.0);
+    }
+    assert!(rose_free > 0, "the witness slime never hopped");
+    assert_eq!(rose_frozen, 0, "the NoAI slime hopped");
+}

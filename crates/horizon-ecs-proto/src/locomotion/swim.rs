@@ -494,7 +494,7 @@ fn travel(
     following: Query<(), With<Following>>,
     mut q: Query<
         (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
-        (With<Moving>, Without<Overlapping>, With<SwimMode>),
+        (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<SwimMode>),
     >,
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {

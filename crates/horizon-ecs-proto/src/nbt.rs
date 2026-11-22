@@ -215,6 +215,10 @@ fn custom(w: &World, e: Entity) -> Compound {
 pub fn save(w: &World, e: Entity) -> Option<Compound> {
     if w.get::<Saved>(e).is_none() { return None; }
     let mut c = custom(w, e);
+    // `Entity.saveWithoutId` writes `onGround()`: the contact of the last move, over any stale free key; a declared field (a boat's hull) wins below.
+    if let Some(k) = w.get::<crate::cow::Contact>(e) {
+        c.insert("OnGround".into(), Tag::Byte(i8::from(k.on_ground)));
+    }
     if let Some(reg) = w.get_resource::<NbtFields>() {
         for &i in applicable_indices(w, e).iter() {
             (reg.fields[i].0.write)(w, e, &mut c);
@@ -310,6 +314,10 @@ fn send(w: &mut World, e: Entity, keys: Vec<String>) {
 pub fn load(w: &mut World, e: Entity, c: &Compound) -> Option<usize> {
     if w.get::<Saved>(e).is_none() { return None; }
     let (refused, changed) = distribute(w, e, c);
+    // `Entity.load` poses `OnGround` as the contact (the mirror of `save`).
+    if let Some(Tag::Byte(on)) = c.get(&JavaString::from("OnGround")) && let Some(mut k) = w.get_mut::<crate::cow::Contact>(e) {
+        k.on_ground = *on != 0;
+    }
     send(w, e, changed);
     Some(refused)
 }

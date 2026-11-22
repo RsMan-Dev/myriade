@@ -18,9 +18,11 @@ use std::f32::consts::TAU;
 #[derive(Component)]
 pub struct DragonRng(pub LegacyRandom, pub LegacyRandom);
 
-/// `Mob.isNoAi`: the dragon only flaps (to 0.5), nothing else moves. Rare, so a marker in sparse storage.
+/// `Mob.isNoAi`: `Mob.isEffectiveAi` is false, so `LivingEntity.aiStep` runs neither `serverAiStep` (no goal starts: `goals::start_goal`) nor `travel`
+/// (no gravity, no move: the `travel` systems filter `Without<NoAi>`). Table storage, so the filter tests the archetype, not each entity.
+/// The dragon only flaps (to 0.5), nothing else moves.
 #[derive(Component, Clone, Copy, Debug, Default)]
-#[component(storage = "SparseSet")]
+#[component(on_add = crate::goals::stop_all_goals)]
 pub struct NoAi;
 
 /// `Mob.setNoAi`: a marker, so only the dragons that have it pay for it.

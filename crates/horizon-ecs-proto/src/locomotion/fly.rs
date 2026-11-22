@@ -398,7 +398,7 @@ pub fn steer_to(w: &mut World, e: Entity, at: [f64; 3], speed: f64) {
 pub(crate) fn travel(
     level: Res<Level>,
     mut par: crate::cow::OrdCmds,
-    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &FlyParams, Has<Following>, &MoveTo), (With<Moving>, Without<Overlapping>, With<FlyMode>)>,
+    mut q: Query<(Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, &Body, &mut Bounds, &FluidState, &FluidParams, &Immune, &FlyParams, Has<Following>, &MoveTo), (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<FlyMode>)>,
 ) {
     for (e, mut p, mut v, y, mut c, mut d, b, mut bb, fs, fluid, imm, fp, following, wanted) in &mut q {
         // A flier at rest on the ground (perched) is at rest as a walker is: no sweep, and it leaves the physics until something moves it.
