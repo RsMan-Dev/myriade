@@ -1,7 +1,7 @@
 //! Projectile handles for native server mods: owner, deflection, and an
 //! arrow's pickup, damage and critical flag. The projectiles of the ECS
 //! (arrows, tridents, thrown items) are read and written by their network id
-//! through the bridge; the firework rockets stay in their own list.
+//! through the bridge, rockets included.
 use super::{Game, commands::Target};
 use horizon_client::{
     arrows::Pickup,
@@ -13,15 +13,6 @@ use horizon_core::{geometry::Vec3, nbt::{Compound, JavaString, Tag}};
 use horizon_ecs_proto::arrow_more::Turn as EcsTurn;
 use horizon_ecs_proto::targeting::Who as EcsWho;
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
-
-/// Where a projectile handle's entity lives.
-#[derive(Clone, Copy)]
-enum Backing {
-    /// The ECS level, by network id: an arrow, a trident or a thrown item.
-    Ecs(u32),
-    /// `rockets`: a firework rocket.
-    Rocket(usize),
-}
 
 impl Game<'_> {
     /// The network id of a projectile entity of this server's ECS level; None
@@ -35,17 +26,8 @@ impl Game<'_> {
         .then_some(id)
     }
 
-    fn native_projectile_backing(&self, projectile: ProjectileRef) -> Option<Backing> {
-        let entity = projectile.entity();
-        if let Some(id) = self.native_ecs_projectile(entity) {
-            return Some(Backing::Ecs(id));
-        }
-        match self.native_entity_target(entity)? {
-            Target::Rocket(id) => (self.rockets.iter())
-                .position(|r| r.id == id)
-                .map(Backing::Rocket),
-            _ => None,
-        }
+    fn native_projectile_backing(&self, projectile: ProjectileRef) -> Option<u32> {
+        self.native_ecs_projectile(projectile.entity())
     }
 
     /// Narrows an entity to a projectile: an ECS projectile or a firework
@@ -54,15 +36,6 @@ impl Game<'_> {
         let projectile = ProjectileRef::new(entity);
         self.native_projectile_backing(projectile)
             .map(|_| projectile)
-    }
-
-    /// The owner a target names, as a resolved entity in the level in place.
-    fn native_owner_entity(&self, target: Target) -> Option<EntityRef> {
-        if self.target_level(target) != self.dim {
-            return None;
-        }
-        let id = u32::try_from(self.network_entity_id(target)?).ok()?;
-        self.entity(id)
     }
 
     /// The ECS owner an entity stands for: a player or a guest by its entity
@@ -84,23 +57,11 @@ impl Game<'_> {
     /// `Projectile.getOwner`: the owner as a resolved entity. None for no
     /// owner, one that is gone or in another level, or a stale handle.
     pub(super) fn projectile_owner(&self, projectile: ProjectileRef) -> Option<EntityRef> {
-        let target = match self.native_projectile_backing(projectile)? {
-            Backing::Ecs(id) => {
-                return match self.ecs.projectile_owner(id)? {
-                    EcsWho::Player(p) => self.entity(p),
-                    EcsWho::Entity(e) => self.entity(self.ecs.network_id(e)?),
-                };
-            }
-            Backing::Rocket(i) => {
-                let r = &self.rockets[i];
-                match r.owner {
-                    Some(Who::Player) => r.guest.map_or(Target::Player, Target::Guest),
-                    Some(Who::Mob(id)) => Target::Mob(id),
-                    None => self.target_by_uuid(ints_uuid(r.owner_uuid?))?,
-                }
-            }
-        };
-        self.native_owner_entity(target)
+        let id = self.native_projectile_backing(projectile)?;
+        match self.ecs.projectile_owner(id)? {
+            EcsWho::Player(p) => self.entity(p),
+            EcsWho::Entity(e) => self.entity(self.ecs.network_id(e)?),
+        }
     }
 
     /// Resolves hit credit, persistent identity, and a separate non-living
@@ -136,18 +97,10 @@ impl Game<'_> {
         owner: Option<EntityRef>,
     ) -> bool {
         match self.native_projectile_backing(projectile) {
-            Some(Backing::Ecs(id)) => match self.native_ecs_who(owner) {
+            Some(id) => match self.native_ecs_who(owner) {
                 Some(who) => self.ecs.set_projectile_owner(id, who),
                 None => false,
             },
-            Some(Backing::Rocket(i)) => {
-                let Some(((who, uuid, guest), _)) = self.native_projectile_owner_fields(owner)
-                else {
-                    return false;
-                };
-                self.rockets[i].set_owner(who, uuid, guest);
-                true
-            }
             None => false,
         }
     }
@@ -168,10 +121,7 @@ impl Game<'_> {
         by_attack: bool,
         power: [f64; 3],
     ) -> bool {
-        let Some(backing) = self.native_projectile_backing(projectile) else {
-            return false;
-        };
-        let Some(fields) = self.native_projectile_owner_fields(new_owner) else {
+        let Some(id) = self.native_projectile_backing(projectile) else {
             return false;
         };
         let Some(new_who) = self.native_ecs_who(new_owner) else {
@@ -197,27 +147,14 @@ impl Game<'_> {
             }
             _ => unreachable!("(Deflection, Option<EntityRef>): unhandled variant"),
         };
-        match backing {
-            Backing::Ecs(id) => {
-                let (ecs_turn, dir) = match turn {
-                    Turn::Reverse => (EcsTurn::Reverse, power),
-                    Turn::Direction(None) => (EcsTurn::None, power),
-                    Turn::Direction(Some(d)) => {
-                        (EcsTurn::AimDeflect, [d.x * power[0], d.y * power[1], d.z * power[2]])
-                    }
-                };
-                self.ecs.deflect_projectile(id, ecs_turn, dir, new_who, by_attack)
-            }
-            Backing::Rocket(i) => {
-                let r = &mut self.rockets[i];
-                if let Some((velocity, _)) = turn.apply(r.velocity, power, &mut r.random) {
-                    r.velocity = velocity;
+            let (ecs_turn, dir) = match turn {
+                Turn::Reverse => (EcsTurn::Reverse, power),
+                Turn::Direction(None) => (EcsTurn::None, power),
+                Turn::Direction(Some(d)) => {
+                    (EcsTurn::AimDeflect, [d.x * power[0], d.y * power[1], d.z * power[2]])
                 }
-                let ((who, uuid, guest), _) = fields;
-                r.set_owner(who, uuid, guest);
-                true
-            }
-        }
+            };
+        self.ecs.deflect_projectile(id, ecs_turn, dir, new_who, by_attack)
     }
 
     /// The NBT value under `key` of the ECS projectile `id`; None for a stale
@@ -238,9 +175,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.pickup`, for an arrow or a trident.
     pub(super) fn projectile_pickup(&self, projectile: ProjectileRef) -> Option<ArrowPickup> {
-        let Backing::Ecs(id) = self.native_projectile_backing(projectile)? else {
-            return None;
-        };
+        let id = self.native_projectile_backing(projectile)?;
         let Tag::Byte(byte) = self.native_projectile_tag(id, "pickup")? else {
             return None;
         };
@@ -258,7 +193,7 @@ impl Game<'_> {
         projectile: ProjectileRef,
         pickup: ArrowPickup,
     ) -> bool {
-        let Some(Backing::Ecs(id)) = self.native_projectile_backing(projectile) else {
+        let Some(id) = self.native_projectile_backing(projectile) else {
             return false;
         };
         if self.native_projectile_tag(id, "pickup").is_none() {
@@ -278,12 +213,11 @@ impl Game<'_> {
         if !self.is_logical_server() {
             return Err(PierceLevelError::WrongSide);
         }
-        match self
-            .native_projectile_backing(projectile)
-            .ok_or(PierceLevelError::Stale)?
-        {
-            Backing::Ecs(id) if self.ecs.projectile_is_arrow(id) => Ok(id),
-            _ => Err(PierceLevelError::NotArrow),
+        let id = self.native_projectile_backing(projectile).ok_or(PierceLevelError::Stale)?;
+        if self.ecs.projectile_is_arrow(id) {
+            Ok(id)
+        } else {
+            Err(PierceLevelError::NotArrow)
         }
     }
 
@@ -312,9 +246,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.getBaseDamage`, for an arrow (a trident's is fixed).
     pub(super) fn projectile_base_damage(&self, projectile: ProjectileRef) -> Option<f64> {
-        let Backing::Ecs(id) = self.native_projectile_backing(projectile)? else {
-            return None;
-        };
+        let id = self.native_projectile_backing(projectile)?;
         self.ecs.projectile_base_damage(id)
     }
 
@@ -333,9 +265,7 @@ impl Game<'_> {
 
     /// `AbstractArrow.isCritArrow`, for an arrow.
     pub(super) fn projectile_critical(&self, projectile: ProjectileRef) -> Option<bool> {
-        let Backing::Ecs(id) = self.native_projectile_backing(projectile)? else {
-            return None;
-        };
+        let id = self.native_projectile_backing(projectile)?;
         self.ecs.projectile_critical(id)
     }
 

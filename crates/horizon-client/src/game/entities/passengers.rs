@@ -215,7 +215,6 @@ impl Game<'_> {
             }
         }
         self.seat_cart_mobs(&riders);
-        self.seat_tnt_mobs(&riders);
         self.seat_cushion_mobs(&riders);
         self.seat_static_mobs(&riders);
         // Riders of riders settle over a few passes.
@@ -235,7 +234,7 @@ impl Game<'_> {
             || self.boats.iter().any(|b| b.id == vehicle)
             || self.ecs.cart_kind(vehicle).is_some()
             || self.cushions.iter().any(|c| c.id == vehicle)
-            || self.tnts.iter().any(|t| t.id == vehicle && t.id != 0)
+            || self.ecs.species(vehicle) == Some("minecraft:tnt")
     }
 
     /// `Entity.getPassengerRidingPosition` of a vehicle: where the feet of a

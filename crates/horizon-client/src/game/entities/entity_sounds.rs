@@ -73,8 +73,8 @@ impl Game<'_> {
         }) {
             return Some(guest.position);
         }
-        if let Some(t) = self.tridents.iter().find(|t| t.id == id) {
-            return Some([t.position.x, t.position.y, t.position.z]);
+        if let Some(p) = self.ecs.position(id) {
+            return Some(p);
         }
         self.remote_entities
             .iter()

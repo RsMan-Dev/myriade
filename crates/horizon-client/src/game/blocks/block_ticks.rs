@@ -76,10 +76,11 @@ impl Game<'_> {
                 p.previous, p.position,
             ));
         }
-        for t in &self.tridents {
-            scratch.inside.extend(horizon_client::arrows::blocks_inside(
-                t.position, t.position,
-            ));
+        for id in self.ecs.species_ids("minecraft:trident") {
+            if let Some(p) = self.ecs.position(id) {
+                let p = Vec3::new(p[0], p[1], p[2]);
+                scratch.inside.extend(horizon_client::arrows::blocks_inside(p, p));
+            }
         }
         // ServerLevel.tick ticks only the entities in entity-ticking chunks, and
         // applyEffectsFromBlocks runs in their tick: a mob or item past the
@@ -126,19 +127,10 @@ impl Game<'_> {
             // AbstractArrow.applyEffectsFromBlocks reaches a trident in the
             // ground too: it is off the box sweep only because `tick_blocks`
             // takes a trident's blocks from its path (`arrows::blocks_inside`).
-            for t in lists.tridents {
-                let at = t.position;
-                if !t.is_removed()
-                    && t.is_alive()
-                    && entity_ticking(at.x.floor() as i32, at.z.floor() as i32)
-                {
-                    let b = t.bounds();
-                    standing_feet(
-                        &mut scratch.standing,
-                        [at.x, at.y, at.z],
-                        t.on_ground,
-                        (b.max_position().x - b.min_position().x) / 2.0,
-                    );
+            for id in self.ecs.species_ids("minecraft:trident") {
+                let (Some(at), Some(b), Some(view)) = (self.ecs.position(id), self.ecs.bounds(id), self.ecs_view(id)) else { continue };
+                if entity_ticking(at[0].floor() as i32, at[2].floor() as i32) {
+                    standing_feet(&mut scratch.standing, at, view.on_ground, (b.max_position().x - b.min_position().x) / 2.0);
                 }
             }
         }

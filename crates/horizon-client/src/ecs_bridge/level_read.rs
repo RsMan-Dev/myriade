@@ -86,6 +86,16 @@ impl EcsLevel {
     pub fn species_count(&self, kind: &str) -> usize {
         self.world().map_or(0, |w| host_read::species_count(w, kind))
     }
+    /// The boxes of the awake entities of the species `kind`.
+    pub fn species_bounds(&self, kind: &str) -> Vec<Aabb> {
+        let q = Select { kind: Some(kind.to_owned()), tag: None, near: None, limit: usize::MAX };
+        self.select(&q).into_iter().filter_map(|e| self.bounds_of(e)).collect()
+    }
+    /// The network ids of the awake entities of the species `kind`, in entity order.
+    pub fn species_ids(&self, kind: &str) -> Vec<u32> {
+        let q = Select { kind: Some(kind.to_owned()), tag: None, near: None, limit: usize::MAX };
+        self.select(&q).into_iter().filter_map(|e| self.id_of(e)).collect()
+    }
     /// The awake entities that match `q`, counted (`select::count`).
     pub fn count_entities(&self, q: &Select) -> usize {
         self.world().map_or(0, |w| select::count(w, q))

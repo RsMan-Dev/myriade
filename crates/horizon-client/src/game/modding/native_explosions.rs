@@ -253,16 +253,8 @@ impl Game<'_> {
                 .iter()
                 .find(|p| p.id == id)
                 .and_then(|p| Some((p.owner?, p.guest))),
-            Target::Rocket(_) => self
-                .rockets
-                .iter()
-                .find(|r| r.id == id)
-                .and_then(|r| Some((r.owner?, r.guest))),
-            // A thrown trident's owner is a player: a guest, or the player in place.
-            Target::Trident(_) => self.tridents.iter().find(|t| t.id == id).and_then(|t| {
-                let in_place = self.player.as_ref().map(|p| p.entity_id as u32);
-                (t.guest.is_some() || in_place == Some(t.owner)).then_some((Who::Player, t.guest))
-            }),
+            // A thrown trident's or a rocket's owner comes from its ECS projectile.
+            Target::Trident(_) | Target::Rocket(_) => self.ecs.projectile_owner(id).map(|w| (self.host_who(w), self.lan_acting)),
             Target::Hook(_) => self.fishing_hook_by_id(id).map(|(_, caster)| match caster {
                 Target::Guest(conn) => (Who::Player, Some(conn)),
                 _ => (Who::Player, self.lan_acting),
@@ -305,7 +297,7 @@ impl Game<'_> {
             _ => {}
         }
         let calculator = match target {
-            Target::Tnt(_) if self.tnts.iter().any(|t| t.id == id && t.used_portal) => {
+            Target::Tnt(_) if self.ecs_tnt_used_portal(id) => {
                 SourceCalculator::PortalProof
             }
             Target::Projectile(_)

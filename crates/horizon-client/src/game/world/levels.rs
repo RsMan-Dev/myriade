@@ -15,7 +15,7 @@
 use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, ExperienceOrb, FallingBlock, Game, ItemEntity, Mob, boats, commands,
+    Dim, ExperienceOrb, Game, ItemEntity, Mob, boats, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
@@ -89,13 +89,13 @@ macro_rules! entity_count_view {
                 ("minecraft:item", $level.dropped.len()),
                 ("minecraft:experience_orb", $level.orbs.len()),
                 ("minecraft:boat", $level.boats.len()),
-                ("minecraft:falling_block", $level.falling.len()),
+                ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
                 ("minecraft:painting", $level.paintings.len()),
                 ("minecraft:item_frame", $level.item_frames.len()),
                 ("minecraft:armor_stand", $level.armor_stands.len()),
-                ("minecraft:trident", $level.tridents.len()),
-                ("minecraft:firework_rocket", $level.rockets.len()),
-                ("minecraft:tnt", $level.tnts.len()),
+                ("minecraft:trident", $level.ecs.species_count("minecraft:trident")),
+                ("minecraft:firework_rocket", $level.ecs.species_count("minecraft:firework_rocket")),
+                ("minecraft:tnt", $level.ecs.species_count("minecraft:tnt")),
                 ("minecraft:end_crystal", $level.crystals.len()),
                 ("minecraft:leash_knot", $knots.len()),
                 (
@@ -141,7 +141,6 @@ pub(super) struct Parked {
     /// Which of this level's chunks may hold a portal (`Game::find_portals`), kept per level:
     /// one cache asked by two levels in turn read every palette of both again each tick.
     pub(super) portal_sections: horizon_client::portal_sections::PortalSections,
-    falling: horizon_client::join_seq::JoinList<FallingBlock, false>,
     paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
     armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
@@ -154,11 +153,8 @@ pub(super) struct Parked {
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
     breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
-    tridents: horizon_client::join_seq::JoinList<trident::ThrownTrident>,
-    rockets: horizon_client::join_seq::JoinList<fireworks::Rocket>,
     ominous_spawners:
         horizon_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
-    tnts: horizon_client::join_seq::JoinList<tnt::PrimedTnt>,
     /// Its orbs', TNT's and falling blocks' place in the tick order beyond
     /// their joins (`ordered_tick::TickRestarts`).
     tick_restarts: super::ordered_tick::TickRestarts,
@@ -635,14 +631,14 @@ impl Levels {
                 + l.orbs.len()
                 + l.ecs.entity_count()
                 + l.boats.len()
-                + l.falling.len()
+                + l.ecs.species_count("minecraft:falling_block")
                 + l.paintings.len()
                 + l.item_frames.len()
                 + l.armor_stands.len()
                 + l.cushions.len()
-                + l.tridents.len()
-                + l.rockets.len()
-                + l.tnts.len(),
+                + l.ecs.species_count("minecraft:trident")
+                + l.ecs.species_count("minecraft:firework_rocket")
+                + l.ecs.species_count("minecraft:tnt"),
         )
     }
 
@@ -742,7 +738,6 @@ impl Game<'_> {
             level_events: Vec::new(),
             portal_states: HashMap::new(),
             portal_sections: Default::default(),
-            falling: Default::default(),
             paintings: Default::default(),
             item_frames: Default::default(),
             armor_stands: Default::default(),
@@ -755,10 +750,7 @@ impl Game<'_> {
             crystals: Default::default(),
             dragon: Default::default(),
             breath_clouds: Default::default(),
-            tridents: Default::default(),
-            rockets: Default::default(),
             ominous_spawners: Default::default(),
-            tnts: Default::default(),
             tick_restarts: Default::default(),
             hoppers: HashMap::new(),
             ecs: self.new_ecs_level(dim, seed),
@@ -890,7 +882,6 @@ impl Game<'_> {
         swap(&mut self.level_events, &mut p.level_events);
         swap(&mut self.portals.entities, &mut p.portal_states);
         swap(&mut self.portals.sections, &mut p.portal_sections);
-        swap(&mut self.falling, &mut p.falling);
         swap(&mut self.paintings, &mut p.paintings);
         swap(&mut self.item_frames, &mut p.item_frames);
         swap(&mut self.armor_stands, &mut p.armor_stands);
@@ -903,10 +894,7 @@ impl Game<'_> {
         swap(&mut self.crystals, &mut p.crystals);
         swap(&mut self.dragon, &mut p.dragon);
         swap(&mut self.breath_clouds, &mut p.breath_clouds);
-        swap(&mut self.tridents, &mut p.tridents);
-        swap(&mut self.rockets, &mut p.rockets);
         swap(&mut self.ominous_spawners, &mut p.ominous_spawners);
-        swap(&mut self.tnts, &mut p.tnts);
         swap(&mut self.ordered.restarts, &mut p.tick_restarts);
         swap(&mut self.hoppers, &mut p.hoppers);
         swap(&mut self.remote_entities, &mut p.remote_entities);

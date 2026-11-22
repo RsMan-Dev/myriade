@@ -3,6 +3,7 @@
 use crate::game::native_entity_refs::tests::with_game;
 use crate::game::{Dim, Game};
 use horizon_core::geometry::Vec3;
+use horizon_core::nbt::Tag;
 
 
 /// Summons `kind` with `nbt` at 0.5 80 0.5 in the Overworld, where `id` finds it, and sends
@@ -33,13 +34,16 @@ fn a_mod_sends_a_primed_tnt_to_another_level_with_its_fuse_and_motion() {
             game,
             "minecraft:tnt",
             "{fuse:200s,Motion:[0.1d,0.2d,-0.3d]}",
-            |g| g.tnts.first().map(|t| t.id),
+            |g| g.ecs.species_ids("minecraft:tnt").first().copied(),
         );
-        assert_eq!(game.tnts.len(), 1);
-        let tnt = &game.tnts[0];
-        assert_eq!(tnt.fuse, 200);
-        assert_eq!(tnt.position, Vec3::new(3.5, 70.0, -2.5));
-        assert_eq!(tnt.velocity, Vec3::new(0.1, 0.2, -0.3));
+        let ids = game.ecs.species_ids("minecraft:tnt");
+        assert_eq!(ids.len(), 1);
+        let e = game.ecs.entity_of(ids[0]).unwrap();
+        let saved = game.ecs.entity_nbt(e).unwrap();
+        assert_eq!(saved.get(&"fuse".into()), Some(&Tag::Short(200)));
+        let m = game.ecs.motion(ids[0]).unwrap();
+        assert_eq!(m.position, [3.5, 70.0, -2.5]);
+        assert_eq!(m.velocity, [0.1, 0.2, -0.3]);
     });
 }
 
@@ -72,14 +76,13 @@ fn a_mod_sends_a_firework_to_another_level_with_its_owner_and_motion() {
             game,
             "minecraft:firework_rocket",
             r#"{LifeTime:40,Owner:[I;5,6,7,8],Motion:[0.1d,0.2d,-0.3d],FireworksItem:{id:"minecraft:firework_rocket",count:1}}"#,
-            |g| g.rockets.first().map(|r| r.id),
+            |g| g.ecs.species_ids("minecraft:firework_rocket").first().copied(),
         );
-        assert_eq!(game.rockets.len(), 1);
-        let rocket = &game.rockets[0];
-        assert_eq!(&*rocket.item.item, "minecraft:firework_rocket");
-        assert_eq!(rocket.owner_uuid, Some([5, 6, 7, 8]));
-        assert_eq!(rocket.position, Vec3::new(3.5, 70.0, -2.5));
-        assert_eq!(rocket.velocity, Vec3::new(0.1, 0.2, -0.3));
+        let ids = game.ecs.species_ids("minecraft:firework_rocket");
+        assert_eq!(ids.len(), 1);
+        let m = game.ecs.motion(ids[0]).unwrap();
+        assert_eq!(m.position, [3.5, 70.0, -2.5]);
+        assert_eq!(m.velocity, [0.1, 0.2, -0.3]);
     });
 }
 

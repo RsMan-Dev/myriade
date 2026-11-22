@@ -70,8 +70,14 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
     let hurt = crate::falling_land::hurt_rule(&name);
     let settings = FallSettings { hurt_entities: hurt.is_some(), fall_hurt_amount: hurt.map_or(0.0, |h| h.0), fall_hurt_max: hurt.map_or(40, |h| h.1), ..FallSettings::default() };
     let at = Vec3::new(f64::from(cell[0]) + 0.5, f64::from(cell[1]) + f64::from((1.0 - SIZE) / 2.0), f64::from(cell[2]) + 0.5);
+    spawn(w, at, Vec3::ZERO, state, drop, settings)
+}
+
+/// The falling block of `state` at `at` (its centre bottom) moving at `velocity`, with `drop` and `settings`: the body `fall` starts, without
+/// clearing any cell.
+pub fn spawn(w: &mut World, at: Vec3, velocity: Vec3, state: BlockStateId, drop: Option<ItemStack>, settings: FallSettings) -> Entity {
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, gravity: 0.04, speed: 0.0, fall_factor: 1.0, lava_walker: false, object: true, orb: false, tnt: true };
-    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), FallingBlock { state, drop, fell: 0.0, data: None, settings, born: w.resource::<Clock>().0 }, Moving))
+    let e = w.spawn((Pos(at), Vel(velocity), OwnTime, body, Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), FallingBlock { state, drop, fell: 0.0, data: None, settings, born: w.resource::<Clock>().0 }, Moving))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::FALLING_BLOCK);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::FALLING_BLOCK));

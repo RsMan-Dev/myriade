@@ -21,7 +21,7 @@ fn tnt_with_real_lifetime_accepts_first_store() {
         game.summon_with_nbt("minecraft:tnt", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        let id = game.tnts[0].id;
+        let id = game.ecs.species_ids("minecraft:tnt")[0];
         assert_eq!(VALUE.set(game, Holder::Entity(id), 7), Ok(()));
     });
 }

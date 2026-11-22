@@ -91,28 +91,11 @@ impl Game<'_> {
                 let p = d.parts[i].0;
                 [p.x, p.y, p.z]
             }),
-            Target::Tnt(id) => self
-                .tnts
-                .iter()
-                .find(|t| t.id == id)
-                .map(|t| [t.position.x, t.position.y, t.position.z]),
-            Target::Falling(id) => self
-                .falling
-                .iter()
-                .find(|f| f.id == id)
-                .map(|f| [f.position.x, f.position.y, f.position.z]),
-            Target::Rocket(id) => self
-                .rockets
-                .iter()
-                .find(|r| r.id == id)
-                .map(|r| [r.position.x, r.position.y, r.position.z]),
+            Target::Tnt(id) | Target::Falling(id) => self.ecs.position(id),
+            Target::Rocket(id) => self.ecs.position(id),
             Target::Cloud(id) => self.breath_clouds.iter().find(|c| c.id == id).map(|c| c.at),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(p, _)| [p.x, p.y, p.z]),
-            Target::Trident(id) => self
-                .tridents
-                .iter()
-                .find(|t| t.id == id)
-                .map(|t| [t.position.x, t.position.y, t.position.z]),
+            Target::Trident(id) => self.ecs.position(id),
             Target::Fangs(id) => self.fangs.list.iter().find(|f| f.id == id).map(|f| f.pos),
             Target::Spawner(id) => self
                 .ominous_spawners

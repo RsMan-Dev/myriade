@@ -146,6 +146,7 @@ use horizon_core::{
     position::BlockPos,
 };
 use horizon_core::{geometry::Vec3, random::RandomSource};
+use horizon_ecs_proto::falling_block::FallSettings;
 use horizon_mod_package::selection::{Argument, LaunchArguments};
 pub(crate) use launch_options::Options;
 pub(crate) use server_settings::Settings;
@@ -473,12 +474,8 @@ impl GameLevel<'_> {
             )
             .chain(b.boats.iter().map(boats::Boat::bounds))
             .chain(self.crystals.iter().map(dragon::Crystal::bounds))
-            .chain(b.tnts.iter().map(tnt::PrimedTnt::bounds))
-            .chain(
-                b.falling
-                    .iter()
-                    .map(|f| horizon_client::falling_block::bounds(f.position)),
-            )
+            .chain(self.ecs.species_bounds("minecraft:tnt"))
+            .chain(self.ecs.species_bounds("minecraft:falling_block"))
             .collect()
     }
 }
@@ -490,41 +487,6 @@ struct LandingVibration {
     from_entity: bool,
 }
 
-/// FallingBlockEntity carrying a block state.
-#[derive(Clone, Debug)]
-struct FallingBlock {
-    attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
-    pub rotation: [f32; 2],
-    /// When it joined its list (`horizon_client::join_seq`); set by the list.
-    pub(super) join: horizon_client::join_seq::JoinSeq,
-    /// Its entity id: from the entity counter on the server, the server's on a client.
-    id: u32,
-    state: BlockStateId,
-    /// `DATA_START_POS`: spawn position used to select weighted block models.
-    start_pos: BlockPos,
-    position: Vec3,
-    previous: Vec3,
-    velocity: Vec3,
-    /// `FallingBlockEntity.time`: signed, a save can start it below zero.
-    age: i32,
-    /// `Entity.isNoGravity`.
-    no_gravity: bool,
-    /// `FallingBlockEntity.tick` handles portals after moving, before landing.
-    portal: horizon_client::nether_portal::PortalState,
-    /// `FallingBlockEntity.dropItem`.
-    drop_item: bool,
-    /// `Entity.fallDistance` (powder snow holds a block that fell far at 0.9).
-    fall_distance: f64,
-    /// `Entity.onGround`: whether its last move was stopped going down.
-    on_ground: bool,
-    /// `Entity.stuckSpeedMultiplier`: a cobweb it is in scales its next move.
-    stuck: Vec3,
-    damage: horizon_client::falling_block::Damage,
-    /// The UUID and compound it was loaded with, kept while it moves.
-    saved: Option<Box<([i32; 4], horizon_core::nbt::Tag)>>,
-}
-horizon_mod_runtime::impl_attachment_lifetime!(FallingBlock);
 
 /// The data loaded once at startup and never changed: blocks, items,
 /// recipes, biomes, mobs, collision and motion. Read-only and `Send + Sync`,
@@ -1085,7 +1047,6 @@ struct Game<'a> {
     tickets: horizon_client::ticket_levels::ChunkTickets,
     random_tick_sections: horizon_client::random_tick_sections::RandomTickSections,
     level_events: Vec<LevelEvent>,
-    falling: horizon_client::join_seq::JoinList<FallingBlock, false>,
     paintings: horizon_client::join_seq::JoinList<horizon_client::entities::Painting>,
     painting_variants: paintings::PaintingVariants,
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
@@ -1163,8 +1124,6 @@ struct Game<'a> {
     recipe_ui: recipe_book::RecipeUi,
     /// The player's fishing hook.
     hook: horizon_client::join_seq::ResidentSlot<fishing::Hook>,
-    tridents: horizon_client::join_seq::JoinList<trident::ThrownTrident>,
-    rockets: horizon_client::join_seq::JoinList<fireworks::Rocket>,
     /// Ominous trial spawners' item spawners.
     ominous_spawners:
         horizon_client::join_seq::ResidentList<ominous_item_spawner::OminousItemSpawner>,
@@ -1173,7 +1132,6 @@ struct Game<'a> {
     spawners: spawner::SpawnerState,
     /// Reused candidate buffers for natural spawning.
     spawn_scratch: natural_spawning::SpawnScratch,
-    tnts: horizon_client::join_seq::JoinList<tnt::PrimedTnt>,
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
@@ -2591,39 +2549,25 @@ impl Game<'_> {
                     state,
                     hurt_per_distance,
                 } => {
-                    let mut damage = horizon_client::falling_block::Damage::falling(
-                        &self.res.facts().get(state).name,
-                    );
-                    if let Some(per_distance) = hurt_per_distance {
-                        damage.hurt_entities = true;
-                        damage.per_distance = per_distance;
-                    }
+                    let settings = FallSettings {
+                        hurt_entities: hurt_per_distance.is_some(),
+                        fall_hurt_amount: hurt_per_distance.unwrap_or(0.0),
+                        ..FallSettings::default()
+                    };
                     let p = Vec3::new(
                         f64::from(pos.x) + 0.5,
                         f64::from(pos.y),
                         f64::from(pos.z) + 0.5,
                     );
-                    self.next_entity += 1;
-                    self.falling.push(FallingBlock {
-                        attachment_lifetime: Default::default(),
-                        rotation: [0.0, 0.0],
-                        join: Default::default(),
-                        id: self.next_entity,
-                        state,
-                        start_pos: pos,
-                        position: p,
-                        previous: p,
-                        velocity: Vec3::ZERO,
-                        age: 0,
-                        no_gravity: false,
-                        portal: Default::default(),
-                        drop_item: true,
-                        fall_distance: 0.0,
-                        on_ground: false,
-                        stuck: Vec3::ZERO,
-                        damage,
-                        saved: None,
+                    let mut next = self.next_entity;
+                    let mut alloc = || {
+                        next += 1;
+                        next
+                    };
+                    self.ecs_with_mw(|ecs, mw| {
+                        ecs.spawn_block(mw, state, p, Vec3::ZERO, settings, &mut alloc)
                     });
+                    self.next_entity = next;
                 }
                 LevelEvent::Player { pos, effect, .. } => match effect {
                     PlayerEffect::OpenMenu => self.open_block_effect_menu([pos.x, pos.y, pos.z]),
@@ -4042,8 +3986,6 @@ impl Game<'_> {
         self.dropped.clear();
         self.orbs.clear();
         self.creatures.projectiles.clear();
-        self.falling.clear();
-        self.tnts.clear();
         self.boats.clear();
         self.carts.clear();
         self.armor_stands.clear();
@@ -4054,8 +3996,6 @@ impl Game<'_> {
         self.dragon.discard();
         self.crystals.clear();
         self.breath_clouds.clear();
-        self.tridents.clear();
-        self.rockets.clear();
         self.bolts.clear();
         self.riding = None;
         self.persist = Default::default();
@@ -5631,7 +5571,6 @@ impl<'a> Game<'a> {
             tickets: Default::default(),
             random_tick_sections: Default::default(),
             level_events: Vec::new(),
-            falling: Default::default(),
             paintings: Default::default(),
             painting_variants: Default::default(),
             item_frames: Default::default(),
@@ -5672,13 +5611,10 @@ impl<'a> Game<'a> {
             spill: Default::default(),
             recipe_ui: Default::default(),
             hook: Default::default(),
-            tridents: Default::default(),
-            rockets: Default::default(),
             ominous_spawners: Default::default(),
             creaking: Default::default(),
             spawners: Default::default(),
             spawn_scratch: Default::default(),
-            tnts: Default::default(),
             hoppers: HashMap::new(),
             transactions: Default::default(),
             block_entity_tick_key: None,

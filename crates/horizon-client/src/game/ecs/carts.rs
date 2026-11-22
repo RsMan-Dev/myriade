@@ -48,7 +48,7 @@ impl Game<'_> {
                 let Some(at) = self.ecs_view(id).map(|v| v.position) else { return Ok(()) };
                 self.audio.play_on(horizon_client_core::sound_source::SOUND_SOURCES.iter().position(|s| *s == "block").unwrap_or(0), "minecraft:entity.tnt.primed", Some(at), 1.0, 1.0);
             }
-            CartEvent::Explode { at, power, .. } => self.tnt_blast(at, power, None)?,
+            CartEvent::Explode { at, power, .. } => self.tnt_blast(at, power, None, false)?,
             CartEvent::Broke { entity, attacker, .. } => {
                 let id = self.ecs_id_of(entity);
                 // The drop is P's; only a player's blow angers the piglins of a container cart.

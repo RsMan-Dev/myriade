@@ -1,7 +1,7 @@
 #![cfg(feature = "state-digest")]
 //! Per-level-tick state digest to `HORIZON_STATE_DIGEST` (`_DETAIL=1` adds per-entity lines).
 use super::{
-    Dim, FallingBlock, Game, boats,
+    Dim, Game, boats,
     entity::{Entity as _, EntityHandle, entity_lists_of, with_entity},
     fireworks, general, minecarts, tnt, trident,
 };
@@ -130,7 +130,6 @@ impl DigestParts for tnt::PrimedTnt {
         i64::from(self.fuse)
     }
 }
-impl DigestParts for FallingBlock {}
 impl DigestParts for horizon_client::entities::ExperienceOrb {
     fn health_bits(&self) -> Option<u64> {
         Some(self.health as u64)

@@ -1209,13 +1209,26 @@ impl Game<'_> {
                     let no_gravity = op["no_gravity"].as_bool().unwrap_or(false);
                     let back = self.dim;
                     self.enter_level(super::Dim::from_id(dimension))?;
-                    let facts = self.res.facts();
-                    let matches = |f: &super::FallingBlock| {
-                        &*facts.get(f.state).name == block && f.no_gravity == no_gravity
-                    };
-                    let count = self.falling.iter().filter(|f| matches(f)).count();
+                    let matched: Vec<u32> = self
+                        .ecs
+                        .species_ids("minecraft:falling_block")
+                        .into_iter()
+                        .filter(|&id| {
+                            let Some(tree) = self.ecs_mob_tree(id) else {
+                                return false;
+                            };
+                            let named = matches!(tree.get(&"BlockState".into()), Some(horizon_core::nbt::Tag::String(s)) if s.to_string_lossy() == block);
+                            let gravity = matches!(tree.get(&"NoGravity".into()), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0);
+                            named && gravity == no_gravity
+                        })
+                        .collect();
+                    let count = matched.len();
                     if op["discard"].as_bool() == Some(true) {
-                        self.falling.retain(|f| !matches(f));
+                        for id in matched {
+                            if let Some(e) = self.ecs.entity_of(id) {
+                                self.ecs.despawn(e);
+                            }
+                        }
                     }
                     self.enter_level(back)?;
                     let record = json!({

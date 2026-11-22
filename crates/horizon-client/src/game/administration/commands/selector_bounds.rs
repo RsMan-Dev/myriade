@@ -43,14 +43,8 @@ impl Game<'_> {
                 .map(Entity::bounds),
             Target::Boat(id) => self.boats.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Cart(id) => self.ecs.bounds(id),
-            Target::Tnt(id) => self.tnts.iter().find(|e| e.id == id).map(Entity::bounds),
-            Target::Falling(id) => self.falling.iter().find(|e| e.id == id).map(Entity::bounds),
-            Target::Rocket(id) => self.rockets.iter().find(|e| e.id == id).map(Entity::bounds),
-            Target::Trident(id) => self
-                .tridents
-                .iter()
-                .find(|e| e.id == id)
-                .map(Entity::bounds),
+            Target::Tnt(id) | Target::Falling(id) => self.ecs.bounds(id),
+            Target::Rocket(id) | Target::Trident(id) => self.ecs.bounds(id),
             Target::Frame(id) => self
                 .item_frames
                 .iter()

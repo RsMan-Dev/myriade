@@ -33,10 +33,6 @@ pub enum Kind {
     Fangs,
     Crystal,
     Dragon,
-    Tnt,
-    Falling,
-    Rocket,
-    Trident,
     Spawner,
     Cloud,
     Cushion,
@@ -448,8 +444,8 @@ mod tests {
         let other_dimension = journal.clone();
         let owner = Identity::new(7, JoinSeq::next()).unwrap();
         let install = event(DimensionKey::OVERWORLD, Kind::Other, Change::Install(owner));
-        let extract = event(DimensionKey::NETHER, Kind::Falling, Change::Extract(owner));
-        let terminal = event(DimensionKey::NETHER, Kind::Falling, Change::PutBack(owner));
+        let extract = event(DimensionKey::NETHER, Kind::Spawner, Change::Extract(owner));
+        let terminal = event(DimensionKey::NETHER, Kind::Spawner, Change::PutBack(owner));
         journal.push(install);
         other_dimension.push(extract);
         let mut scratch = Vec::new();

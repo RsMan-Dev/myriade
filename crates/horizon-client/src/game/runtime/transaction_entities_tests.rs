@@ -415,10 +415,10 @@ fn late_id_kinds_spawned_then_aborted_are_removed() {
     with_observer(NAME, |game| {
         let counts = |game: &Game<'_>| {
             [
-                game.tnts.len(),
-                game.falling.len(),
-                game.rockets.len(),
-                game.tridents.len(),
+                game.ecs.species_count("minecraft:tnt"),
+                game.ecs.species_count("minecraft:falling_block"),
+                game.ecs.species_count("minecraft:firework_rocket"),
+                game.ecs.species_count("minecraft:trident"),
                 game.creatures.projectiles.len(),
             ]
         };

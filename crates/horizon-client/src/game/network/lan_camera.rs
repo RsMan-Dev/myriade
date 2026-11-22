@@ -63,24 +63,10 @@ impl Game<'_> {
     pub(super) fn camera_extra(&self, id: i32) -> Option<CameraExtra> {
         let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
         let at = |v: Vec3| [v.x, v.y, v.z];
-        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
-            return Some(CameraExtra {
-                position: at(t.position),
-                rotation: [0.0; 2],
-                bounds: t.bounds(),
-            });
-        }
-        if let Some(f) = self.falling.iter().find(|f| f.id == id) {
-            // EntityType.FALLING_BLOCK: 0.98 x 0.98.
-            let h = 0.49;
-            return Some(CameraExtra {
-                position: at(f.position),
-                rotation: [0.0; 2],
-                bounds: Aabb::new(
-                    Vec3::new(f.position.x - h, f.position.y, f.position.z - h),
-                    Vec3::new(f.position.x + h, f.position.y + 0.98, f.position.z + h),
-                ),
-            });
+        if matches!(self.ecs.species(id), Some("minecraft:tnt" | "minecraft:falling_block")) {
+            if let (Some(m), Some(bounds)) = (self.ecs.motion(id), self.ecs.bounds(id)) {
+                return Some(CameraExtra { position: at(Vec3::new(m.position[0], m.position[1], m.position[2])), rotation: [0.0; 2], bounds });
+            }
         }
         let (position, bounds) = self.dragon_part(id)?;
         Some(CameraExtra {

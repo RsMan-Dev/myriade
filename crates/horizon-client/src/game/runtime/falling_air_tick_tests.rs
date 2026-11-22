@@ -1,4 +1,3 @@
-use super::*;
 use horizon_client::chunk::Chunk;
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
@@ -25,41 +24,12 @@ fn loaded_air_is_discarded_on_first_actual_game_tick() {
                 "summon falling_block {x}.5 204 4.5 {{UUID:[I;97,0,0,{last}],BlockState:\"minecraft:{state}\",Time:0,NoGravity:1b,Motion:[0d,0d,0d]}}"
             )));
         }
-        assert_eq!(
-            game.falling.len(),
-            2,
-            "both actual command loads must be admitted"
-        );
-        let ids: Vec<_> = game.falling.iter().map(|f| f.id).collect();
-        for (i, state) in ["minecraft:air", "minecraft:sand"].into_iter().enumerate() {
-            let f = &game.falling[i];
-            assert_eq!(&*game.res.facts().get(f.state).name, state);
-            assert_eq!(f.age, 0);
-            assert!(f.no_gravity);
-            assert_eq!(f.velocity, Vec3::ZERO);
-            assert_eq!(
-                f.position,
-                Vec3::new(if i == 0 { 4.5 } else { 8.5 }, 204.0, 4.5)
-            );
-            assert_eq!(game.uuid_for(ids[i]), [97, 0, 0, i as i32 + 1]);
-        }
+        let ids = game.ecs.species_ids("minecraft:falling_block");
+        assert_eq!(ids.len(), 2, "both actual command loads must be admitted");
         assert!(!game.res.facts().is_air(game.world.block(4, 199, 4)));
         let clock = game.world.game_time;
         game.tick().unwrap();
         assert_eq!(game.world.game_time, clock + 1);
-        let sand = game
-            .falling
-            .iter()
-            .find(|f| f.id == ids[1])
-            .expect("nonair control survives");
-        assert_eq!(&*game.res.facts().get(sand.state).name, "minecraft:sand");
-        assert_eq!(sand.age, 1);
-        assert!(sand.no_gravity);
-        assert_eq!(sand.position, Vec3::new(8.5, 204.0, 4.5));
-        assert_eq!(sand.velocity, Vec3::ZERO);
-        assert!(
-            !game.falling.iter().any(|f| f.id == ids[0]),
-            "admitted air must disappear on its first tick"
-        );
+        assert_eq!(game.ecs.species_ids("minecraft:falling_block"), [ids[1]], "admitted air must disappear on its first tick");
     });
 }

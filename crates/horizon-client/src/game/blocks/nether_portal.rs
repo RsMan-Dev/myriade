@@ -773,8 +773,8 @@ impl Game<'_> {
         {
             VEHICLE_DELAY
         } else if self.ecs.projectile_kind(id).is_some()
-            || self.tridents.iter().any(|t| t.id == id)
-            || self.rockets.iter().any(|r| r.id == id)
+            || self.ecs.species(id) == Some("minecraft:trident")
+            || self.ecs.species(id) == Some("minecraft:firework_rocket")
         {
             PROJECTILE_DELAY
         } else if self
@@ -958,33 +958,6 @@ impl Game<'_> {
         } else {
             Vec::new()
         };
-        // A trident or rocket in flight gets its id here, before the walk.
-        if only.is_none() {
-            for index in 0..self.tridents.len() {
-                let t = &self.tridents[index];
-                if !t.in_ground || t.previous != t.position {
-                    super::entity_residency::assign_resident_id!(
-                        self.tridents,
-                        index,
-                        t,
-                        &mut self.next_entity,
-                        None
-                    );
-                }
-            }
-            for index in 0..self.rockets.len() {
-                let r = &self.rockets[index];
-                if r.attached_to.is_none() && !r.attached {
-                    super::entity_residency::assign_resident_id!(
-                        self.rockets,
-                        index,
-                        r,
-                        &mut self.next_entity,
-                        None
-                    );
-                }
-            }
-        }
         let mut inside: Vec<(u32, BlockPos, i32)> = Vec::new();
         let mut portal_sections = std::mem::take(&mut self.portals.sections);
         // No loaded section has a portal state in its palette (nearly always): no
@@ -1189,14 +1162,14 @@ impl Game<'_> {
         if let Some(e) = self.dropped.iter().find(|e| e.id == id) {
             return Some((e.position, 0.25, 0.25));
         }
-        if let Some(t) = self.tnts.iter().find(|t| t.id == id) {
-            return Some((t.position, 0.98, 0.98));
+        if let Some(p) = self.ecs.position(id) {
+            return Some((Vec3::new(p[0], p[1], p[2]), 0.98, 0.98));
         }
-        if let Some(t) = self.tridents.iter().find(|t| t.id == id) {
-            return Some((t.position, 0.5, 0.5));
+        if let Some(p) = self.ecs.position(id).filter(|_| self.ecs.species(id) == Some("minecraft:trident")) {
+            return Some((Vec3::new(p[0], p[1], p[2]), 0.5, 0.5));
         }
-        if let Some(r) = self.rockets.iter().find(|r| r.id == id) {
-            return Some((r.position, 0.25, 0.25));
+        if let Some(p) = self.ecs.position(id).filter(|_| self.ecs.species(id) == Some("minecraft:firework_rocket")) {
+            return Some((Vec3::new(p[0], p[1], p[2]), 0.25, 0.25));
         }
         if let Some(o) = self.orbs.iter().find(|o| o.id == id) {
             return Some((o.position, 0.5, 0.5));
@@ -1249,6 +1222,8 @@ impl Game<'_> {
                 | Target::Dragon(_)
                 | Target::Spawner(_)
                 | Target::Cloud(_)
+                | Target::Trident(_)
+                | Target::Rocket(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
             super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
@@ -1258,7 +1233,6 @@ impl Game<'_> {
                 Target::Stand(_) => self.armor_stands.retain(|e| e.id != id),
                 Target::Frame(_) => self.item_frames.retain(|e| e.id != id),
                 Target::Painting(_) => self.paintings.retain(|e| e.id != id),
-                Target::Falling(_) => self.falling.retain(|e| e.id != id),
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
                 Target::Other(_) => self.others.retain(|e| e.id != id),
                 Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),
@@ -1266,6 +1240,11 @@ impl Game<'_> {
                 Target::Dragon(_) => self.discard_resident_dragon(),
                 Target::Spawner(_) => self.ominous_spawners.retain(|e| e.id != id),
                 Target::Cloud(_) => self.breath_clouds.retain(|e| e.id != id),
+                Target::Falling(_) | Target::Trident(_) | Target::Rocket(_) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
                 _ => unreachable!("lone traveller kind selected above"),
             }
             self.forget_entity(id);
@@ -1273,8 +1252,6 @@ impl Game<'_> {
         }
         enum List {
             Item,
-            Trident,
-            Rocket,
             Orb,
         }
         let (mut tag, list, i) = if let Some(i) = self.dropped.iter().position(|e| e.id == id) {
@@ -1286,15 +1263,6 @@ impl Game<'_> {
                 self.items(),
             );
             (tag, List::Item, i)
-        } else if let Some(i) = self.tridents.iter().position(|t| t.id == id) {
-            let uuid = self.uuid_for(id);
-            let tag =
-                self.tridents[i].to_nbt(uuid, self.pack.assets.registry, self.persist_raw(id));
-            (tag, List::Trident, i)
-        } else if let Some(i) = self.rockets.iter().position(|r| r.id == id) {
-            let uuid = self.uuid_for(id);
-            let tag = self.rockets[i].to_nbt(uuid, self.level.player_uuid, self.persist_raw(id));
-            (tag, List::Rocket, i)
         } else if let Some(i) = self.orbs.iter().position(|o| o.id == id) {
             let uuid = self.uuid_for(id);
             let tag = horizon_client::entity_nbt::orb_to_nbt(&self.orbs[i], uuid);
@@ -1308,14 +1276,6 @@ impl Game<'_> {
             List::Item => {
                 self.remove_dropped(i);
                 self.detach_entity(id);
-            }
-            List::Trident => {
-                self.tridents.remove(i);
-                self.forget_entity(id);
-            }
-            List::Rocket => {
-                self.rockets.remove(i);
-                self.forget_entity(id);
             }
             List::Orb => {
                 self.orbs.remove(i);
@@ -1336,7 +1296,7 @@ impl Game<'_> {
             if !self.may_travel_through(id, &plan) {
                 return;
             }
-            let tnt_used_portal = self.tnts.iter().any(|t| t.id == id);
+            let tnt_used_portal = self.ecs.species(id) == Some("minecraft:tnt");
             let Some((tag, state)) = self.take_lone_traveller(id) else {
                 return;
             };
@@ -1601,8 +1561,8 @@ impl Game<'_> {
                 .borrow_mut()
                 .server_admitted_identity(id, |at| self.locate_resident_owner(at))
                 .map(|(at, _, _)| at);
-            if let Some(i) = location.and_then(|at| self.tnts.locate(at.join)) {
-                self.tnts[i].used_portal = true;
+            if location.is_some() {
+                self.ecs_set_tnt_used_portal(id, true);
             }
         } else {
             let mut items = self.dropped.lift();
@@ -2054,7 +2014,7 @@ mod tests {
                 0.0,
             ));
             game.spawn_primed_tnt(BlockPos::new(2, 64, 0), false, None, None);
-            let tnt = game.tnts.last().unwrap().id;
+            let tnt = *game.ecs.species_ids("minecraft:tnt").last().unwrap();
             for id in [101, tnt] {
                 game.send_through_portal(id, BlockPos::new(0, 64, 0));
                 assert!(game.level_entity(id as i32).is_none());

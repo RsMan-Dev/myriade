@@ -28,6 +28,8 @@ pub struct Primed {
     pub power: f32,
     pub owner: Option<Who>,
     pub fell: f64,
+    /// Whether it went through a nether portal (`PrimedTnt.usedPortal`): its blast picks the portal-proof calculator.
+    pub used_portal: bool,
 }
 
 /// Primes a TNT at `at` with velocity `vel`, its fuse `fuse` ticks long (`PrimedTnt`'s constructor; the random short fuse is the caller's).
@@ -39,7 +41,7 @@ pub fn spawn_primed(w: &mut World, at: Vec3, vel: Vec3, fuse: i32, power: f32) -
     crate::nbt::mark_saved(w, e, crate::species::lists::TNT);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::TNT));
     let fuse_at = now_of(w, e) + fuse.max(0) as u64;
-    w.entity_mut(e).insert(Primed { fuse_at, power, owner: None, fell: 0.0 });
+    w.entity_mut(e).insert(Primed { fuse_at, power, owner: None, fell: 0.0, used_portal: false });
     after(w, e, fuse, primed_due);
     crate::zone::settle(w, e);
     e

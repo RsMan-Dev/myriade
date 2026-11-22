@@ -400,11 +400,7 @@ impl Game<'_> {
                 item.velocity.y += push;
             }
         }
-        for tnt in self.tnts.iter_mut().filter(|t| t.bounds().intersects(area)) {
-            if tnt.velocity.y < limit {
-                tnt.velocity.y += push;
-            }
-        }
+        self.ecs_tnt_lift(area, limit, push);
         // Every entity in the column is launched (`getEntitiesOfClass(Entity.class)`):
         // a projectile in flight or at rest, a boat and a minecart too.
         self.creatures.projectiles.for_each_mut(|p| {

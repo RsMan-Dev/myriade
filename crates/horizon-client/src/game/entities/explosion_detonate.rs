@@ -120,23 +120,11 @@ impl Game<'_> {
         if let Some(i) = self.armor_stands.iter().position(|m| m.id == id) {
             return Some(EntityHandle::ArmorStand(i));
         }
-        if let Some(i) = self.tnts.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Tnt(i));
-        }
-        if let Some(i) = self.falling.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Falling(i));
-        }
         if let Some(i) = self.orbs.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Orb(i));
         }
         if let Some(i) = self.creatures.projectiles.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Projectile(i));
-        }
-        if let Some(i) = self.rockets.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Rocket(i));
-        }
-        if let Some(i) = self.tridents.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Trident(i));
         }
         None
     }

@@ -283,6 +283,7 @@ impl Game<'_> {
             | Target::Crystal(id)
             | Target::Dragon(id)
             | Target::Rocket(id)
+            | Target::Falling(id)
             | Target::General(id)
             | Target::Trident(id)
             | Target::Other(id)
@@ -298,11 +299,6 @@ impl Game<'_> {
                 .iter()
                 .find(|s| s.id == id)
                 .and_then(|s| s.raw.as_deref()),
-            Target::Falling(id) => self
-                .falling
-                .iter()
-                .find(|f| f.id == id)
-                .and_then(|f| f.saved.as_ref().map(|s| &s.1)),
             // A natural knot keeps no saved compound: it has no tags.
             Target::Knot(_) => None,
         };

@@ -103,10 +103,7 @@ impl Game<'_> {
         }
         let entity_ticking = self.entity_ticking_area();
         let position = |game: &Self, join: JoinSeq| {
-            game.tnts
-                .locate(join)
-                .map(|i| game.tnts[i].position)
-                .or_else(|| game.orbs.locate(join).map(|i| game.orbs[i].position))
+            game.orbs.locate(join).map(|i| game.orbs[i].position)
         };
         let idle = std::mem::take(&mut self.ordered.restarts.idle);
         let mut woken = Vec::new();
@@ -159,8 +156,6 @@ impl Game<'_> {
         let firsts = [
             first_join(&self.armor_stands),
             first_join(&self.boats),
-            first_join(&self.tridents),
-            first_join(&self.rockets),
             first_join(&self.dropped),
             first_join(&self.remote_entities),
         ];
@@ -396,10 +391,7 @@ mod tests {
             game.begin_ordered_ticks();
             game.run_ordered_ticks(horizon_client::join_seq::JoinSeq::MAX, false)
                 .unwrap();
-            assert_eq!(
-                game.falling.iter().map(|f| f.age).collect::<Vec<_>>(),
-                [2, 2]
-            );
+            assert_eq!(game.ecs.species_count("minecraft:falling_block"), 2);
             assert_eq!(game.orbs.iter().map(|o| o.age).collect::<Vec<_>>(), [1, 1]);
         });
     }

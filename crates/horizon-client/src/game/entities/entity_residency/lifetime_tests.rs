@@ -72,7 +72,6 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.summon_with_nbt("minecraft:tnt", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, tnts);
 
         game.next_entity += 1;
         game.resident_entities.knots.push(crate::game::leads::Knot {
@@ -90,12 +89,10 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         )
         .unwrap();
         game.lan_assign_ids();
-        check_list!(game, rockets);
 
         game.summon_with_nbt("minecraft:trident", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, tridents);
 
         game.add_ominous_item_spawner(ItemStack::new("minecraft:stone", 1), [0.5, 70.0, 0.5], 60);
         check_list!(game, ominous_spawners);

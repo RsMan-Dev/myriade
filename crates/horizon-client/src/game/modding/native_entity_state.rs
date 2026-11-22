@@ -179,8 +179,7 @@ impl Game<'_> {
             Body::Other(_) => None,
         }
     }
-    /// `Entity.getPortalCooldown`: a player's own portal state, the falling
-    /// block's, a pearl's End gateway state, or the level's for the other
+    /// `Entity.getPortalCooldown`: a player's own portal state, a pearl's End gateway state, or the level's for the other
     /// kinds its portal walk carries (zero when it keeps no state for one).
     pub(super) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
         let id = match self.native_entity_target(entity)? {
@@ -189,9 +188,6 @@ impl Game<'_> {
             Target::Guest(conn) => {
                 let play = self.lan.as_ref()?.play.get(&conn);
                 return Some(play.map_or(0, |p| p.portal.cooldown));
-            }
-            Target::Falling(id) => {
-                return Some(self.falling.iter().find(|f| f.id == id)?.portal.cooldown);
             }
             Target::Projectile(id) => {
                 let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
@@ -210,6 +206,7 @@ impl Game<'_> {
             | Target::Boat(id)
             | Target::Cart(id)
             | Target::Tnt(id)
+            | Target::Falling(id)
             | Target::Rocket(id)
             | Target::Trident(id) => id,
             _ => return None,
@@ -219,15 +216,14 @@ impl Game<'_> {
     /// `Entity.setPortalCooldown`: writes the value `entity_portal_cooldown`
     /// reads, where that read keeps it — the level's portal state for the
     /// kinds its portal walk carries (mobs, items, experience orbs, boats,
-    /// minecarts, primed TNT, fireworks, tridents, arrows and the thrown
+    /// minecarts, primed TNT, falling blocks, fireworks, tridents, arrows and the thrown
     /// items and fireballs a chunk saves). Server-only; a negative value or a
     /// client-side write is refused. A positive value blocks portal entry on
     /// the next tick (and is refilled while the entity stands in a portal);
     /// 0 lets it enter at once. The write refuses a player, an acting guest,
-    /// a falling block and an ender pearl: their cooldown lives in a store of
-    /// its own (the player and guest portal states, the falling block's saved
-    /// field, an End gateway traveller) that this write does not own, so it
-    /// needs its own owner decision before it can reach them. False for a kind
+    /// an ender pearl: their cooldown lives in a store of its own (the player
+    /// and guest portal states, an End gateway traveller) that this write does
+    /// not own, so it needs its own owner decision before it can reach them. False for a kind
     /// the read refuses or a stale handle.
     pub(super) fn entity_set_portal_cooldown(&mut self, entity: EntityRef, ticks: i32) -> bool {
         if ticks < 0 || !self.is_logical_server() {
@@ -242,6 +238,7 @@ impl Game<'_> {
             | Some(Target::Boat(id))
             | Some(Target::Cart(id))
             | Some(Target::Tnt(id))
+            | Some(Target::Falling(id))
             | Some(Target::Rocket(id))
             | Some(Target::Trident(id)) => {
                 self.portals.entities.entry(id).or_default().cooldown = ticks;
@@ -788,8 +785,7 @@ mod tests {
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
         use super::super::native_guest_turn_tests::with_guests;
         use super::super::{
-            Dim, FallingBlock, boats::Boat, fireworks::Rocket, minecarts::CartKind,
-            minecarts::Minecart, trident::ThrownTrident,
+            Dim, boats::Boat, minecarts::CartKind, minecarts::Minecart,
         };
         use horizon_client::entities::{ArmorStand, ExperienceOrb};
         use horizon_client::items::ItemStack;
@@ -861,7 +857,7 @@ mod tests {
             game.carts
                 .push(Minecart::new(43, CartKind::Rideable, Vec3::ZERO));
             game.add_primed_tnt(BlockPos::new(0, 64, 0), 0.0, 80, None, None);
-            let tnt = game.tnts[0].id;
+            let tnt = game.ecs.species_ids("minecraft:tnt")[0];
             let arrow = Projectile::new(
                 ProjectileKind::Arrow {
                     base_damage: 2.0,
@@ -875,10 +871,22 @@ mod tests {
             let arrow = game.creatures.projectiles[0].id;
             game.add_projectile(Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None));
             let snowball = game.creatures.projectiles[1].id;
-            game.rockets
-                .push(Rocket::remote(44, Vec3::ZERO, Vec3::ZERO));
-            game.tridents
-                .push(ThrownTrident::remote(45, Vec3::ZERO, 0.0, 0.0));
+            game.ecs_with(|ecs, mw| {
+                ecs.launch_rocket(mw, [0.0; 3], [0.0; 3], false, Vec::new(), 0, None, None, &mut || 44)
+            });
+            game.ecs_with(|ecs, mw| {
+                ecs.throw_trident(
+                    mw,
+                    [0.0; 3],
+                    [0.0; 3],
+                    None,
+                    0,
+                    false,
+                    horizon_ecs_proto::trident::Pickup::Allowed,
+                    horizon_client::items::ItemStack::new("minecraft:trident", 1),
+                    &mut || 45,
+                )
+            });
             // Entity defaults to 300; VehicleEntity overrides it to 10 and
             // Projectile to 2 (`getDimensionChangingDelay` in vanilla 26.3).
             for (id, delay) in [
@@ -898,39 +906,17 @@ mod tests {
                 assert_eq!(entity.portal_cooldown(game), Some(delay), "entity {id}");
             }
 
-            // A falling block keeps its own, as its save does.
-            let state = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:sand")
-                .unwrap();
-            game.next_entity += 1;
-            let falling = game.next_entity;
-            game.falling.push(FallingBlock {
-                on_ground: false,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id: falling,
-                state,
-                start_pos: BlockPos::default(),
-                position: Vec3::ZERO,
-                previous: Vec3::ZERO,
-                velocity: Vec3::ZERO,
-                age: 0,
-                no_gravity: false,
-                portal: horizon_client::nether_portal::PortalState {
-                    cooldown: 25,
-                    process: None,
-                },
-                drop_item: false,
-                fall_distance: 0.0,
-                stuck: Vec3::ZERO,
-                damage: horizon_client::falling_block::Damage::falling("minecraft:sand"),
-                saved: None,
-            });
-            let falling = game.entity(falling).unwrap();
+            // A falling block is an ECS kind: its cooldown is the level's table, read and written as a mob's is.
+            game.summon_with_nbt(
+                "minecraft:falling_block",
+                [1.0, 70.0, 1.0],
+                "{BlockState:{Name:\"minecraft:sand\"},Time:1}",
+            )
+            .unwrap();
+            let falling_id = game.ecs.species_ids("minecraft:falling_block")[0];
+            let falling = game.entity(falling_id).unwrap();
+            assert_eq!(falling.portal_cooldown(game), Some(0));
+            assert!(falling.set_portal_cooldown(game, 25));
             assert_eq!(falling.portal_cooldown(game), Some(25));
 
             // No portal cooldown: an armor stand, a wind charge, a stale handle, a parked level.
@@ -1066,61 +1052,6 @@ mod tests {
                 7
             );
             assert_eq!(guest.portal_cooldown(game), Some(7));
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn portal_cooldown_write_is_refused_for_a_falling_block() {
-        use super::super::FallingBlock;
-        use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::nether_portal::PortalState;
-        use horizon_core::{geometry::Vec3, position::BlockPos};
-
-        with_game(|game| {
-            let state = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:sand")
-                .unwrap();
-            game.next_entity += 1;
-            let id = game.next_entity;
-            game.falling.push(FallingBlock {
-                on_ground: false,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                id,
-                state,
-                start_pos: BlockPos::default(),
-                position: Vec3::ZERO,
-                previous: Vec3::ZERO,
-                velocity: Vec3::ZERO,
-                age: 0,
-                no_gravity: false,
-                portal: PortalState {
-                    cooldown: 25,
-                    process: None,
-                },
-                drop_item: false,
-                fall_distance: 0.0,
-                stuck: Vec3::ZERO,
-                damage: horizon_client::falling_block::Damage::falling("minecraft:sand"),
-                saved: None,
-            });
-            let falling = game.entity(id).unwrap();
-            assert!(!falling.set_portal_cooldown(game, 40));
-            assert_eq!(
-                game.falling
-                    .iter()
-                    .find(|f| f.id == id)
-                    .unwrap()
-                    .portal
-                    .cooldown,
-                25
-            );
-            assert_eq!(falling.portal_cooldown(game), Some(25));
         });
     }
 

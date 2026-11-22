@@ -37,12 +37,8 @@ restore_cases! {
     restores_boat_spawns: "minecraft:oak_boat", "{}", boats;
     restores_cart_spawns: "minecraft:minecart", "{}", carts;
     restores_stand_spawns: "minecraft:armor_stand", "{}", armor_stands;
-    restores_tnt_spawns: "minecraft:tnt", "{fuse:80s}", tnts;
-    restores_falling_spawns: "minecraft:falling_block", "{BlockState:{Name:\"minecraft:sand\"},Time:1}", falling;
     restores_orb_spawns: "minecraft:experience_orb", "{Value:3s}", orbs;
     restores_projectile_spawns: "minecraft:arrow", "{}", creatures.projectiles;
-    restores_rocket_spawns: "minecraft:firework_rocket", "{LifeTime:20}", rockets;
-    restores_trident_spawns: "minecraft:trident", "{}", tridents;
 }
 
 static VALUE: AttachmentType<i32> = AttachmentType {

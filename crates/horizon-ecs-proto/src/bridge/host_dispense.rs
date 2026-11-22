@@ -29,7 +29,7 @@ impl EcsWorld {
             return false;
         }
         let fuse_at = now_of(w, e) + tnt::FUSE as u64;
-        w.entity_mut(e).insert(Primed { fuse_at, power: tnt::POWER, owner, fell: 0.0 });
+        w.entity_mut(e).insert(Primed { fuse_at, power: tnt::POWER, owner, fell: 0.0, used_portal: false });
         after(w, e, tnt::FUSE, tnt::primed_due);
         true
     }

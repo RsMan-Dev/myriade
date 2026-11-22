@@ -168,7 +168,6 @@ impl Game<'_> {
                 .collect();
             let riders = Riders::from([(vehicle, aboard)]);
             self.seat_cart_mobs(&riders);
-            self.seat_tnt_mobs(&riders);
             self.seat_cushion_mobs(&riders);
             self.seat_static_mobs(&riders);
         }

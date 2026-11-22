@@ -661,9 +661,6 @@ impl Game<'_> {
         self.forget_untied_knots();
         let next = &mut self.next_entity;
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, next, None);
-        assign_resident_ids!(self.falling, f, next, Some(&f.attachment_lifetime));
-        assign_resident_ids!(self.rockets, r, next, None);
         assign_resident_ids!(self.crystals, c, next, None);
         self.bolts.iter_mut().for_each(|b| {
             assign_entity_id(next, &mut b.id);
@@ -678,7 +675,7 @@ impl Game<'_> {
         assign_resident_ids!(self.breath_clouds, b, next, None);
     }
 
-    /// Primed TNT, falling blocks, firework rockets, thrown potions and end
+    /// Falling blocks, thrown potions and end
     /// crystals, as guests track them. The ECS projectiles are tracked by
     /// `tick_lan_ecs`.
     fn lan_projectile_states(&mut self, out: &mut States, after: u32) {
@@ -693,36 +690,6 @@ impl Game<'_> {
         // LightningBolt: each client draws and flashes its own.
         for b in self.bolts.iter().filter(|b| b.id > after) {
             add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
-        }
-        for t in self.tnts.iter().filter(|t| t.id > after) {
-            let e = add_state(out, t.id, "minecraft:tnt", at(t.position), 0.0, t.on_ground);
-            e.velocity = at(t.velocity);
-            // PrimedTnt.DATA_FUSE_ID, 80 by default; requiresPrecisePosition
-            // while it touches a block.
-            if t.fuse != 80 {
-                e.meta.push((8, serializer::INT, Value::Int(t.fuse)));
-            }
-            e.precise = t.on_ground;
-        }
-        for f in self.falling.iter().filter(|f| f.id > after) {
-            let e = add_state(
-                out,
-                f.id,
-                "minecraft:falling_block",
-                at(f.position),
-                0.0,
-                f.on_ground,
-            );
-            e.velocity = at(f.velocity);
-            // getAddEntityPacket: the block state; DATA_START_POS.
-            e.data = f.state.0 as i32;
-            if f.no_gravity {
-                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
-            }
-            let start = [f.start_pos.x, f.start_pos.y, f.start_pos.z];
-            if start != [0; 3] {
-                e.meta.push((8, serializer::BLOCK_POS, Value::Pos(start)));
-            }
         }
         // Thrown potions and bottles: ThrowableItemProjectile.DATA_ITEM_STACK
         // (the potion's colour), which a plain bottle's type already has.
@@ -743,43 +710,6 @@ impl Game<'_> {
         for (id, position, velocity) in self.end.eyes_tracked().filter(|(id, ..)| *id > after) {
             let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
             e.velocity = velocity;
-        }
-        for r in self.rockets.iter().filter(|r| r.id > after) {
-            let plain = &*r.item.item == "minecraft:firework_rocket"
-                && r.item.count == 1
-                && r.item.extra.is_none();
-            let item = (!plain).then(|| hub.stack(&Some(r.item.clone())));
-            let boosted = match r.guest {
-                Some(conn) => hub
-                    .guests
-                    .iter()
-                    .find(|g| g.conn == conn)
-                    .map(|g| g.entity_id),
-                None => None,
-            };
-            let e = add_state(
-                out,
-                r.id,
-                "minecraft:firework_rocket",
-                at(r.position),
-                0.0,
-                r.on_ground,
-            );
-            e.velocity = at(r.velocity);
-            // DATA_ID_FIREWORKS_ITEM once set from a stack, DATA_ATTACHED_TO_TARGET,
-            // DATA_SHOT_AT_ANGLE.
-            if let Some(item) = item {
-                e.meta.push((8, serializer::ITEM_STACK, Value::Item(item)));
-            }
-            if r.attached
-                && let Some(player) = boosted
-            {
-                e.meta
-                    .push((9, serializer::OPTIONAL_UNSIGNED_INT, Value::Id(player + 1)));
-            }
-            if r.angled {
-                e.meta.push((10, serializer::BOOLEAN, Value::Bool(true)));
-            }
         }
         for c in self.crystals.iter().filter(|c| c.id > after) {
             let e = add_state(

@@ -86,7 +86,7 @@ impl Game<'_> {
     }
     /// `TntEvent::Explode`: the blast of a TNT whose fuse ended at `at` (`PrimedTnt.explode`), credited to `owner`.
     /// With `tnt_explodes` off there is no blast.
-    pub(in crate::game) fn tnt_blast(&mut self, at: [f64; 3], power: f32, owner: Option<Who>) -> Result<()> {
+    pub(in crate::game) fn tnt_blast(&mut self, at: [f64; 3], power: f32, owner: Option<Who>, used_portal: bool) -> Result<()> {
         if !self
             .session
             .rules
@@ -102,7 +102,7 @@ impl Game<'_> {
         self.combat.explosion_direct = None;
         self.set_blast_owner(owner, None);
         let result = self.with_hive_emptying_blast(|g| {
-            g.server_explode_from(at, power, interaction, false, super::explosion::ExplosionSource::default())
+            g.server_explode_from(at, power, interaction, false, super::explosion::ExplosionSource::default().with_portal_proof(used_portal))
         });
         self.combat.blast_owner = None;
         self.combat.blast_owner_player = false;
@@ -195,40 +195,6 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {
-    /// `positionRider` for the mobs riding primed TNT: the passenger attachment
-    /// (the top of its 0.98 box), less the rider's own vehicle attachment.
-    pub(super) fn seat_tnt_mobs(&mut self, riders: &super::passengers::Riders) {
-        for i in 0..self.tnts.len() {
-            let (id, pos, prev) = (
-                self.tnts[i].id,
-                self.tnts[i].position,
-                self.tnts[i].previous,
-            );
-            let Some(js) = riders.get(&id).filter(|_| id != 0) else {
-                continue;
-            };
-            let tnt_box = self.tnts[i].bounds();
-            for &j in js {
-                let m = &mut self.remote_entities[j];
-                // Primed TNT's box is 0.98 wide.
-                let offset = horizon_client::mobs::riders::vehicle_attachment(m, 0.98);
-                m.seated(id, offset, tnt_box);
-                m.position = tnt_seat(pos, offset);
-                m.previous = tnt_seat(prev, offset);
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-            }
-        }
-    }
-}
-
-impl Game<'_> {
-}
-
 /// `PrimedTnt.getOwner` as the blast's causing entity: the player, or a mob
 /// that is still in the level (null once it is gone).
 fn tnt_blast_owner(
@@ -240,10 +206,6 @@ fn tnt_blast_owner(
         Who::Player => player(),
         Who::Mob(id) => mob_name(id).map(|name| (id, name)),
     }
-}
-
-fn tnt_seat(tnt: Vec3, rider_offset: f64) -> Vec3 {
-    Vec3::new(tnt.x, tnt.y + PrimedTnt::SIZE - rider_offset, tnt.z)
 }
 
 #[cfg(test)]
@@ -337,15 +299,6 @@ mod tests {
         let by_player = tnt_blast_owner(Some(Who::Player), || Some((1, player.clone())), |_| None);
         assert_eq!(by_player, Some((1, player)));
         assert_eq!(tnt_blast_owner(None, || None, |_| None), None);
-    }
-
-    #[test]
-    fn a_rider_sits_on_top_of_the_tnt_less_its_own_attachment() {
-        // 64 + 0.98F (the box's top, `EntityAttachment.PASSENGER` at its
-        // height) - 0.14 (a rider's vehicle attachment).
-        let seat = tnt_seat(Vec3::new(1.5, 64.0, -2.5), 0.14);
-        assert_eq!((seat.x, seat.z), (1.5, -2.5));
-        assert!((seat.y - (64.0 + f64::from(0.98_f32) - 0.14)).abs() < 1e-9);
     }
 
     #[test]

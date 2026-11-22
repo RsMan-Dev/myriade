@@ -124,14 +124,14 @@ impl Game<'_> {
             + self.creatures.projectiles.len()
             + self.carts.len()
             + self.boats.len()
-            + self.falling.len()
+            + self.ecs.species_count("minecraft:falling_block")
             + self.paintings.len()
             + self.item_frames.len()
             + self.armor_stands.len()
             + self.cushions.len()
-            + self.tridents.len()
-            + self.rockets.len()
-            + self.tnts.len()
+            + self.ecs.species_count("minecraft:trident")
+            + self.ecs.species_count("minecraft:firework_rocket")
+            + self.ecs.species_count("minecraft:tnt")
     }
 
     fn server_status(&self, state: &ServerState) -> Value {

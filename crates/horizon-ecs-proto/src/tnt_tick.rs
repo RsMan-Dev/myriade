@@ -44,13 +44,13 @@ fn tnt_step(w: &mut World) {
 /// The fuse's end (`PrimedTnt.tick` at 0): the TNT is removed, and the host is asked the blast at 0.0625 of its height (`PrimedTnt.explode`),
 /// credited to its owner. The blast runs in the host (`EcsWorld::tnt_explode`, explosion.rs `explode_tnt`), not here.
 pub fn explode(w: &mut World, e: Entity) -> Blast {
-    let (power, owner) = w.get::<Primed>(e).map_or((POWER, None), |p| (p.power, p.owner));
+    let (power, owner, used_portal) = w.get::<Primed>(e).map_or((POWER, None, false), |p| (p.power, p.owner, p.used_portal));
     let at = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let blast = Blast { at: blast_point(at, SIZE), radius: power, fire: false, owner, source: Some(e) };
     w.entity_mut(e).despawn();
     w.resource_mut::<Events>().exploded.push(blast);
     let c = blast.at;
-    w.get_resource_or_insert_with(TntOut::default).0.push(TntEvent::Explode { at: [c.x, c.y, c.z], power, owner });
+    w.get_resource_or_insert_with(TntOut::default).0.push(TntEvent::Explode { at: [c.x, c.y, c.z], power, owner, used_portal });
     blast
 }
 
@@ -62,7 +62,7 @@ mod tests {
     fn tnt(w: &mut World, owner: Option<Who>, fell: f64, in_water: bool, on_ground: bool) -> Entity {
         let fluid = FluidState { in_water, ..Default::default() };
         let contact = Contact { on_ground, horizontal: false, fall_distance: 0.0, stuck: 0 };
-        w.spawn((Pos(Vec3::new(0.5, 64.0, 0.5)), contact, fluid, Primed { fuse_at: 0, power: POWER, owner, fell }, Moving)).id()
+        w.spawn((Pos(Vec3::new(0.5, 64.0, 0.5)), contact, fluid, Primed { fuse_at: 0, power: POWER, owner, fell, used_portal: false }, Moving)).id()
     }
 
     #[test]

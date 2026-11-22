@@ -185,49 +185,12 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some((state, position, velocity, age, fall_distance)) =
-            entity_nbt::falling_block_from_nbt(&tag)
-            && let Some(state) =
-                entity_nbt::falling_state_from_nbt(self.pack.assets.registry, &state)
-        {
-            let (no_gravity, drop_item) = entity_nbt::falling_block_flags(&tag);
-            self.next_entity += 1;
-            // A summoned one has no UUID yet: `Entity` makes a random one.
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(self.next_entity, state);
-            }
-            self.remember_uuid(self.next_entity, uuid, &tag);
-            let uuid = self.uuid_for(self.next_entity);
-            self.falling.push(FallingBlock {
-                attachment_lifetime: Default::default(),
-                // Entity.load: the saved Rotation, as the save writes it back.
-                rotation: entity_nbt::loaded_rotation(&tag),
-                join: Default::default(),
-                id: self.next_entity,
-                state,
-                // DATA_START_POS is not persisted by vanilla.
-                start_pos: horizon_core::position::BlockPos::default(),
-                position,
-                previous: position,
-                velocity,
-                age,
-                no_gravity,
-                portal: horizon_client::nether_portal::PortalState {
-                    cooldown: horizon_client::save::number(tag.get("PortalCooldown")).unwrap_or(0)
-                        as i32,
-                    process: None,
-                },
-                drop_item,
-                fall_distance,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
-                stuck: Vec3::ZERO,
-                damage: horizon_client::falling_block::Damage::from_nbt(
-                    &tag,
-                    self.res.facts().get(state).name.ends_with("anvil"),
-                ),
-                saved: Some(Box::new((uuid, tag.clone()))),
-            });
+        let Tag::Compound(c) = &tag else { return };
+        let Some(id) = self.ecs_load(c) else { return };
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
         }
+        self.remember(id, uuid, tag);
     }
 
     pub(in crate::game) fn load_trident_transferred(
@@ -236,39 +199,26 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(n) = entity_nbt::trident_from_nbt(&tag) {
-            let mut t =
-                crate::game::trident::ThrownTrident::from_nbt(n, &tag, self.pack.assets.registry);
-            t.id = self.take_entity_id();
-            // One that came through a portal keeps its cooldown.
-            let id = t.id;
-            self.tridents.push(t);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
-            self.remember(id, uuid, tag);
+        let Tag::Compound(c) = &tag else { return };
+        let Some(id) = self.ecs_load(c) else { return };
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
         }
+        self.remember(id, uuid, tag);
     }
 
     pub(in crate::game) fn load_rocket_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(r) = entity_nbt::firework_rocket_from_nbt(&tag, player_uuid) {
-            let id = self.take_entity_id();
-            let mut rocket = crate::game::fireworks::Rocket::from_nbt(r);
-            rocket.id = id;
-            // One that came through a portal keeps its cooldown.
-            self.restore_portal_cooldown(id, &tag);
-            self.rockets.push(rocket);
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
-            self.remember(id, uuid, tag);
+        let Tag::Compound(c) = &tag else { return };
+        let Some(id) = self.ecs_load(c) else { return };
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
         }
+        self.remember(id, uuid, tag);
     }
 
     pub(in crate::game) fn load_tnt_transferred(
@@ -292,44 +242,19 @@ impl Game<'_> {
         }
         let mut tag = tag;
         let riders = passenger_graph::take_passengers(&mut tag);
-        if let Some(position) = entity_nbt::position(&tag) {
-            self.next_entity += 1;
-            let id = self.next_entity;
-            // getShortOr uses NumericTag.shortValue: floor floating values
-            // to int before short narrowing; integer tags narrow directly.
-            let fuse = tnt_fuse(&tag);
-            self.tnts.push(crate::game::tnt::PrimedTnt {
-                used_portal,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                no_gravity: entity_nbt::flag(&tag, "NoGravity"),
-                id,
-                position,
-                previous: position,
-                velocity: entity_nbt::motion(&tag),
-                fuse,
-                on_ground: entity_nbt::flag(&tag, "OnGround"),
-                fall_distance: horizon_client::save::float(tag.get("fall_distance")).unwrap_or(0.0),
-                stuck: Vec3::ZERO,
-                in_water: false,
-                owner: None,
-                guest: None,
-                // PrimedTnt.readAdditionalSaveData: 4 by default,
-                // kept to 0..128.
-                power: entity_nbt::tnt_power(&tag),
-                block_state: tag
-                    .get("block_state")
-                    .and_then(|v| entity_nbt::state_from_nbt(self.pack.assets.registry, v)),
-            });
-            // `Entity.load`: the `PortalCooldown` of one that just came through.
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
-            self.remember(id, uuid, tag);
-            if let Some(riders) = riders {
-                self.load_passengers(id, riders);
-            }
+        if entity_nbt::position(&tag).is_none() {
+            return;
+        }
+        let Tag::Compound(c) = &tag else { return };
+        let Some(id) = self.ecs_load(c) else { return };
+        self.ecs_set_tnt_used_portal(id, used_portal);
+        // `Entity.load`: the `PortalCooldown` of one that just came through.
+        if let Some(state) = transferred {
+            self.adopt_transferred_entity_state(id, state);
+        }
+        self.remember(id, uuid, tag);
+        if let Some(riders) = riders {
+            self.load_passengers(id, riders);
         }
     }
 

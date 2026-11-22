@@ -288,7 +288,8 @@ fn tnt_primes_owned_by_the_causing_entity() {
         assert!(blast.source.is_some());
         destroy(game, via, &[[5, 80, 5]], blast, Ok(1));
         assert_eq!(name(game, [5, 80, 5]), "minecraft:air", "{via:?}");
-        let owners: Vec<Option<Who>> = game.tnts.iter().map(|t| t.owner).collect();
+        let ids = game.ecs.species_ids("minecraft:tnt");
+        let owners: Vec<Option<Who>> = ids.into_iter().map(|id| game.ecs_tnt_owner(id)).collect();
         assert_eq!(owners, [Some(Who::Player)], "{via:?}");
     });
 }

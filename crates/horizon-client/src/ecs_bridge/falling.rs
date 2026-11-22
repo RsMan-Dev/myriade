@@ -13,4 +13,11 @@ impl EcsLevel {
         let e = w.drop_block(mw, state, at, data, settings, speed);
         self.id_for(e, alloc)
     }
+
+    /// `EcsWorld::spawn_block`: the network id of the falling block, linked by `alloc`; 0 when inert.
+    pub fn spawn_block(&mut self, mw: &MobWorld<'_>, state: BlockStateId, at: Vec3, velocity: Vec3, settings: FallSettings, alloc: &mut dyn FnMut() -> u32) -> u32 {
+        let Some(w) = self.ecs_mut() else { return 0 };
+        let e = w.spawn_block(mw, state, at, velocity, settings);
+        self.id_for(e, alloc)
+    }
 }

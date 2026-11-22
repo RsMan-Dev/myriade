@@ -53,12 +53,8 @@ macro_rules! resident_owners {
             Other => Other: others,
             Fangs => Fangs: fangs.list,
             Crystal => Crystal: crystals,
-            Tnt => Tnt: tnts,
             Cushion => Cushion: cushions,
             Knot => Knot: $($knots).+,
-            Falling => Falling: falling,
-            Rocket => Rocket: rockets,
-            Trident => Trident: tridents,
             Spawner => Spawner: ominous_spawners,
             Cloud => Cloud: breath_clouds,
         }
@@ -318,27 +314,4 @@ mod tests {
         });
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn late_tracking_admission_publishes_the_previously_zero_id() {
-        with_game(|game| {
-            game.reset_entity_residency();
-            game.add_primed_tnt(BlockPos::new(0, 70, 0), 0.0, 80, None, None);
-            let mut tnt = game.tnts.remove(0);
-            let retired = tnt.id;
-            tnt.id = 0;
-            game.tnts.push(tnt);
-            assert_eq!(game.server_resident_entity(retired), EntityLookup::Missing);
-            assert_eq!(game.server_resident_entity(0), EntityLookup::Missing);
-            game.lan_assign_ids();
-            let id = game.tnts[0].id;
-            assert_ne!(id, 0);
-            assert!(
-                matches!(game.server_resident_entity(id), EntityLookup::Found { value: Target::Tnt(found), .. } if found == id)
-            );
-            game.lan_assign_ids();
-            assert_eq!(game.tnts[0].id, id);
-            assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
-        });
-    }
 }

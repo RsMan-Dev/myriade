@@ -199,7 +199,7 @@ impl Hooks for Deathwatch {
 /// Primed TNT lit by `owner` beside the zombie.
 fn tnt(game: &mut Game<'_>, owner: Option<Who>) -> u32 {
     game.add_primed_tnt(BlockPos::new(4, 80, 4), 0.0, 80, owner, None);
-    game.tnts.last().unwrap().id
+    *game.ecs.species_ids("minecraft:tnt").last().unwrap()
 }
 
 /// A summoned entity's id.
@@ -447,7 +447,7 @@ fn primed_tnt_that_went_through_a_portal_spares_a_portal_unless_a_calculator_is_
             portal(game);
             let source = source.then(|| {
                 let id = tnt(game, None);
-                game.tnts.last_mut().unwrap().used_portal = true;
+                game.ecs_set_tnt_used_portal(id, true);
                 game.entity(id).unwrap()
             });
             let blast = Blast {

@@ -9,7 +9,7 @@
 
 use super::commands::Target;
 use super::persist::ChunkKey;
-use super::{FallingBlock, Game, general::GeneralRow};
+use super::{Game, general::GeneralRow};
 use super::{
     boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
 };
@@ -582,12 +582,8 @@ macro_rules! entity_lists {
             Boat(Boat) boats: boats,
             Cart(Minecart) carts: carts,
             ArmorStand(ArmorStand) armor_stands: armor_stands,
-            Tnt(PrimedTnt) tnts: tnts,
-            Falling(FallingBlock) falling: falling,
             Orb(ExperienceOrb) orbs: orbs,
             Projectile(Projectile) projectiles: creatures.projectiles,
-            Rocket(Rocket) rockets: rockets,
-            Trident(ThrownTrident) tridents: tridents,
             General(GeneralRow) general: resident_entities.general.rows,
         }
     };
@@ -821,7 +817,6 @@ fn merge_in_join_order<const N: usize>(
 }
 
 entity_lists!(define_entity_handles,);
-horizon_client::impl_joined!(FallingBlock);
 
 macro_rules! entity_access {
     (shared, $list:expr, $index:expr, $entity:ident, $body:expr) => {{
@@ -1824,78 +1819,6 @@ impl Entity for PrimedTnt {
     }
 }
 
-impl Entity for FallingBlock {
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let position = self.position_mut();
-        *position = position.add_vector(movement);
-    }
-    fn rotation(&self) -> [f32; 2] {
-        self.rotation
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.rotation = [yaw, pitch.clamp(-90.0, 90.0)];
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn ticks_after_projectiles(&self) -> bool {
-        true
-    }
-    fn native_type(&self) -> Cow<'static, str> {
-        "minecraft:falling_block".into()
-    }
-    fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        game.save_falling(index, keys)
-    }
-    fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        _player_uuid: Option<[i32; 4]>,
-        tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Result<(), Tag> {
-        if !(kind == "minecraft:falling_block") {
-            return Err(tag);
-        }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_falling,
-            load_falling_transferred,
-            tag,
-            uuid
-        );
-        Ok(())
-    }
-    stored_motion!();
-    fn selector_target(&self) -> Option<Target> {
-        Some(Target::Falling(self.id))
-    }
-    fn bounds(&self) -> Aabb {
-        horizon_client::falling_block::bounds(self.position)
-    }
-}
 
 impl Entity for Projectile {
     fn reset_fall_distance(&mut self) {
@@ -2120,8 +2043,7 @@ impl Entity for Rocket {
             load_rocket,
             load_rocket_transferred,
             tag,
-            uuid,
-            player_uuid
+            uuid
         );
         Ok(())
     }
@@ -2261,15 +2183,6 @@ impl Entity for ThrownTrident {
     }
 }
 
-impl EntityRules for FallingBlock {
-    fn is_no_gravity(&self) -> bool {
-        self.no_gravity
-    }
-    /// `FallingBlockEntity.getDefaultGravity`.
-    fn get_default_gravity(&self) -> f64 {
-        0.04
-    }
-}
 
 #[cfg(test)]
 mod no_gravity_stand_tests {
@@ -2361,7 +2274,7 @@ mod restore_tests;
 #[cfg(test)]
 mod join_order_tests {
     use super::{EntityHandle, EntityLists, JoinOrderError};
-    use crate::game::{boats::Boat, fireworks::Rocket, trident::ThrownTrident};
+    use crate::game::boats::Boat;
     use horizon_client::entities::ArmorStand;
     use horizon_client::join_seq::JoinList;
     use horizon_core::geometry::Vec3;
@@ -2372,8 +2285,6 @@ mod join_order_tests {
 
     struct Lists {
         stands: JoinList<ArmorStand>,
-        tridents: JoinList<ThrownTrident>,
-        rockets: JoinList<Rocket>,
         boats: JoinList<Boat, false>,
     }
 
@@ -2385,12 +2296,8 @@ mod join_order_tests {
                 boats: &self.boats,
                 carts: &[],
                 armor_stands: &self.stands,
-                tnts: &[],
-                falling: &[],
                 orbs: &[],
                 projectiles: &[],
-                rockets: &self.rockets,
-                tridents: &self.tridents,
                 general: &[],
             }
         }
@@ -2405,25 +2312,15 @@ mod join_order_tests {
     fn mixed() -> (Lists, Vec<EntityHandle>) {
         let mut l = Lists {
             stands: JoinList::default(),
-            tridents: JoinList::default(),
-            rockets: JoinList::default(),
             boats: JoinList::default(),
         };
-        l.trident(1);
-        l.rocket(2);
         l.stand(3);
         l.boat(4);
-        l.trident(5);
         l.stand(6);
-        l.rocket(7);
         let joined = vec![
-            EntityHandle::Trident(0),
-            EntityHandle::Rocket(0),
             EntityHandle::ArmorStand(0),
             EntityHandle::Boat(0),
-            EntityHandle::Trident(1),
             EntityHandle::ArmorStand(1),
-            EntityHandle::Rocket(1),
         ];
         (l, joined)
     }
@@ -2431,13 +2328,6 @@ mod join_order_tests {
     impl Lists {
         fn stand(&mut self, id: u32) {
             self.stands.push(ArmorStand::new(id, at(), 0.0));
-        }
-        fn trident(&mut self, id: u32) {
-            self.tridents
-                .push(ThrownTrident::remote(id, at(), 0.0, 0.0));
-        }
-        fn rocket(&mut self, id: u32) {
-            self.rockets.push(Rocket::remote(id, at(), Vec3::ZERO));
         }
         fn boat(&mut self, id: u32) {
             self.boats.push(Boat::new(id, "oak".into(), at(), 0.0));
@@ -2450,14 +2340,14 @@ mod join_order_tests {
         let (lists, joined) = mixed();
         assert_eq!(lists.walk().unwrap(), joined);
         // Walked list by list they would come in another order.
-        assert_ne!(joined[0], EntityHandle::ArmorStand(0));
+        assert_ne!(joined[1], EntityHandle::ArmorStand(1));
     }
 
     /// An entity taken out and put back (a tick takes its list) keeps its place.
     #[test]
     fn an_entity_put_back_keeps_its_join_number() {
         let (mut lists, joined) = mixed();
-        let taken = lists.tridents.lift();
+        let taken = lists.stands.lift();
         let before: Vec<_> = taken
             .iter()
             .map(horizon_client::join_seq::Joined::join_seq)
@@ -2466,9 +2356,9 @@ mod join_order_tests {
         for t in taken {
             back.push(t);
         }
-        lists.tridents = back;
+        lists.stands = back;
         let after: Vec<_> = lists
-            .tridents
+            .stands
             .iter()
             .map(horizon_client::join_seq::Joined::join_seq)
             .collect();
@@ -2481,7 +2371,7 @@ mod join_order_tests {
     #[test]
     fn the_walk_reports_a_list_out_of_order_and_an_entity_that_never_joined() {
         let (mut lists, _) = mixed();
-        lists.tridents.swap(0, 1);
+        lists.stands.swap(0, 1);
         assert!(matches!(lists.walk(), Err(JoinOrderError::OutOfOrder(_))));
         let (mut lists, _) = mixed();
         lists.stands.push(ArmorStand::new(9, at(), 0.0));
@@ -2541,12 +2431,8 @@ mod scoped_edit_tests {
             boats: Default::default(),
             carts: Default::default(),
             armor_stands: Default::default(),
-            tnts: Default::default(),
-            falling: Default::default(),
             orbs: Default::default(),
             projectiles: Default::default(),
-            rockets: Default::default(),
-            tridents: Default::default(),
             general: Default::default(),
         };
         lists

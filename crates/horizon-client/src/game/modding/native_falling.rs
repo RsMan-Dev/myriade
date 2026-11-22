@@ -3,8 +3,9 @@
 //! and places itself (or drops as an item) as sand does. It acts where the
 //! world is simulated, in the level in place, which it names by its
 //! `dimension` (`minecraft:overworld`) as `native_set_block` does.
-use super::{FallingBlock, Game};
+use super::Game;
 use horizon_core::{geometry::Vec3, position::BlockPos};
+use horizon_ecs_proto::falling_block::FallSettings;
 use horizon_world::registry::BlockStateId;
 
 /// The most falling blocks a level holds before `spawn_falling_block`
@@ -50,7 +51,7 @@ impl Game<'_> {
             || dimension != self.dim.id()
             || self.pack.assets.registry.state(state).is_none()
             || self.res.facts().is_air(state)
-            || self.falling.len() >= NATIVE_FALLING_MAX
+            || self.ecs.species_count("minecraft:falling_block") >= NATIVE_FALLING_MAX
             || !pos.iter().all(|v| v.is_finite() && v.abs() <= 30_000_000.0)
         {
             return false;
@@ -66,35 +67,23 @@ impl Game<'_> {
         if !self.world.chunks.contains_key(&(cell.x >> 4, cell.z >> 4)) {
             return false;
         }
-        let mut damage =
-            horizon_client::falling_block::Damage::falling(&self.res.facts().get(state).name);
-        if falling.hurts {
-            damage.hurt_entities = true;
-            damage.per_distance = 2.0;
-            damage.max = 40;
-        }
-        let at = Vec3::new(pos[0], pos[1], pos[2]);
-        self.next_entity += 1;
-        self.falling.push(FallingBlock {
-            attachment_lifetime: Default::default(),
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            id: self.next_entity,
-            state,
-            start_pos: cell,
-            position: at,
-            previous: at,
-            velocity,
-            age: 0,
-            no_gravity: false,
-            on_ground: false,
+        let settings = FallSettings {
+            hurt_entities: falling.hurts,
+            fall_hurt_amount: if falling.hurts { 2.0 } else { 0.0 },
+            fall_hurt_max: 40,
             drop_item: falling.drop_item,
-            fall_distance: 0.0,
-            stuck: Vec3::ZERO,
-            damage,
-            saved: None,
-            portal: Default::default(),
+            cancel_drop: false,
+        };
+        let at = Vec3::new(pos[0], pos[1], pos[2]);
+        let mut next = self.next_entity;
+        let mut alloc = || {
+            next += 1;
+            next
+        };
+        self.ecs_with_mw(|ecs, mw| {
+            ecs.spawn_block(mw, state, at, velocity, settings, &mut alloc)
         });
+        self.next_entity = next;
         true
     }
 }

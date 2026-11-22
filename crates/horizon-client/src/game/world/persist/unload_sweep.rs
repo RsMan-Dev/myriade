@@ -113,10 +113,6 @@ impl Game<'_> {
         self.orbs.retain(|o| !gone(o.position));
         // Unloaded with their chunk: PersistentEntitySectionManager.stopTracking.
         self.native_leaves_flush();
-        self.falling.retain(|f| !gone(f.position));
-        self.rockets.retain(|r| !gone(r.position));
-        self.tridents.retain(|t| !gone(t.position));
-        self.tnts.retain(|t| !gone(t.position));
         self.persist
             .anon
             .retain(|_, (at, _)| !keys.contains(&chunk_of(*at)));

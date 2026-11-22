@@ -306,6 +306,10 @@ impl EcsWorld {
         if let Some(id) = ids::id_of(&self.world, e) {
             return id;
         }
+        // An event may name an entity that left in the same tick, before it was ever bound: it gets an id nobody holds.
+        if self.world.get_entity(e).is_err() {
+            return alloc();
+        }
         loop {
             let id = alloc();
             if ids::bind(&mut self.world, e, id) {

@@ -556,23 +556,23 @@ impl Game<'_> {
             // FallingBlockEntity.getTypeName: `entity.minecraft.falling_block_type`
             // with the block's name.
             Target::Falling(id) => {
-                let custom = self
-                    .falling
-                    .iter()
-                    .find(|f| f.id == id)
-                    .and_then(|f| f.saved.as_ref())
-                    .and_then(|saved| saved.1.get("CustomName"))
-                    .or_else(|| self.persist_raw(id).and_then(|r| r.get("CustomName")));
+                let tree = self.ecs_mob_tree(id);
+                let custom = tree
+                    .as_ref()
+                    .and_then(|t| t.get(&"CustomName".into()).cloned())
+                    .or_else(|| self.persist_raw(id).and_then(|r| r.get("CustomName").cloned()));
                 if let Some(c) = custom {
                     return horizon_client::scoreboard::comp_text(
-                        &horizon_client::scoreboard::tag_to_json(c),
+                        &horizon_client::scoreboard::tag_to_json(&c),
                     );
                 }
-                let block = self
-                    .falling
-                    .iter()
-                    .find(|f| f.id == id)
-                    .map(|f| self.res.facts().get(f.state).name.replace(':', "."))
+                let block = tree
+                    .as_ref()
+                    .and_then(|t| t.get(&"BlockState".into()))
+                    .and_then(|state| {
+                        horizon_client::entity_nbt::falling_state_from_nbt(self.pack.assets.registry, state)
+                    })
+                    .map(|state| self.res.facts().get(state).name.replace(':', "."))
                     .unwrap_or_default();
                 let block = Text::translate(&format!("block.{block}"), &[]);
                 Text::translate("entity.minecraft.falling_block_type", &[block])
@@ -1719,13 +1719,12 @@ impl Game<'_> {
                 }
             }
             Target::Tnt(id) => {
-                if let Some(t) = self.tnts.iter_mut().find(|t| t.id == id) {
-                    // `PrimedTnt.teleport` includes same-level command teleports.
-                    t.used_portal = true;
-                    t.position = v;
-                    t.previous = v;
+                // `PrimedTnt.teleport` includes same-level command teleports.
+                self.ecs_set_tnt_used_portal(id, true);
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, [v.x, v.y, v.z]));
                     if let Some(r) = rotation {
-                        Entity::set_rotation(t, r);
+                        self.ecs.set_rotation(e, r[0], r[1]);
                     }
                 }
             }
@@ -1741,32 +1740,12 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Falling(id) => {
-                if let Some(i) = self.falling.iter().position(|f| f.id == id) {
-                    self.falling.update(i, |f| {
-                        f.position = v;
-                        f.previous = v;
-                        if let Some(r) = rotation {
-                            Entity::set_rotation(f, r);
-                        }
-                    });
-                }
-            }
-            Target::Rocket(id) => {
-                if let Some(r) = self.rockets.iter_mut().find(|r| r.id == id) {
-                    r.position = v;
-                    r.previous = v;
-                    if let Some(rot) = rotation {
-                        Entity::set_rotation(r, rot);
-                    }
-                }
-            }
-            Target::Trident(id) => {
-                if let Some(t) = self.tridents.iter_mut().find(|t| t.id == id) {
-                    t.position = v;
-                    t.previous = v;
+            Target::Falling(id) | Target::Rocket(id) | Target::Trident(id) => {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    let at = [v.x, v.y, v.z];
+                    self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));
                     if let Some(r) = rotation {
-                        Entity::set_rotation(t, r);
+                        self.ecs.set_rotation(e, r[0], r[1]);
                     }
                 }
             }
@@ -2201,11 +2180,17 @@ impl Game<'_> {
             Target::Fangs(id) => self.fangs.list.retain(|f| f.id != id),
             Target::Crystal(id) => self.kill_crystal(id),
             Target::Dragon(id) => self.kill_dragon(id),
-            Target::Tnt(id) => self.tnts.retain(|t| t.id != id),
+            Target::Tnt(id) => {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
             Target::Cushion(id) => self.kill_cushion(id),
-            Target::Falling(id) => self.falling.retain(|f| f.id != id),
-            Target::Rocket(id) => self.rockets.retain(|r| r.id != id),
-            Target::Trident(id) => self.tridents.retain(|t| t.id != id),
+            Target::Falling(id) | Target::Rocket(id) | Target::Trident(id) => {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+            }
             Target::Spawner(id) => self.remove_ominous_spawner(id),
             Target::Cloud(id) => self.remove_breath_cloud(id),
             Target::Hook(id) => self.remove_fishing_hook(id),
@@ -2371,10 +2356,10 @@ impl Game<'_> {
     fn spawned_mark(&self) -> (u32, usize) {
         (
             self.next_entity,
-            self.tnts.len()
-                + self.falling.len()
-                + self.rockets.len()
-                + self.tridents.len(),
+            self.ecs.species_count("minecraft:tnt")
+                + self.ecs.species_count("minecraft:trident")
+                + self.ecs.species_count("minecraft:falling_block")
+                + self.ecs.species_count("minecraft:firework_rocket"),
         )
     }
     /// BlockStateArgument -> registry state.

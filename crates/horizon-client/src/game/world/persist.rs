@@ -24,7 +24,7 @@ mod hurt_by_refs;
 #[path = "persist/lookup_order_tests.rs"]
 mod lookup_order_tests;
 
-use super::{FallingBlock, Game};
+use super::Game;
 use horizon_client::{
     Result,
     chunk::Chunk,
@@ -326,16 +326,6 @@ pub(super) fn mark_fresh(tag: &mut Tag) {
 /// `teleportSameDimension`, which moves the entity without removing it), so
 /// it doesn't join the level again. Taken off like [`FRESH_ADD`].
 const SAME_LEVEL_MOVE: &str = "horizon:same_level_move";
-
-/// `PrimedTnt.readAdditionalSaveData`: `getShortOr("fuse", 80)` accepts any
-/// numeric tag; floating values floor to int before the short narrowing.
-pub(super) fn tnt_fuse(tag: &Tag) -> i32 {
-    i32::from(match tag.get("fuse") {
-        Some(Tag::Float(v)) => f32::from_bits(*v).floor() as i32 as i16,
-        Some(Tag::Double(v)) => f64::from_bits(*v).floor() as i32 as i16,
-        other => horizon_client::save::number(other).unwrap_or(80) as i16,
-    })
-}
 
 /// Whether `tag` was queued as a move within its level; the mark comes off.
 fn take_moved(tag: &mut Tag) -> bool {
@@ -944,13 +934,8 @@ impl Game<'_> {
     }
 
     /// A saved firework rocket.
-    pub(super) fn load_rocket(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
-    ) {
-        self.load_rocket_transferred(tag, uuid, player_uuid, None);
+    pub(super) fn load_rocket(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
+        self.load_rocket_transferred(tag, uuid, None);
     }
 
     /// `PrimedTnt.readAdditionalSaveData`: its numeric short fuse (80 when absent) and motion.
@@ -2195,28 +2180,19 @@ impl Game<'_> {
     }
     pub(super) fn save_rocket(
         &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
+        _i: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        let (id, at) = (self.rockets[i].id, self.rockets[i].position);
-        keys.contains(&chunk_of(at)).then(|| {
-            let uuid = self.uuid_for(id);
-            let tag =
-                self.rockets[i].to_nbt(uuid, self.level.player_uuid, self.persist.raw.get(&id));
-            (chunk_of(at), tag)
-        })
+        // Firework rockets are saved by the ECS (`save_chunk`): no host rocket is left to save.
+        None
     }
     pub(super) fn save_trident(
         &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
+        _i: usize,
+        _keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        let (id, at) = (self.tridents[i].id, self.tridents[i].position);
-        keys.contains(&chunk_of(at)).then(|| {
-            let (uuid, reg) = (self.uuid_for(id), self.pack.assets.registry);
-            let tag = self.tridents[i].to_nbt(uuid, reg, self.persist.raw.get(&id));
-            (chunk_of(at), tag)
-        })
+        // Thrown tridents are saved by the ECS (`save_chunk`): no host trident is left to save.
+        None
     }
     pub(super) fn save_tnt(
         &mut self,

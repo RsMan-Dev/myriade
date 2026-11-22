@@ -106,7 +106,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
         game.creatures.projectiles.is_empty(),
         "the arrow left the overworld"
     );
-    assert!(game.tnts.is_empty(), "the tnt left the overworld");
+    assert_eq!(game.ecs.species_count("minecraft:tnt"), 0, "the tnt left the overworld");
     let back = game.enter_command_level(Dim::Nether);
     assert_eq!(game.dim, Dim::Nether);
     let stand = game.armor_stands.iter().next().expect("stand crossed");
@@ -131,13 +131,10 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
         [arrow.position.x, arrow.position.y, arrow.position.z],
         [13.5, 64.0, 0.5]
     );
-    let tnt = game.tnts.first().expect("tnt crossed");
-    assert_eq!(
-        [tnt.position.x, tnt.position.y, tnt.position.z],
-        [14.5, 64.0, 0.5]
-    );
+    let tnt = *game.ecs.species_ids("minecraft:tnt").first().expect("tnt crossed");
+    assert_eq!(game.ecs.position(tnt), Some([14.5, 64.0, 0.5]));
     // `PrimedTnt.teleport`: the new entity has used a portal.
-    assert!(tnt.used_portal, "the arrived tnt ignores its portal");
+    assert!(game.ecs_tnt_used_portal(tnt), "the arrived tnt ignores its portal");
     if let Some(back) = back {
         game.enter_command_level(back);
     }
