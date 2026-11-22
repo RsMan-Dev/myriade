@@ -865,6 +865,11 @@ impl Game<'_> {
 }
 
 impl SiegeLevel for Game<'_> {
+    fn set_mob_yaw(&mut self, id: u32, yaw: f32) {
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.set_rotation(e, yaw, 0.0);
+        }
+    }
     fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         Game::is_village(centers, pos)
     }

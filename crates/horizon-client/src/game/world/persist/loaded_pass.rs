@@ -23,6 +23,9 @@ impl Game<'_> {
                             self.keep_quarantined(tag, &kind, key);
                             held += 1;
                         }
+                    } else if entity_nbt::position(&tag).is_none() {
+                        // No position: the ECS reads nothing from it, so it is kept byte for byte as the legacy path keeps it.
+                        self.persist.unknown.entry(key).or_default().push(tag);
                     } else if let Tag::Compound(c) = tag {
                         entities.push(c);
                     }

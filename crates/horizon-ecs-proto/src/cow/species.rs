@@ -278,8 +278,17 @@ pub fn tags_of_id(id: SpeciesId) -> u32 {
 }
 
 /// The type of the entity (`minecraft:cow`...), for the data keyed by type of the host (breathing).
+/// Every entity has one when it is made, so its join is taken there, unless it has one already or hangs (`hanging::JoinedAt` is taken then).
 #[derive(Component, Clone, Copy, Debug)]
+#[component(on_add = joined)]
 pub struct TypeName(pub &'static str);
+
+fn joined(mut w: bevy_ecs::world::DeferredWorld, ctx: bevy_ecs::lifecycle::HookContext) {
+    if w.get::<crate::hanging::JoinedAt>(ctx.entity).is_none() && w.get::<crate::hanging::Attached>(ctx.entity).is_none() {
+        let at = crate::hanging::JoinedAt(horizon_client_lib::join_seq::JoinSeq::next());
+        w.commands().entity(ctx.entity).insert(at);
+    }
+}
 
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct CowTick;

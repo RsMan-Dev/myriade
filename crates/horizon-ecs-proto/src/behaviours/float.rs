@@ -8,10 +8,16 @@ use crate::rules::float::{buoyancy, is_deep, jumps};
 pub struct Params {
     /// `HappyGhastFloatGoal.canUse`: no float while the still timeout holds (a rider on it, or its countdown).
     pub unless_still: bool,
+    /// The species' own guard (`Swim.checkExtraStartConditions`, e.g. `Creaking.canMove`): no float while it is false.
+    pub when: Option<fn(&World, Entity) -> bool>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { unless_still: false };
+    pub const DEFAULT: Self = Self { unless_still: false, when: None };
 }
+/// The guard of `Params::when`.
+#[derive(Component, Clone, Copy, Debug)]
+#[component(storage = "SparseSet")]
+pub struct Gate(pub fn(&World, Entity) -> bool);
 /// `Mob.getFluidJumpThreshold`: the depth of fluid (in blocks) from which the animal floats.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Buoyancy(pub f64);
@@ -41,6 +47,9 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     if params::<Params>(p).unless_still {
         w.entity_mut(e).insert(UnlessStill);
     }
+    if let Some(f) = params::<Params>(p).when {
+        w.entity_mut(e).insert(Gate(f));
+    }
 }
 fn floats(w: &World, e: Entity) -> bool {
     let (f, b) = (w.get::<FluidState>(e).unwrap(), w.get::<Buoyancy>(e).unwrap());
@@ -49,7 +58,8 @@ fn floats(w: &World, e: Entity) -> bool {
 /// `canUse`: floats, unless the still timeout holds (`still_under_riders`: a rider, or the countdown after one left).
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
     let still = w.get::<Above>(e).is_some() || w.get::<Leaving>(e).is_some() || w.get::<StillUntil>(e).is_some_and(|u| now_of(w, e) < u.0);
-    floats(w, e) && !(w.get::<UnlessStill>(e).is_some() && still)
+    let gate = w.get::<Gate>(e).map(|g| g.0);
+    floats(w, e) && !(w.get::<UnlessStill>(e).is_some() && still) && gate.is_none_or(|g| g(w, e))
 }
 fn start(w: &mut World, e: Entity, _: Inst) {
     w.entity_mut(e).insert(Floating);

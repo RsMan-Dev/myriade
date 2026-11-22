@@ -8,7 +8,7 @@
 use crate::IFloor as _;
 use super::Def;
 use crate::behaviours::{breed, float, Cap, Entry};
-use crate::brain::behaviours::{do_nothing, follow_temptation, look_at_player, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
+use crate::brain::behaviours::{count_down_cooldown_ticks, do_nothing, follow_temptation, look_at_player, look_at_target_sink, make_love, move_to_target_sink, panic, run_one, sniff, stroll, walk_to_look_target};
 use crate::brain::sensors::{hurt_by, living, nearest_players, tempting};
 use crate::brain::*;
 use crate::rules::RuleEntry;
@@ -54,6 +54,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &panic::BEHAVIOUR, activity: "core", priority: 1, params: &panic::Params { speed: 2.0, threat: None }, needs: &[], duration: Some((100, 120)), kids: &[] },
             BEntry { behaviour: &follow_temptation::BEHAVIOUR, activity: "idle", priority: 1, params: &TEMPT, needs: &[(&TEMPTING_PLAYER, Need::Present), (&TEMPTATION_COOLDOWN_TICKS, Need::Absent), (&BREED_TARGET, Need::Absent), (&IS_PANICKING, Need::Absent)], duration: Some((60, 60)), kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((500, 700)), kids: &[] },
+            BEntry { behaviour: &count_down_cooldown_ticks::BEHAVIOUR, activity: "core", priority: 3, params: &count_down_cooldown_ticks::Params { key: &TEMPTATION_COOLDOWN_TICKS }, needs: &[(&TEMPTATION_COOLDOWN_TICKS, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
             BEntry { behaviour: &sniff::FEELING_HAPPY_B, activity: "idle", priority: 3, params: &SNIFF, needs: &[(&sniff::SNIFFER_HAPPY, Need::Present)], duration: Some((40, 100)), kids: &[] },
             BEntry {

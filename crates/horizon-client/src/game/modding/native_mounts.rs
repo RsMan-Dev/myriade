@@ -1,7 +1,7 @@
 //! Mounting for native mods (`native_entity_mount`: NeoForge's `EntityMountEvent`). Each place
 //! the acting player or a mob gets on or off a vehicle asks `native_may_board` or
 //! `native_may_leave` first, and does nothing when a mod says no.
-use super::{Game, commands::Target, native_hooks::mob_kind};
+use super::{Game, commands::Target};
 
 impl Game<'_> {
     /// `Entity.setRemoved` makes a vehicle invisible before notifying riders.
@@ -69,8 +69,7 @@ impl Game<'_> {
             return false;
         }
         let kind = match rider {
-            // RESTE-SANS-ECS: only a retained off-level mob had its kind read here, now retired.
-            Some(_) => String::new(),
+            Some(id) => self.ecs.kind(id).map_or_else(String::new, String::from),
             None => "minecraft:player".into(),
         };
         let vehicle_kind = self.native_vehicle_kind(vehicle);

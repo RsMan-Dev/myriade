@@ -2,8 +2,6 @@
 //! chunk-generation spawning (`NaturalSpawner`), mob events (attacks,
 //! breeding, conversions, drops), projectiles, player interactions
 //! (feeding, shearing, milking, spawn eggs, throwing) and rendering.
-#[path = "../../creatures/mob_conversion.rs"]
-mod mob_conversion;
 mod borrowed_tick;
 mod combat_adaptations;
 mod conversion_identity;
@@ -58,7 +56,7 @@ pub(super) enum SpawnSite {
 
 /// What a spawn site does with a mob after `finalize_spawn` was heard.
 #[derive(Debug, PartialEq)]
-pub(super) enum Finalized {
+pub(in crate::game) enum Finalized {
     /// Finalized as vanilla does; the site goes on to the class's follow-ups.
     Done,
     /// A mod skipped finalization: the mob spawns uninitialised.
@@ -344,7 +342,19 @@ impl Game<'_> {
         site: SpawnSite,
         yaw: f32,
     ) -> Option<u32> {
-        self.ecs_spawn_mob(kind, at, persistent, Some(yaw), site)
+        self.spawn_mob_facing_at(kind, at, persistent, site, yaw, None)
+    }
+    /// `spawn_mob_facing` whose finalize draws read the place of `finalize_at` (`finalizeSpawn` before `snapTo`).
+    pub(super) fn spawn_mob_facing_at(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        persistent: bool,
+        site: SpawnSite,
+        yaw: f32,
+        finalize_at: Option<[f64; 3]>,
+    ) -> Option<u32> {
+        self.ecs_spawn_mob_at(kind, at, persistent, Some(yaw), site, finalize_at)
     }
     /// Create a mob of `kind` at a position without `finalizeSpawn`'s rolls,
     /// matching vanilla `EntityType.create(level, reason)`.
@@ -526,27 +536,6 @@ impl Game<'_> {
             self.lan_entity_event(id as i32, event, at);
         }
     }
-    /// `Mob.convertTo(type, ConversionParams.single(...))`: a new mob of
-    /// `kind`, made without spawn finalization unless its conversion asks, takes
-    /// its place with what `conversion::single` carries over, and the old
-    /// mob's riders move onto it. A zombie that comes out of it rolls
-    /// `Zombie.handleAttributes(special, CONVERSION)` (the
-    /// `postConversionStep` of its `ConversionTracker`). `pre_checked` skips
-    /// `LivingConversionEvent.Pre`, which the lightning asks before it picks
-    /// its outcome.
-    pub(super) fn convert_to(
-        &mut self,
-        from: &Mob,
-        kind: &str,
-        params: horizon_client::mobs::conversion::Params,
-        pre_checked: bool,
-        after: impl FnOnce(&mut Self, &mut Mob),
-    ) -> Option<u32> {
-        // RESTE-SANS-ECS: the host conversion built a `Mob` and joined it to the host list. The ECS converts
-        // through `HostEvent::ConversionAsk` (`ecs_conversion_asked`); the callers outside this lot still reach here.
-        let _ = (from, kind, params, pre_checked, after);
-        None
-    }
     /// Default position for a summon command (3 blocks in front of the player).
     pub(super) fn default_summon_position(&self) -> Result<[f64; 3]> {
         let p = self.player.as_ref().ok_or("no player yet")?;
@@ -701,7 +690,7 @@ impl Game<'_> {
     /// The shared finalization decision for a mob type the game keeps apart
     /// from mobs (the dragon), before the entity joins the level: its lend has
     /// a kind and a position and no mob.
-    pub(super) fn finalize_spawn_at(
+    pub(in crate::game) fn finalize_spawn_at(
         &self,
         kind: &str,
         at: [f64; 3],
@@ -1498,7 +1487,7 @@ impl Game<'_> {
                         self.lid_push(lid, area, delta);
                     }
                 }
-                // RESTE-SANS-ECS: `Wololo` set the Mob's `extra.color` to DyeColor.RED (14); the bridge has no colour setter.
+                // The sheep's red is set by the ECS evoker's `Wololo` (`behaviours/spell_use.rs`); the host event has nothing left to do.
                 MobEvent::Wololo { .. } => {}
                 MobEvent::Fangs {
                     at,
@@ -1508,7 +1497,6 @@ impl Game<'_> {
                 } => {
                     self.add_fangs(at, yaw, delay, owner);
                 }
-                MobEvent::Shoot(..) => {}
                 MobEvent::ExplosionSource {
                     mob,
                     charged,
@@ -1640,9 +1628,8 @@ impl Game<'_> {
                         Some(Some(cube)),
                         false,
                     ) {
-                        // RESTE-SANS-ECS: the cube's `silent` flag has no bridge getter, so its attack sound always plays.
                         let pitch = self.cube_attack_pitch(cube);
-                        if let Some(at) = self.creature_center(cube) {
+                        if let Some(at) = self.creature_center(cube).filter(|_| !self.ecs.is_silent(cube)) {
                             self.handle_mob_events(vec![MobEvent::Sound("entity.slime.attack", at, 1.0, pitch)])?;
                         }
                     }
@@ -1658,9 +1645,8 @@ impl Game<'_> {
                     // Entity.playSound is then skipped) only follows a hit
                     // that landed.
                     if self.mob_hits_mob(target, amount, source) {
-                        // RESTE-SANS-ECS: the cube's `silent` flag has no bridge getter, so its attack sound always plays.
                         let pitch = self.cube_attack_pitch(cube);
-                        if let Some(at) = self.creature_center(cube) {
+                        if let Some(at) = self.creature_center(cube).filter(|_| !self.ecs.is_silent(cube)) {
                             self.handle_mob_events(vec![MobEvent::Sound("entity.slime.attack", at, 1.0, pitch)])?;
                         }
                         self.mob_post_attack(
@@ -1785,7 +1771,7 @@ impl Game<'_> {
                 MobEvent::ParrotToShoulder { mob } => self.parrot_to_shoulder(mob),
                 MobEvent::Infested { at, velocities } => self.spawn_infested(at, velocities),
                 MobEvent::Gift { target, item } => self.receive_gift(target, item),
-                // RESTE-SANS-ECS: `Mob.damage` of the `kind` (a damage-type name for the bridge) has no bridge mapping yet.
+                // The snow golem's melting is the ECS rule `behaviours/snow_trail.rs`; the host event has nothing left to do.
                 MobEvent::HurtSelf { .. } => {}
                 MobEvent::SetTarget { mob, target } => {
                     let player = self
@@ -1870,12 +1856,8 @@ impl Game<'_> {
                         self.apply_setup(id, &setup);
                     }
                 }
-                MobEvent::Convert {
-                    from,
-                    kind,
-                    params,
-                    after,
-                } => self.convert_event(&from, kind, params, after),
+                // The ECS converts through `HostEvent::ConversionAsk`; the host conversion is gone.
+                MobEvent::Convert { .. } => {}
                 MobEvent::ThrowItem {
                     mob,
                     stack,
@@ -1985,17 +1967,8 @@ impl Game<'_> {
                     self.with_level(|b, level, ticks| b.set_door_open(level, ticks, pos, open));
                     self.process_level_events()?;
                 }
-                MobEvent::TakeBlock { mob, pos, state } => {
-                    // The block must still be the one the enderman picked.
-                    if self.world.block(pos[0], pos[1], pos[2]) == state
-                        && self.mob_may_destroy(mob, pos)
-                    {
-                        let air = self.world.air;
-                        self.level_set(pos, air)?;
-                    } else {
-                        // RESTE-SANS-ECS: `extra.carried = None` (the enderman's block) has no bridge setter.
-                    }
-                }
+                // The ECS enderman takes its block (`take_block`, through BlockChanges).
+                MobEvent::TakeBlock { .. } => {}
                 MobEvent::IfBroke {
                     mob,
                     effects,
@@ -2214,23 +2187,8 @@ impl Game<'_> {
                     let source = self.ecs_host_view(mob);
                     self.trigger_effects_changed_by(source);
                 }
-                MobEvent::DolphinTreasure { mob } => {
-                    // ServerLevel.findNearestMapStructure(#dolphin_located, 50).
-                    let Some(at) = self.ecs.position(mob).map(|p| p.map(|v| v.floor() as i32)) else {
-                        continue;
-                    };
-                    let names = self.structure_tag("minecraft:dolphin_located");
-                    let found = self
-                        .end
-                        .locator()
-                        .filter(|_| !names.is_empty())
-                        .and_then(|t| t.locate(&names, at, 50));
-                    // RESTE-SANS-ECS: `extra.home` (the dolphin's treasure) has no bridge setter.
-                    // DolphinSwimToTreasureGoal.start: entity event 38 once it has a treasure.
-                    if found.is_some() {
-                        self.mob_event_particles(mob, 38);
-                    }
-                }
+                // The ECS asks for the treasure (`MiscEvent::TreasureAsk`) and sets it on the dolphin.
+                MobEvent::DolphinTreasure { .. } => {}
                 MobEvent::EffectPlayer {
                     effect,
                     ticks,
@@ -2252,14 +2210,8 @@ impl Game<'_> {
                     self.ignite_entity(target, seconds)?
                 }
                 MobEvent::ZombieIgnite(..) => {}
-                MobEvent::LockGaze { mob, partner } => {
-                    // RESTE-SANS-ECS: `animal_brain::lock_gaze` writes the Mob's brain, which has no bridge setter.
-                    let _ = (mob, partner);
-                }
-                MobEvent::Retreat { mob, from, at } => {
-                    // RESTE-SANS-ECS: `piglin::receive_retreat` writes the Mob's brain, which has no bridge setter.
-                    let _ = (mob, from, at);
-                }
+                // The ECS gaze and retreat rules (`freeze_when_looked_at`, `retreat_on_hurt`) act on the mob.
+                MobEvent::LockGaze { .. } | MobEvent::Retreat { .. } => {}
                 // Dead producers only (old brains, frog, piglin): nothing to apply.
                 MobEvent::RemoveKilled { .. }
                 | MobEvent::HoglinAttackTarget { .. }
@@ -2284,10 +2236,8 @@ impl Game<'_> {
                 MobEvent::LeashBreak { mob, drop, sound, .. } => {
                     self.tick_break_leash(mob, drop, sound)
                 }
-                MobEvent::NotifyLeashHolder { holder } => {
-                    // RESTE-SANS-ECS: `happy_ghast::notify_leash_holder` writes the Mob's state, which has no bridge setter.
-                    let _ = holder;
-                }
+                // The ECS leash rule (`defend_leash_holder`) reads the holder.
+                MobEvent::NotifyLeashHolder { .. } => {}
                 MobEvent::Vibration {
                     from,
                     to,
@@ -2320,10 +2270,8 @@ impl Game<'_> {
                     self.villager_firework(at, color, flight)
                 }
                 MobEvent::ThrowGift { table, from, to } => self.throw_gift(&table, from, to),
-                MobEvent::PatrolTarget { mob, target } => {
-                    // RESTE-SANS-ECS: `raider::set_patrol_target` writes the Mob's patrol target, which has no bridge setter.
-                    let _ = (mob, target);
-                }
+                // The ECS patrol rule (`long_distance_patrol`) picks the target.
+                MobEvent::PatrolTarget { .. } => {}
                 MobEvent::RaiderTarget {
                     mob,
                     target,
@@ -2456,7 +2404,16 @@ impl Game<'_> {
         if setup.nausea {
             self.ecs_add_effect(id, "minecraft:nausea", 200, 0);
         }
-        // RESTE-SANS-ECS: size, variant, owner (counter2), home and life (egg_time) have no bridge setter.
+        if let Some(owner) = setup.owner_mob {
+            self.ecs.set_mob_owner(id, owner);
+        }
+        if let Some(home) = setup.home {
+            self.ecs.set_bound_origin(id, home);
+        }
+        if let Some(life) = setup.life {
+            self.ecs.set_limited_life(id, u64::try_from(life).unwrap_or(0));
+        }
+        // RESTE-SANS-ECS: size and variant have no bridge setter (the vex has neither).
         let pitch = self.ecs.pitch(id).unwrap_or(0.0);
         self.ecs.set_rotation(e, setup.yaw, pitch);
         self.ecs.set_head_yaw(id, setup.yaw);
@@ -2476,8 +2433,12 @@ impl Game<'_> {
         feet: [f64; 3],
         conn: Option<u32>,
     ) {
-        // RESTE-SANS-ECS: `NeutralMob.playerDied` (`forgives_dead_player` and its target change) reads and writes the Mob's anger state; the bridge has no forgiveness rule yet.
-        let _ = (feet, conn);
+        if !self.session.rules.bool_at(horizon_client::gamerules::vanilla::FORGIVE_DEAD_PLAYERS) {
+            return;
+        }
+        let Some(player) = self.player_entity_id_by_connection(conn) else { return };
+        let block = feet.map(|c| c.floor() as i32);
+        self.ecs.forgive_dead_players_near(block, player as u32);
     }
     /// `MobEffectUtil.addEffectToPlayersAround` for an elder guardian:
     /// mining fatigue III for five minutes unless a stronger or longer one
@@ -2977,7 +2938,6 @@ impl Game<'_> {
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
-        // RESTE-SANS-ECS: `entity_nbt::apply_item_components` writes the `Mob` fields, no bridge setter (`PostSpawnProcessor`).
         self.apply_spawn_egg_entity_data(id, stack, true);
         self.post_block_game_event("minecraft:entity_place", p, Some(Who::Player), None);
         self.award_stat("used", &stack.item, 1);
@@ -2988,7 +2948,6 @@ impl Game<'_> {
     /// `MobBucketItem.spawn`: the bucket's components, then
     /// `EntityType.createDefaultStackConfig`.
     pub(in crate::game) fn apply_bucket_stack_config(&mut self, id: u32, stack: &ItemStack) {
-        // RESTE-SANS-ECS: `entity_nbt::apply_item_components` writes the `Mob` fields, no bridge setter (`Bucketable`).
         self.apply_spawn_egg_entity_data(id, stack, true);
     }
     /// `EntityType.createDefaultStackConfig` on the mob an egg or a bucket
@@ -3420,38 +3379,25 @@ mod conversion_subscriber_tests {
         ]
         .into();
         mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let zombie = game
-                    .res
-                    .mob_types()
-                    .get("minecraft:zombie")
-                    .unwrap()
-                    .clone();
-                for _ in 0..2 {
-                    game.next_entity += 1;
-                    let from = Mob::new(
-                        game.next_entity,
-                        zombie.clone(),
-                        Vec3::new(0.5, 64.0, 0.5),
-                        0.0,
-                    );
-                    let converted = game
-                        .convert_to(
-                            &from,
-                            "minecraft:drowned",
-                            horizon_client::mobs::conversion::Params::KEEP_ALL,
-                            false,
-                            |_, _| {},
-                        )
-                        .unwrap();
-                    let events = seen.lock().unwrap();
-                    assert_eq!(events.last(), Some(&(from.id, converted)));
-                }
+            for _ in 0..2 {
+                let at = [0.5, 64.0, 0.5];
+                let (mut game, id) = crate::game::ecs::test_support::ecs_game_with("minecraft:zombie", at);
+                let old = game.ecs.entity_of(id).unwrap();
+                let mut ecs = std::mem::replace(&mut game.ecs, crate::ecs_bridge::EcsLevel::inert());
+                let new = {
+                    let mw = game.mob_world_base(&[]);
+                    ecs.spawn(&mw, "minecraft:drowned", at, None).unwrap()
+                };
+                game.ecs = ecs;
+                let converted = game.ecs_converted(id, new);
+                game.ecs.despawn(old);
+                assert_eq!(seen.lock().unwrap().last(), Some(&(id, converted)));
+                assert_eq!(game.ecs_kind(converted).as_deref(), Some("minecraft:drowned"));
                 assert!(!mod_api::__private::listened(
                     mod_api::HookId::LivingConversionPre
                 ));
-                assert_eq!(seen.lock().unwrap().len(), 2);
-            });
+            }
+            assert_eq!(seen.lock().unwrap().len(), 2);
         });
     }
 }

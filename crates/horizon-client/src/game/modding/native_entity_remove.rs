@@ -74,10 +74,9 @@ impl Game<'_> {
         for passenger in passengers {
             self.entity_stop_riding(passenger);
         }
-        if let Some(y) = vehicle_y {
+        if vehicle_y.is_some() {
             // Notify actual Mob edges here, including rejected objects.
             // A reentrant physical sweep must not notify them again.
-            self.dismount_destroyed_vehicle_mobs(entity.id(), y);
             self.score_destroyed_vehicle_once(entity.id());
         }
         self.native_entity_left(entity.id());

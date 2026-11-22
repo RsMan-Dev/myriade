@@ -10,9 +10,9 @@ use crate::behaviours::long_jump::LongJumpState;
 use crate::behaviours::ram::{Rammer, Shed};
 use crate::goals::{Occupied, OCC_SITTING};
 use crate::behaviours::trade_offers::{profession_name, variant_name, Merchant, UnresolvedProfession, UNRESOLVED};
-use crate::behaviours::do_nothing::Invulnerable;
+use crate::behaviours::do_nothing::{counter, Invulnerable};
 use crate::behaviours::forget_target::LlamaStrength;
-use crate::cow::{arm_at, now_of, Due, GrowAt};
+use crate::cow::{arm_at, now_of, Due, GrowAt, TypeName};
 use crate::explosion::{Charged, Fuse};
 use crate::farm::{Egg, Wool};
 use crate::behaviours::bat_flutter::{Flutter, Hanging};
@@ -148,12 +148,13 @@ fn read_powered(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// The wither's invulnerable countdown, an int.
 fn write_invul(w: &World, e: Entity, c: &mut Compound) {
-    c.insert("Invul".into(), Tag::Int(w.get::<Invulnerable>(e).map_or(0, |i| i.0)));
+    c.insert("Invul".into(), Tag::Int(counter(w, e)));
 }
 
 fn read_invul(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Int(v) = t else { return false };
-    w.entity_mut(e).insert(Invulnerable(*v));
+    let end = crate::cow::now_of(w, e) + (*v).max(0) as u64;
+    w.entity_mut(e).insert(Invulnerable(end));
     true
 }
 
@@ -531,10 +532,12 @@ fn read_puff(w: &mut World, e: Entity, t: &Tag) -> bool {
     true
 }
 
-/// `TamableAnimal.Sitting`, the sitting bit of the occupations.
+/// `TamableAnimal.addAdditionalSaveData`: `Sitting` is written by the tamable species only, from the sitting occupation.
 fn write_sitting(w: &World, e: Entity, c: &mut Compound) {
-    if let Some(o) = w.get::<Occupied>(e) {
-        c.insert("Sitting".into(), Tag::Byte(i8::from(o.0 & OCC_SITTING != 0)));
+    let tamable = w.get::<TypeName>(e).and_then(|n| crate::species::registry().by_name(n.0).ok()).is_some_and(|r| r.caps.contains(&crate::behaviours::Cap::Tamable));
+    if tamable {
+        let sitting = w.get::<Occupied>(e).is_some_and(|o| o.0 & OCC_SITTING != 0);
+        c.insert("Sitting".into(), Tag::Byte(i8::from(sitting)));
     }
 }
 

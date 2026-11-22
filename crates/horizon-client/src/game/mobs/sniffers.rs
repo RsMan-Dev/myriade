@@ -10,7 +10,9 @@ impl Game<'_> {
             f64::from(pos[1]) + 0.5,
             f64::from(pos[2]) + 0.5,
         ];
-        // RESTE-SANS-ECS: the snifflet's baby age and random yaw are not set (no ECS setter).
-        self.spawn_mob_raw("minecraft:sniffer", at, true);
+        // RESTE-SANS-ECS: the snifflet's random yaw is not set (no ECS yaw draw yet).
+        if let Some(id) = self.spawn_mob_raw("minecraft:sniffer", at, true) {
+            self.ecs.set_baby(id, true);
+        }
     }
 }

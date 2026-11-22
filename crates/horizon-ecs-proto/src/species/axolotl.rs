@@ -8,7 +8,7 @@
 //! playing dead (`brain::behaviours::play_dead::is_playing_dead` is there to read).
 use super::Def;
 use crate::behaviours::{breed, Cap, Entry};
-use crate::brain::behaviours::{find_liquid, follow_adult, follow_temptation, forget_memory, gate_all, look_at_player_sometimes, look_at_target_sink, make_love, melee_attack, move_to_target_sink, play_dead, run_one, set_walk_target_from_attack_target, start_attacking, stay_in_fluid, stop_attacking_if_target_invalid, stroll, swim_stroll, walk_to_look_target};
+use crate::brain::behaviours::{count_down_cooldown_ticks, erase_memory_if, find_liquid, follow_adult, follow_temptation, gate_all, look_at_player_sometimes, look_at_target_sink, make_love, melee_attack, move_to_target_sink, play_dead, run_one, set_walk_target_from_attack_target, start_attacking, stay_in_fluid, stop_attacking_if_target_invalid, stroll, swim_stroll, validate_play_dead, walk_to_look_target};
 use crate::brain::sensors::{adult, attackables, hurt_by, living, tempting};
 use crate::brain::*;
 use crate::locomotion::{swim, walk, Medium};
@@ -19,8 +19,11 @@ const START_ATTACK: start_attacking::Params = start_attacking::Params { finder: 
 const STOP_ATTACK: stop_attacking_if_target_invalid::Params = stop_attacking_if_target_invalid::Params { not_playing_dead: true, hunting_cooldown: Some(2400), ..stop_attacking_if_target_invalid::Params::DEFAULT };
 const CHASE: set_walk_target_from_attack_target::Params = set_walk_target_from_attack_target::Params { speed: 0.6, dry_speed: Some(0.15) };
 const BITE: melee_attack::Params = melee_attack::Params { cooldown: 20, ..melee_attack::Params::DEFAULT };
-const FORGET_TARGET: forget_memory::Params = forget_memory::Params { forget: &ATTACK_TARGET, clear_target: true, hunting_cooldown: Some(2400) };
-const FORGET_DEAD: forget_memory::Params = forget_memory::Params { forget: &play_dead::PLAY_DEAD_TICKS, clear_target: false, hunting_cooldown: None };
+const ERASE_TARGET: erase_memory_if::Params = erase_memory_if::Params { when: is_breeding, forget: &ATTACK_TARGET };
+/// `BehaviorUtils.isBreeding`: the entity has a breed target.
+fn is_breeding(w: &bevy_ecs::prelude::World, e: bevy_ecs::prelude::Entity) -> bool {
+    present(w, e, &BREED_TARGET)
+}
 const MAKE_LOVE: make_love::Params = make_love::Params { speed: 0.2, ..make_love::Params::DEFAULT };
 const TEMPT: follow_temptation::Params = follow_temptation::Params { speed: 1.25, close: 2.5, look_in_the_eyes: false, dry_speed: Some(0.15) };
 const FOLLOW: follow_adult::Params = follow_adult::Params { speed: 0.6, min: 5.0, max: 17.0, close: 4, eyes: false, player: false, dry_speed: Some(0.15) };
@@ -99,7 +102,9 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
             BEntry { behaviour: &make_love::BEHAVIOUR, activity: "idle", priority: 1, params: &MAKE_LOVE, needs: &[(&VISIBLE_MOBS, Need::Present), (&BREED_TARGET, Need::Absent), (&IS_PANICKING, Need::Absent)], duration: Some((110, 110)), kids: &[] },
             BEntry { behaviour: &set_walk_target_from_attack_target::BEHAVIOUR, activity: "fight", priority: 1, params: &CHASE, needs: &[(&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },
-            BEntry { behaviour: &forget_memory::BEHAVIOUR, activity: "play_dead", priority: 1, params: &FORGET_DEAD, needs: &[(&BREED_TARGET, Need::Present), (&play_dead::PLAY_DEAD_TICKS, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &erase_memory_if::BEHAVIOUR, activity: "play_dead", priority: 1, params: &erase_memory_if::Params { when: is_breeding, forget: &play_dead::PLAY_DEAD_TICKS }, needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &validate_play_dead::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&play_dead::PLAY_DEAD_TICKS, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &count_down_cooldown_ticks::BEHAVIOUR, activity: "core", priority: 3, params: &count_down_cooldown_ticks::Params { key: &TEMPTATION_COOLDOWN_TICKS }, needs: &[(&TEMPTATION_COOLDOWN_TICKS, Need::Present)], duration: None, kids: &[] },
             BEntry {
                 behaviour: &run_one::QUIET,
                 activity: "idle",
@@ -115,7 +120,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &melee_attack::BEHAVIOUR, activity: "fight", priority: 2, params: &BITE, needs: &[(&ATTACK_TARGET, Need::Present), (&ATTACK_COOLING_DOWN, Need::Absent)], duration: None, kids: &[] },
             BEntry { behaviour: &start_attacking::BEHAVIOUR, activity: "idle", priority: 3, params: &START_ATTACK, needs: &[(&ATTACK_TARGET, Need::Absent), (&BREED_TARGET, Need::Absent), (&attackables::NEAREST_ATTACKABLE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &find_liquid::BEHAVIOUR, activity: "idle", priority: 3, params: &find_liquid::Params::DEFAULT, needs: &[(&WALK_TARGET, Need::Absent), (&ATTACK_TARGET, Need::Absent)], duration: None, kids: &[] },
-            BEntry { behaviour: &forget_memory::BEHAVIOUR, activity: "fight", priority: 3, params: &FORGET_TARGET, needs: &[(&BREED_TARGET, Need::Present), (&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &erase_memory_if::BEHAVIOUR, activity: "fight", priority: 3, params: &ERASE_TARGET, needs: &[(&ATTACK_TARGET, Need::Present)], duration: None, kids: &[] },
             BEntry {
                 behaviour: &gate_all::QUIET,
                 activity: "idle",

@@ -164,6 +164,7 @@ impl Game<'_> {
             Body::Other(Target::Item(id)) => {
                 Some(self.ecs.item(id)?.fire_ticks)
             }
+            Body::Other(Target::Boat(id)) => self.ecs_number(id, "Fire"),
             Body::Other(_) => None,
         }
     }
@@ -255,6 +256,7 @@ impl Game<'_> {
             }
             Some(Target::Stand(id)) => self.armor_stand_edit(id, |s| s.fire_ticks = ticks),
             Some(Target::Item(id)) => self.ecs_put(id, "Fire", Tag::Short(ticks as i16)),
+            Some(Target::Boat(id)) => self.ecs_put(id, "Fire", Tag::Short(ticks as i16)),
             _ => false,
         }
     }
@@ -586,8 +588,9 @@ mod tests {
 
             // 43 is the stand and 44 the item: an allocator that keeps answering a taken id never ends.
             game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 50));
+            // A boat is an `Entity` too: its fire ticks are its saved `Fire`, 0 when it never burned.
             let boat = game.entity(50).unwrap();
-            assert_eq!(boat.fire_ticks(game), None);
+            assert_eq!(boat.fire_ticks(game), Some(0));
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
             assert_eq!(stale.fire_ticks(game), None);
         });
@@ -670,7 +673,7 @@ mod tests {
             crate::game::ecs::test_support::place_test_mob(game, 60, "minecraft:cow", [0.0; 3]).unwrap();
             let mob = game.entity(60).unwrap();
             assert_eq!(mob.portal_cooldown(game), Some(0));
-            game.set_portal_cooldown(40);
+            game.set_portal_cooldown(60);
             assert_eq!(mob.portal_cooldown(game), Some(300));
             game.handle_entity_portals();
             assert_eq!(mob.portal_cooldown(game), Some(299));

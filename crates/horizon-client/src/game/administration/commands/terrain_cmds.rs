@@ -988,7 +988,7 @@ mod loot_mine_component_tests {
         let id = game
             .armor_stand_list()
             .iter()
-            .find(|s| game.persist.uuids.get(&s.id) == Some(&[60, 0, 0, 1]))
+            .find(|s| game.ecs.uuid_words(s.id) == Some([60, 0, 0, 1]))
             .unwrap()
             .id;
         let before_stand = game.command_target_nbt(Target::Stand(id)).unwrap();

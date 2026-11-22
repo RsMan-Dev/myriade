@@ -75,6 +75,12 @@ impl EcsWorld {
         portal::usable(self.world(), e, false)
     }
 
+    /// `Entity.portal_after_move` of the kinds that apply portal effects before their base tick: projectiles and tridents.
+    pub fn portal_after_move(&self, e: Entity) -> bool {
+        let w = self.world();
+        w.get::<crate::projectile::Projectile>(e).is_some() || w.get::<crate::trident::Trident>(e).is_some()
+    }
+
     /// The box of the entity, width and height (`Body`).
     pub fn portal_size(&self, e: Entity) -> Option<(f32, f32)> {
         portal::size_of(self.world(), e)

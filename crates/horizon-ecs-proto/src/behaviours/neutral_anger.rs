@@ -5,6 +5,7 @@
 use super::*;
 use crate::cow::now_of;
 use crate::goals::{Events, GoalSlot, Req, Requests};
+use crate::hostile::HurtBy;
 use crate::rules::neutral_anger::{anger_countdown, ticks_until};
 use crate::targeting::{Target, Who};
 
@@ -132,6 +133,18 @@ pub fn anger_at(w: &World, e: Entity) -> Option<Who> {
     }
 }
 
+/// `NeutralMob.stopBeingAngry`: the anger ends with its target and the last hit it took from it.
+pub fn stop_being_angry(w: &mut World, e: Entity) {
+    set_boost(w, e, false);
+    if let Some(mut a) = w.get_mut::<Anger>(e) {
+        a.holding = false;
+        a.at = None;
+        a.at_player = false;
+    }
+    w.entity_mut(e).remove::<Angry>().remove::<HurtBy>();
+    crate::targeting::clear_target(w, e);
+}
+
 /// Arms the deadline at `at` (the entity's own time), as far as the wheel reaches.
 fn arm_to(w: &mut World, e: Entity, slot: u8, at: u64) {
     let now = now_of(w, e);
@@ -165,6 +178,26 @@ mod tests {
     }
     fn angry_marker(h: &Herd, e: Entity) -> bool {
         h.world.get::<Angry>(e).is_some()
+    }
+
+    /// The player who died is forgiven, another player is not: the anger and its target end for the first only.
+    #[test]
+    fn a_dead_player_the_anger_is_for_is_forgiven() {
+        if crate::cow::skip_unless_walker("a_dead_player_the_anger_is_for_is_forgiven") {
+            return;
+        }
+        let (mut h, e, _) = pair(21);
+        let mut t = Target::new(Who::Player(7), u16::MAX, u8::MAX);
+        t.must_see = false;
+        t.follow_scale = f64::INFINITY;
+        set_target(&mut h.world, e, t);
+        h.tick();
+        assert_eq!(anger_at(&h.world, e), Some(Who::Player(7)), "the anger is not for the player");
+        assert!(!crate::forgive_dead_player::forgive(&mut h.world, e, 8), "another player was forgiven");
+        assert!(is_angry(&h.world, e), "another player's death ended the anger");
+        assert!(crate::forgive_dead_player::forgive(&mut h.world, e, 7), "the player who died was not forgiven");
+        assert!(!is_angry(&h.world, e) && anger_at(&h.world, e).is_none(), "still angry after the forgiveness");
+        assert!(h.world.get::<Target>(e).is_none(), "the target was kept");
     }
 
     /// Held: angry with no countdown. Lost: angry for a countdown of 400 to 780 ticks, then calm. A target taken again

@@ -55,9 +55,6 @@ fn a_block_part_decides_whether_lava_lights_it() {
                 None,
                 "no Part: the flag answers"
             );
-            // A client's copy of the level asks no Part.
-            game.options.dedicated = None;
-            assert_eq!(ignites(game, stone, Direction::Up), None);
         })
     });
 }

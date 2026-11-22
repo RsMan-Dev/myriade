@@ -3,11 +3,12 @@ use crate::behaviours::{Entry, Module};
 use crate::bridge::host::EcsWorld;
 use crate::goal_edit;
 use bevy_ecs::entity::Entity;
+use horizon_client_lib::mobs::MobWorld;
 
 impl EcsWorld {
     /// `GoalSelector.addGoal` with a ready entry; false when the entity cannot hold it.
-    pub fn add_goal_entry(&mut self, e: Entity, entry: Entry) -> bool {
-        goal_edit::add(self.world_mut(), e, entry)
+    pub fn add_goal_entry(&mut self, mw: &MobWorld<'_>, e: Entity, entry: Entry) -> bool {
+        self.lent(mw, |w| goal_edit::add(w, e, entry))
     }
 
     /// `removeAllGoals` on the goal selector (`target` false) or the target selector, for the modules `pred` accepts.
@@ -16,8 +17,8 @@ impl EcsWorld {
     }
 
     /// `Mob.registerGoals` again.
-    pub fn reset_goals(&mut self, e: Entity) -> bool {
-        goal_edit::reset(self.world_mut(), e)
+    pub fn reset_goals(&mut self, mw: &MobWorld<'_>, e: Entity) -> bool {
+        self.lent(mw, |w| goal_edit::reset(w, e))
     }
 
     /// The goals of a selector in registration order: priority, module, running.

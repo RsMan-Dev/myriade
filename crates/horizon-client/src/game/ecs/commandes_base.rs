@@ -2,6 +2,7 @@
 //! the name and the facing. The callers in `administration/commands` branch on `self.ecs.is_active()`; the host's mob list is the
 //! other branch. The mob is a `Target::Mob` like any other: only its reads move.
 use crate::game::Game;
+use crate::game::commands::Target;
 use crate::lan::entity::EntityState;
 use horizon_client::{command::args::Selector, text::Text};
 use horizon_ecs_proto::bridge::host::Select;
@@ -24,6 +25,37 @@ impl Game<'_> {
         };
         ids.extend(self.ecs.projectiles_in(min, max));
         ids
+    }
+
+    /// The ECS entities a selector may pick, each as the `Target` its kind takes (see `ecs_target_of`).
+    pub(in crate::game) fn ecs_selector_targets(&mut self, s: &Selector, origin: [f64; 3]) -> Vec<Target> {
+        let boats: std::collections::HashSet<u32> = self.ecs.boat_ids().into_iter().collect();
+        let carts: std::collections::HashSet<u32> = self.ecs.cart_ids().into_iter().collect();
+        let ids = self.ecs_mob_candidates(s, origin);
+        ids.into_iter()
+            .map(|id| match self.ecs.kind(id).as_deref() {
+                Some("minecraft:item") => Target::Item(id),
+                Some("minecraft:experience_orb") => Target::Orb(id),
+                Some("minecraft:tnt") => Target::Tnt(id),
+                _ if boats.contains(&id) => Target::Boat(id),
+                _ if carts.contains(&id) => Target::Cart(id),
+                _ => Target::Mob(id),
+            })
+            .collect()
+    }
+
+    /// The `Target` of the ECS entity `id`, by its kind: items, orbs, TNT, boats and carts by their own variant, the others mobs.
+    pub(in crate::game) fn ecs_target_of(&self, id: u32) -> Target {
+        match self.ecs.kind(id) {
+            Some("minecraft:item") => Target::Item(id),
+            Some("minecraft:experience_orb") => Target::Orb(id),
+            Some("minecraft:tnt") => Target::Tnt(id),
+            Some("minecraft:ominous_item_spawner") => Target::Spawner(id),
+            _ if self.ecs.boat_ids().contains(&id) => Target::Boat(id),
+            _ if self.ecs.cart_ids().contains(&id) => Target::Cart(id),
+            _ if self.ecs.dragon_views().iter().any(|(d, _)| *d == id) => Target::Dragon(id),
+            _ => Target::Mob(id),
+        }
     }
 
     /// `Entity.getDisplayName` of the ECS mob `id` by its type: `entity.<type>`. The CustomName, the team's format and the hover

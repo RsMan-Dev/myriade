@@ -3211,6 +3211,16 @@ mod tests {
     use horizon_client::mobs::Mob;
     use horizon_protocol::entity_data::{Value, serializer};
 
+    fn vanilla_root() -> std::path::PathBuf {
+        std::env::var_os("HORIZON_TEST_RESOURCES")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| {
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/horizon-client")
+                    .join(horizon_core::VANILLA_VERSION)
+            })
+    }
+
     fn sync_test_items(
         root: &std::path::Path,
     ) -> std::sync::Arc<horizon_world::item_defaults::ItemData> {
@@ -3228,10 +3238,8 @@ mod tests {
             sync::{SyncCache, cached_sync_data, initialize_world_sync_data},
         };
         use horizon_world::loot::PackOverlay;
-        use std::{path::Path, sync::Arc};
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
+        use std::sync::Arc;
+        let root = vanilla_root();
         let item_data = sync_test_items(&root);
         let preloaded = Arc::new(
             SyncData::load(
@@ -3274,13 +3282,8 @@ mod tests {
             sync::{SyncCache, cached_sync_data, initialize_world_sync_data},
         };
         use horizon_world::loot::PackOverlay;
-        use std::{
-            path::Path,
-            sync::{Arc, Barrier, Mutex},
-        };
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
+        use std::sync::{Arc, Barrier, Mutex};
+        let root = vanilla_root();
         let item_data = sync_test_items(&root);
         let preloaded = Arc::new(
             SyncData::load(
@@ -3369,10 +3372,8 @@ mod tests {
             sync::{SyncCache, initialize_world_sync_data},
         };
         use horizon_world::{damage_source::Catalog, loot::PackOverlay};
-        use std::{path::Path, sync::Arc};
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
+        use std::sync::Arc;
+        let root = vanilla_root();
         let item_data = sync_test_items(&root);
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let preloaded = Arc::new(
@@ -3430,10 +3431,7 @@ mod tests {
             SyncCache, cached_sync_data, initialize_world_sync_data, prepare_sync_reload,
         };
         use horizon_world::{damage_source::Catalog, loot::PackOverlay};
-        use std::path::Path;
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/horizon-client")
-            .join(horizon_core::VANILLA_VERSION);
+        let root = vanilla_root();
         let item_data = sync_test_items(&root);
         let damage = Catalog::load(&root, &PackOverlay::NONE).unwrap();
         let initial = vec![(
@@ -4295,6 +4293,7 @@ mod connected_statistics_save_tests {
         } else {
             "stats-missing"
         });
+        let _ = fs::remove_dir_all(&dir); // left by an earlier run
         fs::create_dir_all(&dir).unwrap();
         game.world_root = dir.clone();
         game.save = Arc::new(horizon_client::save::SaveDir::new(

@@ -25,29 +25,34 @@ fn player_area(feet: [f64; 3], reach: f64) -> Aabb {
 fn take_items(w: &mut World, uuid: [i32; 4], area: Aabb, room: &mut dyn FnMut(&ItemStack) -> u32) -> Vec<(u32, ItemStack, [f64; 3])> {
     let mut out = Vec::new();
     for e in item::items_in(w, area) {
-        if !item::pickable(w, e) {
-            continue;
-        }
-        let Some(it) = w.get::<Item>(e) else { continue };
-        if it.target.is_some_and(|t| t != uuid) {
-            continue;
-        }
-        let (count, mut taken) = (it.stack.count, it.stack.clone());
-        let n = room(&taken).min(count);
-        if n == 0 {
-            continue;
-        }
-        taken.count = n;
-        let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
-        let id = crate::bridge::ids::id_of(w, e).unwrap_or(0);
-        if n == count {
-            w.entity_mut(e).despawn();
-        } else if let Some(mut it) = w.get_mut::<Item>(e) {
-            it.stack.count = count - n;
-        }
-        out.push((id, taken, at));
+        out.extend(take_entity(w, uuid, e, room));
     }
     out
+}
+
+/// One stack taken by the player `uuid`, as `take_items` takes it; the rest stays under the same entity.
+fn take_entity(w: &mut World, uuid: [i32; 4], e: Entity, room: &mut dyn FnMut(&ItemStack) -> u32) -> Option<(u32, ItemStack, [f64; 3])> {
+    if !item::pickable(w, e) {
+        return None;
+    }
+    let it = w.get::<Item>(e)?;
+    if it.target.is_some_and(|t| t != uuid) {
+        return None;
+    }
+    let (count, mut taken) = (it.stack.count, it.stack.clone());
+    let n = room(&taken).min(count);
+    if n == 0 {
+        return None;
+    }
+    taken.count = n;
+    let at = w.get::<Pos>(e).map_or([0.0; 3], |p| [p.0.x, p.0.y, p.0.z]);
+    let id = crate::bridge::ids::id_of(w, e).unwrap_or(0);
+    if n == count {
+        w.entity_mut(e).despawn();
+    } else if let Some(mut it) = w.get_mut::<Item>(e) {
+        it.stack.count = count - n;
+    }
+    Some((id, taken, at))
 }
 
 impl EcsWorld {
@@ -66,6 +71,47 @@ impl EcsWorld {
             return Vec::new();
         }
         self.lent(mw, |w| take_items(w, uuid, player_area(feet, reach), room))
+    }
+
+    /// The network ids and stacks of the stacks in the player's box at `feet` that it may take now, without taking them.
+    pub fn pickup_candidates(&mut self, mw: &MobWorld<'_>, who: Who, uuid: [i32; 4], feet: [f64; 3], reach: f64) -> Vec<(u32, ItemStack)> {
+        if !matches!(who, Who::Player(_)) {
+            return Vec::new();
+        }
+        self.lent(mw, |w| {
+            item::items_in(w, player_area(feet, reach))
+                .into_iter()
+                .filter(|&e| item::pickable(w, e))
+                .filter_map(|e| {
+                    let it = w.get::<Item>(e)?;
+                    (it.target.is_none_or(|t| t == uuid)).then(|| (crate::bridge::ids::id_of(w, e).unwrap_or(0), it.stack.clone()))
+                })
+                .collect()
+        })
+    }
+
+    /// The stack `id` in the player's box at `feet`, taken as `room` accepts: what it took and its place, `None` when the box does not hold it
+    /// or the player may not take it. A stack not taken whole stays under `id`.
+    pub fn pickup_item(
+        &mut self,
+        mw: &MobWorld<'_>,
+        who: Who,
+        uuid: [i32; 4],
+        id: u32,
+        feet: [f64; 3],
+        reach: f64,
+        room: &mut dyn FnMut(&ItemStack) -> u32,
+    ) -> Option<(ItemStack, [f64; 3])> {
+        if !matches!(who, Who::Player(_)) {
+            return None;
+        }
+        let e = self.entity_of(id)?;
+        self.lent(mw, |w| {
+            if !item::items_in(w, player_area(feet, reach)).contains(&e) {
+                return None;
+            }
+            take_entity(w, uuid, e, room).map(|(_, stack, at)| (stack, at))
+        })
     }
 
     /// The orbs in the player's box at `feet`, in the order of their ids, each with its network id (bound now with `alloc` when it has none).
@@ -119,4 +165,28 @@ impl EcsWorld {
         item::resolve_expiry(self.world_mut(), e, extend);
     }
 
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn world() -> World {
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
+        item::insert_resources(&mut w);
+        w
+    }
+
+    #[test]
+    fn a_stack_taken_by_its_id_keeps_the_rest_under_that_id() {
+        let mut w = world();
+        let e = item::drop_item(&mut w, ItemStack::new("minecraft:apple", 8), Vec3::new(1.5, 64.0, 1.5), Vec3::new(0.0, 0.0, 0.0), 0);
+        let mut room = |s: &ItemStack| {
+            assert_eq!(s.count, 8, "the room is asked for the whole stack");
+            5
+        };
+        let (taken, _) = take_entity(&mut w, [0; 4], e, &mut room).map(|(_, s, at)| (s, at)).expect("taken");
+        assert_eq!(taken.count, 5);
+        assert_eq!(w.get::<Item>(e).map(|it| it.stack.count), Some(3), "the rest stays under the entity");
+    }
 }

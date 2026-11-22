@@ -4,7 +4,8 @@
 //! host answers with `resolve` (the new entity is born, the old one stays) then `finish` (the old one leaves); else it converts at once.
 use crate::cow::{self, Bounds, Pos, Yaw};
 use crate::despawn;
-use crate::goals::{Equipment, Events, HandStack};
+use crate::goals::{self, Equipment, Events, HandStack};
+use crate::targeting::Who;
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
@@ -52,6 +53,27 @@ pub fn convert_or_ask(w: &mut World, e: Entity, into: &'static str, keep: Conver
         return true;
     }
     convert(w, e, into, keep).is_some()
+}
+
+/// `Zombie.killedEntity`: a zombie that kills a villager on normal or hard turns it into a zombie villager (on normal, half the time).
+/// True when the villager is converted or asked about, so that its death does not follow.
+pub fn zombie_kill(w: &mut World, victim: Entity, by: Option<Who>) -> bool {
+    let Some(Who::Entity(killer)) = by else { return false };
+    if !matches!(crate::effects::difficulty(w), 2 | 3)
+        || species_name(w, killer) != Some("minecraft:zombie")
+        || species_name(w, victim) != Some(crate::species::lists::VILLAGER)
+    {
+        return false;
+    }
+    if crate::effects::difficulty(w) != 3 && goals::chance(w, killer, 0.5) {
+        return false;
+    }
+    convert_or_ask(w, victim, "minecraft:zombie_villager", ConvertKeep::NONE)
+}
+
+fn species_name(w: &World, e: Entity) -> Option<&'static str> {
+    let s = w.get::<cow::SpeciesId>(e)?;
+    w.get_resource::<cow::SpeciesTable>().map(|t| t.0[s.0 as usize].name)
 }
 
 /// The host's answer: `cancel` keeps the entity as it is; otherwise the new entity is born and returned while the old one stays, for

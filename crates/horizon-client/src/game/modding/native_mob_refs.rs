@@ -1,6 +1,7 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
 use horizon_client::mobs::{self, Mob, Species, Who};
+use horizon_ecs_proto::targeting::Who as PWho;
 use mod_api::{EntityRef, LivingRef, MobRef};
 
 /// What decides whether a player can be a mob's target.
@@ -300,13 +301,25 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        match who {
-            Some(who) => self.ecs_mob_target(id, who),
-            None => {
-                self.ecs_with(|ecs, mw| ecs.set_target(mw, id, None));
-            }
-        }
+        self.native_store_target(id, who);
         true
+    }
+
+    /// Stores the target a mod set on the ECS mob `id`, its hook already run: an entity by its ECS entity, a player by its
+    /// entity id. Unlike `ecs_mob_target`, it fires no event again.
+    fn native_store_target(&mut self, id: u32, who: Option<Who>) -> Option<PWho> {
+        let who = match who {
+            None => None,
+            Some(Who::Mob(t)) => self.ecs.entity_of(t).map(PWho::Entity),
+            Some(Who::Player) => self
+                .lan
+                .as_ref()
+                .and_then(|h| h.hub.guest(*h.mob_players.get(&id)?))
+                .and_then(|g| u32::try_from(g.entity_id).ok())
+                .map(PWho::Player),
+        };
+        self.ecs_with(|ecs, mw| ecs.set_target(mw, id, who));
+        who
     }
 
     /// Dispatch a mod-initiated change while the mob remains in the game.
@@ -399,13 +412,8 @@ impl Game<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        match who {
-            Some(who) => self.ecs_mob_target(id, who),
-            None => {
-                self.ecs_with(|ecs, mw| ecs.set_target(mw, id, None));
-            }
-        }
-        true
+        let who = self.native_store_target(id, who);
+        self.ecs.set_brain_attack_target(id, who)
     }
 
     /// The mob flag a handle names: a mob's, or the dragon's own.
@@ -415,7 +423,7 @@ impl Game<'_> {
                 self.ecs_mod_live(id)?;
                 match flag {
                     MobFlag::Aggressive => self.ecs.aggressive(id),
-                    MobFlag::Persistent => self.ecs_flag(id, "PersistenceRequired"),
+                    MobFlag::Persistent => self.ecs.requires_custom_persistence(id),
                 }
             }
             _ => None,
@@ -426,7 +434,7 @@ impl Game<'_> {
             return self.ecs_mod_live(id).is_some()
                 && match flag {
                     MobFlag::Aggressive => self.ecs.set_aggressive(id, value),
-                    MobFlag::Persistent => self.ecs_put_flag(id, "PersistenceRequired", value),
+                    MobFlag::Persistent => self.ecs.set_persistence_required(id, value),
                 };
         }
         false
@@ -479,7 +487,7 @@ impl Game<'_> {
             return None;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).and_then(|_| self.ecs_flag(id, "NoAI"));
+            return self.ecs_mod_live(id).and(self.ecs.no_ai(id));
         }
         None
     }
@@ -492,7 +500,7 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).is_some() && self.ecs_put_flag(id, "NoAI", no_ai);
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_no_ai(id, no_ai);
         }
         false
     }
@@ -533,8 +541,12 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            // The species' baby form is the bridge's (it refuses a species with none).
-            return self.ecs_mod_live(id).is_some() && self.ecs.set_baby(id, baby);
+            // `Mob.setBaby` has a baby form for the ageable, the zombies, the piglin and the zoglin only.
+            let has_baby_form = self.creature_species(id).is_some_and(|s| {
+                use horizon_client::mobs::finalize::ageable;
+                ageable(s) || matches!(s, Species::Zombie | Species::Husk | Species::Drowned | Species::ZombieVillager | Species::ZombifiedPiglin | Species::Piglin | Species::Zoglin)
+            });
+            return has_baby_form && self.ecs_mod_live(id).is_some() && self.ecs.set_baby(id, baby);
         }
         false
     }
@@ -603,7 +615,7 @@ impl Game<'_> {
             return None;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).and(self.ecs.restrict_center(id));
+            return self.ecs_mod_live(id).map(|_| self.ecs.restrict_center(id).unwrap_or([0; 3]));
         }
         None
     }
@@ -615,7 +627,7 @@ impl Game<'_> {
             return None;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).and(self.ecs.restrict_radius(id));
+            return self.ecs_mod_live(id).map(|_| self.ecs.restrict_radius(id).unwrap_or(-1));
         }
         None
     }
@@ -706,7 +718,7 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(id).is_some() && self.ecs_put_flag(id, "CanPickUpLoot", can_pick_up);
+            return self.ecs_mod_live(id).is_some() && self.ecs.set_can_pick_up_loot(id, can_pick_up);
         }
         false
     }
@@ -781,9 +793,18 @@ mod tests {
             };
             check(game, cow, true);
             check(game, wither, false);
-            game.riding = Some(12);
+            let ride = |game: &mut Game<'_>, on: bool| {
+                let (cow_e, rider_e) = (game.ecs.entity_of(12).unwrap(), game.ecs.entity_of(13).unwrap());
+                let w = game.ecs.ecs_mut().unwrap().world_mut();
+                if on {
+                    w.entity_mut(cow_e).insert(horizon_ecs_proto::mount::Riding(rider_e));
+                } else {
+                    w.entity_mut(cow_e).remove::<horizon_ecs_proto::mount::Riding>();
+                }
+            };
+            ride(game, true);
             check(game, cow, false);
-            game.riding = None;
+            ride(game, false);
             check(game, cow, true);
             let stale = MobRef::new(mod_api::EntityRef::new(WorldEpoch::new(999), 12));
             let host: &dyn mod_api::Host = game;

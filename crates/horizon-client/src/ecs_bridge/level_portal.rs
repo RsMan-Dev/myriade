@@ -24,6 +24,10 @@ impl EcsLevel {
     pub fn can_use_portal(&self, id: u32) -> bool {
         self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.can_use_portal(e))
     }
+    /// `Entity.portal_after_move` of the entity `id` (`EcsWorld::portal_after_move`); false when it is absent.
+    pub fn portal_after_move(&self, id: u32) -> bool {
+        self.entity_of(id).zip(self.ecs()).is_some_and(|(e, b)| b.portal_after_move(e))
+    }
     /// The body yaw and head pitch of the entity `id` (`EcsWorld::rotation`).
     pub fn rotation(&self, id: u32) -> Option<[f32; 2]> {
         self.ecs()?.rotation(self.entity_of(id)?)

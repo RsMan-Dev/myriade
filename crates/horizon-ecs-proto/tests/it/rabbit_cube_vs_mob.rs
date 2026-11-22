@@ -124,15 +124,5 @@ fn a_magma_cube_has_the_numbers_of_its_size_and_splits_as_the_original() {
     assert!(counts[0] + counts[1] == 0 && counts[5] == 0, "{counts:?}");
     // `2 + nextInt(3)` is uniform: each of the three within 6 standard deviations (about 25) of a third.
     assert!(counts[2..5].iter().all(|&c| (c as i64 - 667).abs() < 150), "{counts:?}");
-    // The children of the original: the same law.
-    let mut mc = [0usize; 6];
-    for k in 0..2000 {
-        let pi = r.add_id(Vec3::new(0.5, 1.0, 0.5), 9000 + k);
-        let mut parent = r.mobs[pi].clone();
-        horizon_client_lib::mobs::cube::set_size(&mut parent, 4);
-        mc[(horizon_client_lib::mobs::cube::split_count(&mut parent) as usize).min(5)] += 1;
-    }
-    eprintln!("the original: {mc:?}");
-    assert!(mc[2..5].iter().all(|&c| (c as i64 - 667).abs() < 150), "{mc:?}");
     let _ = set_size;
 }

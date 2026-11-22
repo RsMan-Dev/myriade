@@ -273,7 +273,6 @@ impl Game<'_> {
                     return Err(stale());
                 }
             }
-            Target::Other(_) => return Err(stale()),
             Target::Fangs(id) => {
                 // RESTE: Warmup et Owner ne sont pas dans le composant ECS du croc, seuls la place et le cap sont écrits.
                 let at = entity_nbt::position(&tag).ok_or_else(stale)?;
@@ -285,7 +284,7 @@ impl Game<'_> {
                 let Tag::Compound(full) = &tag else { return Err(stale()) };
                 self.ecs_merge_mob(id, full);
             }
-            Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) | Target::Frame(id) | Target::Painting(id) => {
+            Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) | Target::Frame(id) | Target::Painting(id) | Target::Other(id) => {
                 let uuid = self.uuid_for(id);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 let Tag::Compound(patch) = &tag else {
@@ -856,7 +855,8 @@ impl Game<'_> {
         let kind = kind.to_string_lossy();
         let Tag::Compound(c) = &tag else { return None };
         // A species is made by the ECS's spawner; every other entity (boat, cart, TNT, arrow, stand, frame...) is what its compound loads.
-        if !self.res.mob_types().contains_key(&*kind) {
+        // A kind the ECS makes on a summon without saving it (the leash knot) is spawned, not loaded: its load refuses it.
+        if !self.res.mob_types().contains_key(&*kind) && !self.ecs.summons_unsaved(&kind) {
             return self.ecs_load(c).map(Target::Mob);
         }
         self.ecs_spawn(&kind, [p.x, p.y, p.z], Some(c)).map(Target::Mob)
@@ -899,7 +899,18 @@ impl Game<'_> {
             return Err(err("commands.summon.failed.uuid", &[]));
         }
         let canceled = self.persist.joins_canceled;
+        let uuid = entity_nbt::uuid(&tag);
         let target = self.spawn_entity_from_nbt(tag);
+        // The UUID a summoned mob was given is what `target_with_uuid` looks up.
+        if let (Some(Target::Mob(id)), Some(uuid)) = (target, uuid) {
+            if let Some(e) = self.ecs.entity_of(id) {
+                self.ecs.set_uuid(e, uuid);
+            }
+        }
+        // ItemEntity's constructor takes an id, then addEntity discards the empty stack.
+        if target.is_none() && kind == "minecraft:item" {
+            self.next_entity += 1;
+        }
         // A mod kept the entity out: tryAddFreshEntityWithPassengers is false.
         if self.persist.joins_canceled != canceled
             && target.is_none_or(|t| self.target_position(t).is_none())
@@ -1503,14 +1514,10 @@ mod vehicle_container_tests {
                 .concat();
                 let (tag, _) = parse_snbt(&source).unwrap();
                 game.load_boat(tag, Some(uuid), kind);
-                let id = game
-                    .ecs
-                    .boats_in(horizon_core::geometry::Vec3::new(-1.0e6, -1.0e6, -1.0e6), horizon_core::geometry::Vec3::new(1.0e6, 1.0e6, 1.0e6))
-                    .into_iter()
-                    .max()
-                    .unwrap();
+                let id = game.ecs_id_by_uuid(uuid).unwrap();
+                // Only a chest boat has a Chest component: a plain boat holds nothing.
                 assert_eq!(
-                    game.ecs.boat_items(id).unwrap()
+                    game.ecs.boat_items(id).unwrap_or_default()
                         .first()
                         .and_then(Option::as_ref)
                         .map_or(0, |s| s.count),

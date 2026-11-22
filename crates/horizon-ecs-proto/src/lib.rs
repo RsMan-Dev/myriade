@@ -96,6 +96,7 @@ pub mod zone;
 pub mod world_push;
 pub mod spawn_finalize;
 pub mod spawn_gear;
+pub mod forgive_dead_player;
 pub mod spawn_reason;
 pub mod spawn_spawner;
 pub mod spawn_trial;

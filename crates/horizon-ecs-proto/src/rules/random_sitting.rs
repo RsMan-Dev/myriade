@@ -12,6 +12,6 @@ pub fn can_change(free: bool, pose_time: i64, min_pose_time: u64) -> bool {
 }
 
 /// `should_panic` (`goals.rs:1089-1093`): a panic-cause hit within 40 ticks (`hit` is its panic flag and tick), or burning until `burning_until`.
-pub fn should_panic(hit: Option<(bool, u64)>, burning_until: Option<u64>, now: u64) -> bool {
-    hit.is_some_and(|(panic, at)| panic && now.saturating_sub(at) <= 40) || burning_until.is_some_and(|until| until > now)
+pub fn should_panic(hit: Option<(bool, u64)>, burning_until: Option<i64>, now: u64) -> bool {
+    hit.is_some_and(|(panic, at)| panic && now.saturating_sub(at) <= 40) || burning_until.is_some_and(|until| until > now as i64)
 }

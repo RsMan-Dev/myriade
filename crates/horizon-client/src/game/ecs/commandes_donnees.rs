@@ -67,6 +67,15 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_leash_uuid(&self, id: u32) -> Option<[i32; 4]> {
         int_array4(Tag::Compound(self.ecs_mob_tree(id)?).get("leash")?.get("UUID")?)
     }
+    /// The ECS entity whose saved `UUID` is `uuid` (a mob summoned with one), as the selectors read it.
+    pub(in crate::game) fn ecs_id_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
+        if let Some(id) = self.ecs.entity_by_uuid(uuid).and_then(|e| self.ecs.id_of(e)) {
+            return Some(id);
+        }
+        self.ecs.all_ids().into_iter().find(|&id| {
+            self.ecs_mob_tree(id).and_then(|c| int_array4(Tag::Compound(c).get("UUID")?)) == Some(uuid)
+        })
+    }
     /// `OwnableEntity.getOwner`'s UUID of the mob `id`: the ECS tree's `Owner`.
     pub(in crate::game) fn mob_owner_uuid(&self, id: u32) -> Option<[i32; 4]> {
         self.ecs_mob_owner(id)

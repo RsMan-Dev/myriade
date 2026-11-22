@@ -97,7 +97,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let now = crate::cow::now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
     let Some(p) = w.get::<Panic>(e).copied() else { return false };
-    let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
+    let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now as i64);
     if now > p.until && !burning {
         return false;
     }
@@ -152,7 +152,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
     w.entity_mut(e).remove::<Panicking>();
     // `canUse` is asked again at the next selector tick while the damage is recent or the animal burns.
     let until = w.get::<Panic>(e).unwrap().until;
-    if now <= until || w.get::<Burning>(e).is_some_and(|b| b.until > now) {
+    if now <= until || w.get::<Burning>(e).is_some_and(|b| b.until > now as i64) {
         arm(w, e, inst.slot, 2);
     }
 }
@@ -160,7 +160,7 @@ fn stop(w: &mut World, e: Entity, inst: Inst) {
 pub fn ignite(world: &mut World, e: Entity, ticks: u64) {
     let now = crate::cow::now_of(world, e);
     let already = world.get::<Burning>(e).is_some();
-    world.entity_mut(e).insert(Burning { until: now + ticks });
+    world.entity_mut(e).insert(Burning { until: now as i64 + ticks as i64 });
     if !already {
         world.resource_mut::<Events>().ignited.push(e);
     }

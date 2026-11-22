@@ -8,6 +8,7 @@ use horizon_core::nbt::Tag;
 use horizon_ecs_proto::{
     bridge::{leash_save, uuids, view},
     leash::{self, Holder},
+    nbt,
 };
 
 impl EcsLevel {
@@ -17,11 +18,9 @@ impl EcsLevel {
             leash_save::save(w, e, tag);
         }
     }
-    /// Reads the `leash` key of `tag` as a pending lead on `e` (`leash_save::load`).
-    pub fn leash_load(&mut self, e: Entity, tag: &Tag) {
-        if let Some(w) = self.world_mut() {
-            leash_save::load(w, e, tag);
-        }
+    /// Whether the ECS makes `kind` on a summon while it is not saved with its chunk (the leash knot).
+    pub fn summons_unsaved(&self, kind: &str) -> bool {
+        self.world().is_some_and(|w| nbt::declared_unsaved(w, kind))
     }
     /// Ties the pending leads whose holder is there (`leash_save::resolve_pending`).
     pub fn leash_resolve_pending(&mut self) {

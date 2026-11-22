@@ -155,7 +155,7 @@ impl EcsWorld {
 
     /// `spawn` for the reason the host names (`EntitySpawnReason`): kept on the entity (`Spawn`) and told in `Spawned`.
     pub fn spawn_for(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, nbt, reason, None)
+        self.spawn_as(mw, kind, at, nbt, reason, None, None)
     }
 
     /// `spawn_for`, then the species' `finalizeSpawn` for the same reason (`spawn_finalize::finalize`, its class from the species' bits):
@@ -170,11 +170,26 @@ impl EcsWorld {
         special: f32,
         group: Option<crate::spawn_finalize::Group>,
     ) -> Option<(Entity, crate::spawn_finalize::Outcome)> {
+        self.spawn_finalized_at(mw, kind, at, None, reason, special, group)
+    }
+
+    /// `spawn_finalized` whose variant draw reads the place of `finalize_at` (`finalizeSpawn` runs before `snapTo`, so a cat reads the
+    /// origin); None: the place of `at`.
+    pub fn spawn_finalized_at(
+        &mut self,
+        mw: &MobWorld<'_>,
+        kind: &str,
+        at: [f64; 3],
+        finalize_at: Option<[f64; 3]>,
+        reason: crate::spawn_reason::SpawnReason,
+        special: f32,
+        group: Option<crate::spawn_finalize::Group>,
+    ) -> Option<(Entity, crate::spawn_finalize::Outcome)> {
         let shared = match group {
             Some(crate::spawn_finalize::Group::Ageable { variant, .. }) => variant,
             _ => None,
         };
-        let e = self.spawn_as(mw, kind, at, None, reason, shared)?;
+        let e = self.spawn_as(mw, kind, at, None, reason, shared, finalize_at)?;
         Some((e, self.finalize_spawned(mw, e, reason, special, group)))
     }
 
@@ -228,16 +243,16 @@ impl EcsWorld {
 
     /// `spawn` for a creature of the host's natural spawning pass: its `Spawned` event says so (`natural`).
     pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
-        self.spawn_as(mw, kind, at, None, crate::spawn_reason::SpawnReason::Natural, None)
+        self.spawn_as(mw, kind, at, None, crate::spawn_reason::SpawnReason::Natural, None, None)
     }
 
     /// `group`: the variant the pack's group gives (`Group::Ageable::variant`), taken instead of a draw by a species that shares it.
-    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>) -> Option<Entity> {
+    fn spawn_as(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3], nbt: Option<&Compound>, reason: crate::spawn_reason::SpawnReason, group: Option<u8>, draw_at: Option<[f64; 3]>) -> Option<Entity> {
         let natural = reason == crate::spawn_reason::SpawnReason::Natural;
         let table = species_table();
         // A sort with a constructor of its own (the falling block, the TNT...) has no row among the species.
         let sp = table.0.iter().find(|s| s.name == kind);
-        if sp.is_none() && !nbt::builds(kind) {
+        if sp.is_none() && !nbt::declared_with(&self.world, kind) {
             return None;
         }
         // `Mob.checkDespawn`: a creature of a `notInPeaceful` type is discarded at once in peaceful, so it is not made.
@@ -250,6 +265,10 @@ impl EcsWorld {
             // A sort with a constructor of its own (an item, an orb, a falling block) is made by it, with its keys.
             if let Some(made) = nbt::spawn_built(w, kind, Vec3::new(at[0], at[1], at[2]), nbt) {
                 let e = made?;
+                // The keys the constructor did not read (Tags, Motion, NoGravity...) are loaded as for any other kind.
+                if let Some(c) = nbt {
+                    nbt::load(w, e, c);
+                }
                 zone::admit(w, &[e]);
                 view::mark(w, e);
                 crate::bridge::host_events_more::said_spawned(w, e, natural, reason);
@@ -268,11 +287,19 @@ impl EcsWorld {
             match nbt {
                 Some(c) => {
                     nbt::load(w, e, c);
+                    if let Some(horizon_core::nbt::Tag::IntArray(v)) = c.get(&"UUID".into())
+                        && let Ok(words) = <[i32; 4]>::try_from(v.as_slice())
+                    {
+                        crate::bridge::uuids::set_uuid(w, e, words);
+                    }
                 }
                 // `finalizeSpawn`: the variant of a species that draws one, by the biome of the place (one biome here, as `Spawner` has).
                 None => {
                     let mut r = horizon_core::random::LegacyRandom::new(seed as i64);
-                    crate::behaviours::variant::with_place(w, mw, at, |w, place| crate::behaviours::variant::draw_at_spawn(w, e, group, place, &mut r));
+                    crate::behaviours::variant::with_place(w, mw, draw_at.unwrap_or(at), |w, place| {
+                        crate::behaviours::variant::draw_at_spawn(w, e, group, place, &mut r);
+                        crate::behaviours::variant::draw_sound(w, e, &mut r);
+                    });
                 }
             }
             zone::admit(w, &[e]);

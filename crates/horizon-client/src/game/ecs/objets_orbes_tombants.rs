@@ -97,19 +97,51 @@ impl Game<'_> {
         self.ecs = ecs;
         for (id, stack, at) in taken {
             let kind = stack.item.clone();
-            let count = stack.count;
-            let rest = self.native_pickup_insert(&stack);
-            let left = rest.as_ref().map_or(0, |r| r.count);
-            if let Some(rest) = rest {
-                self.ecs_drop_after(rest, feet, [0.0; 3], DROP_DELAY);
-            }
-            let got = count.saturating_sub(left);
-            if got == 0 {
+            // The take left what the room did not hold under `id`: the whole stack is what the inventory is offered.
+            let left_on_ground = self.ecs.item(id).map_or(0, |v| v.stack.count);
+            let mut whole = stack.clone();
+            whole.count = stack.count + left_on_ground;
+            let rest = self.native_pickup_insert(&whole);
+            if rest.as_ref().map_or(0, |r| r.count) == whole.count {
+                let back = rest.unwrap_or(whole);
+                if left_on_ground > 0 {
+                    self.ecs.set_item_stack(id, back);
+                } else {
+                    self.ecs_drop_after(back, feet, [0.0; 3], DROP_DELAY);
+                }
                 continue;
             }
+            // `item_picked_up_post` for a whole pickup, `item_picked_up_partial` for a part: what a mod leaves lies at the feet.
+            let kept = match rest {
+                None => self.native_pickup_post(id, &whole),
+                Some(rest) => self.native_pickup_partial(&whole, rest),
+            };
+            // What the listeners leave on the ground is not picked up.
+            let kept_count = kept.as_ref().map_or(0, |k| k.count);
+            // A listener that kills the item leaves no take animation (the stack was on the ground, now gone).
+            let killed = left_on_ground > 0 && self.ecs.item(id).is_none();
+            match (kept, left_on_ground > 0) {
+                (Some(kept), true) => {
+                    self.ecs.set_item_stack(id, kept);
+                }
+                (Some(kept), false) => {
+                    self.ecs_drop_after(kept, feet, [0.0; 3], DROP_DELAY);
+                }
+                (None, true) => {
+                    if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
+                    }
+                }
+                (None, false) => {}
+            }
+            let got = whole.count - kept_count;
             self.award_stat("picked_up", &kind, got as i32);
-            self.native_entity_left(id);
-            self.add_pickup(Taken::Ecs { id, count: got as i32, at, kind: "item" }, Collector::Player);
+            if left_on_ground == 0 {
+                self.native_entity_left(id);
+            }
+            if !killed {
+                self.add_pickup(Taken::Ecs { id, count: got as i32, at, kind: "item" }, Collector::Player);
+            }
             let mut random = horizon_client::random_source::create();
             let pitch = (random.next_float() - random.next_float()) * 1.4 + 2.0;
             self.audio.play("minecraft:entity.item.pickup", Some(feet), 0.2, pitch);

@@ -9,6 +9,7 @@ use crate::goals::Events;
 use crate::leash::{self, Holder};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
+use horizon_core::nbt::{Compound, JavaString, Tag};
 use std::collections::HashMap;
 
 pub static DEF: Def = Def { name: "minecraft:leash_knot", caps: Some(&[Cap::Transform, Cap::Hanging]), saved: false, ..Def::EMPTY };
@@ -99,7 +100,35 @@ pub fn knot_wake(w: &mut World) {
 
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(KnotIndex::default());
+    crate::nbt::declare(w, DEF.name, crate::nbt::Recipe { saved: false, build: crate::nbt::Build::With(build) });
+}
+
+/// A knot made by `summon`: the knot of the fence cell holding the NBT's position, under the NBT's UUID.
+fn build(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
+    let fence = [at.x.floor() as i32, at.y.floor() as i32, at.z.floor() as i32];
+    let e = tie(w, fence);
+    if let Some(Tag::IntArray(u)) = c.get(&JavaString::from("UUID")) && let Ok(u) = <[i32; 4]>::try_from(u.as_slice()) {
+        crate::bridge::uuids::set_uuid(w, e, u);
+    }
+    Some(e)
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
     s.add_systems(knot_wake.after(crate::cow::block_changes));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use horizon_core::nbt::Compound;
+
+    #[test]
+    fn a_summoned_knot_sits_on_its_fence_under_the_nbt_uuid() {
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
+        let mut c = Compound::new();
+        c.insert("UUID".into(), Tag::IntArray(vec![7193, 0, 0, 1]));
+        let e = crate::nbt::spawn_built(&mut w, DEF.name, Vec3::new(4.5, 64.0, 6.5), Some(&c)).flatten();
+        let e = e.expect("the knot is made");
+        assert_eq!(w.get::<Knot>(e).map(|k| k.fence), Some([4, 64, 6]));
+        assert_eq!(crate::bridge::uuids::entity_by_uuid(&w, [7193, 0, 0, 1]), Some(e));
+    }
 }

@@ -5,7 +5,7 @@ use bevy_ecs::prelude::{Entity, World};
 use super::Def;
 use crate::behaviours::Cap;
 use crate::behaviours::{bed::NEAREST_BED, composter, crop_harvest, jump_on_bed, nearest_bed, nearby_babies, panda_state, play_tag, poi_strolls, gossip, raid, reach_block, ring_bell, schedule, sleep_in_bed, stroll_near_block, summon_defender, victory_celebrate};
-use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, walk_away, walk_to_look_target};
+use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, run_one, stroll, walk_away, walk_to_look_target};
 use crate::brain::sensors::{hurt_by, living, nearest_wanted_item, recent_sighting, secondary_job_site::{self, SECONDARY_JOB_SITE}, villager_babies};
 use crate::brain::*;
 // lot 6
@@ -74,7 +74,6 @@ static BABY_SLICES: &[schedule::Slice] = &[
 /// The look target's walk (`WalkToLookTarget`: speed 0.5, close 2) and the bed jump of a baby (`JumpOnBed`, `is_baby` on the Mob).
 const WALK_LOOK: walk_to_look_target::Params = walk_to_look_target::Params { speed: 0.5, close: 2, ..walk_to_look_target::Params::DEFAULT };
 const BABY_JUMP: jump_on_bed::Params = jump_on_bed::Params { baby: panda_state::is_baby };
-const LAND_STROLL: stroll::Params = stroll::Params { speed: 0.5, h: 10, v: 7, dry_only: false };
 // lot V3 : les hostiles et leur distance (`vanilla_villager_distance`, `neoforge_mob_maps.rs`), le repos sans lit (`Gate.runOne`, absent Home)
 const HOSTILES: village_hostile::Params = village_hostile::Params {
     types: &[
@@ -94,7 +93,7 @@ static PRE_RAID_KIDS: &[Kid] = &[
     Kid { behaviour: &reach_block::BEHAVIOUR, weight: 6, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.75, range: 2.0, too_far: 150, too_long: 200 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None },
     Kid { behaviour: &village_stroll::BEHAVIOUR, weight: 2, params: &village_stroll::Params { speed: 0.75, xz: 10, y: 7 }, needs: &[], duration: None },
 ];
-/// The victory's trigger gate: a sky-seeing spot (weight 5) or a stroll (weight 2).
+/// The raid's trigger gate (run_one while not won): a sky-seeing spot (weight 5) or a stroll (weight 2).
 static RAID_WIN_KIDS: &[Kid] = &[
     Kid { behaviour: &sky_spot::BEHAVIOUR, weight: 5, params: &sky_spot::Params { tries: 10, speed: 0.5 }, needs: &[], duration: None },
     Kid { behaviour: &village_stroll::BEHAVIOUR, weight: 2, params: &village_stroll::Params { speed: 0.55, xz: 10, y: 7 }, needs: &[], duration: None },
@@ -102,7 +101,7 @@ static RAID_WIN_KIDS: &[Kid] = &[
 
 /// Inactivité : flâner ou ne rien faire, au hasard, poids 1 chacun (`villager_brain.rs` ~4151).
 static IDLE_KIDS: &[Kid] = &[
-    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &LAND_STROLL, needs: &[], duration: None },
+    Kid { behaviour: &village_stroll::BEHAVIOUR, weight: 1, params: &village_stroll::Params { speed: 0.5, xz: 10, y: 7 }, needs: &[], duration: None },
     Kid { behaviour: &walk_to_look_target::BEHAVIOUR, weight: 1, params: &WALK_LOOK, needs: &[(&LOOK_TARGET, Need::Present)], duration: None },
     Kid { behaviour: &jump_on_bed::BEHAVIOUR, weight: 1, params: &BABY_JUMP, needs: &[(&NEAREST_BED, Need::Present)], duration: None },
     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 1, params: &(), needs: &[], duration: Some((30, 60)) },
@@ -114,7 +113,7 @@ static IDLE_KIDS: &[Kid] = &[
 
 /// The baby's play (`RunOne` of `VillagerGoalPackages.getPlayPackage`, gated by `VisibleBabies`; the interactions are not ported).
 static PLAY_KIDS: &[Kid] = &[
-    Kid { behaviour: &stroll::BEHAVIOUR, weight: 1, params: &LAND_STROLL, needs: &[], duration: None },
+    Kid { behaviour: &village_stroll::BEHAVIOUR, weight: 1, params: &village_stroll::Params { speed: 0.5, xz: 10, y: 7 }, needs: &[], duration: None },
     Kid { behaviour: &walk_to_look_target::BEHAVIOUR, weight: 1, params: &WALK_LOOK, needs: &[(&LOOK_TARGET, Need::Present)], duration: None },
     Kid { behaviour: &jump_on_bed::BEHAVIOUR, weight: 2, params: &BABY_JUMP, needs: &[(&NEAREST_BED, Need::Present)], duration: None },
     Kid { behaviour: &do_nothing::BEHAVIOUR, weight: 2, params: &(), needs: &[], duration: Some((20, 40)) },
@@ -151,8 +150,9 @@ static CORE: &[BEntry] = &[
     BEntry { behaviour: &look_at_target_sink::BEHAVIOUR, activity: "core", priority: 0,params: &(), needs: &[(&LOOK_TARGET, Need::Present)], duration: Some((45, 90)), kids: &[] },
     BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 1, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
     BEntry { behaviour: &walk_away::BEHAVIOUR, activity: "panic", priority: 1, params: &walk_away::Params { speed: 0.75, desired: 6.0, memory: &HURT_BY_ENTITY }, needs: &[(&HURT_BY_ENTITY, Need::Present)], duration: None, kids: &[] },
-    BEntry { behaviour: &panic::BEHAVIOUR, activity: "panic", priority: 1, params: &panic::Params { speed: 0.75, threat: Some(&HURT_BY_ENTITY) }, needs: &[], duration: Some((60, 60)), kids: &[] },
-    BEntry { behaviour: &sleep_in_bed::BEHAVIOUR, activity: "rest", priority: 0, params: &sleep_in_bed::Params::DEFAULT, needs: &[], duration: None, kids: &[] },
+    BEntry { behaviour: &sleep_in_bed::BEHAVIOUR, activity: "rest", priority: 3,params: &sleep_in_bed::Params::DEFAULT, needs: &[], duration: None, kids: &[] },
+    // `VillagerGoalPackages.getRestPackage`: `SetWalkTargetFromBlockMemory(HOME, 0.5, 1, 150, 1200)` at priority 2
+    BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "rest", priority: 2, params: &reach_block::Params { memory: &HOME, speed: 0.5, range: 1.0, too_far: 150, too_long: 1200 }, needs: &[(&HOME, Need::Present)], duration: None, kids: &[] },
     BEntry { behaviour: &run_one::BEHAVIOUR, activity: "idle", priority: 2, params: &(), needs: &[], duration: None, kids: IDLE_KIDS },
     BEntry { behaviour: &look_at_player_sometimes::BEHAVIOUR, activity: "idle", priority: 1, params: &(), needs: &[(&LOOK_TARGET, Need::Absent), (&VISIBLE_MOBS, Need::Present)], duration: None, kids: &[] },
 ];
@@ -259,6 +259,8 @@ static WORK_KIDS: &[Kid] = &[
     Kid { behaviour: &poi_strolls::TO_POI, weight: 5, params: &(), needs: &[(&JOB_SITE, Need::Present)], duration: None },
     Kid { behaviour: &poi_strolls::TO_POI_LIST, weight: 5, params: &(), needs: &[(&JOB_SITE, Need::Present)], duration: None },
     Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 2, params: &crop_harvest::Params { ripe: crop_ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Present)], duration: None },
+    // `HarvestFarmland` for the other professions: weight 5 (`farmer ? 2 : 5`, jar `getWorkPackage`)
+    Kid { behaviour: &crop_harvest::BEHAVIOUR, weight: 5, params: &crop_harvest::Params { ripe: crop_ripe, replant: crop_leaves }, needs: &[(&JOB_SITE, Need::Present), (&SECONDARY_JOB_SITE, Need::Absent)], duration: None },
 ];
 
 pub static DEF: Def = Def {
@@ -273,10 +275,10 @@ pub static DEF: Def = Def {
         initial: &[],
         behaviours: &[
             BEntry { behaviour: &schedule::BEHAVIOUR, activity: "core", priority: 0, params: &schedule::Params { adult: ADULT_SLICES, baby: BABY_SLICES }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "work", priority: 0, params: &reach_block::Params { memory: &JOB_SITE, speed: 0.5, range: 9.0, too_far: 100, too_long: 1200 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "work", priority: 2, params: &reach_block::Params { memory: &JOB_SITE, speed: 0.5, range: 9.0, too_far: 100, too_long: 1200 }, needs: &[(&JOB_SITE, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "work", priority: 5, params: &(), needs: &[], duration: None, kids: WORK_KIDS },
-            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "meet", priority: 0, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.5, range: 6.0, too_far: 100, too_long: 200 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
-            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "meet", priority: 1, params: &stroll_near_block::Params { memory: &MEETING_POINT, speed: 0.4, max_dist: 40.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &reach_block::BEHAVIOUR, activity: "meet", priority: 2, params: &reach_block::Params { memory: &MEETING_POINT, speed: 0.5, range: 6.0, too_far: 100, too_long: 200 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
+            BEntry { behaviour: &stroll_near_block::BEHAVIOUR, activity: "meet", priority: 2, params: &stroll_near_block::Params { memory: &MEETING_POINT, speed: 0.4, max_dist: 40.0 }, needs: &[(&MEETING_POINT, Need::Present)], duration: None, kids: &[] },
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "play", priority: 0, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((80, 120)), kids: &[] },
             BEntry { behaviour: &play_tag::BEHAVIOUR, activity: "play", priority: 5, params: &PLAY_TAG, needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "play", priority: 5, params: &(), needs: &[(&nearby_babies::NEARBY_BABIES, Need::Absent)], duration: None, kids: PLAY_KIDS },
@@ -323,12 +325,13 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &run_one::BEHAVIOUR, activity: "pre_raid", priority: 0, params: &(), needs: &[], duration: None, kids: PRE_RAID_KIDS },
             BEntry { behaviour: &hide::HIDDEN_STATE, activity: "hide", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &hide::BEHAVIOUR, activity: "hide", priority: 1, params: &hide::Params { homes: village_home_walk::homes, radius: 32, speed: 0.625, close: 2, home: &HOME }, needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &hide::REACT_TO_BELL, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
-            BEntry { behaviour: &raid_status::SET, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &hide::REACT_TO_BELL, activity: "core", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &raid_status::SET, activity: "core", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &raid_status::RESET, activity: "core", priority: 3, params: &(), needs: &[], duration: None, kids: &[] },
             // The raid package's `LocateHidingPlace(24, 0.7, 1)` behind `raidExistsAndActive`: a raid on and not won (the activity's requirement holds the first part).
             BEntry { behaviour: &hide::BEHAVIOUR, activity: "raid", priority: 2, params: &hide::Params { homes: village_home_walk::homes, radius: 24, speed: 0.7, close: 1, home: &HOME }, needs: &[(&raid::RAID_VICTORY_ON, Need::Absent)], duration: None, kids: &[] },
-            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "raid", priority: 1, params: &(), needs: &[(&raid::RAID_VICTORY_ON, Need::Present)], duration: None, kids: RAID_WIN_KIDS },
+            // `getRaidPackage`: the sky spot and the stroll run while the raid exists and is not won (`raidExistsAndNotVictory`), priority 0
+            BEntry { behaviour: &run_one::BEHAVIOUR, activity: "raid", priority: 0, params: &(), needs: &[(&raid::RAID_VICTORY_ON, Need::Absent)], duration: None, kids: RAID_WIN_KIDS },
             // lot V2 : commerce et vie sociale (`FollowTradingPlayer` core 3 ; `GoToWantedItem` core 5 ; `ShowTrades` work 10, meet 10, idle 3 ;
             // `trade_gate` = `TradeWithVillager` meet 3, idle 3 ; `RestockIfDue` dans `WorkAtPoi` (run_one work 5) ; `SocializeAtBell` dans un trigger_gate meet 2 ;
             // `GiveGiftToHero` work, meet, idle 3)
@@ -347,6 +350,7 @@ pub static DEF: Def = Def {
         ],
     },
     draws: Some(&crate::behaviours::spawn_draw::VILLAGER_TYPE),
+    merchant: true,
     ..Def::EMPTY
 };
 

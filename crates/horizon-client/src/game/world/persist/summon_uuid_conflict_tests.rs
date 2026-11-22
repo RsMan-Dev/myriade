@@ -55,7 +55,7 @@ fn cloud_fangs_and_kept_entities_keep_their_constructor_uuid() {
                     }
                 };
                 let expected = saved.unwrap_or(CONSTRUCTOR_UUID);
-                assert_eq!(game.persist.uuid_of(id), Some(expected), "{kind} {saved:?}");
+                assert_eq!(game.ecs.uuid_words(id), Some(expected), "{kind} {saved:?}");
                 assert_eq!(
                     game.uuid_for(id),
                     expected,

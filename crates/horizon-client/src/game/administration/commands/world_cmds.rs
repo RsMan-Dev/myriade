@@ -1458,8 +1458,9 @@ impl Game<'_> {
         removed_y: Option<f64>,
         notified: bool,
     ) {
-        // RESTE-SANS-ECS: it dismounted only riders retained off the level, now retired.
-        let _ = (rider, removed_y, notified);
+        // The ECS's rider gets off; the vehicle's removal and the notice are the ECS's own.
+        let _ = (removed_y, notified);
+        self.ecs_dismount(rider);
     }
     /// Where `dismount_mob` sets object `rider` down off the vehicle `v`: None when
     /// `v` is no boat, cart or mob.
@@ -1468,9 +1469,12 @@ impl Game<'_> {
         v: u32,
         rider: u32,
     ) -> Option<horizon_core::geometry::Vec3> {
-        // RESTE-SANS-ECS: the rider and vehicle were retained off-level objects, now retired.
-        let _ = (v, rider);
-        None
+        if self.ecs_vehicle_of(rider) != Some(v) {
+            return None;
+        }
+        let mw = self.mob_world_base(&[]);
+        let [x, y, z] = self.ecs.dismount_point(&mw, self.ecs.entity_of(v)?)?;
+        Some(horizon_core::geometry::Vec3::new(x, y, z))
     }
 
     // ---- /spreadplayers -----------------------------------------------------------------------
@@ -1939,7 +1943,7 @@ mod vehicle_damage_command_tests {
                         horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
                         horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
                     ))
-                    .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
+                    .find(|id| game.ecs.uuid_words(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(
                     game.run_command(&format!("damage {uuid} 1 minecraft:generic")),
@@ -1976,7 +1980,7 @@ mod vehicle_damage_command_tests {
                         horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
                         horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
                     ))
-                    .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
+                    .find(|id| game.ecs.uuid_words(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
                 if kind == "oak_boat" {
@@ -2000,7 +2004,7 @@ mod vehicle_damage_command_tests {
                         horizon_core::geometry::Vec3::new(0.0, 0.0, 0.0),
                         horizon_core::geometry::Vec3::new(20.0, 256.0, 10.0),
                     ))
-                    .find(|id| game.persist.uuid_of(*id) == Some([500, 0, 0, n]))
+                    .find(|id| game.ecs.uuid_words(*id) == Some([500, 0, 0, n]))
                     .unwrap();
                 assert!(!game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
                 if kind == "oak_boat" {

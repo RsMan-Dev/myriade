@@ -902,12 +902,8 @@ impl Game<'_> {
             }
             return Some(Target::Player);
         }
-        self.persist.uuids.iter().find_map(|(&id, found)| {
-            if *found != uuid {
-                return None;
-            }
-            self.level_entity(i32::try_from(id).ok()?)
-        })
+        // The ECS answers for the entities of the level (the residency table holds none).
+        self.ecs_id_by_uuid(uuid).map(|id| self.ecs_target_of(id))
     }
     /// The highest block of a heightmap type at a column (`Level.getHeight`).
     fn heightmap_at(&self, kind: &str, x: i32, z: i32) -> i32 {

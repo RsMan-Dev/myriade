@@ -219,6 +219,9 @@ pub fn save(w: &World, e: Entity) -> Option<Compound> {
     if let Some(k) = w.get::<crate::cow::Contact>(e) {
         c.insert("OnGround".into(), Tag::Byte(i8::from(k.on_ground)));
     }
+    if let Some(u) = w.get::<crate::bridge::uuids::EntityUuid>(e) {
+        c.insert("UUID".into(), Tag::IntArray(crate::bridge::uuids::to_words(u.0).to_vec()));
+    }
     if let Some(reg) = w.get_resource::<NbtFields>() {
         for &i in applicable_indices(w, e).iter() {
             (reg.fields[i].0.write)(w, e, &mut c);
@@ -265,6 +268,7 @@ fn distribute(w: &mut World, e: Entity, c: &Compound) -> (usize, Vec<String>) {
     let fields: Vec<Field> = w.get_resource::<NbtFields>().map_or_else(Vec::new, |reg| idx.iter().map(|&i| reg.fields[i].0.clone()).collect());
     let mut refused = 0;
     let mut taken = BTreeSet::new();
+    eprintln!("PROBE idx={:?} fields={:?} keys={:?}", idx.to_vec(), fields.iter().map(|f| f.key.to_string()).collect::<Vec<_>>(), c.keys().map(|k| k.to_string_lossy()).collect::<Vec<_>>());
     for f in fields {
         let Some(v) = c.get(&JavaString::from(f.key.as_ref())) else { continue };
         taken.insert(f.key.to_string());
@@ -314,6 +318,7 @@ fn send(w: &mut World, e: Entity, keys: Vec<String>) {
 pub fn load(w: &mut World, e: Entity, c: &Compound) -> Option<usize> {
     if w.get::<Saved>(e).is_none() { return None; }
     let (refused, changed) = distribute(w, e, c);
+    crate::bridge::leash_save::load(w, e, c);
     // `Entity.load` poses `OnGround` as the contact (the mirror of `save`).
     if let Some(Tag::Byte(on)) = c.get(&JavaString::from("OnGround")) && let Some(mut k) = w.get_mut::<crate::cow::Contact>(e) {
         k.on_ground = *on != 0;
@@ -762,13 +767,28 @@ pub fn builds(kind: &str) -> bool {
     crate::nbt_fields::things::builders().iter().any(|(id, _)| *id == kind)
 }
 
+/// Whether `kind` is made by a builder of its own: a builder table entry, or a declared recipe that builds.
+pub fn declared_with(w: &World, kind: &str) -> bool {
+    builds(kind) || recipe_of(w, kind).is_some_and(|r| matches!(r.build, Build::With(_)))
+}
+
+/// Whether `kind` is a declared recipe that builds and is not saved with its chunk (a summon makes it; a load does not).
+pub fn declared_unsaved(w: &World, kind: &str) -> bool {
+    recipe_of(w, kind).is_some_and(|r| !r.saved && matches!(r.build, Build::With(_)))
+}
+
 pub fn spawn_built(w: &mut World, kind: &str, at: Vec3, nbt: Option<&Compound>) -> Option<Option<Entity>> {
-    if !crate::nbt_fields::things::builders().iter().any(|(id, _)| *id == kind) {
+    let declared = recipe_of(w, kind).filter(|r| matches!(r.build, Build::With(_)));
+    if declared.is_none() && !crate::nbt_fields::things::builders().iter().any(|(id, _)| *id == kind) {
         return None;
     }
     let mut c = nbt.cloned().unwrap_or_default();
     c.insert("id".into(), Tag::String(kind.into()));
     c.insert("Pos".into(), Tag::List(vec![Tag::Double(at.x.to_bits()), Tag::Double(at.y.to_bits()), Tag::Double(at.z.to_bits())]));
+    // A summoned kind not saved with its chunk is made by its builder all the same: `saved` only decides what a chunk keeps.
+    if let Some(Recipe { build: Build::With(b), saved: false }) = declared {
+        return Some(b(w, at, &c));
+    }
     Some(restore(w, &c))
 }
 
@@ -816,8 +836,47 @@ fn restore_one(w: &mut World, c: &Compound) -> Option<Entity> {
         if w.get::<crate::behaviours::variant::Variant>(e).is_none() && crate::behaviours::variant::table_of(w, e).is_some() {
             crate::behaviours::variant::set_variant(w, e, 0);
         }
+        // `Entity.load` without `Rotation` sets yaw and pitch to 0 (`setYRot(0)`, `setXRot(0)`): the spawn's draw does not stay.
+        if c.get(&JavaString::from("Rotation")).is_none() {
+            w.entity_mut(e).insert(crate::cow::Yaw(0.0)).remove::<crate::nbt_fields::common::Pitch>();
+        }
         load(w, e, c);
+        // The saved `UUID` names the entity in the table of `entity_by_uuid` (a summon or a load of a mob).
+        if let Some(Tag::IntArray(v)) = c.get(&JavaString::from("UUID"))
+            && let Ok(words) = <[i32; 4]>::try_from(v.as_slice())
+        {
+            crate::bridge::uuids::set_uuid(w, e, words);
+        }
     }
     w.trigger(Restored { entity: e });
     Some(e)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::cow::{Herd, Yaw};
+    use crate::nbt_fields::common::Pitch;
+    use horizon_core::nbt::{parse_snbt, Tag};
+
+    #[test]
+    fn restore_without_rotation_is_yaw_and_pitch_zero() {
+        let mut h = Herd::with_slab_awake(16, true, false);
+        let (tag, _) = parse_snbt(r#"{id:"minecraft:pig",Pos:[1d,70d,2d],NoAI:1b}"#).unwrap();
+        let Tag::Compound(c) = tag else { panic!() };
+        let e = crate::nbt::restore(&mut h.world, &c).unwrap();
+        assert_eq!(h.world.get::<Yaw>(e).map(|y| y.0), Some(0.0));
+        assert_eq!(h.world.get::<Pitch>(e).map_or(0.0, |p| p.0), 0.0);
+    }
+
+    #[test]
+    fn a_recipe_summon_keeps_the_keys_its_constructor_did_not_read() {
+        let mut h = Herd::with_slab_awake(16, true, false);
+        let (tag, _) = parse_snbt(r#"{Value:3s,Tags:["a"],UUID:[I;1,2,3,4],NoGravity:1b}"#).unwrap();
+        let Tag::Compound(c) = tag else { panic!() };
+        let e = super::spawn_built(&mut h.world, crate::species::lists::EXPERIENCE_ORB, super::Vec3::new(4.5, 64.0, 4.5), Some(&c)).flatten().unwrap();
+        super::load(&mut h.world, e, &c).unwrap();
+        let saved = super::save(&h.world, e).unwrap();
+        assert_eq!(saved.get(&"Tags".into()), Some(&Tag::List(vec![Tag::String("a".into())])));
+        assert_eq!(saved.get(&"UUID".into()), Some(&Tag::IntArray(vec![1, 2, 3, 4])));
+    }
 }

@@ -8,7 +8,7 @@ use crate::targeting::{self, Target, Who};
 
 pub static BEHAVIOUR: Behaviour = Behaviour {
     name: "minecraft:start_attacking",
-    mems: &[&ATTACK_TARGET, &crate::brain::sensors::attackable::NEAREST_ATTACKABLE, &HURT_BY_ENTITY, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &CANT_REACH_WALK_TARGET_SINCE],
+    mems: &[&ATTACK_TARGET, &crate::brain::sensors::attackable::NEAREST_ATTACKABLE, &HURT_BY_ENTITY, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &CANT_REACH_WALK_TARGET_SINCE, &ANGRY_AT, &NEAREST_VISIBLE_NEMESIS],
     requires: &[Cap::Brain, Cap::Targets],
     one_shot: true,
     can_start,
@@ -22,6 +22,8 @@ pub enum Finder {
     NearestVisiblePlayer,
     /// The `nearest_attackable` memory (the breeze's `BreezeAttackEntitySensor`).
     NearestAttackable,
+    /// `PiglinBruteAi`'s `StartAttacking`: the anger target, then the nearest visible player, then the nemesis (baby piglin).
+    Piglin,
 }
 
 /// `active` is the creaking's `isActive` rule. It is read only by `NearestVisiblePlayer`; the frame has no such rule yet,
@@ -59,6 +61,7 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
             Some(MemValue::Who(who)) => *who,
             _ => return None,
         },
+        Finder::Piglin => return piglin_target(w, e, p),
         Finder::NearestVisiblePlayer => {
             if !(p.active)(w, e) {
                 return None;
@@ -70,6 +73,14 @@ fn target(w: &World, e: Entity, p: &Params) -> Option<Who> {
         }
     };
     (can_attack(w, who) && (p.allowed)(w, who)).then_some(who)
+}
+
+/// The first of the piglin memories that holds an attackable entity.
+fn piglin_target(w: &World, e: Entity, p: &Params) -> Option<Who> {
+    [&ANGRY_AT, &NEAREST_VISIBLE_TARGETABLE_PLAYER, &NEAREST_VISIBLE_NEMESIS].into_iter().find_map(|k| match get(w, e, k) {
+        Some(MemValue::Who(who)) if can_attack(w, *who) && (p.allowed)(w, *who) => Some(*who),
+        _ => None,
+    })
 }
 
 fn can_start(w: &mut World, e: Entity, c: &Ctx) -> bool {

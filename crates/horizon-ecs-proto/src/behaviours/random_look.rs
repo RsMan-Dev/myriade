@@ -6,14 +6,17 @@ use crate::{cow::*, goals::*};
 #[derive(Clone, Copy, Debug)]
 pub struct Params {
     pub period: i32,
+    /// The brain's `RandomLookAround` cooldown: the next look after a tick drawn in `min..=max` (`(150, 250)`); none: `period`.
+    pub interval: Option<(i32, i32)>,
 }
 impl Params {
-    pub const DEFAULT: Self = Self { period: 50 };
+    pub const DEFAULT: Self = Self { period: 50, interval: None };
 }
 /// The ask period; `armed`: its deadline is in the wheel.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Scan {
     pub period: i32,
+    pub interval: Option<(i32, i32)>,
     pub armed: bool,
     pub slot: u8,
 }
@@ -40,7 +43,8 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Scan { period: params::<Params>(p).period, armed: false, slot: inst.slot });
+    let q = params::<Params>(p);
+    w.entity_mut(e).insert(Scan { period: q.period, interval: q.interval, armed: false, slot: inst.slot });
 }
 fn systems(s: &mut Schedule, slot: GoalSlot) {
     s.add_systems(scan_run.in_set(slot));
@@ -49,7 +53,10 @@ fn arm(w: &mut World, e: Entity, inst: Inst) {
     let s = *w.get::<Scan>(e).unwrap();
     let p = w.get::<Pos>(e).unwrap().0;
     if !s.armed && (w.resource::<LazyLook>().watched(p.x, p.z) || holds_a_mover(w, e, inst)) {
-        let wait = with_rng(w, e, |r| 2 * geometric(r, s.period));
+        let wait = with_rng(w, e, |r| match s.interval {
+            Some((lo, hi)) => lo + r.next_int(hi - lo + 1),
+            None => 2 * geometric(r, s.period),
+        });
         crate::goals::arm(w, e, inst.slot, wait);
         w.get_mut::<Scan>(e).unwrap().armed = true;
     }

@@ -434,7 +434,7 @@ fn late_id_kinds_spawned_then_aborted_are_removed() {
             ("minecraft:trident", "{}"),
             ("minecraft:arrow", "{}"),
         ] {
-            summon(game, kind, nbt).unwrap();
+            assert!(summon(game, kind, nbt).is_some(), "{kind} is refused");
         }
         assert_eq!(counts(game), before.map(|n| n + 1));
         game.transaction_close(&seal, false);

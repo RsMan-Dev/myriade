@@ -48,12 +48,67 @@ impl EcsLevel {
         self.write_id(id, |w, e| w.set_aggressive(e, on))
     }
 
-    pub fn set_ai_paused(&mut self, id: u32, on: bool) {
-        self.write_id(id, |w, e| w.set_ai_paused(e, on));
+    pub fn set_ai_paused(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_ai_paused(e, on);
+        })
+    }
+
+    pub fn set_no_ai(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_no_ai(e, on);
+        })
+    }
+
+    pub fn set_brain_attack_target(&mut self, id: u32, who: Option<horizon_ecs_proto::targeting::Who>) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_brain_attack_target(e, who);
+        })
+    }
+
+    pub fn set_can_pick_up_loot(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_can_pick_up_loot(e, on);
+        })
+    }
+
+    pub fn set_persistence_required(&mut self, id: u32, on: bool) -> bool {
+        self.write_id(id, |w, e| {
+            w.set_persistence_required(e, on);
+        })
     }
 
     pub fn set_baby(&mut self, id: u32, baby: bool) -> bool {
         self.write_id(id, |w, e| w.set_baby(e, baby))
+    }
+
+    /// `Entity.isSilent`: the creature `id` is silent (no sound); false when inert or unknown.
+    pub fn is_silent(&self, id: u32) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs().is_some_and(|w| w.world().get::<horizon_ecs_proto::behaviours::elder_curse::Silent>(e).is_some())
+    }
+
+    /// `ServerPlayer.tellNeutralMobsThatIDied`: the neutral creatures in reach of `block` forgive the player `player`.
+    pub fn forgive_dead_players_near(&mut self, block: [i32; 3], player: u32) {
+        if let Some(w) = self.ecs_mut() {
+            horizon_ecs_proto::forgive_dead_player::forgive_in_reach(w.world_mut(), block, player);
+        }
+    }
+
+    /// `Vex.setOwner`: the host mob `owner` owns the creature `id`; false when either is unknown.
+    pub fn set_mob_owner(&mut self, id: u32, owner: u32) -> bool {
+        let Some(o) = self.entity_of(owner) else { return false };
+        self.write_id(id, |w, e| horizon_ecs_proto::tame::set_owner(w.world_mut(), e, Who::Entity(o)))
+    }
+
+    /// `Vex.setLimitedLife`: the creature `id` is hurt each tick once `ticks` have passed.
+    pub fn set_limited_life(&mut self, id: u32, ticks: u64) -> bool {
+        self.write_id(id, |w, e| horizon_ecs_proto::behaviours::limited_life::set_limited_life(w.world_mut(), e, ticks))
+    }
+
+    /// `Vex.setBoundOrigin`: the origin the creature wanders around (`bound_pos`).
+    pub fn set_bound_origin(&mut self, id: u32, at: [i32; 3]) -> bool {
+        self.write_id(id, |w, e| horizon_ecs_proto::behaviours::lay_egg::set_anchor(w.world_mut(), e, at))
     }
 
     pub fn restrict_to(&mut self, id: u32, center: [i32; 3], radius: i32) -> bool {

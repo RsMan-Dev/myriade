@@ -3614,7 +3614,6 @@ impl Game<'_> {
         .collect()
     }
     fn tick_mobs(&mut self) -> Result<()> {
-        self.sync_mob_death_protection();
         self.tick_ecs()?;
         if !self.entity_attachments.is_empty() {
             self.prune_entity_attachments();

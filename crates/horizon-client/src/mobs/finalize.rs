@@ -996,7 +996,6 @@ pub fn ageable(s: Species) -> bool {
             | S::Wolf
             | S::Cat
             | S::Ocelot
-            | S::Parrot
             | S::Bee
             | S::Turtle
             | S::Armadillo

@@ -3,7 +3,7 @@
 use crate::game::Game;
 use bevy_ecs::entity::Entity;
 use horizon_core::nbt::{Compound, JavaString, Tag};
-use super::super::creatures::SpawnSite;
+use super::super::creatures::{Finalized, SpawnSite};
 use horizon_client::mobs::spawn_rules::Reason;
 use horizon_ecs_proto::spawn_reason::SpawnReason;
 
@@ -18,7 +18,11 @@ impl Game<'_> {
     /// mob: finalized "as a summoned one", no mod told) takes `MobSummoned`; `Raw` (created without `finalizeSpawn`: a golem built, an egg
     /// hatched, lightning's horse) takes `Triggered` and is not finalized.
     pub(in crate::game) fn ecs_spawn_mob(&mut self, kind: &str, at: [f64; 3], persistent: bool, yaw: Option<f32>, site: SpawnSite) -> Option<u32> {
-        self.ecs_spawn_mob_in(kind, at, persistent, yaw, site, None).map(|x| x.0)
+        self.ecs_spawn_mob_at(kind, at, persistent, yaw, site, None)
+    }
+    /// `ecs_spawn_mob` whose variant draw reads the place of `finalize_at` (None: `at`).
+    pub(in crate::game) fn ecs_spawn_mob_at(&mut self, kind: &str, at: [f64; 3], persistent: bool, yaw: Option<f32>, site: SpawnSite, finalize_at: Option<[f64; 3]>) -> Option<u32> {
+        self.ecs_spawn_mob_in(kind, at, persistent, yaw, site, None, finalize_at).map(|x| x.0)
     }
     /// `ecs_spawn_mob` for a pack: the group of the previous member goes in (`SpawnGroupData`: its size, and the variant the first
     /// drew) and the next one comes back, None for a site that does not finalize.
@@ -30,13 +34,20 @@ impl Game<'_> {
         yaw: Option<f32>,
         site: SpawnSite,
         group: Option<horizon_ecs_proto::spawn_finalize::Group>,
+        finalize_at: Option<[f64; 3]>,
     ) -> Option<(u32, Option<horizon_ecs_proto::spawn_finalize::Group>)> {
         let special = super::super::creatures::local_difficulty_in(&self.world, at).special();
         let (e, next) = match site {
             SpawnSite::Finalizing(r) => {
                 let reason = ecs_reason(r);
-                let (e, out) = self.ecs_with(|ecs, mw| ecs.spawn_finalized(mw, kind, at, reason, special, group))?;
-                (e, out.group)
+                match self.finalize_spawn_at(kind, at, r, None).0 {
+                    Finalized::Cancelled => return None,
+                    Finalized::Skipped => (self.ecs_with(|ecs, mw| ecs.spawn_for(mw, kind, at, None, reason))?, None),
+                    Finalized::Done => {
+                        let (e, out) = self.ecs_with(|ecs, mw| ecs.spawn_finalized_at(mw, kind, at, finalize_at, reason, special, group))?;
+                        (e, out.group)
+                    }
+                }
             }
             SpawnSite::Plain => {
                 let (e, out) = self.ecs_with(|ecs, mw| ecs.spawn_finalized(mw, kind, at, SpawnReason::MobSummoned, special, group))?;

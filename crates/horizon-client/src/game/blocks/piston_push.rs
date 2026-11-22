@@ -1233,6 +1233,7 @@ mod order_tests {
         )
         .unwrap();
         game.build_registries();
+        game.ecs = game.test_ecs_level();
         game.set_allow_commands(true);
         let registry = &game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1351,6 +1352,7 @@ mod order_tests {
         )
         .unwrap();
         game.build_registries();
+        game.ecs = game.test_ecs_level();
         game.set_allow_commands(true);
         let registry = &game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1446,6 +1448,7 @@ mod order_tests {
         )
         .unwrap();
         game.build_registries();
+        game.ecs = game.test_ecs_level();
         game.set_allow_commands(true);
         let registry = &game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1525,6 +1528,7 @@ mod order_tests {
         )
         .unwrap();
         game.build_registries();
+        game.ecs = game.test_ecs_level();
         game.set_allow_commands(true);
         let registry = &game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();
@@ -1635,6 +1639,7 @@ mod h255_mob_piston_ground_tests {
             game.native_lifecycle
                 .begin_open(mod_api::Authority::IntegratedServer);
             game.build_registries();
+            game.ecs = game.test_ecs_level();
             game.set_allow_commands(true);
 
             let mut center = Chunk::empty(0, 0);

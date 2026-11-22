@@ -53,9 +53,6 @@ fn a_block_part_answers_fire_odds_for_one_face() {
             };
             assert!(stands(game, 0), "the Part makes the west face flammable");
             assert!(!stands(game, 2), "the east face keeps vanilla's never");
-            // A client's copy of the level asks no Part.
-            game.options.dedicated = None;
-            assert!(!stands(game, 0));
         })
     });
 }

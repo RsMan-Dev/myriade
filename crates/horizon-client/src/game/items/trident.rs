@@ -261,36 +261,10 @@ mod tests {
     #[test]
     #[ignore = "porté dans P : trident_hit"]
     fn trident_release_rechecks_stack_durability_after_charge() {
-        use crate::game::{Audio, Options, PlayerMotion, Progress, Settings, load_resources};
+        use crate::game::PlayerMotion;
         use horizon_core::nbt::Tag;
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::IntegratedServer,
-            &Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.game_dir = Some(
-            std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
-                .join("trident-release"),
-        );
-        options.execution_role = crate::game::execution_role::ExecutionRole::IntegratedServer;
-        let mut game = super::Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-            Audio::default(),
-        )
-        .unwrap();
+        let mut resources = None;
+        let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
         game.player =
             Some(PlayerMotion::new(game.motion, super::Vec3::new(4.5, 200.0, 4.5)).unwrap());
 

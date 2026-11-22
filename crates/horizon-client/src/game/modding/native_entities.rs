@@ -101,7 +101,10 @@ impl Game<'_> {
         if let (Some(kind), Some(at)) = (self.ecs.kind(id), self.ecs.position(id)) {
             self.native_mob_spawned(self.dim.id(), kind, at, false);
         }
-        Some(id)
+        // Outside a transaction the walk tells the join now; inside, it is held to the root commit.
+        self.native_joins_flush(false, 0);
+        // A loose object in an unticking chunk is frozen (`Disabled`): it is made, though `exists` (a view) does not see it.
+        self.ecs.entity_of(id).is_some().then_some(id)
     }
 }
 
@@ -112,6 +115,7 @@ enum Apart {
     Cushion(u32),
     Painting(u32),
     Frame(u32),
+    Ecs(u32),
 }
 
 /// An end crystal the ECS holds: its id, the join it came in with and its feet.
@@ -283,10 +287,13 @@ impl Game<'_> {
         use super::entity::Entity;
         use horizon_client::join_seq::{JoinSeq, Joined};
         let mut best: Option<(Slot, u32, JoinSeq)> = None;
-        let mut offer = |slot: Slot, id: u32, seq: JoinSeq| {
-            if skipped.contains(&id) || self.persist.removals.iter().chain(self.persist.destroying_vehicles.iter()).any(|target| {
+        let refused = |id: u32| {
+            skipped.contains(&id) || self.persist.removals.iter().chain(self.persist.destroying_vehicles.iter()).any(|target| {
                 matches!(*target, super::commands::Target::Boat(n) | super::commands::Target::Cart(n) if n == id)
-            }) {
+            })
+        };
+        let mut offer = |slot: Slot, id: u32, seq: JoinSeq| {
+            if refused(id) {
                 return;
             }
             if seq > mark
@@ -311,6 +318,9 @@ impl Game<'_> {
         }
         for f in self.ecs_frames() {
             offer(Slot::Apart(Apart::Frame(f.id)), f.id, f.join);
+        }
+        if let Some((id, seq)) = self.ecs.next_joined(mark, through, |id| refused(id)) {
+            offer(Slot::Apart(Apart::Ecs(id)), id, seq);
         }
         // A toss still being asked (`item_toss`) ends the flush: it and what joined after wait.
         best.filter(|&(_, id, _)| !self.native_lifecycle.held_joins.contains(&id))
@@ -357,13 +367,17 @@ impl Game<'_> {
                 };
                 (kind.into(), block(pos))
             }
+            Slot::Apart(Apart::Ecs(id)) => {
+                let at = self.ecs.position(id).map_or(Vec3::ZERO, |p| Vec3::new(p[0], p[1], p[2]));
+                (self.ecs_kind(id).unwrap_or_default().into(), at)
+            }
         }
     }
     /// Takes the entity out of the level, before it ever ticked.
     fn discard_slot(&mut self, slot: Slot) {
         match slot {
             Slot::Walk(h) => self.discard_entity(h),
-            Slot::Apart(Apart::Crystal(id) | Apart::Cushion(id)) => {
+            Slot::Apart(Apart::Crystal(id) | Apart::Cushion(id) | Apart::Ecs(id)) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     self.ecs.despawn(e);
                 }
@@ -441,6 +455,7 @@ impl Game<'_> {
         }
         let cushions = self.cushion_ids();
         let crystal_ids: Vec<u32> = self.ecs_crystals().into_iter().map(|c| c.id).collect();
+        let followed = self.ecs.followed_ids();
         let live = &mut self.persist.live;
         let mut seen = |id: u32| {
             if let Ok(i) = live.binary_search_by_key(&id, |l| l.0) {
@@ -453,6 +468,7 @@ impl Game<'_> {
         crystal_ids.into_iter().for_each(|id| seen(id));
         cushions.into_iter().for_each(|id| seen(id));
         hanging.into_iter().for_each(|id| seen(id));
+        followed.into_iter().for_each(|id| seen(id));
         while let Some(i) = self.persist.live.iter().position(|l| !l.2) {
             let (id, kind, _) = self.persist.live.remove(i);
             self.entity_section_forget(id);

@@ -53,11 +53,13 @@ impl Clock {
         }
         self.1[i] += d;
     }
-    /// A new entity starts with its own time equal to the world's (its slot may have been an older entity's).
+    /// A new entity's own time starts at 0 now (`tickCount` counts from its creation); its slot may have been an older entity's.
     pub(crate) fn start(&mut self, e: Entity) {
-        if let Some(x) = self.1.get_mut(e.index().index() as usize) {
-            *x = 0;
+        let i = e.index().index() as usize;
+        if self.1.len() <= i {
+            self.1.resize(i + 1, 0);
         }
+        self.1[i] = self.0;
     }
 }
 
@@ -330,7 +332,7 @@ pub(crate) fn due(
             Due::Burn => {
                 if let Ok((e2, burning, imm)) = burners.get(e) {
                     let now = clock.of(e);
-                    if now < burning.until {
+                    if (now as i64) < burning.until {
                         if !imm.is_some_and(|i| i.has(crate::effects::IMMUNE_FIRE)) {
                             queue.add(e2, 1.0, Cause::OnFire);
                         }

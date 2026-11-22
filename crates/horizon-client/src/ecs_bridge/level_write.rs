@@ -8,7 +8,7 @@ use bevy_ecs::entity::Entity;
 use horizon_client_core::potions;
 use horizon_ecs_proto::{
     bridge::host_read_living::effect_kind,
-    effects::{AMBIENT, HIDDEN, Kind},
+    effects::{AMBIENT, HIDDEN, Kind, NO_ICON},
 };
 
 /// The kind of an effect named as the game names it (`poison` or `minecraft:poison`).
@@ -86,7 +86,7 @@ impl EcsLevel {
     pub fn add_effect(&mut self, id: u32, instance: EffectInstance) -> bool {
         let Some(e) = self.entity_of(id) else { return false };
         let Some(kind) = kind_named(instance.id) else { return false };
-        let flags = (if instance.ambient { AMBIENT } else { 0 }) | (if instance.visible { 0 } else { HIDDEN });
+        let flags = (if instance.ambient { AMBIENT } else { 0 }) | (if instance.visible { 0 } else { HIDDEN }) | (if instance.show_icon { 0 } else { NO_ICON });
         self.ecs_mut().is_some_and(|w| w.add_effect(e, kind, instance.amplifier, instance.duration, flags))
     }
     /// An effect by its name, for the entity `e`; true when the list changed.

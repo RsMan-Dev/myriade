@@ -33,6 +33,7 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
     game.build_registries();
     let uuid = [0, 0, 0, 2];
     let tag = Tag::compound([
+        ("id", Tag::String("minecraft:experience_orb".into())),
         ("UUID", Tag::IntArray(uuid.to_vec())),
         (
             "Pos",
@@ -51,7 +52,7 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         panic!("a compound")
     };
     let id = game.ecs_load(&c).unwrap();
-    assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
+    assert_eq!(game.ecs.uuid_words(id), Some(uuid));
     let time = game.world.game_time;
     for raw in [
         None,
@@ -65,7 +66,7 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         for _ in 0..3 {
             let saved = game.entity_nbt_in_level(Target::Orb(id)).unwrap();
             assert_eq!(saved.get("UUID"), Some(&Tag::IntArray(uuid.to_vec())));
-            assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
+            assert_eq!(game.ecs.uuid_words(id), Some(uuid));
             assert_eq!(game.persist.raw.get(&id), raw.as_ref());
             assert_eq!(game.world.game_time, time);
         }

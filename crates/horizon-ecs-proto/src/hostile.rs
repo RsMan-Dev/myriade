@@ -482,7 +482,7 @@ fn equip_ignite_on_hit(w: &mut World, e: Entity, p: &'static (dyn std::any::Any 
 fn ignite_on_hit(w: &mut World, e: Entity, who: Who) {
     let Some(IgniteOnHit(p)) = w.get::<IgniteOnHit>(e).copied() else { return };
     let now = now_of(w, e);
-    if !w.get::<Burning>(e).is_some_and(|b| b.until > now) || crate::equip_stack::get(w, e, 0).is_some() {
+    if !w.get::<Burning>(e).is_some_and(|b| b.until > now as i64) || crate::equip_stack::get(w, e, 0).is_some() {
         return;
     }
     let effective = crate::effects::effective_difficulty(w, e);
@@ -655,7 +655,7 @@ fn sun_burn(
                 crate::behaviours::ender_teleport::random(w, e);
             });
         } else if !fs.in_water && !bodies.get(e).is_ok_and(|(p, bd)| wet_by_weather(level.mw.0, p.0, bd)) {
-            let until = now + 160;
+            let until = now as i64 + 160;
             match burning {
                 None => {
                     wheel.push(clock.at(e, now + 1), e, Due::Burn);

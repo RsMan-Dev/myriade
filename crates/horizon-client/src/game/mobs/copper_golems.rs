@@ -56,8 +56,8 @@ impl Game<'_> {
             self.container_changed(key);
         }
     }
-    /// `CopperGolem.turnToStatue`, which its weathering asked for. RESTE-SANS-ECS:
-    /// the statue, its drops and the leash break have no ECS hook yet.
+    /// Legacy `MobEvent::BecomeStatue` (old AI path only): the ECS turns the golem
+    /// into its statue itself (`coating.rs`, `HostEvent::BecomeBlock` in `sorties.rs`).
     pub(super) fn golem_become_statue(&mut self, _id: u32) {}
     // ---- interactions -----------------------------------------------------
     /// `WeatheringCopperGolemStatueBlock.useItemOn`: an axe on an unoxidized

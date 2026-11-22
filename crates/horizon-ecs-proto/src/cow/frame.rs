@@ -183,7 +183,7 @@ pub struct Nav {
 
 impl Default for Nav {
     fn default() -> Self {
-        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 1.0, searches: 0, last_recompute: 0, delayed: false, reach: 1, cant_reach_since: 0 }
+        Self { path: None, last_check: 0, last_pos: Vec3::ZERO, speed: 0.0, searches: 0, last_recompute: 0, delayed: false, reach: 1, cant_reach_since: 0 }
     }
 }
 

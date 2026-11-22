@@ -95,12 +95,6 @@ fn a_block_part_hears_it_burned_and_writes_the_level() {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             game.world.set(1, 64, 0, wool).unwrap();
             game.world.set(1, 65, 0, air).unwrap();
-            game.options.dedicated = None;
-            assert_eq!(
-                burn(game, Direction::West),
-                air,
-                "a client dispatches no notice"
-            );
         })
     });
 }

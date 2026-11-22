@@ -129,7 +129,8 @@ impl Game<'_> {
         match self.native_living_target(living)? {
             Target::Player => Some(super::item_use::remaining_of(self.using, self.use_duration)),
             Target::Guest(conn) => Some(self.lan.as_ref()?.play.get(&conn)?.use_remaining()),
-            Target::Mob(id) if self.ecs.is_active() => self.mob_item_use_remaining_ecs(id),
+            // Nothing in use reads 0 (`useItemRemainingTicks` of a stopped use), a gone mob None.
+            Target::Mob(id) if self.ecs.is_active() => self.mob_item_use_remaining_ecs(id).or_else(|| self.ecs.entity_of(id).map(|_| 0)),
             _ => None,
         }
     }
@@ -288,8 +289,17 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game as with_plain_game;
     use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
+
+    /// `with_game` with the level's ECS attached, so the mobs placed here exist (`ecs_game_with`).
+    fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+        with_plain_game(|game| {
+            game.ecs = game.test_ecs_level();
+            test(game)
+        });
+    }
+
     use super::super::native_living_position::tests::floor_and_zombies;
     use super::Stuck;
     use horizon_client::items::ItemStack;
@@ -401,6 +411,7 @@ mod tests {
                     horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap(),
                 );
                 crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
+                game.right = true;
                 let player = game.living(game.entity(20).unwrap()).unwrap();
                 test(game, &uses, player);
             });

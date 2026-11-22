@@ -98,7 +98,6 @@ impl Game<'_> {
                 | MobEvent::LidPush{ .. }
                 | MobEvent::Wololo{ .. }
                 | MobEvent::Fangs{ .. }
-                | MobEvent::Shoot(..)
                 | MobEvent::ExplosionSource{ .. }
                 | MobEvent::Explode(..)
                 | MobEvent::LingeringCloud{ .. }

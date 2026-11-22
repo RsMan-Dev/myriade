@@ -21,7 +21,7 @@ fn scene(resources: &mut Option<Arc<crate::game::Resources>>) -> Game<'_> {
     g.build_registries();
     g.set_allow_commands(true);
     let scratch = std::env::current_dir().unwrap().join("guest-fall-reset");
-    assert!(!scratch.exists());
+    let _ = std::fs::remove_dir_all(&scratch); // left by an earlier run
     let folder = scratch.join("data/fall/advancement");
     std::fs::create_dir_all(&folder).unwrap();
     g.world_root = scratch.clone();

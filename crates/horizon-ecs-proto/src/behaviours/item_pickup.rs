@@ -26,8 +26,8 @@ impl Params {
 /// The rule's data of the animal.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct Pickup {
-    reach: [f64; 3],
-    whole_stack: bool,
+    pub(crate) reach: [f64; 3],
+    pub(crate) whole_stack: bool,
     pub(crate) picks_up: bool,
 }
 

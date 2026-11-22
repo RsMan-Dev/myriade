@@ -40,6 +40,8 @@ pub struct Params {
     pub sound: Option<&'static str>,
     /// The item the goal needs in the main hand (`DrownedTridentAttackGoal.canUse`: a trident); `None`: none.
     pub held: Option<&'static str>,
+    /// A chance (`nextFloat < chance`) that a shot is the other flight (the wither's centre head: a blue skull, 0.001).
+    pub blue: Option<(f32, Flight)>,
 }
 impl Params {
     /// Le golem de neige (`golem.rs:554-557`, `golem.rs:580`).
@@ -60,13 +62,14 @@ impl Params {
         marks: false,
         sound: None,
         held: None,
+        blue: None,
     };
     /// The llama's spit (`llama.rs:67`, `llama.rs:159-189`): 40 ticks, 20 blocks, speed 1.5, spread 10, from in front of the body, aimed at a third of the box.
-    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true, sound: None, held: None };
+    pub const LLAMA: Self = Self { speed: 1.25, min: 40, max: 40, radius: 20.0, flight: Flight::SPIT, shot_speed: 1.5, uncertainty: 10.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.5, aim_fraction: 1.0 / 3.0, marks: true, sound: None, held: None, blue: None };
     /// The witch (`witch.rs:20-24`): the same goal at 60 ticks, 10 blocks, a thrown potion.
-    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false, sound: None, held: None };
+    pub const WITCH: Self = Self { speed: 1.0, min: 60, max: 60, radius: 10.0, flight: Flight::POTION, shot_speed: 0.75, uncertainty: 8.0, start_down: 0.1, aim_down: 1.1, lift: 0.2, witch: true, front: 0.0, aim_fraction: 0.0, marks: false, sound: None, held: None, blue: None };
     /// The drowned's trident (`DrownedTridentAttackGoal`: `RangedAttackGoal(1.0, 40, 10.0)` while a trident is held): speed 1.6, spread `14 - 4 * difficulty` (normal), aimed at a third of the box.
-    pub const TRIDENT: Self = Self { speed: 1.0, min: 40, max: 40, radius: 10.0, flight: Flight::TRIDENT, shot_speed: 1.6, uncertainty: 6.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.0, aim_fraction: 1.0 / 3.0, marks: false, sound: None, held: Some(crate::species::lists::TRIDENT) };
+    pub const TRIDENT: Self = Self { speed: 1.0, min: 40, max: 40, radius: 10.0, flight: Flight::TRIDENT, shot_speed: 1.6, uncertainty: 6.0, start_down: 0.1, aim_down: 0.0, lift: 0.2, witch: false, front: 0.0, aim_fraction: 1.0 / 3.0, marks: false, sound: None, held: Some(crate::species::lists::TRIDENT), blue: None };
 }
 /// L'état : le rang de l'entrée, les paramètres, les compteurs du `Mob` et la case où le chemin a été demandé.
 #[derive(Component, Clone, Copy, Debug)]
@@ -232,7 +235,12 @@ fn shoot(w: &mut World, e: Entity, who: Who, p: Params) {
         p.flight.hit = crate::projectile::OnHit::Splash(brews);
         p.shot_speed = rules::witch_speed(dist);
     }
-    let p = p;
+    let mut p = p;
+    if let Some((chance, blue)) = p.blue {
+        if w.get_mut::<Rng>(e).unwrap().next_float() < chance {
+            p.flight = blue;
+        }
+    }
     let yd = rules::aim_height(p.aim_fraction, i.bounds.min(Axis::Y), i.bounds.max(Axis::Y), i.eye, p.aim_down);
     let dir = rules::aim_dir(xd, zd, yd, p.lift, start.y);
     let spread = rules::spread_of(p.uncertainty);

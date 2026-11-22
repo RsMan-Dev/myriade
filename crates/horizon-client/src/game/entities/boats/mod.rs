@@ -292,9 +292,18 @@ impl Game<'_> {
         }
         let player = self.own_entity_id() as u32;
         let guest = self.ridden_by_guest(id);
-        match self.with_ecs(|ecs, mw| ecs.boat_use(mw, id, player, 0, sneaking, false, guest)) {
+        let mut used = self.with_ecs(|ecs, mw| ecs.boat_use(mw, id, player, 0, sneaking, false, guest));
+        // `Entity.startRiding` leaves the vehicle the player sits in: a refused seat is retried once it is left.
+        if matches!(used, UseResult::Pass) && self.riding.is_some_and(|v| v != id) {
+            self.stop_riding();
+            used = self.with_ecs(|ecs, mw| ecs.boat_use(mw, id, player, 0, sneaking, false, guest));
+        }
+        match used {
             UseResult::Pass => false,
-            UseResult::Mounted => true,
+            UseResult::Mounted => {
+                self.start_riding(id);
+                true
+            }
             UseResult::Opened => {
                 self.open_chest_boat_container(id);
                 self.swing_arm();

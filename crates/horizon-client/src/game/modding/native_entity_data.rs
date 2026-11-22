@@ -84,6 +84,12 @@ impl Game<'_> {
     /// 386.
     pub(super) fn entity_name(&self, entity: EntityRef) -> Option<String> {
         let t = self.native_entity_read_target(entity)?;
+        // `Entity.getName`: a named ECS entity answers with its saved `CustomName`.
+        if let Target::Mob(id) = t {
+            if let Some(name) = self.ecs_mob_tree(id).and_then(|c| c.get(&"CustomName".into()).cloned()) {
+                return Some(horizon_client::scoreboard::comp_text(&horizon_client::scoreboard::tag_to_json(&name)).plain());
+            }
+        }
         Some(self.target_name(t).plain())
     }
     /// Names the entity (`Entity.setCustomName`), or takes its name away
@@ -155,7 +161,7 @@ impl Game<'_> {
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(super) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) if self.ecs_has(id) => mob_category_named(self.ecs.category(id)?),
+            Target::Mob(id) if self.ecs_has(id) => self.ecs.category(id).map_or(MobCategory::Misc, mob_category_named),
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
         })

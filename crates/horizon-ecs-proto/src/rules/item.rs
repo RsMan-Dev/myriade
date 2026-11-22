@@ -23,8 +23,8 @@ pub fn expire_at(age_base: i64, now: u64) -> u64 {
 }
 
 /// The wait to the item's next check: the next multiple of 40 ticks of its age in its block.
-pub fn check_wait(born: u64, now: u64) -> u64 {
-    40 - (now - born) % 40
+pub fn check_wait(born: i64, now: u64) -> u64 {
+    40 - ((now as i64 - born) as u64) % 40
 }
 
 /// The pickup delay as a tick count: None when it is set never to be picked up (`i16::MAX` or `u32::MAX`).

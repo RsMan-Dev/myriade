@@ -56,12 +56,11 @@ mod tests {
             let id = game
                 .spawn_dragon_spawned([0.0, 80.0, 0.0], SpawnSite::Plain)
                 .unwrap();
-            game.persist.uuids.insert(id, [19, 23, 29, 31]);
+            let dragon_entity = game.ecs.entity_of(id).unwrap();
+            game.ecs.set_uuid(dragon_entity, [19, 23, 29, 31]);
             let dragon = game.entity(id).unwrap();
             let part = game.entity(id + 1).unwrap();
             let part_uuid = part.uuid(game).expect("dragon parts have UUIDs");
-            // A part can also have saved UUID metadata when it holds attachments.
-            game.persist.uuids.insert(part.id(), uuid_ints(part_uuid));
 
             let host: &dyn ServerHost = game;
             let dragon_uuid = EntityUuid(0x0000_0013_0000_0017_0000_001d_0000_001f);

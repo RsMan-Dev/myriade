@@ -21,6 +21,8 @@ static WILD: Cond = Cond::Not(&Cond::Is("horizon:is_tame"));
 
 pub static DEF: Def = Def {
     name: "minecraft:wolf",
+    sound_on_breed: true,
+    sounds: Some(&["minecraft:angry", "minecraft:big", "minecraft:classic", "minecraft:cute", "minecraft:grumpy", "minecraft:puglin", "minecraft:sad"]),
     variant: Some(&super::variants::WOLF),
     reference: None,
     targets: &[

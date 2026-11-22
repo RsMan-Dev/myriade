@@ -266,8 +266,16 @@ pub struct Def {
     pub not_in_peaceful: bool,
     /// The variant drawn at a spawn (`rules::variant::Table`, `Variant`): `None` for a species with no such draw.
     pub variant: Option<&'static crate::rules::variant::Table>,
+    /// The sound variants of the species (`minecraft:classic` first), drawn at a spawn after `variant`: `None` for a species with none.
+    pub sounds: Option<&'static [&'static str]>,
+    /// Whether a bred baby draws its sound afresh (`Wolf.getBreedOffspring`); the others keep `classic`.
+    pub sound_on_breed: bool,
     /// The extra draws of `finalizeSpawn` (`behaviours::spawn_draw`): marks, genes, colours, sizes, shared group values.
     pub draws: Option<&'static crate::behaviours::spawn_draw::Draws>,
+    /// Whether a made or loaded creature starts with a `Merchant` (a villager's trade, not wandering).
+    pub merchant: bool,
+    /// Whether a made or loaded creature takes no portal (`Entity.canUsePortal`: `WitherBoss.canUsePortal` is false).
+    pub no_portal: bool,
 }
 pub const ALL_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion];
 /// `ALL_CAPS` for a species of `EntityType.fireImmune` (blaze, magma cube, zoglin, zombified piglin).
@@ -280,7 +288,7 @@ pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::B
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, draws: None };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -347,8 +355,16 @@ pub struct Resolved {
     pub lost_horn: Option<f64>,
     /// `Def::variant`.
     pub variant: Option<&'static crate::rules::variant::Table>,
+    /// `Def::sounds`.
+    pub sounds: Option<&'static [&'static str]>,
+    /// `Def::sound_on_breed`.
+    pub sound_on_breed: bool,
     /// `Def::draws`.
     pub draws: Option<&'static crate::behaviours::spawn_draw::Draws>,
+    /// `Def::merchant`.
+    pub merchant: bool,
+    /// `Def::no_portal`.
+    pub no_portal: bool,
     /// `Def::llama_strength`.
     pub llama_strength: bool,
     /// `Def::not_in_peaceful`.
@@ -464,7 +480,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, draws: d.draws });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {
@@ -707,7 +723,7 @@ mod tests {
         ("minecraft:sniffer", &[("float", 0)]),
         ("minecraft:creaking", &[("float", 0), ("stare_freeze", 0)]),
         ("minecraft:breeze", &[("float", 0)]),
-        ("minecraft:hoglin", &[("hurt_by", 1), ("nearest_target", 2), ("retreat_on_hurt", 0), ("float", 0), ("convert_timer", 0), ("melee", 2), ("headbutt", 2), ("breed", 3), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("ambient_sound", 7)]),
+        ("minecraft:hoglin", &[("hurt_by", 1), ("nearest_target", 2), ("retreat_on_hurt", 0), ("float", 0), ("convert_timer", 0), ("melee", 2), ("headbutt", 2), ("breed", 3), ("follow_parent", 4), ("ambient_sound", 7)]),
         ("minecraft:fox", &[("defend_trusted", 3), ("nearest_target", 4), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 4), ("nearest_target", 6), ("nearest_target", 6), ("float", 0), ("climb_on_powder_snow", 0), ("fox_faceplant", 1), ("panic", 2), ("breed", 3), ("avoid_entity", 4), ("avoid_entity", 4), ("avoid_entity", 4), ("fox_stalk_prey", 5), ("fox_pounce", 6), ("seek_shelter", 6), ("melee", 7), ("fox_sleep", 7), ("follow_parent", 8), ("fox_stroll_through_village", 9), ("fox_eat_berries", 10), ("leap_at_target", 10), ("stroll", 11), ("fox_search_for_items", 11), ("look_at_player", 12), ("lookout", 13), ("fox_pick_up_loot", 0), ("eat_held", 0)]),
         ("minecraft:happy_ghast", &[("still_under_riders", 1), ("square_or_face", 0), ("heal_weather", 3), ("float", 3), ("animal_panic", 1), ("tempt", 4), ("float_around", 5)]),
         ("minecraft:zombie", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 3), ("break_door", 1), ("spear_use", 2), ("melee", 3), ("attack_turtle_egg", 4), ("move_through_village", 6), ("stroll", 7), ("look_at_player", 8), ("random_look", 8), ("pick_up_gear", 255), ("convert_in_water", 0)]),
@@ -787,12 +803,12 @@ mod tests {
         ("minecraft:camel_husk", &[("float", 0), ("animal_panic", 1), ("tempt", 3), ("follow_parent", 4), ("stroll", 5), ("random_sitting", 5), ("look_at_player", 6), ("random_look", 7), ("posture", 255)]),
         ("minecraft:nautilus", &[("animal_panic", 0), ("breed", 1), ("tempt", 2), ("charge_attack", 3), ("fish_swim", 4)]),
         ("minecraft:zombie_nautilus", &[("tempt", 1), ("charge_attack", 2), ("fish_swim", 3)]),
-        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("interact_with_door", 0), ("admire", 1), ("admire_seen", 1), ("walk_away", 2), ("flee_repellent", 2), ("ranged_crossbow", 3), ("back_up_if_too_close", 3), ("spear_use", 3), ("melee", 3), ("go_to_wanted", 4), ("celebrate", 4), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
+        ("minecraft:piglin", &[("hurt_by", 1), ("nearest_target", 2), ("hunt_prey", 3), ("float", 0), ("convert_timer", 0), ("walk_away", 2), ("flee_repellent", 2), ("look_at_held", 5), ("stroll", 5), ("look_at_player", 6), ("random_look", 7), ("ambient_sound", 8)]),
         ("minecraft:shulker", &[("hurt_by", 1), ("nearest_target", 2), ("move_emission", 0), ("look_at_player", 1), ("homing_shot", 4), ("peek", 7), ("random_look", 8), ("teleport_on", 0)]),
         ("minecraft:sulfur_cube", &[("bounce_drag", 0), ("float", 1), ("swallow_item", 2), ("burn_on_touch", 2), ("push_on_touch", 2), ("tempt", 3), ("item_seek", 3)]),
         ("minecraft:villager", &[]),
         ("minecraft:warden", &[("hurt_by", 1), ("stroll", 5), ("move_emission", 0), ("emerge", 0), ("dig", 1), ("suspect_anger", 2), ("vibration_listen", 2), ("sonic_boom", 3), ("roar_at_target", 4), ("melee", 5), ("go_to_disturbance", 6), ("sniff", 7), ("darkness_pulse", 8), ("timed_idle", 10), ("stroll", 11), ("float", 9), ("warden_look_target", 9), ("warden_drop_invalid_target", 11)]),
-        ("minecraft:wither", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("invulnerable_charge", 0), ("ranged_attack", 2), ("side_heads", 2), ("side_heads", 2), ("regen", 0), ("block_breaker", 0), ("boss_bar", 0), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
+        ("minecraft:wither", &[("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 2), ("invulnerable_charge", 0), ("do_nothing", 0), ("ranged_attack", 2), ("side_heads", 2), ("side_heads", 2), ("regen", 0), ("block_breaker", 0), ("boss_bar", 0), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:polar_bear", &[("neutral_anger", 255), ("hurt_by", 1), ("nearest_target", 2), ("nearest_target", 3), ("nearest_target", 4), ("float", 0), ("melee", 1), ("panic", 2), ("panic", 2), ("follow_parent", 4), ("stroll", 5), ("look_at_player", 6), ("random_look", 7)]),
         ("minecraft:armor_stand", &[]),
         ("minecraft:shulker_bullet", &[]),

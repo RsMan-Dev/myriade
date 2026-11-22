@@ -283,6 +283,7 @@ pub fn give_birth(w: &mut World, a: Entity, b: Entity) -> Option<Entity> {
     let baby = spawn_like(w, a, pos.x, pos.z, seed);
     crate::species::goat::inherit_screaming(w, baby, a, b);
     crate::behaviours::variant::inherit_baby(w, baby, a, b);
+    crate::behaviours::variant::breed_sound(w, a, baby);
     // The parent's deadline is in its own time: the baby's own time is the world's.
     let active_baby = inherited_deadline(active, now, crate::cow::now_of(w, baby));
     w.get_mut::<ActiveUntil>(baby).unwrap().0 = active_baby;

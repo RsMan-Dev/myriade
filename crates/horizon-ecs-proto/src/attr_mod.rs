@@ -65,6 +65,25 @@ pub fn touched(w: &mut World, e: Entity, name: &str) {
                 }
             }
         }
+        "attack_damage" => {
+            let (base, mods) = match w.get::<AttrMods>(e).and_then(|m| m.0.iter().find(|x| x.0 == name)) {
+                Some(x) => (Some(x.1).filter(|b| !b.is_nan()), x.2.clone()),
+                None => (None, Vec::new()),
+            };
+            let species = w
+                .get::<crate::cow::SpeciesId>(e)
+                .and_then(|s| w.get_resource::<crate::cow::SpeciesTable>().map(|t| t.0[s.0 as usize].attack_damage));
+            if let Some(species) = species {
+                // The variant's added attack (`Rabbit.setVariant`) stays on top of the species' base.
+                let add = match (w.get::<crate::behaviours::variant::Variant>(e), crate::behaviours::variant::table_of(w, e)) {
+                    (Some(v), Some(t)) => t.traits.iter().find(|x| x.variant == v.0).map_or(0.0, |x| f64::from(x.damage_add)),
+                    _ => 0.0,
+                };
+                let all: Vec<Modifier> = mods.into_iter().chain(crate::equip_attrs::of_attribute(w, e, name)).collect();
+                let v = value(base.unwrap_or(f64::from(species) + add), &all) as f32;
+                w.entity_mut(e).insert(crate::cow::AttackDamage(v));
+            }
+        }
         "max_health" => {
             if w.get::<crate::cow::SpeciesId>(e).is_some() && w.get::<crate::cow::MaxHealth>(e).is_some() {
                 let max = crate::cow::max_health(w, e);

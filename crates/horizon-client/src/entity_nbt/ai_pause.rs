@@ -47,8 +47,13 @@ pub fn write_ai_paused(paused: bool, tag: &mut Tag) {
 }
 
 /// Whether `tag` saved the mob paused.
-pub(super) fn read(tag: &Tag) -> bool {
-    tag.get(ATTACHMENTS)
+pub fn read(tag: &Tag) -> bool {
+    matches!(tag, Tag::Compound(c) if paused_in(c))
+}
+
+/// Whether the saved compound `c` holds the pause.
+pub fn paused_in(c: &Compound) -> bool {
+    c.get(&ATTACHMENTS.into())
         .and_then(|a| a.get(NAMESPACE))
         .is_some_and(|names| super::flag(names, NAME))
 }

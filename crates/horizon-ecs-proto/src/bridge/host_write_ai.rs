@@ -1,11 +1,10 @@
 //! The host's writes on the AI of a creature: the path, the move control's wish, the look, the restriction, the sleep, the age, the
 //! pause, the aggression and the no-action count. Each one writes a component the world has, or a marker in sparse storage.
 use horizon_client_lib::mobs::MobWorld;
-use crate::behaviours::{bed::Sleeping, breed::{BreedData, Params}, follow_parent, hurt_by, move_towards_restriction::Restriction};
+use crate::behaviours::{bed::Sleeping, breed::{BreedData, Params}, follow_parent, hurt_by, item_pickup::Pickup, move_towards_restriction::Restriction};
 use crate::bridge::{host::EcsWorld, view};
 use crate::cow::{box_at, Body, Bounds, GrowAt, MoveTo, Nav, Pos, Sizes};
-use crate::dragon::flight::NoAi;
-use crate::goals::{self, Look, Looking};
+use crate::goals::{self, AiPaused, Look, Looking};
 use crate::raids::Aggressive;
 use crate::targeting::{self, Target, Who};
 use bevy_ecs::{entity::Entity, system::Commands, world::CommandQueue};
@@ -63,12 +62,19 @@ impl EcsWorld {
     }
 
     /// `Mob.setNoAi`: the marker is posed or taken (sparse), and the view is marked since the follower reads it.
+    pub fn set_no_ai(&mut self, e: Entity, on: bool) {
+        let w = self.world_mut();
+        crate::dragon::flight::set_no_ai(w, e, on);
+        view::mark(w, e);
+    }
+
+    /// The host's AI pause: the marker is posed or taken, and the view is marked since the follower reads it.
     pub fn set_ai_paused(&mut self, e: Entity, on: bool) {
         let w = self.world_mut();
         if on {
-            w.entity_mut(e).insert(NoAi);
+            w.entity_mut(e).insert(AiPaused);
         } else {
-            w.entity_mut(e).remove::<NoAi>();
+            w.entity_mut(e).remove::<AiPaused>();
         }
         view::mark(w, e);
     }
@@ -102,9 +108,33 @@ impl EcsWorld {
         self.world_mut().entity_mut(e).insert(Restriction { center, radius, wanted: None });
     }
 
-    /// `Mob.clearRestriction`: the restriction goes.
+    /// `Mob.clearRestriction`: the radius goes to -1 and the centre stays (`setHomeTo` keeps the home position); no radius means no restriction.
     pub fn clear_restriction(&mut self, e: Entity) {
-        self.world_mut().entity_mut(e).remove::<Restriction>();
+        if let Some(mut r) = self.world_mut().get_mut::<Restriction>(e) {
+            r.radius = -1;
+            r.wanted = None;
+        }
+    }
+
+    /// `Mob.setCanPickUpLoot`: the rule's `picks_up` is set; a creature without the rule gets one with the default reach.
+    pub fn set_can_pick_up_loot(&mut self, e: Entity, on: bool) {
+        let w = self.world_mut();
+        if let Some(mut p) = w.get_mut::<Pickup>(e) {
+            p.picks_up = on;
+        } else {
+            let d = crate::behaviours::item_pickup::Params::DEFAULT;
+            w.entity_mut(e).insert(Pickup { reach: d.reach, whole_stack: d.whole_stack, picks_up: on });
+        }
+    }
+
+    /// `Mob.setPersistenceRequired`: the creature never despawns on its own when `on`, and the spawn caps count it again when not.
+    pub fn set_persistence_required(&mut self, e: Entity, on: bool) {
+        let w = self.world_mut();
+        if on {
+            crate::despawn::keep(w, e);
+        } else if w.get::<crate::despawn::Persistent>(e).is_some() {
+            crate::despawn::release(w, e);
+        }
     }
 
     /// `LivingEntity.startSleeping`: the creature lies in the bed at `pos`, its body at `at` (the bed's side, as the client reads it);
@@ -125,7 +155,16 @@ impl EcsWorld {
         view::mark(w, e);
     }
 
-    /// `Attacker.setTarget`: `who` becomes the target with the riposte's memory (`HurtBy`'s default, halved) and no goal slot; `None`
+    /// The brain's attack-target memory (`ATTACK_TARGET`): posed for `who`, erased for `None`.
+    pub fn set_brain_attack_target(&mut self, e: Entity, who: Option<Who>) {
+        let w = self.world_mut();
+        match who {
+            Some(who) => crate::brain::set(w, e, &crate::brain::ATTACK_TARGET, crate::brain::MemValue::Who(who), None),
+            None => crate::brain::erase(w, e, &crate::brain::ATTACK_TARGET),
+        }
+    }
+
+    /// `Attacker.setTarget`:`who` becomes the target with the riposte's memory (`HurtBy`'s default, halved) and no goal slot; `None`
     /// takes the target away.
     pub fn set_target(&mut self, mw: &MobWorld<'_>, e: Entity, who: Option<Who>) {
         self.lent(mw, |w| match who {

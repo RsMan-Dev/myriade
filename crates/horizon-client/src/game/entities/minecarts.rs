@@ -408,7 +408,7 @@ mod hook_mutation_regressions {
             mod_api::Flow::Continue
         }
     }
-    struct DiscardDamagedVehicle(Arc<Mutex<usize>>);
+    struct DiscardDamagedVehicle(Arc<Mutex<usize>>, Arc<Mutex<u32>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for DiscardDamagedVehicle {
         fn vehicle_damage(
@@ -416,7 +416,8 @@ mod hook_mutation_regressions {
             host: &mut dyn mod_api::ServerHost,
             _: &mut mod_api::VehicleDamageEvent<'_>,
         ) -> mod_api::Flow {
-            assert!(host.entity(71).unwrap().discard(host));
+            let vehicle = *self.1.lock().unwrap();
+            assert!(host.entity(vehicle).unwrap().discard(host));
             mod_api::Flow::Continue
         }
         fn vehicle_destroy(
@@ -431,9 +432,10 @@ mod hook_mutation_regressions {
     #[ignore = "daily"]
     fn a_damage_callback_discard_does_not_also_destroy_or_drop_the_vehicle() {
         let destroyed = Arc::new(Mutex::new(0));
+        let vehicle = Arc::new(Mutex::new(0));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "discard_damaged",
-            Box::new(DiscardDamagedVehicle(destroyed.clone())),
+            Box::new(DiscardDamagedVehicle(destroyed.clone(), vehicle.clone())),
         )]
         .into();
         mod_platform::testing::with_mods(mods, || {
@@ -443,6 +445,7 @@ mod hook_mutation_regressions {
                     .rules
                     .set("entity_drops", horizon_client::gamerules::Value::Bool(true));
                 let boat = game.ecs_spawn("minecraft:oak_boat", [0.0; 3], None).unwrap();
+                *vehicle.lock().unwrap() = boat;
                 game.hurt_boat(boat, 5.0, false);
                 assert_eq!(*destroyed.lock().unwrap(), 0);
                 assert!(

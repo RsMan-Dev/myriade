@@ -9,7 +9,8 @@ use mod_api::{EntityRef, ItemEntityRef};
 impl Game<'_> {
     /// The network id of the dropped item `item` names, while the ECS level has it.
     fn native_item_entity_id(&self, item: ItemEntityRef) -> Option<u32> {
-        let Target::Item(id) = self.native_entity_target(item.entity())? else {
+        // An ECS item resolves as a mob handle: the ECS item view tells it apart.
+        let (Target::Item(id) | Target::Mob(id)) = self.native_entity_target(item.entity())? else {
             return None;
         };
         self.ecs.item(id).map(|_| id)
@@ -91,6 +92,12 @@ impl Game<'_> {
     /// an unavailable handle, or one Horizon cannot resolve.
     pub(super) fn item_entity_owner(&self, item: ItemEntityRef) -> Option<EntityRef> {
         let uuid = self.ecs.item(self.native_item_entity_id(item)?)?.thrower?;
+        // An ECS mob's UUID is kept in `persist.uuids`: the listing holds no residency rows for it.
+        if let Some((&id, _)) = self.persist.uuids.iter().find(|(_, found)| **found == uuid) {
+            if self.ecs.entity_of(id).is_some() {
+                return self.entity(id);
+            }
+        }
         let target = self.target_by_uuid(ints_uuid(uuid))?;
         if self.target_level(target) != self.dim {
             return None;

@@ -104,7 +104,7 @@ pub fn record_combat(w: &mut World, e: Entity, damage_type: &'static str, by: Op
 #[derive(Component, Clone, Copy, Debug)]
 #[component(on_add = crate::behaviours::drink_potion::thirst_hook)]
 pub struct Burning {
-    pub until: u64,
+    pub until: i64,
 }
 
 /// `Entity.igniteForSeconds`: on fire for `ticks` more (the later end wins); the first burn comes with the wheel as for a fire under it.
@@ -113,7 +113,7 @@ pub fn set_on_fire(w: &mut World, e: Entity, ticks: u64) {
         return;
     }
     let now = now_of(w, e);
-    let until = now + ticks;
+    let until = now as i64 + ticks as i64;
     match w.get::<Burning>(e).map(|b| b.until) {
         None => {
             let at = w.resource::<Clock>().at(e, now + if ticks % 20 == 0 { 1 } else { 20 });
@@ -700,7 +700,7 @@ pub(crate) fn hazard_tick(
         } else {
             let seconds = if fire_proof { 0 } else if in_lava { 300 } else if lit { 160 } else { 0 };
             if seconds > 0 {
-                let until = now + seconds;
+                let until = now as i64 + seconds as i64;
                 match burning {
                     None => {
                         // `Entity.baseTick` hurts when the time left is a multiple of 20, the first tick included.

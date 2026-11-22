@@ -11,7 +11,7 @@ use crate::player_uuids;
 use crate::rules::leash::center_of;
 use bevy_ecs::prelude::*;
 use horizon_client_lib::items::ItemStack;
-use horizon_core::{geometry::Vec3, nbt::Tag};
+use horizon_core::{geometry::Vec3, nbt::{Compound, JavaString, Tag}};
 
 /// A lead read from a save, not yet tied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,9 +43,10 @@ pub fn save(w: &World, e: Entity, tag: &mut Tag) {
     }
 }
 
-/// Reads the `leash` key of a saved `tag` as a pending lead on `e`. A tag with no readable holder leaves `e` alone.
-pub fn load(w: &mut World, e: Entity, tag: &Tag) {
-    let p = match tag.get("leash") {
+/// Reads the `leash` key of a saved `c` as a pending lead on `e` (`Leashable.readLeashData`). A fence holder is tied at once (its knot is
+/// made, `getOrCreateKnot`); a uuid holder waits for `resolve_pending` until its deadline. A compound with no readable holder leaves `e` alone.
+pub fn load(w: &mut World, e: Entity, c: &Compound) {
+    let p = match c.get(&JavaString::from("leash")) {
         Some(Tag::IntArray(v)) if v.len() == 3 => Pending::Knot([v[0], v[1], v[2]]),
         Some(t) => match t.get("UUID") {
             Some(Tag::IntArray(v)) if v.len() == 4 => Pending::Uuid([v[0], v[1], v[2], v[3]]),
@@ -54,8 +55,11 @@ pub fn load(w: &mut World, e: Entity, tag: &Tag) {
         None => return,
     };
     w.entity_mut(e).insert(PendingLeash(p));
-    if let Pending::Uuid(_) = p {
-        after(w, e, LEASH_DROP_TICKS, drop_pending);
+    match p {
+        Pending::Knot(_) => {
+            tie_pending(w, e, p);
+        }
+        Pending::Uuid(_) => after(w, e, LEASH_DROP_TICKS, drop_pending),
     }
 }
 
@@ -77,19 +81,29 @@ fn drop_pending(w: &mut World, e: Entity) {
 pub fn resolve_pending(w: &mut World) {
     let waiting: Vec<(Entity, Pending)> = w.query::<(Entity, &PendingLeash)>().iter(w).map(|(e, p)| (e, p.0)).collect();
     for (e, p) in waiting {
-        let holder = match p {
-            Pending::Knot(k) => Holder::Knot(k),
-            Pending::Uuid(u) => match uuids::entity_by_uuid(w, u) {
-                Some(h) => Holder::Entity(h),
-                None => match player_uuids::id_of(w, uuids::from_words(u)) {
-                    Some(id) if w.get_resource::<Online>().is_some_and(|o| o.get(id).is_some()) => Holder::Player(id),
-                    _ => continue,
-                },
-            },
-        };
-        w.entity_mut(e).remove::<PendingLeash>();
-        attach_from_save(w, e, holder);
+        tie_pending(w, e, p);
     }
+}
+
+/// Ties the pending lead `p` of `e` to its holder when the holder is there; false (and the lead still waits) when it is not.
+fn tie_pending(w: &mut World, e: Entity, p: Pending) -> bool {
+    let holder = match p {
+        // `Leashable.restoreLeashFromSave` → `LeashFenceKnotEntity.getOrCreateKnot`: a fence holder makes its knot first.
+        Pending::Knot(k) => {
+            tie_knot(w, k);
+            Holder::Knot(k)
+        }
+        Pending::Uuid(u) => match uuids::entity_by_uuid(w, u) {
+            Some(h) => Holder::Entity(h),
+            None => match player_uuids::id_of(w, uuids::from_words(u)) {
+                Some(id) if w.get_resource::<Online>().is_some_and(|o| o.get(id).is_some()) => Holder::Player(id),
+                _ => return false,
+            },
+        },
+    };
+    w.entity_mut(e).remove::<PendingLeash>();
+    attach_from_save(w, e, holder);
+    true
 }
 
 /// `Leashable.canHaveALeashAttachedTo`: the holder's centre `center` is within the snapping distance of `e`'s centre.
@@ -121,7 +135,9 @@ impl EcsWorld {
 
     /// Reads the `leash` key of `tag` as a pending lead on `e` (see `load`).
     pub fn leash_load(&mut self, e: Entity, tag: &Tag) {
-        load(self.world_mut(), e, tag);
+        if let Tag::Compound(c) = tag {
+            load(self.world_mut(), e, c);
+        }
     }
 
     /// Ties the pending leads whose holder has appeared (see `resolve_pending`).
@@ -155,5 +171,37 @@ impl EcsWorld {
     /// Marks the view of the holder `e`: its lead moved.
     pub fn notify_holder(&mut self, e: Entity) {
         view::mark(self.world_mut(), e);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use horizon_core::nbt::parse_snbt;
+
+    fn cow_at(w: &mut World, snbt: &str) -> (Entity, horizon_core::nbt::Compound) {
+        let (tag, _) = parse_snbt(snbt).unwrap();
+        let Tag::Compound(c) = tag else { panic!() };
+        (crate::nbt::restore(w, &c).unwrap(), c)
+    }
+
+    #[test]
+    fn a_creature_leashed_to_a_fence_brings_its_knot_back_on_load() {
+        let mut w = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
+        let (cow, mut c) = cow_at(&mut w, r#"{id:"minecraft:cow",Pos:[4.5d,64d,6.5d],NoAI:1b}"#);
+        crate::species::leash_knot::tie(&mut w, [4, 64, 6]);
+        assert!(crate::leash::attach(&mut w, cow, Holder::Knot([4, 64, 6])));
+        let mut tag = Tag::Compound(c.clone());
+        save(&w, cow, &mut tag);
+        let Tag::Compound(saved) = tag else { panic!() };
+        c = saved;
+        assert_eq!(c.get(&"leash".into()), Some(&Tag::IntArray(vec![4, 64, 6])));
+
+        let mut fresh = crate::cow::Herd::new(0, 1.0, true, false, 1).world;
+        let (cow, _) = cow_at(&mut fresh, r#"{id:"minecraft:cow",Pos:[4.5d,64d,6.5d],NoAI:1b}"#);
+        load(&mut fresh, cow, &c);
+        resolve_pending(&mut fresh);
+        assert!(fresh.query::<&crate::species::leash_knot::Knot>().iter(&fresh).any(|k| k.fence == [4, 64, 6]));
+        assert_eq!(fresh.get::<Leash>(cow).map(|l| l.holder), Some(Holder::Knot([4, 64, 6])));
     }
 }

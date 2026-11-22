@@ -24,10 +24,10 @@ pub(super) fn take_passengers(tag: &mut Tag) -> Option<Tag> {
 
 impl Game<'_> {
     pub(in crate::game) fn passenger_present(&self, id: u32) -> bool {
-        self.level_entity(id as i32).is_some_and(|t| match t {
-            Target::Mob(id) => self.mob_alive(id),
-            _ => true,
-        })
+        self.mob_alive(id)
+            || self
+                .level_entity(id as i32)
+                .is_some_and(|t| !matches!(t, Target::Mob(_)))
     }
 
     pub(super) fn passenger_object_present(&self, id: u32) -> bool {

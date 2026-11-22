@@ -23,10 +23,12 @@ pub enum Rider {
 pub struct Seats {
     pub kind: SeatKind,
     pub riders: Vec<Option<Rider>>,
+    /// Boardings so far: the arrival order of the riders (`Entity.passengers` is kept in it).
+    pub boardings: u32,
 }
 impl Seats {
     pub fn new(kind: SeatKind) -> Self {
-        Self { kind, riders: vec![None; rules::capacity(kind)] }
+        Self { kind, riders: vec![None; rules::capacity(kind)], boardings: 0 }
     }
 }
 /// A creature that sits in a vehicle: the vehicle and the seat.
@@ -35,6 +37,8 @@ impl Seats {
 pub struct Seated {
     pub vehicle: Entity,
     pub slot: u8,
+    /// The arrival order in `vehicle`: a later boarding has a larger order.
+    pub order: u32,
 }
 /// The vehicle of each seated player: read by its id only.
 #[derive(Resource, Default)]
@@ -154,7 +158,11 @@ pub fn board(w: &mut World, rider: Entity, vehicle: Entity, slot: Option<u8>) ->
         return false;
     }
     let Some(slot) = take(w, vehicle, Rider::Creature(rider), slot) else { return false };
-    w.entity_mut(rider).insert(Seated { vehicle, slot });
+    let order = w.get_mut::<Seats>(vehicle).map_or(0, |mut s| {
+        s.boardings += 1;
+        s.boardings
+    });
+    w.entity_mut(rider).insert(Seated { vehicle, slot, order });
     place_riders(w, vehicle);
     push_event(w, SeatEvent::Boarded { rider: Rider::Creature(rider), vehicle });
     true

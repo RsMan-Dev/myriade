@@ -31,6 +31,7 @@ const K_LAVA_CAULDRON: u8 = 7;
 const K_MAGMA: u8 = 8;
 /// A cobweb a living entity with `Weaving` stands in (`WebBlock.entityInside`: 0.5, 0.25, 0.5).
 pub const K_WEB_WEAVING: u8 = 9;
+const K_CACTUS: u8 = 10;
 
 /// `Entity.checkInsideBlocks`: the deflation of the box.
 const DEFLATE: f64 = 1.0e-5_f32 as f64;
@@ -73,6 +74,7 @@ fn classify(name: &str) -> u8 {
         "minecraft:soul_campfire" => K_SOUL_CAMPFIRE,
         "minecraft:lava_cauldron" => K_LAVA_CAULDRON,
         "minecraft:magma_block" => K_MAGMA,
+        "minecraft:cactus" => K_CACTUS,
         _ => 0,
     }
 }
@@ -123,6 +125,7 @@ struct Found {
     rose: bool,
     campfire: f32,
     cauldron: bool,
+    cactus: u32,
 }
 
 fn scan(level: &Level, kinds: &mut InsideKinds, b: &Aabb, living: bool, weaving: bool) -> Found {
@@ -147,6 +150,7 @@ fn scan(level: &Level, kinds: &mut InsideKinds, b: &Aabb, living: bool, weaving:
                         f.campfire += if k == K_CAMPFIRE { CAMPFIRE_DAMAGE } else { SOUL_CAMPFIRE_DAMAGE };
                     }
                     K_LAVA_CAULDRON => f.cauldron = true,
+                    K_CACTUS => f.cactus += 1,
                     _ => {}
                 }
             }
@@ -232,6 +236,12 @@ fn moved_effects(
             commands.entity(e).remove::<BerryTrail>();
         }
         apply(&f, e, living, true, &mut dmg, &mut commands);
+        // `CactusBlock.entityInside` hurts an item a point per cactus cell its box reaches (living ones take theirs elsewhere).
+        if item {
+            for _ in 0..f.cactus {
+                dmg.add(e, 1.0, Cause::Cactus);
+            }
+        }
         let holds = living && (f.rose || f.campfire > 0.0);
         if holds && !soaking {
             let due = clock.of(e) + ROSE_REFRESH;

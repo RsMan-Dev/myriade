@@ -35,6 +35,7 @@ fn server<'a>(
     resources: &'a mut Option<Arc<crate::game::Resources>>,
 ) -> Game<'a> {
     let mut game = crate::game::game_tests::tests::server_game(resources);
+    game.options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
     game.build_registries();
     game.set_allow_commands(true);
     game.block_ticks

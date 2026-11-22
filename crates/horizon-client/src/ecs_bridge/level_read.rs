@@ -96,6 +96,11 @@ impl EcsLevel {
         let q = Select { kind: Some(kind.to_owned()), tag: None, near: None, limit: usize::MAX };
         self.select(&q).into_iter().filter_map(|e| self.id_of(e)).collect()
     }
+    /// The network ids of every awake entity, in entity order.
+    pub fn all_ids(&self) -> Vec<u32> {
+        let q = Select { kind: None, tag: None, near: None, limit: usize::MAX };
+        self.select(&q).into_iter().filter_map(|e| self.id_of(e)).collect()
+    }
     /// The awake entities that match `q`, counted (`select::count`).
     pub fn count_entities(&self, q: &Select) -> usize {
         self.world().map_or(0, |w| select::count(w, q))

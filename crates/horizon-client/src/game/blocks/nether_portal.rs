@@ -606,11 +606,8 @@ impl Game<'_> {
             before.clear();
         }
         let mut ids: Vec<(u32, bool, i32)> = Vec::new();
-        // Portal handling runs only in entity-ticking chunks; retain frozen
-        // states while their entities are outside the simulation distance.
+        // Portal handling runs only in entity-ticking chunks.
         let entity_ticking = self.entity_ticking_area();
-        // RESTE-SANS-ECS: riders below refused objects are no longer kept; nothing is frozen by them.
-        let frozen = std::collections::HashSet::<u32>::new();
         let ecs_entries = if self.ecs.is_active() && !vehicles { self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) } else { Vec::new() };
         let tracked = &self.portals.entities;
         let mut present = std::collections::HashSet::new();
@@ -621,7 +618,10 @@ impl Game<'_> {
                 if has_portal_state {
                     present.insert(id);
                 }
-                if frozen.contains(&id) || !entity_ticking(at[0].floor() as i32, at[2].floor() as i32) {
+                if self.ecs.portal_after_move(id) != after_move {
+                    continue;
+                }
+                if !entity_ticking(at[0].floor() as i32, at[2].floor() as i32) {
                     continue;
                 }
                 if can_sweep {
@@ -645,7 +645,7 @@ impl Game<'_> {
                 && (can_sweep || has_portal_state)
             {
                 let at = entity.position();
-                if frozen.contains(&entity.id()) || !entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
+                if !entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
                     continue;
                 }
                 if can_sweep && entity.portal_from().is_none() {
@@ -955,14 +955,12 @@ impl Game<'_> {
         // Only the entities that tick (in entity-ticking chunks) move, so only
         // they can have swept into a portal.
         let entity_ticking = self.entity_ticking_area();
-        // RESTE-SANS-ECS: riders below refused objects are no longer kept; nothing is frozen by them.
-        let frozen = std::collections::HashSet::<u32>::new();
         // The first portal block each entity's box swept through since the
         // start of its tick (a stuck arrow that did not move enters none).
         if self.ecs.is_active() {
             for (id, can_sweep, to) in self.ecs_with(|ecs, mw| ecs.portal_entries(mw)) {
                 let to = Vec3::new(to[0], to[1], to[2]);
-                if frozen.contains(&id) || !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
+                if !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
                     continue;
                 }
                 if !can_sweep || !self.ecs.can_use_portal(id) {
@@ -992,7 +990,7 @@ impl Game<'_> {
                 continue;
             }
             let (id, to) = (entity.id(), entity.position());
-            if frozen.contains(&id) || !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
+            if !entity_ticking(to.x.floor() as i32, to.z.floor() as i32) {
                 continue;
             }
             if !entity.portal_sweeps() || !entity.can_use_portal(self) {

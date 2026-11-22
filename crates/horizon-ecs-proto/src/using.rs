@@ -45,7 +45,11 @@ pub fn state(w: &World, e: Entity) -> Option<(bool, i32)> {
 /// the host sets them with `set_remaining`.
 pub fn start(w: &mut World, e: Entity, off_hand: bool) -> bool {
     let slot = if off_hand { OFF } else { MAIN };
-    if w.get_entity(e).is_err() || w.get::<UsingItem>(e).is_some() || equip_stack::get(w, e, slot).is_none() {
+    // A piglin admiring its gold holds nothing in its off hand to use: the admiration keeps the hands.
+    let admiring = w.get::<crate::behaviours::admire::Admire>(e).is_some() && equip_stack::get(w, e, OFF).is_some();
+    // A witch drinks its potion on its own timer (`isDrinkingPotion`): her hands are not a use.
+    let drinker = w.get::<crate::behaviours::drink_potion::Drinker>(e).is_some();
+    if w.get_entity(e).is_err() || w.get::<UsingItem>(e).is_some() || admiring || drinker || equip_stack::get(w, e, slot).is_none() {
         return false;
     }
     let until = now_of(w, e);
@@ -171,6 +175,9 @@ pub fn resolve_totem(w: &mut World, e: Entity, cancel: bool) -> bool {
 fn die(w: &mut World, e: Entity, damage: &'static str, by: Option<crate::targeting::Who>, at: [f64; 3], health: f32) {
     // The death happens once: a body already dying (lingering or held) is not killed again.
     if w.get_entity(e).is_err() || crate::tear_down::is_dead(w, e) {
+        return;
+    }
+    if crate::conversion::zombie_kill(w, e, by) {
         return;
     }
     // A stack is no living body: it has no death animation and no fade, it is discarded (`ItemEntity.hurtServer`).

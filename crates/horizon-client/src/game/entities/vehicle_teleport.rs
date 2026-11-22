@@ -118,13 +118,6 @@ fn vehicle_id(t: Target) -> Option<u32> {
 mod teleport_cross_tests;
 
 impl Game<'_> {
-    /// `AbstractMinecart.getDismountLocationForPassenger` for a standing mob.
-    pub(super) fn cart_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
-        // RESTE-SANS-ECS: the standing rider was a retained off-level object, now retired.
-        let _ = (vehicle, rider);
-        None
-    }
-
     pub(super) fn cart_dismount_mob(
         &self,
         vehicle: u32,
@@ -182,14 +175,6 @@ impl Game<'_> {
             }
         }
         Some(Vec3::new(px, py + super::minecarts::HEIGHT, pz))
-    }
-
-    /// `AbstractHorse.getDismountLocationForPassenger`: try either side
-    /// through the mount's height, then fall back to its feet.
-    pub(super) fn horse_dismount_point(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
-        // RESTE-SANS-ECS: both mobs were retained off-level objects, now retired.
-        let _ = (vehicle, rider);
-        None
     }
 
     /// The horse search for a mount and rider currently lent out of the mob list.
@@ -258,12 +243,6 @@ impl Game<'_> {
         // Dismounting removes live slots. Restoring only mob mounts would append
         // those riders after every other kind when the transfer tree is captured.
         self.persist.passenger_slots.insert(root, slots);
-    }
-
-    /// `Entity.teleportPassengers` on a mob dismounted during a transition.
-    pub(super) fn snap_mob_passengers(&mut self, root: u32) {
-        // RESTE-SANS-ECS: the snap read and wrote retained off-level mobs, now retired.
-        let _ = root;
     }
 
     /// `PositionMoveRotation.of(entity).deltaMovement()`: the motion a

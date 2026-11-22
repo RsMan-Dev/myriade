@@ -22,10 +22,6 @@ impl Game<'_> {
             .and_then(|i| i.death_protection.clone())
             .unwrap_or_default()
     }
-    /// No cache of the mobs' hands: the ECS reads their held items when they
-    /// are hurt. RESTE-SANS-ECS: the death protection of a mob (`checkTotemDeathProtection`)
-    /// has no ECS rule yet; the call in game.rs:3650 goes with it.
-    pub(super) fn sync_mob_death_protection(&mut self) {}
     /// Whether either hand holds a death-protection item, for the next hurt:
     /// the window's player once a tick, a server's player for each of its
     /// turns.

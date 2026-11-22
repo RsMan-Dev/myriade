@@ -83,8 +83,63 @@ pub fn draw_at_spawn(w: &mut World, e: Entity, group: Option<u8>, place: &crate:
     Some(v)
 }
 
+/// The sound variant of a creature, by its name (`minecraft:classic` by default, `Pig.defineSynchedData`).
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct SoundVariant(pub String);
+
+/// The default sound variant, every species' (`CowSoundVariants.CLASSIC`, `PigSoundVariants.CLASSIC`...).
+const DEFAULT_SOUND: &str = "minecraft:classic";
+
+/// The resolved species of `e`.
+fn resolved_of(w: &World, e: Entity) -> Option<&'static crate::species::Resolved> {
+    let id = usize::from(w.get::<SpeciesId>(e)?.0);
+    let name = w.get_resource::<SpeciesTable>()?.0.get(id)?.name;
+    crate::species::registry().by_name(name).ok()
+}
+
+/// The sound variants of the species of `e` (`Def::sounds`); None for a species with none.
+fn sounds_of(w: &World, e: Entity) -> Option<&'static [&'static str]> {
+    resolved_of(w, e)?.sounds
+}
+
+/// A bred baby's sound (`Wolf.getBreedOffspring`): a fresh draw from the parent's stream, where the species draws one; the others keep
+/// `classic`, the default.
+pub fn breed_sound(w: &mut World, a: Entity, baby: Entity) {
+    if !resolved_of(w, baby).is_some_and(|x| x.sound_on_breed) {
+        return;
+    }
+    let seed = crate::goals::with_rng(w, a, |r| r.next_u32());
+    draw_sound(w, baby, &mut horizon_core::random::LegacyRandom::new(i64::from(seed)));
+}
+
+/// The sound variant drawn at the spawn, after the variant (`PigSoundVariants.pickRandomSoundVariant`): uniform over the species' list.
+pub fn draw_sound(w: &mut World, e: Entity, r: &mut impl horizon_core::random::RandomSource) {
+    let Some(names) = sounds_of(w, e) else { return };
+    let i = r.next_int_bound(names.len() as i32).unwrap_or(0) as usize;
+    w.entity_mut(e).insert(SoundVariant(names.get(i).copied().unwrap_or(names[0]).to_owned()));
+}
+
+/// Written for every creature whose species has sounds, `minecraft:classic` when it has no drawn one (`addAdditionalSaveData`).
+fn write_sound(w: &World, e: Entity, c: &mut Compound) {
+    if sounds_of(w, e).is_none() {
+        return;
+    }
+    let name = w.get::<SoundVariant>(e).map_or(DEFAULT_SOUND, |s| s.0.as_str());
+    c.insert("sound_variant".into(), Tag::String(JavaString::from(name)));
+}
+
+/// A saved name read back: a name the species does not list is the first one, `minecraft:classic`.
+fn read_sound(w: &mut World, e: Entity, t: &Tag) -> bool {
+    let (Some(names), Tag::String(s)) = (sounds_of(w, e), t) else { return false };
+    let want = s.to_string_lossy();
+    let name = names.iter().find(|n| **n == want).copied().unwrap_or(DEFAULT_SOUND);
+    w.entity_mut(e).insert(SoundVariant(name.to_owned()));
+    true
+}
+
 /// The saved variants: `RabbitType` (an int) and `Type` (a string), each only for the species whose table has that key.
 pub const FIELDS: &[Field] = &[
+    Field { key: Cow::Borrowed("sound_variant"), write: write_sound, read: read_sound, accepts: accept::string, owner: None },
     Field { key: Cow::Borrowed("RabbitType"), write: write_rabbit_type, read: read_rabbit_type, accepts: accept::int, owner: Some(owner::<Variant>) },
     Field { key: Cow::Borrowed("Type"), write: write_type, read: read_type, accepts: accept::string, owner: Some(owner::<Variant>) },
     Field { key: Cow::Borrowed("variant"), write: write_variant, read: read_variant, accepts: accept::string, owner: Some(owner::<Variant>) },

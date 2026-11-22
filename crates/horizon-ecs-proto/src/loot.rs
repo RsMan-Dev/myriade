@@ -214,7 +214,7 @@ fn facts(world: &World, e: Entity) -> Option<LootEntity> {
     use crate::goals::{equipped, Slot};
     let mut this = LootEntity::new(world.get::<TypeName>(e)?.0);
     let now = now_of(world, e);
-    this.on_fire = world.get::<Burning>(e).is_some_and(|b| b.until > now);
+    this.on_fire = world.get::<Burning>(e).is_some_and(|b| b.until > now as i64);
     this.baby = match (world.get::<Sizes>(e), world.get::<Body>(e)) {
         (Some(s), Some(b)) => b.width < s.adult.0,
         _ => false,

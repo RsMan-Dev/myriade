@@ -1,6 +1,7 @@
 //! `WitherDoNothingGoal` (fiche 24, `mobs/wither.rs:84-95`): while the invulnerability counter of the charge is above zero,
 //! the goal holds MOVE, JUMP and LOOK at its priority. The counter's rule (`R:wither`) is not ported: it calls `set`.
 use super::*;
+use crate::cow::now_of;
 use crate::goals::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -8,9 +9,13 @@ pub struct Params {}
 impl Params {
     pub const DEFAULT: Self = Self {};
 }
-/// `extra.counter` of the charge: above zero, the goal runs.
+/// The wither's invulnerable counter as the tick it reaches zero (`invulnerableTicks` counts down one a tick): above zero, the goal runs.
 #[derive(Component, Clone, Copy, Debug, Default)]
-pub struct Invulnerable(pub i32);
+pub struct Invulnerable(pub u64);
+/// The counter now: the ticks left to the end, 0 once it is reached (the NBT `Invul`).
+pub fn counter(w: &World, e: Entity) -> i32 {
+    w.get::<Invulnerable>(e).map_or(0, |i| i.0.saturating_sub(now_of(w, e)) as i32)
+}
 
 pub static MODULE: Module = Module {
     name: "do_nothing",
@@ -21,14 +26,18 @@ pub static MODULE: Module = Module {
     ..Module::DEFAULT
 };
 fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
-    w.entity_mut(e).insert(Invulnerable(0));
+    if w.get::<Invulnerable>(e).is_none() {
+        let now = now_of(w, e);
+        w.entity_mut(e).insert(Invulnerable(now));
+    }
 }
 fn can_use(w: &mut World, e: Entity, _: Inst) -> bool {
-    w.get::<Invulnerable>(e).is_some_and(|i| i.0 > 0)
+    counter(w, e) > 0
 }
-/// Sets the counter: above zero asks the goal to start (on the selector's ticks); zero asks it to end.
+/// Sets the counter to `ticks` from now: above zero asks the goal to start (on the selector's ticks); zero asks it to end.
 pub fn set(w: &mut World, e: Entity, ticks: i32) {
-    w.entity_mut(e).insert(Invulnerable(ticks));
+    let until = now_of(w, e) + ticks.max(0) as u64;
+    w.entity_mut(e).insert(Invulnerable(until));
     if ticks > 0 {
         wake(w, e, &MODULE);
     } else {

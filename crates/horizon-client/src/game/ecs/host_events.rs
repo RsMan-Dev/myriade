@@ -22,8 +22,12 @@ impl Game<'_> {
         for ev in evs {
             match ev {
                 HostEvent::SetBlock { pos, state } => self.level_set(pos, state)?,
-                HostEvent::Sound { name, at, volume, pitch } => {
-                    self.audio.play(&horizon_client::mobs::entity_sounds::full_id(name), Some(at), volume, pitch)
+                HostEvent::Sound { name, at, volume, pitch, source } => {
+                    let name = horizon_client::mobs::entity_sounds::full_id(name);
+                    match source {
+                        Some(source) => self.audio.play_on(source, &name, Some(at), volume, pitch),
+                        None => self.audio.play(&name, Some(at), volume, pitch),
+                    }
                 }
                 HostEvent::Particles { kind, at, spread, speed, count } => {
                     if let Some(ty) = ParticleType::from_name(kind) {

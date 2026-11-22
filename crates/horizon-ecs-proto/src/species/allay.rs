@@ -18,8 +18,8 @@ pub static DEF: Def = Def {
         Entry::new(&give_to_owner::MODULE, 2, &give_to_owner::Params::DEFAULT),
         Entry::new(&stay_close_to_owner::MODULE, 3, &stay_close_to_owner::Params::DEFAULT),
         Entry::new(&fly_stroll::MODULE, 4, &fly_stroll::Params::DEFAULT),
-        Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
-        Entry::new(&random_look::MODULE, 6, &random_look::Params::DEFAULT),
+        Entry::new(&look_at_player::MODULE, 5, &look_at_player::Params { range: 6.0, species: look_at_player::Params::ALL, ..look_at_player::Params::DEFAULT }),
+        Entry::new(&random_look::MODULE, 6, &random_look::Params { interval: Some((150, 250)), ..random_look::Params::DEFAULT }),
         Entry::new(&event_listen::MODULE, 7, &event_listen::Params {
             note_event: "minecraft:note_block_play",
             note_radius: 16,

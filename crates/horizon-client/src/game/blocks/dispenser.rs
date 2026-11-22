@@ -2730,6 +2730,7 @@ mod tests {
     ) -> Game<'_> {
         let mut game = super::super::game_tests::tests::server_game(resources);
         game.build_registries();
+        game.ecs = game.test_ecs_level();
         game.set_allow_commands(true);
         game.block_ticks
             .add_empty_chunk(horizon_core::position::ChunkPos::new(0, 0))

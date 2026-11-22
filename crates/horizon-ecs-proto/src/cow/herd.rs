@@ -185,6 +185,7 @@ impl Herd {
             let p = self.world.get::<Pos>(e).unwrap().0;
             let mut s = self.world.get_mut::<Stroll>(e).unwrap();
             (s.tx, s.tz, s.ty) = (p.x + 1.5, p.z, p.y.ifloor());
+            self.world.get_mut::<Nav>(e).unwrap().speed = 1.0;
             self.world.entity_mut(e).insert(NeedsPath);
         }
     }

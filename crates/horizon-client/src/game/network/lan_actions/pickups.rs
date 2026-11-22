@@ -18,29 +18,68 @@ impl Game<'_> {
             return;
         }
         let (conn, position, id, uuid) = (g.conn, g.position, g.entity_id, g.uuid);
-        // P takes every stack in reach; the rest the guest's inventory refuses lies at the feet again (below).
-        let taken = self.ecs_with(|ecs, mw| {
-            let who = horizon_ecs_proto::targeting::Who::Player(id as u32);
-            ecs.pickup_items(mw, who, crate::lan::playerdata::uuid_ints(uuid), position, 1.5, &mut |s| s.count)
-        });
+        // The stacks in reach are listed first; each is taken by its id, so the rest the guest's inventory refuses keeps its id.
+        let who = horizon_ecs_proto::targeting::Who::Player(id as u32);
+        let uuid_ints = crate::lan::playerdata::uuid_ints(uuid);
+        let candidates = self.ecs_with(|ecs, mw| ecs.pickup_candidates(mw, who, uuid_ints, position, 1.5));
         let mut counts = Vec::new();
-        for (item, stack, at) in taken {
+        for (item, stack) in candidates {
             let kind = stack.item.clone();
             let count = stack.count;
+            // `item_picked_up` is asked before the take: a refusal leaves the stack where it lay.
+            let refused = self
+                .as_guest(conn, |g| {
+                    let mut can = mod_api::TriState::Default;
+                    if let Some(handle) = g.native_item_handle(item) {
+                        g.native_item_picked_up(uuid, handle, &mut can);
+                    }
+                    can == mod_api::TriState::False
+                })
+                .unwrap_or(false);
+            if refused {
+                continue;
+            }
             let rest = self
                 .as_guest(conn, |g| g.native_pickup_insert(&stack))
-                .unwrap_or(Some(stack));
+                .unwrap_or(Some(stack.clone()));
             let left = rest.as_ref().map_or(0, |r| r.count);
-            if let Some(rest) = rest {
-                self.ecs_drop(rest, at, [0.0; 3]);
-            }
             let got = count.saturating_sub(left);
             if got == 0 {
                 continue;
             }
+            let Some((_, at)) = self.ecs_with(|ecs, mw| ecs.pickup_item(mw, who, uuid_ints, item, position, 1.5, &mut |_| got)) else {
+                continue;
+            };
+            // `item_picked_up_post` for a whole pickup, `item_picked_up_partial` for a part: what a mod leaves lies at the feet.
+            let kept = match rest {
+                None => self.as_guest(conn, |g| g.native_pickup_post(item, &stack)).flatten(),
+                Some(rest) => self.as_guest(conn, |g| g.native_pickup_partial(&stack, rest)).flatten(),
+            };
+            let kept_count = kept.as_ref().map_or(0, |k| k.count);
+            // A listener that kills the item leaves no take animation; a stack it did not kill stays under `item`, or lies anew.
+            let killed = left > 0 && self.ecs.item(item).is_none();
+            match (kept, self.ecs.item(item).is_some()) {
+                (Some(kept), true) => {
+                    self.ecs.set_item_stack(item, kept);
+                }
+                (Some(kept), false) => {
+                    self.ecs_drop(kept, at, [0.0; 3]);
+                }
+                (None, true) => {
+                    if let Some(e) = self.ecs.entity_of(item) {
+                        self.ecs.despawn(e);
+                    }
+                }
+                (None, false) => {}
+            }
+            let got = count - kept_count;
             self.as_guest(conn, |g| g.award_stat("picked_up", &kind, got as i32));
-            self.native_entity_left(item);
-            counts.push((item, got));
+            if !killed {
+                counts.push((item, got));
+            }
+            if self.ecs.item(item).is_none() {
+                self.native_entity_left(item);
+            }
         }
         if let Some(host) = self.lan.as_ref() {
             for (item, count) in counts {
@@ -65,6 +104,18 @@ impl Game<'_> {
         let pick = self.world.random.next_int_bound(touching.len() as i32).unwrap_or(0) as usize;
         let orb = touching[pick];
         let orb_at = self.ecs.position(orb).unwrap_or(at);
+        let Some(view) = self.ecs.orb(orb) else {
+            return;
+        };
+        // `PlayerXpEvent.PickupXp`: a cancel leaves the orb and the delay; a listener's value and count are kept.
+        let (mut value, mut count, mut canceled) = (view.value, view.count, false);
+        self.native_pickup_xp(player, self.dim.id(), orb, &mut value, &mut count, &mut canceled);
+        if canceled {
+            return;
+        }
+        if (value, count) != (view.value, view.count) {
+            self.ecs.set_orb_stack(orb, value, count.max(1));
+        }
         let Some(value) = self.ecs_with(|ecs, mw| ecs.collect_orb(mw, orb)) else {
             return;
         };

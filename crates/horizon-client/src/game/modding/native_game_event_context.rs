@@ -40,7 +40,8 @@ impl Game<'_> {
         }
         let context = match target {
             Target::Player => self.player_context(state),
-            Target::Mob(id) => self.mob_context(id, state),
+            // An ECS item resolves as a mob handle too; it is an entity source, not a mob.
+            Target::Mob(id) if self.ecs.item(id).is_none() => self.mob_context(id, state),
             _ => self.entity_event_context(entity.id(), state),
         };
         self.post_game_event(event, at, context);

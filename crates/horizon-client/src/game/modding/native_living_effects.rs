@@ -258,8 +258,16 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game as with_plain_game;
     use horizon_core::geometry::Vec3;
+
+    /// `with_game` with the level's ECS attached, so the mobs placed here exist (`ecs_game_with`).
+    fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+        with_plain_game(|game| {
+            game.ecs = game.test_ecs_level();
+            test(game)
+        });
+    }
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
 
     fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {

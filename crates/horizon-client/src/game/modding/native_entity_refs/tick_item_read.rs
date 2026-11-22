@@ -10,14 +10,22 @@ impl Game<'_> {
             self.server_resident_entity(entity.id())
         else {
             // The ECS level is the one owner of every non-player entity of the level in place: it binds no residency row.
-            let target = Target::Mob(entity.id());
-            return (self.ecs.entity_of(entity.id()).is_some() && !self.target_removed(&target)).then_some(target);
+            if self.ecs.entity_of(entity.id()).is_none() {
+                let parent = self
+                    .ecs
+                    .dragon_views()
+                    .into_iter()
+                    .map(|(d, _)| d)
+                    .find(|d| entity.id().checked_sub(d + 1).is_some_and(|k| k < 8))?;
+                return (!self.target_removed(&Target::Dragon(parent))).then_some(Target::DragonPart(entity.id()));
+            }
+            let target = self.ecs_target_of(entity.id());
+            return (!self.target_removed(&target)).then_some(target);
         };
         // Players are server-wide records. Ordinary body operations retain
         // their existing current-level domain; source membership is global.
-        (matches!(value, Target::Player | Target::Guest(_))
-            || location.owner.dimension == self.dim.key())
-        .then_some(value)
+        let visible = matches!(value, Target::Player | Target::Guest(_)) || location.owner.dimension == self.dim.key();
+        (visible && !self.target_removed(&value)).then_some(value)
     }
     #[cold]
     #[inline(never)]
@@ -114,14 +122,12 @@ mod general_handle_tests {
     #[ignore = "daily"]
     fn general_handle_of_an_earlier_epoch_refuses_by_the_epoch_check() {
         with_game(|game| {
-            game.resident_entities
-                .general
-                .rows
-                .push(row(42, [21, 22, 23, 24], 7.0));
-            let handle = game.entity(42).expect("the row became a handle");
+            crate::game::ecs::test_support::place_test_mob(game, 42, "minecraft:zombie", [0.0, 64.0, 0.0])
+                .expect("the zombie spawns");
+            let handle = game.entity(42).expect("the entity became a handle");
             assert!(game.native_entity_target(handle).is_some());
             // A reload opens a new epoch; a handle minted against the old one
-            // refuses even though a row of the same UUID and id is resident.
+            // refuses even though an entity of the same id is resident.
             let stale = EntityRef::new(WorldEpoch::new(handle.epoch().get() + 1), handle.id());
             assert!(game.native_entity_target(stale).is_none());
         });

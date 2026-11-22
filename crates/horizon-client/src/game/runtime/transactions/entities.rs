@@ -274,7 +274,7 @@ impl Game<'_> {
             return false;
         };
         match target {
-            // The ECS mob stays readable until the root commit removes it (RESTE-SANS-ECS: no mark is kept).
+            // The journal holds the ECS mob's removal: the transaction's own state, not an entity store.
             Target::Mob(id) => level.lifetimes.removals.push(Removal::Mob { id, killed }),
             _ => level.lifetimes.removals.push(Removal::Other(entity)),
         }
@@ -378,6 +378,8 @@ impl Game<'_> {
                 Removal::Mob { id, killed } => {
                     if killed {
                         self.mob_removal_effects(id);
+                    } else if let Some(e) = self.ecs.entity_of(id) {
+                        self.ecs.despawn(e);
                     }
                     // As `remove_mob_now` does outside a transaction: the leave is told at
                     // the removal, here the root commit's.
@@ -436,6 +438,14 @@ impl Game<'_> {
                     !out
                 });
             )*};
+        }
+        for id in self.ecs.ids_joined_since(mark) {
+            if !arrivals.contains(&id) {
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
+                }
+                gone.push(id);
+            }
         }
         (self.native_lifecycle.pending_item_spawns).retain(|spawn| !gone.contains(&spawn.0));
         for id in gone.into_iter().filter(|&id| id != 0) {

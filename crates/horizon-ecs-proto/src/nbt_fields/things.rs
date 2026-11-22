@@ -533,8 +533,10 @@ fn build_item(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 }
 
 fn build_orb(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let (Some(Tag::Short(value)), Some(Tag::Int(count))) = (tag(c, "Value"), tag(c, "Count")) else { return None };
-    Some(spawn_orb(w, i32::from(*value), u32::try_from(*count).ok()?, at, Vec3::ZERO))
+    // `ExperienceOrb.readAdditionalSaveData`: Value defaults to 0, Count to 1.
+    let value = match tag(c, "Value") { Some(Tag::Short(v)) => i32::from(*v), None => 0, _ => return None };
+    let count = match tag(c, "Count") { Some(Tag::Int(n)) => u32::try_from(*n).ok()?, None => 1, _ => return None };
+    Some(spawn_orb(w, value, count, at, Vec3::ZERO))
 }
 
 fn build_tnt(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
@@ -573,8 +575,12 @@ fn build_painting(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 }
 
 fn build_end_crystal(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let Some(Tag::Byte(show)) = tag(c, "ShowBottom") else { return None };
-    Some(end_crystal::spawn(w, at, *show != 0))
+    let show = match tag(c, "ShowBottom") {
+        Some(Tag::Byte(show)) => *show != 0,
+        None => true,
+        Some(_) => return None,
+    };
+    Some(end_crystal::spawn(w, at, show))
 }
 
 fn build_breath_cloud(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
@@ -597,14 +603,23 @@ fn build_stand(w: &mut World, at: Vec3, _: &Compound) -> Option<Entity> {
 }
 
 fn build_trident(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let stack = item_from_nbt(tag(c, "item")?)?;
+    // AbstractArrow's pickupItemStack starts as `getDefaultPickupItem()`, one trident.
+    let stack = match tag(c, "item") {
+        Some(item) => item_from_nbt(item)?,
+        None => ItemStack::new("minecraft:trident", 1),
+    };
     Some(trident::throw(w, stack, at, Vec3::ZERO, None, 0, Pickup::Allowed))
 }
 
+/// `OminousItemSpawner.addAdditionalSaveData` writes `item` only when it is not empty, and `spawn_item_after_ticks` as a long; the
+/// load reads an absent `item` as empty (air: no drop) and an absent delay as 0.
 fn build_ominous(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
-    let item = item_from_nbt(tag(c, "item")?)?;
-    let Some(Tag::Long(after)) = tag(c, "spawn_item_after_ticks") else { return None };
-    Some(ominous_spawner::spawn(w, item, at, u32::try_from(*after).ok()?))
+    let item = tag(c, "item").and_then(item_from_nbt).unwrap_or_else(|| ItemStack::new("minecraft:air", 1));
+    let after = match tag(c, "spawn_item_after_ticks") {
+        Some(Tag::Long(after)) => *after,
+        _ => 0,
+    };
+    Some(ominous_spawner::spawn(w, item, at, u32::try_from(after).ok()?))
 }
 
 /// A cushion put back on its saved block (`block_pos`), with its `color`, its `Rotation` yaw and its `CustomName`.

@@ -4,7 +4,7 @@
 use super::Def;
 use crate::mount::{RideParams, RIDE};
 use crate::rules::RuleEntry;
-use crate::behaviours::{animal_panic, breed, follow_parent, float, look_at_player, posture, random_look, random_sitting, stroll, tempt, Cap, Cond, Entry};
+use crate::behaviours::{animal_panic, breed, follow_parent, float, look_at_player, posture, random_look, random_sitting, stroll, tempt, walk_to_look, Cap, Cond, Entry};
 
 static NOT_SITTING: Cond = Cond::Not(&Cond::Is("horizon:is_sitting"));
 const FOOD: &[&str] = &["minecraft:cactus"];
@@ -17,10 +17,11 @@ pub static DEF: Def = Def {
         Entry::new(&breed::MODULE, 2, &breed::Params { speed: 1.0, foods: FOOD, ..breed::Params::DEFAULT }),
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 2.5, items: FOOD, ..tempt::Params::DEFAULT }),
         Entry::new(&follow_parent::MODULE, 4, &follow_parent::Params { speed: 2.5 }).when(&NOT_SITTING),
+        Entry::new(&walk_to_look::MODULE, 4, &walk_to_look::Params { speed: 2.0, weight: 1, total: 4 }).when(&NOT_SITTING),
         Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 2.0, ..stroll::Params::DEFAULT }).when(&NOT_SITTING),
-        Entry::new(&random_sitting::MODULE, 5, &random_sitting::Params::DEFAULT),
+        Entry::new(&random_sitting::MODULE, 5, &random_sitting::Params { min_pose_time: 20, one_in: 1 }),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params { range: 6.0, ..look_at_player::Params::DEFAULT }),
-        Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
+        Entry::new(&random_look::MODULE, 7, &random_look::Params { interval: Some((150, 250)), ..random_look::Params::DEFAULT }),
         Entry::new(&posture::MODULE, 255, &posture::Params::DEFAULT),
     ],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Locomotion, Cap::Rideable]),

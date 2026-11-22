@@ -1964,7 +1964,6 @@ pub enum MobEvent {
         delay: i32,
         owner: u32,
     },
-    Shoot([f64; 3], [f64; 3]),
     /// The mob the `Explode` right after this comes from
     /// (`ServerExplosion.source`), and whether it is a charged creeper: the
     /// exploding creeper is already out of the mob list when the game applies

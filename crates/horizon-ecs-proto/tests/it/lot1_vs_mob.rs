@@ -545,7 +545,7 @@ fn do_nothing_runs_while_the_counter_is_positive() {
         // The rule that is not ported counts the charge down, one per tick.
         let left = h.world.get::<do_nothing::Invulnerable>(e).unwrap().0;
         if left > 0 {
-            do_nothing::set(&mut h.world, e, left - 1);
+            do_nothing::set(&mut h.world, e, (left - 1) as i32);
         }
         if h.world.get::<GoalSet>(e).unwrap().is_running(&do_nothing::MODULE) {
             erun += 1;

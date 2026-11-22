@@ -376,6 +376,11 @@ mod game_tests {
             // As the pig, a bare `kill` kills the pig.
             let (ok, said) = run(game, "execute as @e[type=minecraft:pig] run kill");
             assert!(ok && said.contains("entity.minecraft.pig"), "{said}");
+            // `LivingEntity.tickDeath`: the pig lies dying for 20 ticks before it is removed.
+            assert!(game.run_command("execute if entity @e[type=minecraft:pig]"));
+            for _ in 0..20 {
+                game.tick_server(false).unwrap();
+            }
             assert!(!game.run_command("execute if entity @e[type=minecraft:pig]"));
             // The server's own source has no entity.
             for (command, key) in [

@@ -16,6 +16,7 @@ static AVOID: avoid_entity::Params = avoid_entity::Params { what: Avoid::Player,
 
 pub static DEF: Def = Def {
     name: "minecraft:cat",
+    sounds: Some(&["minecraft:classic", "minecraft:royal"]),
     variant: Some(&super::variants::CAT),
     reference: None,
     targets: &[

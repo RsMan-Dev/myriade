@@ -20,6 +20,16 @@ impl Game<'_> {
             return true;
         }
         let conn = guest.conn;
+        // BlockAttachedEntity / ArmorStand.skipAttackInteraction: `Level.mayInteract` refuses the hit on a
+        // painting, a frame, a knot or a stand inside spawn protection, and nothing is knocked off.
+        let stand = u32::try_from(id).ok().and_then(|e| self.armor_stand_saved(e)).map(|a| [a.position.x, a.position.y, a.position.z].map(|v| v.floor() as i32));
+        let hanging = u32::try_from(id).ok().and_then(|e| self.ecs_hanging_pos(e)).or_else(|| self.knot_at_id(id)).or(stand);
+        if let Some([x, y, z]) = hanging {
+            let radius = self.lan.as_ref().and_then(|host| self.spawn_protection_for(host, guest.uuid));
+            if radius.is_some_and(|radius| self.spawn_protects(radius, self.dim.id(), [x, y, z])) {
+                return true;
+            }
+        }
         let target = if guest.entity_id == id {
             Some(guest.bounds())
         } else {
@@ -294,6 +304,7 @@ mod tests {
         let full = hp(&game);
         attack(&mut game, 2, pig);
         assert_eq!(disconnects(&rx), vec![], "a pig is a target");
+        game.tick_ecs().unwrap();
         assert!(hp(&game) < full, "the pig is not hurt: {full} health left");
         attack(&mut game, 2, far_item);
         assert_eq!(disconnects(&rx), vec![], "an item out of reach");

@@ -5,6 +5,7 @@ use crate::behaviours::{bed::Sleeping, item_pickup::Pickup, move_towards_restric
 use crate::cow::{LastHurtBy, MoveTo, Nav, SpeciesId, SpeciesTable};
 use crate::despawn::Persistent;
 use crate::dragon::flight::NoAi;
+use crate::goals::AiPaused;
 use crate::raids::Aggressive;
 use crate::tame::Owner;
 use crate::targeting::{Target, Who};
@@ -90,9 +91,14 @@ impl EcsWorld {
         }
     }
 
-    /// `Mob.isNoAi`: the AI of `e` is paused.
-    pub fn ai_paused(&self, e: Entity) -> bool {
+    /// `Mob.isNoAi`: the flag of vanilla's `Mob.setNoAi` is set on `e`.
+    pub fn no_ai(&self, e: Entity) -> bool {
         self.world().get::<NoAi>(e).is_some()
+    }
+
+    /// The host's AI pause of `e` (`horizon/ai_paused`), which is not vanilla's flag.
+    pub fn ai_paused(&self, e: Entity) -> bool {
+        self.world().get::<AiPaused>(e).is_some()
     }
 
     /// The point `e` is walking to, while its `MoveTo` is active.
@@ -124,7 +130,7 @@ impl EcsWorld {
 
     /// Whether `e` has a restriction (its home).
     pub fn has_restriction(&self, e: Entity) -> bool {
-        self.world().get::<Restriction>(e).is_some()
+        self.world().get::<Restriction>(e).is_some_and(|r| r.radius != -1)
     }
 
     /// The block the restriction of `e` is centred on.
@@ -145,7 +151,7 @@ impl EcsWorld {
             return true;
         }
         let d = |i: usize| f64::from(r.center[i]) + 0.5 - at[i];
-        d(0) * d(0) + d(1) * d(1) + d(2) * d(2) < f64::from(r.radius) * f64::from(r.radius)
+        d(0) * d(0) + d(1) * d(1) + d(2) * d(2) < f64::from(r.radius.wrapping_mul(r.radius))
     }
 
     /// The block `e` sleeps in (`Sleeping`).

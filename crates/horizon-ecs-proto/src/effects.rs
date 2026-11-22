@@ -76,6 +76,8 @@ pub enum Kind {
     Strength,
     /// `MobEffects.INFESTED`: a hit on the bearer may let silverfish out (`hurt_spawn`).
     Infested,
+    /// `MobEffects.ABSORPTION`: adding it raises the absorption to 4 x (level + 1) at least; ending it takes that back.
+    Absorption,
 }
 impl Kind {
     /// The period of a periodic effect at level 0 (`MobEffect.shouldApplyEffectTickThisTick`).
@@ -103,6 +105,8 @@ pub struct Effect {
 pub const HIDDEN: u8 = 1;
 /// The effect is ambient (from a beacon or a source that sets it).
 pub const AMBIENT: u8 = 2;
+/// The effect's icon is not shown (`show_icon` false).
+pub const NO_ICON: u8 = 4;
 #[derive(Component, Clone, Debug, Default)]
 pub struct Effects {
     pub list: Vec<Effect>,
@@ -151,6 +155,10 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
     if w.get::<Health>(e).is_none() || tagged || w.get::<Immune>(e).is_some_and(|i| i.has(refusing_bit(kind))) {
         return false;
     }
+    if kind == Kind::Absorption {
+        let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
+        crate::absorption::set(w, e, cur.max(4.0 * (amp + 1) as f32));
+    }
     let first = now_of(w, e) + 1;
     // `tickEffects` drops the effect at the end of its last tick, before the travel of that tick: it is gone from that tick on.
     let ends = rule::ends_at(first, ticks);
@@ -165,6 +173,8 @@ pub fn add_flagged(w: &mut World, e: Entity, kind: Kind, amp: i32, ticks: i32, f
             let old = f.list[i];
             if rule::replaces(amp, ends, old.amp, old.ends) {
                 f.list[i] = new;
+            } else if old.flags != flags {
+                f.list[i].flags = flags;
             } else {
                 return false;
             }
@@ -322,9 +332,14 @@ pub fn due(w: &mut World, e: Entity) {
         }
     }
     let before = f.list.len();
+    let absorbed: Vec<i32> = f.list.iter().filter(|x| x.ends <= now && x.kind == Kind::Absorption).map(|x| x.amp).collect();
     f.list.retain(|x| x.ends > now);
     let ended = f.list.len() != before;
     *w.get_mut::<Effects>(e).unwrap() = f;
+    for amp in absorbed {
+        let cur = w.get::<crate::absorption::Absorption>(e).map_or(0.0, |a| a.0);
+        crate::absorption::set(w, e, (cur - 4.0 * (amp + 1) as f32).max(0.0));
+    }
     for (kind, _) in acts {
         match kind {
             Kind::Poison => {

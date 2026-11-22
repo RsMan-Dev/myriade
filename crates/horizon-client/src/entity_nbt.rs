@@ -22,7 +22,7 @@ pub use boat_load::boat_from_nbt;
 mod projectile_fields;
 use projectile_fields::{load_projectile_entity_fields, put_projectile_entity_fields};
 mod ai_pause;
-pub use ai_pause::write_ai_paused;
+pub use ai_pause::{paused_in as ai_paused_saved, write_ai_paused};
 mod mob_death;
 mod refs;
 mod saved_attributes;

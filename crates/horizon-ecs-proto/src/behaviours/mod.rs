@@ -367,6 +367,7 @@ pub mod contact_damage;
 pub mod move_towards_restriction;
 pub mod fox_stroll_village;
 pub mod try_find_water;
+pub mod try_find_land;
 pub mod drowned_go_to_beach;
 pub mod drowned_go_to_water;
 pub mod move_to_item;
@@ -566,6 +567,8 @@ pub static TABLE: &[&Module] = &[
     &move_towards_restriction::MODULE_LOOK,
     &fox_stroll_village::MODULE,
     &try_find_water::MODULE,
+    &try_find_land::MODULE,
+    &walk_to_look::MODULE,
     &drowned_go_to_beach::MODULE,
     &drowned_go_to_water::MODULE,
     &move_to_item::MODULE,
@@ -695,3 +698,4 @@ pub mod vibration_listen;
 pub mod event_listen;
 pub mod victory_celebrate;
 pub mod walk_away;
+pub mod walk_to_look;

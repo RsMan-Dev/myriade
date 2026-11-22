@@ -20,6 +20,8 @@ pub struct VillageSiege {
 /// and the game's own siege methods, which mods target. Each runs the function of this
 /// module of the same name.
 pub trait SiegeLevel: CustomSpawnerLevel {
+    /// `snapTo(pos, yaw, 0)` of the zombie the level just spawned.
+    fn set_mob_yaw(&mut self, id: u32, yaw: f32);
     /// The level's siege state (`ServerLevel`'s `VillageSiege`).
     fn siege(&mut self) -> &mut VillageSiege;
     /// `ServerLevel.isVillage` ([`is_village`]).
@@ -120,12 +122,11 @@ pub fn try_spawn<L: SiegeLevel + ?Sized>(l: &mut L) {
     let Some(at) = l.find_siege_spawn_pos(&centers, spot) else {
         return;
     };
-    if l.spawn_event_mob("minecraft:zombie", at, false, raider::Reason::Event).is_none() {
+    let Some(id) = l.spawn_event_mob("minecraft:zombie", at, false, raider::Reason::Event) else {
         return;
-    }
-    let p = l.parts();
-    // RESTE-SANS-ECS: the yaw draw is kept for the level random; no ECS yaw setter yet.
-    let _yaw = p.world.random.next_float() * 360.0;
+    };
+    let yaw = l.parts().world.random.next_float() * 360.0;
+    l.set_mob_yaw(id, yaw);
 }
 
 /// `ServerLevel.isVillage`: within one section of a village.

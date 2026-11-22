@@ -74,6 +74,9 @@ impl EcsLevel {
     pub fn ai_paused(&self, id: u32) -> Option<bool> {
         self.by_id(id, |w, e| w.ai_paused(e))
     }
+    pub fn no_ai(&self, id: u32) -> Option<bool> {
+        self.by_id(id, |w, e| w.no_ai(e))
+    }
     pub fn wanted(&self, id: u32) -> Option<[f64; 3]> {
         self.by_id(id, |w, e| w.wanted(e)).flatten()
     }

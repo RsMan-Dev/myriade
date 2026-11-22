@@ -215,6 +215,14 @@ mod tests {
         w
     }
 
+    #[test]
+    fn a_summoned_oak_boat_is_made_by_its_declared_recipe() {
+        let mut w = world();
+        let e = crate::nbt::spawn_built(&mut w, "minecraft:oak_boat", Vec3::new(0.0, 64.0, 0.0), None).flatten();
+        assert!(crate::nbt::declared_with(&w, "minecraft:oak_boat"));
+        assert!(e.is_some(), "the oak boat is summoned");
+    }
+
     fn state(w: &World, e: Entity) -> ([f64; 3], Hull, u8, bool) {
         let p = w.get::<Pos>(e).unwrap().0;
         (

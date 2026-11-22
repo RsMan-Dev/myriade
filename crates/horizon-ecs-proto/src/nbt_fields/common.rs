@@ -186,21 +186,20 @@ fn is_int_array(t: &Tag) -> bool {
     matches!(t, Tag::IntArray(_))
 }
 
-/// `Fire`: the ticks left on fire (a short), from `Burning.until`.
+/// `Fire`: the signed ticks left on fire (a short), from `Burning.until`; a negative count is kept as `until` before now.
 fn write_fire(w: &World, e: Entity, c: &mut Compound) {
     let Some(b) = w.get::<Burning>(e) else { return };
-    let left = b.until.saturating_sub(now_of(w, e));
-    c.insert("Fire".into(), Tag::Short(i16::try_from(left).unwrap_or(i16::MAX)));
+    let left = b.until - now_of(w, e) as i64;
+    c.insert("Fire".into(), Tag::Short(left.clamp(i16::MIN as i64, i16::MAX as i64) as i16));
 }
 
-/// Not on fire when the ticks are not positive: `Burning` goes.
+/// Zero ticks: `Burning` goes. A negative count is an `until` already past (`Entity.clearFire` keeps it).
 fn read_fire(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Tag::Short(v) = t else { return false };
-    let left = u64::try_from(*v).unwrap_or(0);
-    if left == 0 {
+    if *v == 0 {
         w.entity_mut(e).remove::<Burning>();
     } else {
-        let until = now_of(w, e) + left;
+        let until = now_of(w, e) as i64 + *v as i64;
         w.entity_mut(e).insert(Burning { until });
     }
     true
@@ -451,6 +450,7 @@ fn kind_name(k: Kind) -> &'static str {
         Kind::Weaving => "minecraft:weaving",
         Kind::Strength => "minecraft:strength",
         Kind::Infested => "minecraft:infested",
+        Kind::Absorption => "minecraft:absorption",
     }
 }
 
@@ -474,6 +474,7 @@ fn kind_of(name: &str) -> Option<Kind> {
         Kind::Weaving,
         Kind::Strength,
         Kind::Infested,
+        Kind::Absorption,
     ]
     .into_iter()
     .find(|&k| kind_name(k) == name)
@@ -543,4 +544,40 @@ fn read_effects(w: &mut World, e: Entity, t: &Tag) -> bool {
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nbt;
+
+    #[test]
+    fn a_loaded_rotation_keeps_its_pitch() {
+        let mut w = World::new();
+        nbt::begin_declarations(&mut w);
+        nbt::register(&mut w, FIELDS);
+        nbt::end_declarations(&mut w);
+        let e = w.spawn_empty().id();
+        w.entity_mut(e).insert(nbt::Saved);
+        let mut c = Compound::new();
+        c.insert("Rotation".into(), Tag::List(vec![Tag::Float(12.5f32.to_bits()), Tag::Float(30f32.to_bits())]));
+        nbt::load(&mut w, e, &c);
+        assert_eq!(w.get::<Pitch>(e).map(|p| p.0), Some(30.0));
+        assert_eq!(w.get::<Yaw>(e).map(|y| y.0), Some(12.5));
+    }
+
+    #[test]
+    fn a_loaded_rotation_with_a_yaw_keeps_its_pitch() {
+        let mut w = World::new();
+        nbt::begin_declarations(&mut w);
+        nbt::register(&mut w, FIELDS);
+        nbt::end_declarations(&mut w);
+        let e = w.spawn(Yaw(0.0)).id();
+        w.entity_mut(e).insert(nbt::Saved);
+        let mut c = Compound::new();
+        c.insert("Rotation".into(), Tag::List(vec![Tag::Float(12.5f32.to_bits()), Tag::Float(30f32.to_bits())]));
+        let applied = nbt::load(&mut w, e, &c);
+        assert_eq!(w.get::<Yaw>(e).map(|y| y.0), Some(12.5), "applied {applied:?}");
+        assert_eq!(w.get::<Pitch>(e).map(|p| p.0), Some(30.0));
+    }
 }

@@ -649,7 +649,7 @@ impl Game<'_> {
                     candidates.extend(self.level_candidates());
                 }
                 // The mobs the ECS holds, found by its index (`EcsLevel::select`).
-                candidates.extend(self.ecs_mob_candidates(s, origin).into_iter().map(Target::Mob));
+                candidates.extend(self.ecs_selector_targets(s, origin));
             }
             out.extend(self.native_selector_kept(s, candidates, origin));
             if let Some(back) = back {
@@ -865,6 +865,7 @@ impl Game<'_> {
         });
         candidates.extend(self.ecs_frames().into_iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.ecs_paintings().into_iter().map(|p| Target::Painting(p.id)));
+        candidates.extend(self.ecs.boat_ids().into_iter().map(Target::Boat));
         candidates.extend(self.cushion_ids().into_iter().map(Target::Cushion));
         candidates.extend(self.fang_ids().into_iter().map(Target::Fangs));
         // The End crystals and the dragon (EndCrystal and EnderDragon
@@ -1537,7 +1538,7 @@ impl Game<'_> {
                     if yaw.is_finite() {
                         self.yaw = yaw;
                     }
-                    if !pitch.is_nan() {
+                    if pitch.is_finite() {
                         self.pitch = entity_pitch(pitch);
                     }
                 }
@@ -1569,6 +1570,10 @@ impl Game<'_> {
                     self.ecs_with(|ecs, mw| ecs.teleport(mw, e, pos));
                     self.ecs.teleport_motion(e, relative);
                     if let Some([yaw, pitch]) = rotation {
+                        // `Entity.setYRot`/`setXRot`: a non-finite angle is refused and the current one kept.
+                        let [cur_yaw, cur_pitch] = self.ecs_mob_rotation(id);
+                        let yaw = if yaw.is_finite() { yaw } else { cur_yaw };
+                        let pitch = if pitch.is_finite() { entity_pitch(pitch) } else { cur_pitch };
                         self.ecs.set_rotation(e, yaw, pitch);
                     }
                 }
@@ -3947,8 +3952,8 @@ mod teleport_pitch_tests {
         for (rotation, expected) in [
             ([40.0, f32::NAN], [40.0, 20.0]),
             ([f32::INFINITY, 30.0], [10.0, 30.0]),
-            ([40.0, f32::INFINITY], [40.0, 90.0]),
-            ([40.0, f32::NEG_INFINITY], [40.0, -90.0]),
+            ([40.0, f32::INFINITY], [40.0, 20.0]),
+            ([40.0, f32::NEG_INFINITY], [40.0, 20.0]),
         ] {
             game.yaw = 10.0;
             game.pitch = 20.0;
@@ -5208,7 +5213,8 @@ mod global_selector_order_tests {
                         let join = game.armor_stand_saved(id).unwrap().join_seq();
                         (join.is_joined(), join.get())
                     }
-                    _ => panic!("actual admitted family"),
+                    Target::Item(id) => (game.ecs.item(id).is_some(), u64::from(id)),
+                    other => panic!("actual admitted family: {other:?}"),
                 };
                 assert!(
                     joined && seq > last_join,

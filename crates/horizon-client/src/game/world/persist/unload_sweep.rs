@@ -40,7 +40,6 @@ impl Game<'_> {
                 self.armor_stand_remove(a.id);
             }
         }
-        // RESTE-SANS-ECS: riders kept off the level with their root are no longer held here; the ECS unloads its own mobs.
         for item in self.ecs.item_views() {
             if gone(item.position) {
                 removed.push(item.id);

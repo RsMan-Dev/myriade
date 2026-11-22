@@ -4,7 +4,7 @@
 //! where the radius starts to grow); one wake-up at `WAIT + duration` removes it. Between them, `tick_live` visits it each tick.
 //! It emits the same `HostEvent::Cloud` as `breath::spawn` (see the notes).
 use crate::area;
-use crate::cow::{after, OwnTime, Pos};
+use crate::cow::{after, OwnTime, Pos, Vel};
 use crate::dragon::breath::{self, Cloud, CloudSpec, Step, WAIT};
 use crate::goals::Events;
 use crate::rules::breath_cloud as rule;
@@ -40,7 +40,8 @@ pub fn build(w: &mut World, at: Vec3, c: &horizon_core::nbt::Compound) -> Option
     if c.get(&horizon_core::nbt::JavaString::from("potion_contents")).is_some() {
         return None;
     }
-    let e = w.spawn((Pos(at), breath::FLAME.cloud([at.x, at.y, at.z]), OwnTime)).id();
+    // `Entity.deltaMovement` starts at zero and `saveWithoutId` writes it as `Motion`.
+    let e = w.spawn((Pos(at), Vel(Vec3::ZERO), breath::FLAME.cloud([at.x, at.y, at.z]), OwnTime)).id();
     crate::nbt::mark_saved(w, e, crate::species::lists::AREA_EFFECT_CLOUD);
     Some(e)
 }

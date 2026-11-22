@@ -35,7 +35,7 @@ fn on_ground(w: &World, e: Entity) -> bool {
     w.get::<Contact>(e).is_some_and(|c| c.on_ground)
 }
 fn on_fire(w: &World, e: Entity) -> bool {
-    w.get::<Burning>(e).is_some_and(|b| b.until > crate::cow::now_of(w, e))
+    w.get::<Burning>(e).is_some_and(|b| b.until > crate::cow::now_of(w, e) as i64)
 }
 /// `ocelot:trusting`: a player fed it (`cat_state::Trusting`).
 fn ocelot_trusting(w: &World, e: Entity) -> bool {

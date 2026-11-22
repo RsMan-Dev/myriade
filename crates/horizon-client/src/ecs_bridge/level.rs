@@ -5,7 +5,7 @@ use super::state;
 use crate::lan::entity::EntityState;
 use crate::mobs::{MobTypes, MobWorld};
 use bevy_ecs::{entity::Entity, world::World};
-use horizon_core::{geometry::Vec3, nbt::Compound};
+use horizon_core::{geometry::Vec3, nbt::{Compound, Tag}};
 use horizon_ecs_proto::{
     behaviours::ender_teleport,
     bridge::{
@@ -21,6 +21,14 @@ use horizon_ecs_proto::{
     targeting::Who,
 };
 use std::path::Path;
+
+/// The flags a saved mob carries that are components: the AI pause (`ai_paused`) and `CanPickUpLoot`.
+fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
+    w.set_ai_paused(e, crate::entity_nbt::ai_paused_saved(c));
+    if let Some(Tag::Byte(on)) = c.get(&"CanPickUpLoot".into()) {
+        w.set_can_pick_up_loot(e, *on != 0);
+    }
+}
 use horizon_protocol::entity_data::Value;
 
 pub struct EcsLevel {
@@ -71,6 +79,19 @@ impl EcsLevel {
         group: Option<horizon_ecs_proto::spawn_finalize::Group>,
     ) -> Option<(Entity, horizon_ecs_proto::spawn_finalize::Outcome)> {
         self.inner.as_mut()?.spawn_finalized(mw, kind, at, reason, special, group)
+    }
+    /// `spawn_finalized` with the variant draw at `finalize_at` (None: at `at`).
+    pub fn spawn_finalized_at(
+        &mut self,
+        mw: &MobWorld<'_>,
+        kind: &str,
+        at: [f64; 3],
+        finalize_at: Option<[f64; 3]>,
+        reason: horizon_ecs_proto::spawn_reason::SpawnReason,
+        special: f32,
+        group: Option<horizon_ecs_proto::spawn_finalize::Group>,
+    ) -> Option<(Entity, horizon_ecs_proto::spawn_finalize::Outcome)> {
+        self.inner.as_mut()?.spawn_finalized_at(mw, kind, at, finalize_at, reason, special, group)
     }
     /// `EcsWorld::spawn_natural`: a creature of the natural spawning pass.
     pub fn spawn_natural(&mut self, mw: &MobWorld<'_>, kind: &str, at: [f64; 3]) -> Option<Entity> {
@@ -169,11 +190,20 @@ impl EcsLevel {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.save_chunk(cx, cz))
     }
     pub fn load_entity(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Option<Entity> {
-        self.inner.as_mut()?.load_entity(mw, c)
+        let w = self.inner.as_mut()?;
+        let e = w.load_entity(mw, c)?;
+        restore_mob_flags(w, e, c);
+        Some(e)
     }
-    /// `load_entity` for a mount and its riders: the entity of each compound of the NBT, in its order (None: not made).
+    /// `load_entity` for a mount and its riders: the entity of each compound of the NBT, in its order (None: not made). Only the root's
+    /// saved flags are restored here.
     pub fn load_entity_tree(&mut self, mw: &MobWorld<'_>, c: &Compound) -> Vec<Option<Entity>> {
-        self.inner.as_mut().map_or_else(Vec::new, |w| w.load_entity_tree(mw, c))
+        let Some(w) = self.inner.as_mut() else { return Vec::new() };
+        let made = w.load_entity_tree(mw, c);
+        if let Some(Some(e)) = made.first() {
+            restore_mob_flags(w, *e, c);
+        }
+        made
     }
     /// The ids of `root` and its riders all the way down, in the order `Passengers` is written (root first, depth first).
     pub fn ride_tree(&self, root: u32) -> Vec<u32> {
@@ -181,7 +211,14 @@ impl EcsLevel {
         w.ride_tree(e).into_iter().filter_map(|r| w.id_of(r)).collect()
     }
     pub fn entity_nbt(&self, e: Entity) -> Option<Compound> {
-        self.inner.as_ref()?.entity_nbt(e)
+        let w = self.inner.as_ref()?;
+        let mut tag = Tag::Compound(w.entity_nbt(e)?);
+        crate::entity_nbt::write_ai_paused(w.ai_paused(e), &mut tag);
+        let Tag::Compound(mut c) = tag else { return None };
+        if let Some(on) = w.can_pick_up_loot(e) {
+            c.insert("CanPickUpLoot".into(), Tag::Byte(i8::from(on)));
+        }
+        Some(c)
     }
     pub fn merge_nbt(&mut self, e: Entity, patch: &Compound) -> bool {
         self.inner.as_mut().is_some_and(|w| w.merge_nbt(e, patch))

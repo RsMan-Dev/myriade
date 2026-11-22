@@ -22,6 +22,18 @@ impl EcsLevel {
         };
         ecs.pickup_items(mw, who, uuid, feet, reach, room)
     }
+    /// The stacks in the player's box at `feet` it may take now, by network id, not taken.
+    pub fn pickup_candidates(&mut self, mw: &MobWorld<'_>, who: Who, uuid: [i32; 4], feet: [f64; 3], reach: f64) -> Vec<(u32, ItemStack)> {
+        let Some(ecs) = self.ecs_mut() else {
+            return Vec::new();
+        };
+        ecs.pickup_candidates(mw, who, uuid, feet, reach)
+    }
+    /// The stack `id` taken in the player's box at `feet`, as `room` accepts: the stack and its place, `None` when it is not there to take.
+    pub fn pickup_item(&mut self, mw: &MobWorld<'_>, who: Who, uuid: [i32; 4], id: u32, feet: [f64; 3], reach: f64, room: &mut dyn FnMut(&ItemStack) -> u32) -> Option<(ItemStack, [f64; 3])> {
+        let ecs = self.ecs_mut()?;
+        ecs.pickup_item(mw, who, uuid, id, feet, reach, room)
+    }
     /// The orbs in the player's box at `feet`, by network id (bound with `alloc` when the orb has none).
     pub fn pickup_orbs(&mut self, mw: &MobWorld<'_>, feet: [f64; 3], reach: f64, alloc: &mut dyn FnMut() -> u32) -> Vec<u32> {
         let Some(ecs) = self.ecs_mut() else {

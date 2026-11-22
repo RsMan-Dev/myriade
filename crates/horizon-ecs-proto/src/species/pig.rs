@@ -7,6 +7,7 @@ use crate::rules::RuleEntry;
 
 pub static DEF: Def = Def {
     name: "minecraft:pig",
+    sounds: Some(&["minecraft:big", "minecraft:classic", "minecraft:mini"]),
     variant: Some(&super::variants::FARM_ANIMAL),
     reference: Some(&farm_animal::DEF),
     changes: &[

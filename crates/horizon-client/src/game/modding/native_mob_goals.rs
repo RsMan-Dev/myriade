@@ -81,7 +81,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.filters_known(goal)
                 && self.ecs_mod_live(id).is_some()
-                && self.ecs.add_goal(id, priority, goal);
+                && self.ecs_with_mw(|ecs, mw| ecs.add_goal(mw, id, priority, goal));
         }
         false
     }
@@ -100,7 +100,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return self.filters_known(goal)
                 && self.ecs_mod_live(id).is_some()
-                && self.ecs.add_target_goal(id, priority, goal);
+                && self.ecs_with_mw(|ecs, mw| ecs.add_target_goal(mw, id, priority, goal));
         }
         false
     }
@@ -142,7 +142,7 @@ impl Game<'_> {
             return false;
         };
         if self.ecs.is_active() {
-            return self.ecs_mod_live(entity).is_some() && self.ecs.reset_goals(entity);
+            return self.ecs_mod_live(entity).is_some() && self.ecs_with_mw(|ecs, mw| ecs.reset_goals(mw, entity));
         }
         false
     }

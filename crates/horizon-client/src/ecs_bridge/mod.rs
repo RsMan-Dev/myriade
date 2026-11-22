@@ -8,6 +8,7 @@ pub mod state;
 #[cfg(test)]
 mod tests_level;
 
+mod fix_f2;
 mod level_goals;
 mod level_read;
 mod level_raids;
@@ -48,6 +49,7 @@ mod level_dispense;
 mod level_equipment;
 mod level_combat;
 mod level_listen;
+mod fix_f7;
 mod level_mount;
 mod level_nav_more;
 mod level_pickup;

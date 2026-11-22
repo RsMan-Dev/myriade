@@ -14,7 +14,8 @@ use crate::brain::*;
 pub static DEF: Def = Def {
     name: "minecraft:creaking",
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Brain]),
-    goals: &[Entry::new(&float::MODULE, 0, &float::Params::DEFAULT), Entry::new(&stare_freeze::MODULE, 0, &stare_freeze::Params::DEFAULT)],
+    // `CreakingAi$1` (the Swim): `checkExtraStartConditions` is `canMove() && super`.
+    goals: &[Entry::new(&float::MODULE, 0, &float::Params { when: Some(stare_freeze::can_move), ..float::Params::DEFAULT }),Entry::new(&stare_freeze::MODULE, 0, &stare_freeze::Params::DEFAULT)],
     brain: BrainDef {
         sensors: &[SensorEntry::new(&living::SENSOR, 20), SensorEntry::new(&nearest_players::SENSOR, 20)],
         activities: &[

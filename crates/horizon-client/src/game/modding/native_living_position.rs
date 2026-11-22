@@ -133,8 +133,16 @@ impl Game<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game as with_plain_game;
     use super::*;
+
+    /// `with_game` with the level's ECS attached, so the mobs placed here exist (`ecs_game_with`).
+    fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+        with_plain_game(|game| {
+            game.ecs = game.test_ecs_level();
+            test(game)
+        });
+    }
     use mod_api::PathType;
 
     #[test]
@@ -241,6 +249,10 @@ pub(in crate::game) mod tests {
                 game.world.set(x, 63, z, stone).unwrap();
             }
         }
+        game.player = Some(
+            horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
+        );
+        crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
         crate::game::ecs::test_support::place_test_mob(game, 12, "minecraft:zombie", [0.5, 64.0, 0.5]);
         crate::game::ecs::test_support::place_test_mob(game, 13, "minecraft:zombie", [5.5, 64.0, 0.5]);
     }

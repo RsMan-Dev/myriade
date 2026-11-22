@@ -1062,6 +1062,13 @@ impl Game<'_> {
         if self.ecs.cart_kind(root).is_some() {
             return self.ecs_mob_tree(root).map(Tag::Compound);
         }
+        // An ECS mob root keeps its riders in the ECS chain, as `take_vehicle_tree_transfer` reads it.
+        if let Some(c) = self.ecs.is_active().then(|| self.ecs_mob_tree(root)).flatten() {
+            let mut tag = Tag::Compound(c);
+            self.put_mob_passengers(&mut tag, root);
+            write_attachments(&mut tag, root, &self.entity_attachments);
+            return Some(tag);
+        }
         // Any other kind of root vehicle, with its passengers.
         self.saved_passenger_body(root)
     }
@@ -1794,7 +1801,7 @@ mod item_display_saved_transform_tests {
             .ecs
             .species_ids("minecraft:item_display")
             .into_iter()
-            .find(|&id| game.persist.uuid_of(id) == Some([132, 0, 0, n]))
+            .find(|&id| game.ecs.uuid_words(id) == Some([132, 0, 0, n]))
             .unwrap();
         assert_eq!(game.ecs.kind(id), Some("minecraft:item_display"));
         assert_eq!(game.ecs.position(id), Some([6.5, 200.0, 6.5]));
@@ -1877,7 +1884,7 @@ mod item_display_saved_transform_tests {
             // Same actual server-context setup as existing native machine/contact fixtures.
             game.options.dedicated = Some(Vec::new());
             let id = summon(game, 4, None);
-            let uuid = game.persist.uuid_of(id);
+            let uuid = game.ecs.uuid_words(id);
             let clock = game.world.game_time;
             let update = Transformation {
                 translation: [9.0, 8.0, 7.0],
@@ -1928,7 +1935,7 @@ mod item_display_saved_transform_tests {
                     .get("transformation"),
                 Some(&want)
             );
-            assert_eq!(game.persist.uuid_of(id), uuid);
+            assert_eq!(game.ecs.uuid_words(id), uuid);
             assert_eq!(game.world.game_time, clock);
         });
     }

@@ -35,15 +35,15 @@ pub struct ItemView {
 }
 
 /// The view of the item `e`; None when it is not an item.
-fn view_of(w: &World, e: Entity) -> Option<ItemView> {
+fn view_of(w: &World, e: Entity, id: u32) -> Option<ItemView> {
     let it = w.get::<Item>(e)?;
     let now = now_of(w, e);
     let contact = w.get::<Contact>(e);
     Some(ItemView {
-        id: it.id,
+        id,
         stack: it.stack.clone(),
         age: horizon_ecs_proto::item::age_of(it, now).max(0) as u32,
-        ticks: now.saturating_sub(it.born) as u32,
+        ticks: (now as i64 - it.born).max(0) as u32,
         pickup_delay: horizon_ecs_proto::item::delay_of(it, now),
         target: it.target,
         thrower: w.get::<Thrower>(e).map(|t| t.0),
@@ -52,7 +52,7 @@ fn view_of(w: &World, e: Entity) -> Option<ItemView> {
         on_ground: contact.is_some_and(|c| c.on_ground),
         fall_distance: contact.map_or(0.0, |c| c.fall_distance),
         health: w.get::<Health>(e).map_or(0.0, |h| h.0),
-        fire_ticks: w.get::<Burning>(e).map_or(0, |b| b.until.saturating_sub(now) as i32),
+        fire_ticks: w.get::<Burning>(e).map_or(0, |b| (b.until - now as i64) as i32),
     })
 }
 
@@ -60,7 +60,7 @@ impl EcsLevel {
     /// The view of the item `id`; None when it is absent, asleep or the level is inert.
     pub fn item(&self, id: u32) -> Option<ItemView> {
         let w = self.world()?;
-        view_of(w, self.entity_of(id)?)
+        view_of(w, self.entity_of(id)?, id)
     }
     /// The ids of every dropped item of the level, in order.
     pub fn item_ids(&self) -> Vec<u32> {
@@ -100,7 +100,7 @@ impl EcsLevel {
         let Some(e) = self.entity_of(id) else { return false };
         let Some(w) = self.world_mut() else { return false };
         let now = now_of(w, e);
-        w.get_mut::<Item>(e).map(|mut it| it.born = now.saturating_sub(u64::from(ticks))).is_some()
+        w.get_mut::<Item>(e).map(|mut it| it.born = now as i64 - i64::from(ticks)).is_some()
     }
     /// The age of the item `id`, replaced by `age`; false when it is not an item.
     pub fn set_item_age(&mut self, id: u32, age: u32) -> bool {

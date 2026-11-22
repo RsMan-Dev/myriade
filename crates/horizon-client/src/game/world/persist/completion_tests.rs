@@ -26,10 +26,10 @@ fn with_game(test: impl FnOnce(&mut Game<'_>)) {
 }
 
 fn id(game: &Game<'_>, n: i32) -> Option<u32> {
-    game.persist
-        .uuids
-        .iter()
-        .find_map(|(&id, &u)| (u == [161, 26, 3, n] && game.passenger_present(id)).then_some(id))
+    game.ecs
+        .all_ids()
+        .into_iter()
+        .find(|&id| game.ecs.uuid_words(id) == Some([161, 26, 3, n]) && game.passenger_present(id))
 }
 fn child_uuids(tag: &Tag) -> Vec<i32> {
     match tag.get("Passengers") {
@@ -147,12 +147,12 @@ fn admitted_families_load_merge_save_and_reload() {
         ];
         for &(command, parent, live, saved) in cases {
             assert!(g.run_command(command), "{command}");
-            let root = id(g, parent).expect("actual root");
+            let root = id(g, parent).unwrap_or_else(|| panic!("actual root {parent}: {command}"));
             let children = g.ordered_live_passengers(root);
             assert_eq!(
                 children
                     .iter()
-                    .map(|id| g.persist.uuid_of(*id).unwrap()[3])
+                    .map(|id| g.ecs.uuid_words(*id).unwrap()[3])
                     .collect::<Vec<_>>(),
                 live,
                 "live {parent}"

@@ -10,7 +10,8 @@ use crate::targeting::Who;
 #[derive(Clone, Debug, PartialEq)]
 pub enum HostEvent {
     SetBlock { pos: [i32; 3], state: BlockStateId },
-    Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32 },
+    /// `source`: the sound category index (`SoundSource`); None is the event's own default.
+    Sound { name: &'static str, at: [f64; 3], volume: f32, pitch: f32, source: Option<usize> },
     Particles { kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32 },
     /// A velocity added to a player (`MobEvent::Push`).
     /// `MobEvent::EntityEvent`: the client's entity event code (animation, sound).
@@ -167,7 +168,11 @@ impl HostOut {
     }
     /// `MobEvent::Sound(name, at, volume, pitch)`.
     pub fn sound(&mut self, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
-        self.out.push(HostEvent::Sound { name, at, volume, pitch });
+        self.out.push(HostEvent::Sound { name, at, volume, pitch, source: None });
+    }
+    /// `ServerLevel.playSound` with an explicit `SoundSource` (`source`, its index).
+    pub fn sound_from(&mut self, source: usize, name: &'static str, at: [f64; 3], volume: f32, pitch: f32) {
+        self.out.push(HostEvent::Sound { name, at, volume, pitch, source: Some(source) });
     }
     /// `MobEvent::LevelParticles`.
     pub fn particles(&mut self, kind: &'static str, at: [f64; 3], spread: [f64; 3], speed: f64, count: u32) {

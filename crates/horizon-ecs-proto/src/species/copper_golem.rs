@@ -1,12 +1,13 @@
 //! `CopperGolem` and `CopperGolemAi`: two sensors, the core and idle activities, the door (`interact_with_door`, core 3), the transport between
 //! chests (`transport_items`, idle 0) and the generic behaviours. The transport's cooldown is a memory that expires by its deadline (the
 //! constructor's value, then 140 after a trip that finds no chest); the stroll waits for it (as the `Mob` does), so a golem walks while it lasts.
-//! Left out: the countdown of the gaze (the `Mob` never sets it).
+//! The gaze countdown (`count_down_cooldown_ticks`, core 4) runs only while its memory is set; the golem's brain never sets it (the writer,
+//! `RandomLookAround`, is in the camel's and armadillo's brains only), as in vanilla.
 use super::Def;
 use crate::behaviours::shear::ShearDef;
 use crate::behaviours::Cap;
 use crate::goals::Slot;
-use crate::brain::behaviours::{do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, transport_items};
+use crate::brain::behaviours::{count_down_cooldown_ticks, do_nothing, interact_with_door, look_at_player_sometimes, look_at_target_sink, move_to_target_sink, panic, run_one, stroll, transport_items};
 use crate::brain::sensors::{hurt_by, living};
 use crate::brain::*;
 
@@ -46,6 +47,7 @@ pub static DEF: Def = Def {
             BEntry { behaviour: &move_to_target_sink::BEHAVIOUR, activity: "core", priority: 2, params: &(), needs: &[(&PATH, Need::Absent), (&WALK_TARGET, Need::Present)], duration: Some((150, 250)), kids: &[] },
             BEntry { behaviour: &transport_items::BEHAVIOUR, activity: "idle", priority: 0, params: &(), needs: &[], duration: None, kids: &[] },
             BEntry { behaviour: &interact_with_door::BEHAVIOUR, activity: "core", priority: 3, params: &DOOR, needs: &[], duration: None, kids: &[] },
+            BEntry { behaviour: &count_down_cooldown_ticks::BEHAVIOUR, activity: "core", priority: 4, params: &count_down_cooldown_ticks::Params { key: &GAZE_COOLDOWN_TICKS }, needs: &[(&GAZE_COOLDOWN_TICKS, Need::Present)], duration: None, kids: &[] },
             BEntry {
                 behaviour: &run_one::QUIET,
                 activity: "idle",

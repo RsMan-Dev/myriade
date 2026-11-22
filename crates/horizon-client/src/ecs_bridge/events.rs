@@ -125,7 +125,7 @@ fn who_of(world: &World, w: horizon_ecs_proto::targeting::Who) -> Option<Who> {
 pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
     Some(match ev {
         HostEvent::SetBlock { pos, state } => MobEvent::SetBlock { pos, state },
-        HostEvent::Sound { name, at, volume, pitch } => MobEvent::Sound(name, at, volume, pitch),
+        HostEvent::Sound { name, at, volume, pitch, .. } => MobEvent::Sound(name, at, volume, pitch),
         HostEvent::Particles { kind, at, spread, speed, count } => MobEvent::LevelParticles { kind, at, spread, speed, count },
         HostEvent::EntityEvent { entity, code } => MobEvent::EntityEvent { mob: id_of(world, entity)?, event: code as i8, at: view::position(world, entity)? },
         HostEvent::Darkness { at, radius } => MobEvent::Darkness { at, radius },

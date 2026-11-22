@@ -8,7 +8,7 @@ use horizon_ecs_proto::{
     attr_mod::Operation,
     behaviours::ender_teleport::WaterSensitive,
     bridge::{host::Flag, host_read, host_read_living::{effect_kind, effect_name}},
-    effects::{AMBIENT, Effect, HIDDEN, Kind},
+    effects::{AMBIENT, Effect, HIDDEN, Kind, NO_ICON},
     goals::Head,
 };
 use horizon_world::attribute_map::ValueKind;
@@ -25,18 +25,18 @@ fn instance(def: &EffectDef, x: Effect, remaining: i32) -> EffectInstance {
     let mut i = EffectInstance::from_def(def, remaining, x.amp);
     i.ambient = x.flags & AMBIENT != 0;
     i.visible = x.flags & HIDDEN == 0;
-    i.show_icon = i.visible;
+    i.show_icon = i.visible && x.flags & NO_ICON == 0;
     i
 }
 
-/// The state name a flag reads by (`EcsWorld::flag`); `Gliding` has no ECS state.
+/// The state name a flag reads by (`EcsWorld::flag`).
 fn flag_name(flag: Flag) -> Option<&'static str> {
     Some(match flag {
         Flag::OnFire => "on_fire",
         Flag::Sleeping => "sleeping",
         Flag::Invisible => "invisible",
         Flag::Frozen => "frozen",
-        Flag::Gliding => return None,
+        Flag::Gliding => "gliding",
     })
 }
 
@@ -89,6 +89,7 @@ impl EcsLevel {
     }
     pub fn attribute_modifiers(&self, id: u32, name: &str) -> Option<Vec<AttributeModifier>> {
         let (ecs, e) = (self.ecs()?, self.entity_of(id)?);
+        ecs.attribute(e, name)?;
         Some(
             ecs.attribute_modifiers(e, name)
                 .into_iter()

@@ -232,11 +232,12 @@ impl BlockState {
                 properties: BlockProperties::new(),
             });
         }
-        let Some(Tag::String(name)) = tag.get("id") else {
+        // Vanilla's `NbtUtils.readBlockState` keys (`Name`, `Properties`) are read when Horizon's (`id`, `properties`) are absent.
+        let Some(Tag::String(name)) = tag.get("id").or_else(|| tag.get("Name")) else {
             return Err(invalid("block state is missing id"));
         };
         let mut properties = Vec::new();
-        if let Some(tag) = tag.get("properties") {
+        if let Some(tag) = tag.get("properties").or_else(|| tag.get("Properties")) {
             let Tag::Compound(map) = tag else {
                 return Err(invalid("block properties are not a compound"));
             };

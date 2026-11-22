@@ -37,7 +37,7 @@ impl Game<'_> {
         let container = self.cart_genre(id).is_some_and(|k| k.slots() > 0);
         let position = if container || self.boat_has_chest(id) == Some(true) {
             self.ecs.position(id)?
-        } else if let Some(columns) = self.ecs.mount_columns(id) {
+        } else if let Some(columns) = self.ecs.mount_columns(id).filter(|_| self.cart_genre(id).is_none()) {
             let size = columns * 3;
             let (saddle, body, mut items) = self.ecs.mount_contents(id)?;
             items.resize(size, None);
@@ -866,17 +866,15 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
-        use super::super::{
-            commands::Target,
-            minecarts::{CartKind, Minecart},
-        };
+        use super::super::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.0; 3], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
-            game.persist.removals.push(Target::Cart(500));
+            let cart = game.ecs.entity_of(500).unwrap();
+            game.ecs.despawn(cart);
             assert!(entity.capability(game, &ENTITY_ITEMS, ()).is_none());
             let sticks =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());

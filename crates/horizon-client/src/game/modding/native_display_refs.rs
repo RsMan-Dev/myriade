@@ -52,7 +52,8 @@ impl Game<'_> {
     /// The display's kind and entity id, or None for a stale handle, a client,
     /// or an entity that isn't a display.
     fn display_entity(&self, display: DisplayRef) -> Option<(DisplayKind, u32)> {
-        let Target::Other(id) = self.native_entity_target(display.entity())? else {
+        // An ECS entity resolves as a mob handle: the kind tells the display apart.
+        let (Target::Other(id) | Target::Mob(id)) = self.native_entity_target(display.entity())? else {
             return None;
         };
         let kind = self.ecs.kind(id)?;

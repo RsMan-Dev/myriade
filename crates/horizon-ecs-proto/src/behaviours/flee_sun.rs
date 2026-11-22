@@ -68,7 +68,7 @@ fn pick(w: &mut World, e: Entity, v: (f64, i32, f64)) {
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let now = now_of(w, e);
     let Some(pos) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now);
+    let burning = w.get::<Burning>(e).is_some_and(|b| b.until > now as i64);
     // Not burning, or at night: the ignition and the change of day wake the goal; no ask until then.
     if !burning || !w.resource::<Daylight>().0 {
         return false;
@@ -116,7 +116,7 @@ fn start(w: &mut World, e: Entity, _: Inst) {
 /// selector asks a goal that is not running.
 fn stop(w: &mut World, e: Entity, inst: Inst) {
     let now = now_of(w, e);
-    if w.get::<Burning>(e).is_some_and(|b| b.until > now) {
+    if w.get::<Burning>(e).is_some_and(|b| b.until > now as i64) {
         arm(w, e, inst.slot, 2);
     }
 }
@@ -151,7 +151,7 @@ mod tests {
     /// Sets the animal on fire for 160 ticks.
     fn ignite(h: &mut Herd, e: Entity) {
         let now = h.world.resource::<Clock>().0;
-        h.world.entity_mut(e).insert(Burning { until: now + 160 });
+        h.world.entity_mut(e).insert(Burning { until: now as i64 + 160 });
         h.world.resource_mut::<Events>().ignited.push(e);
     }
     fn at(h: &Herd, e: Entity) -> (f64, f64) {

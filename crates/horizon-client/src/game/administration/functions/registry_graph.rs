@@ -196,7 +196,7 @@ fn tag_entries(value: &Value) -> Option<Vec<(String, bool)>> {
 /// Includes the same built-in registries as the candidate function library.
 pub(super) fn check(packs: &[&DataPack]) -> Result<BoundTags, Error> {
     let mut graph = Graph::default();
-    let mut errors = BTreeMap::new();
+    let mut errors: BTreeMap<Key, String> = BTreeMap::new();
     for pack in packs {
         for registry in Registry::ALL {
             let directory = registry.directory();
@@ -213,13 +213,8 @@ pub(super) fn check(packs: &[&DataPack]) -> Result<BoundTags, Error> {
                         errors.remove(&key);
                         graph.values.insert(key, value);
                     }
-                    Err(error) => {
-                        graph.values.remove(&key);
-                        errors.insert(
-                            key.clone(),
-                            format!("Couldn't parse data file {}: {error}", key.path()),
-                        );
-                    }
+                    // `SimpleJsonResourceReloadListener.scanDirectory`: the file that fails to parse is logged and skipped.
+                    Err(_) => {}
                 }
             }
             let directory = format!("tags/{directory}");

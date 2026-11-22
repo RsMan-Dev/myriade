@@ -48,7 +48,7 @@ fn view_of(w: &World, e: Entity) -> Option<OrbView> {
         health: w.get::<Health>(e).map_or(0.0, |h| h.0),
         air: w.get::<Air>(e).map_or(0, |a| a.0),
         no_gravity: no_gravity::get(w, e),
-        fire_ticks: w.get::<Burning>(e).map_or(0, |b| b.until.saturating_sub(now) as i32),
+        fire_ticks: w.get::<Burning>(e).map_or(0, |b| (b.until - now as i64) as i32),
     })
 }
 

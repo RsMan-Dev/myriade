@@ -63,7 +63,6 @@ impl Game<'_> {
             Target::Player => self.riding,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle,
             Target::Mob(id) if self.ecs.exists(id) => self.ecs_vehicle_of(id),
-            // RESTE-SANS-ECS: a mob outside the ECS was a retained off-level object, now retired.
             Target::Mob(_) => None,
             // A general row rides the row its tree loaded with; a row queued
             // for removal rides nothing, as a removed mob does not.
@@ -457,7 +456,7 @@ impl Game<'_> {
                     // rider keeps their view, whatever the vehicle's yaw.
                     Target::Boat(_) => {}
                     Target::Mob(id) => {
-                        // The mob's flag and counter (`extra`) have no ECS reader yet (RESTE-SANS-ECS: not reset).
+                        self.ecs.clear_jump_charge(id);
                         self.mount.jump_ticks = 0;
                         self.mount.jump_scale = 0.0;
                     }

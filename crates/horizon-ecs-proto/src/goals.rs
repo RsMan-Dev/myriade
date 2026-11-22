@@ -1363,12 +1363,16 @@ pub fn interact(w: &mut World, e: Entity, i: &crate::behaviours::Interaction) ->
     let rules = w.get::<SpeciesId>(e).map_or(&[][..], |s| w.resource::<SpeciesTable>().0[s.0 as usize].rules);
     rules.iter().any(|r| (r.rule.interact)(w, e, r.params, i))
 }
+/// The host's AI pause (`horizon/ai_paused`): the selectors start nothing while it is posed. Apart from `NoAi`, which is vanilla's flag.
+#[derive(Component, Clone, Copy, Debug, Default)]
+#[component(on_add = stop_all_goals)]
+pub struct AiPaused;
 pub(crate) fn try_start(w: &mut World, e: Entity, slot: u8) {
     start_goal(w, e, slot);
 }
 fn start_goal(w: &mut World, e: Entity, slot: u8) {
     // `Mob.serverAiStep` is not run without effective AI (`Mob.isNoAi`): the selectors tick nothing, so no goal starts.
-    if w.get::<crate::dragon::flight::NoAi>(e).is_some() {
+    if w.get::<crate::dragon::flight::NoAi>(e).is_some() || w.get::<AiPaused>(e).is_some() {
         return;
     }
     // One lookup of the selector: the module, whether it runs, whether its flags are free.

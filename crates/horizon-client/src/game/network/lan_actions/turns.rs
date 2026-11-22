@@ -746,9 +746,6 @@ impl Game<'_> {
             Position([f64; 3]),
             Rider([f64; 3]),
         }
-        let released_vehicle = host.hub.guests[i]
-            .vehicle
-            .filter(|id| Some(*id) != guest_vehicle);
         let (stat_events, name, teleport) = host.hub.guests.update(i, |g| {
             let mut teleport = None;
             g.attachments = std::mem::replace(&mut self.player_state.attachments, attachments);
@@ -931,8 +928,6 @@ impl Game<'_> {
             }
             None => self.resident_entities.local_player.put_back(),
         }
-        // RESTE-SANS-ECS: removed vehicles are no longer kept, so there is nothing to release.
-        let _ = released_vehicle;
         for event in turn_events {
             match event {
                 MotionEvent::Health(horizon_client::health::HealthEvent::DamageBroadcast {

@@ -2364,7 +2364,8 @@ mod registered_slot_source_read_tests {
         let root = std::env::current_dir()
             .unwrap()
             .join("registered-slot-read-world");
-        assert!(!root.exists());
+        let _ = std::fs::remove_dir_all(&root); // left by an earlier run
+
         let pack = root.join("datapacks/parity");
         std::fs::create_dir_all(pack.join("data/parity/slot_source")).unwrap();
         let meta = r#"{"pack":{"description":"parity slots","pack_format":121,"min_format":[121,0],"max_format":[121,0]}}"#;
@@ -2462,7 +2463,7 @@ mod registered_slot_source_preservation_tests {
         game.build_registries();
         game.set_allow_commands(true);
         let root = std::env::current_dir().unwrap().join(name);
-        assert!(!root.exists());
+        let _ = std::fs::remove_dir_all(&root); // left by an earlier run
         let mut high = std::path::PathBuf::new();
         for (pack, limit) in [("a-low", 1), ("parity", 3)] {
             let dir = root.join("datapacks").join(pack);

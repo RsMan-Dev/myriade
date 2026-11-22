@@ -6,6 +6,7 @@ use crate::behaviours::bed::Sleeping;
 use crate::bridge::host::EcsWorld;
 use crate::cow::{AttackDamage, Body, Bounds, Burning, Frozen, MaxHealth, Resist, now_of};
 use crate::effects::{self, CanBreatheUnderWater, Effect, Effects, Invisible, Kind};
+use crate::gliding::FallFlying;
 use crate::equipment::Armor;
 use crate::targeting::{Eye, FollowRange};
 use crate::type_tags;
@@ -13,7 +14,7 @@ use bevy_ecs::{entity::Entity, prelude::*};
 use horizon_client_lib::items::ItemStack;
 use horizon_core::geometry::{Aabb, Vec3};
 
-/// The flags a host reads by name (`EcsWorld::flag`); `Gliding` has no ECS state (no elytra).
+/// The flags a host reads by name (`EcsWorld::flag`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flag {
     OnFire,
@@ -28,7 +29,7 @@ fn default_attack_reach() -> f64 {
 }
 
 /// The vanilla registry names of the effects this crate models, with their kind.
-const NAMES: [(&str, Kind); 18] = [
+const NAMES: [(&str, Kind); 19] = [
     ("minecraft:speed", Kind::Speed),
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
@@ -47,6 +48,7 @@ const NAMES: [(&str, Kind); 18] = [
     ("minecraft:weaving", Kind::Weaving),
     ("minecraft:strength", Kind::Strength),
     ("minecraft:infested", Kind::Infested),
+    ("minecraft:absorption", Kind::Absorption),
 ];
 
 /// The kind of the effect named `name` (`minecraft:poison`); None for any other name, a mod's effect included.
@@ -100,15 +102,16 @@ impl EcsWorld {
         let x = self.effect(e, kind)?;
         i32::try_from(x.ends.saturating_sub(now_of(w, e))).ok()
     }
-    /// The state a flag names: `on_fire`, `sleeping`, `invisible`, `frozen`. Any other name is None.
+    /// The state a flag names: `on_fire`, `sleeping`, `invisible`, `frozen`, `gliding`. Any other name is None.
     pub fn flag(&self, e: Entity, name: &str) -> Option<bool> {
         let w = self.existing(e)?;
         let now = now_of(w, e);
         Some(match name {
-            "on_fire" => w.get::<Burning>(e).is_some_and(|b| b.until > now),
+            "on_fire" => w.get::<Burning>(e).is_some_and(|b| b.until > now as i64),
             "sleeping" => w.get::<Sleeping>(e).is_some(),
             "invisible" => w.get::<Invisible>(e).is_some(),
             "frozen" => w.get::<Frozen>(e).is_some_and(|f| f.0 > 0),
+            "gliding" => w.get::<FallFlying>(e).is_some(),
             _ => return None,
         })
     }

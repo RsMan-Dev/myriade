@@ -144,6 +144,9 @@ impl Game<'_> {
             self.adopt_transferred_entity_state(id, state);
         }
         self.remember(id, uuid, tag);
+        if let (Some(u), Some(e)) = (uuid, self.ecs.entity_of(id)) {
+            self.ecs.set_uuid(e, u);
+        }
         if let Some(riders) = riders {
             self.load_passengers(id, riders);
         }
@@ -163,7 +166,7 @@ impl Game<'_> {
             return None;
         }
         let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
-        // RESTE-SANS-ECS: a refused boat is abandoned with its riders, nothing held off the level (Option A).
+        // `PersistentEntitySectionManager.addEntity` pops a refused copy: it and its riders never reach the level.
         // `k` names the boat's wood for a host copy only, which is no longer kept.
         let _ = k;
         if refused {
@@ -224,7 +227,6 @@ impl Game<'_> {
     /// `Passengers`, after the passengers it kept from loading. Discarded
     /// passengers cannot save even before their list entry is swept.
     pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<u32> {
-        // RESTE-SANS-ECS: the ECS's chain (`Mount.rider`) is the only source; a rider refused residency is not kept.
         self.ecs_rider_of(id).into_iter().collect()
     }
 

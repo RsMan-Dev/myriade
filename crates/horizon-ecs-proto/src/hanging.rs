@@ -56,7 +56,7 @@ pub struct AttachIndex(HashMap<[i32; 3], Vec<Entity>>);
 #[derive(Resource)]
 pub struct Walls(pub fn(&World, [i32; 3], u8, (u8, u8)) -> bool);
 
-/// When a hanging entity joined the level (`JoinSeq`), taken as it is hung: the host tells the mods of it in that order.
+/// When an entity joined the level (`JoinSeq`): taken as it is hung, or else when it is made (`cow::TypeName`). The host tells the mods of it in that order.
 #[derive(Component, Clone, Copy, Debug)]
 pub struct JoinedAt(pub horizon_client_lib::join_seq::JoinSeq);
 

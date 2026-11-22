@@ -78,6 +78,8 @@ pub fn spawn_cat(l: &mut impl CustomSpawnerLevel, pos: [i32; 3], persistent: boo
         persistent,
         spawn_rules::Reason::Natural,
         0.0,
+        // `finalizeSpawn` reads the origin: `snapTo` places the cat after it.
+        Some([0.0; 3]),
     )
     .is_none()
     {
@@ -86,7 +88,6 @@ pub fn spawn_cat(l: &mut impl CustomSpawnerLevel, pos: [i32; 3], persistent: boo
     // `Cat.finalizeSpawn` asks `#cats_spawn_as_black` about the entity's
     // own block position, which is still the origin here: `snapTo` runs
     // after it. So the hut the cat spawns in does not make it black.
-    // RESTE-SANS-ECS: the black variant (`#cats_spawn_as_black`) has no ECS setter yet.
 }
 
 /// `getRandomPlayer` plus two offsets of 8 to 31 blocks, if `hasChunksAt(pos +- 10)`.

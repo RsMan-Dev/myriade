@@ -84,6 +84,6 @@ fn portal_arrival_effects_command_items_merge_immediately() {
         assert_eq!((item.stack.count, item.age, item.pickup_delay), (8, 7, 30));
         assert_eq!(item.velocity, Vec3::ZERO);
         assert_eq!(item.ticks, 0);
-        assert_eq!(game.persist.uuids.get(&item.id), Some(&incoming_uuid));
+        assert_eq!(game.ecs.uuid_words(item.id), Some(incoming_uuid));
     });
 }

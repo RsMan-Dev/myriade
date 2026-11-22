@@ -159,6 +159,9 @@ impl Game<'_> {
     /// entity data: the `Invulnerable` flag and the `invulnerable_time`
     /// window. `(false, 0)` where its data has neither.
     fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+        if self.ecs_has(id) {
+            return (self.ecs_flag(id, "Invulnerable") == Some(true), self.ecs.invulnerable_time(id).unwrap_or(0));
+        }
         use horizon_core::nbt::{JavaString, Tag};
         use std::sync::LazyLock;
         // The two keys, built once: a `JavaString` is UTF-16 in a `Vec`, and building one per
@@ -238,6 +241,13 @@ impl Game<'_> {
     /// player's do.
     pub(in crate::game) fn tick_saved_invulnerable_time(&mut self, id: u32) {
         use horizon_core::nbt::Tag;
+        if self.ecs_has(id) {
+            let ticks = self.ecs.invulnerable_time(id).unwrap_or(0);
+            if ticks > 0 {
+                self.ecs.set_invulnerable_time(id, ticks - 1);
+            }
+            return;
+        }
         let ticks = self.saved_invulnerability(id).1;
         if ticks <= 0 {
             return;
@@ -462,12 +472,12 @@ mod tests {
             assert_eq!(game.entity_permanently_invulnerable(stand), Some(false));
             assert!(game.entity_set_invulnerable(stand, true));
             assert_eq!(game.entity_permanently_invulnerable(stand), Some(true));
-            let raw = game.persist.raw.get(&14).cloned().unwrap();
+            let raw = horizon_core::nbt::Tag::Compound(game.entity_nbt(stand).unwrap());
             assert!(horizon_client::entity_nbt::flag(&raw, "Invulnerable"));
             // The timer tag rides along the same compound.
             assert!(game.entity_set_invulnerable_time(stand, 12));
             assert_eq!(game.entity_invulnerable_time(stand), Some(12));
-            let raw = game.persist.raw.get(&14).cloned().unwrap();
+            let raw = horizon_core::nbt::Tag::Compound(game.entity_nbt(stand).unwrap());
             assert!(matches!(
                 raw.get("invulnerable_time"),
                 Some(horizon_core::nbt::Tag::Int(12))

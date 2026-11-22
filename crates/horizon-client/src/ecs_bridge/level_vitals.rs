@@ -25,6 +25,10 @@ impl EcsLevel {
     pub fn age(&self, id: u32) -> Option<i32> {
         self.ecs()?.age(self.entity_of(id)?)
     }
+    /// `LivingEntity.isBaby` of the mob `id` (`EcsWorld::is_baby`).
+    pub fn is_baby(&self, id: u32) -> Option<bool> {
+        self.ecs()?.is_baby(self.entity_of(id)?)
+    }
     /// The tame flag and the owner's uuid words of `id`; None when it cannot be tamed (`EcsWorld::tamable_values`).
     pub fn tamable_values(&self, id: u32) -> Option<(bool, Option<[i32; 4]>)> {
         self.ecs()?.tamable_values(self.entity_of(id)?)

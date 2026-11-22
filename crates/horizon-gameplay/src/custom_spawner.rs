@@ -81,6 +81,7 @@ pub trait CustomSpawnerLevel {
         persistent: bool,
         reason: spawn_rules::Reason,
         yaw: f32,
+        finalize_at: Option<[f64; 3]>,
     ) -> Option<u32>;
     /// `EntityType.create` and `finalizeSpawn` for a patrol or an event.
     fn spawn_event_mob(

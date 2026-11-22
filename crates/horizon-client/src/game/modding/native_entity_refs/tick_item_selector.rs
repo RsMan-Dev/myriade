@@ -6,11 +6,14 @@ impl Game<'_> {
         {
             return None;
         }
-        let ids = self
+        let mut ids = self
             .resident_entities
             .table
             .borrow_mut()
             .level_entities(level.dimension());
+        // The ECS level's entities, which the residency table does not hold.
+        let ecs: Vec<u32> = self.ecs.all_ids().into_iter().filter(|id| !ids.contains(id)).collect();
+        ids.extend(ecs);
         ids.into_iter()
             .filter(|id| {
                 !self

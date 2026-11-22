@@ -51,7 +51,8 @@ fn live(w: &World, e: Entity) -> Option<(Vec3, u32, u64)> {
 fn about_to_spawn(w: &mut World, e: Entity) {
     let Some((p, _, _)) = live(w, e) else { return };
     let c = block(p).map(|v| f64::from(v) + 0.5);
-    w.resource_mut::<Events>().host.sound("block.trial_spawner.about_to_spawn_item", c, 1.0, 1.0);
+    // `SoundSource.NEUTRAL` (index 6).
+    w.resource_mut::<Events>().host.sound_from(6, "block.trial_spawner.about_to_spawn_item", c, 1.0, 1.0);
 }
 
 /// `tickServer` at `tickCount >= after`: `spawnItem`, then the spawner is removed.
@@ -86,10 +87,6 @@ fn drop_now(w: &mut World, e: Entity) {
     events.host.game_event("minecraft:entity_place", [p.x, p.y, p.z]);
 }
 
-/// The projectile items of vanilla (`ProjectileItem` implementers): flight, power, uncertainty and the dispense event they set.
-/// Eggs and the trident take the default (power 1.1, uncertainty 6.0); the bottles and the potions take the default with
-/// power x1.25 and uncertainty x0.5. Any other item falls as an item.
-
 /// `OminousItemSpawner.addParticles`, on a wake-up of the chain: the particles at the spawner's position, then the next wake-up.
 fn particles(w: &mut World, e: Entity) {
     let Some((p, _, local)) = live(w, e) else { return };
@@ -104,5 +101,33 @@ fn arm_particles(w: &mut World, e: Entity) {
     let wait = particle_wait(w.resource::<Clock>().0);
     if u64::from(local) + wait < u64::from(drop_at) {
         after(w, e, wait as i32, particles);
+    }
+}
+
+
+#[cfg(test)]
+mod restore_format {
+    use crate::cow::Herd;
+    use horizon_core::nbt::{parse_snbt, Tag};
+    /// A spawner as vanilla saves it (`Entity.saveWithoutId` plus `OminousItemSpawner.addAdditionalSaveData`).
+    const SAVED: &str = r#"{id:"minecraft:ominous_item_spawner",UUID:[I;128,0,0,1],Pos:[6.25d,102.75d,4.875d],item:{id:"minecraft:diamond",count:1},spawn_item_after_ticks:40L}"#;
+
+    fn restored(snbt: &str) -> Option<(String, u32)> {
+        let mut h = Herd::with_slab_awake(16, true, false);
+        let Tag::Compound(c) = parse_snbt(snbt).unwrap().0 else { panic!("a compound") };
+        let e = crate::nbt::restore(&mut h.world, &c)?;
+        let s = h.world.get::<super::OminousSpawner>(e)?;
+        Some((s.item.item.to_string(), s.after))
+    }
+
+    /// The saved spawner restores its drop and its delay; an absent `item` is empty (no drop), as the load of vanilla reads it.
+    #[test]
+    fn a_saved_spawner_restores_its_item_and_delay_and_an_empty_one_drops_nothing() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            return;
+        }
+        assert_eq!(restored(SAVED), Some(("minecraft:diamond".to_string(), 40)));
+        let empty = SAVED.replace(",item:{id:\"minecraft:diamond\",count:1}", "");
+        assert_eq!(restored(&empty), Some(("minecraft:air".to_string(), 40)));
     }
 }

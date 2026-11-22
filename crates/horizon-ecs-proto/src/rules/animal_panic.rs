@@ -29,8 +29,8 @@ pub fn ends_at(now: u64, dur: u64) -> u64 {
 }
 
 /// The animal looks for water while it is burning past `now`.
-pub fn wants_water(burning_until: Option<u64>, now: u64) -> bool {
-    burning_until.is_some_and(|until| until > now)
+pub fn wants_water(burning_until: Option<i64>, now: u64) -> bool {
+    burning_until.is_some_and(|until| until > now as i64)
 }
 
 /// A body that rounds up to two blocks wide (`width` in blocks).

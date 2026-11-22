@@ -2,6 +2,7 @@
 //! (MOVE | JUMP | LOOK taken), then the blast from its eyes (radius 7, no fire, itself as source) and the roar where it stands.
 //! The end is one wheel deadline (`Due::Goal`), no tick.
 use super::*;
+use crate::behaviours::do_nothing;
 use crate::cow::*;
 use crate::goals::*;
 use crate::projectile::Blast;
@@ -52,6 +53,7 @@ fn equip(w: &mut World, e: Entity, inst: Inst, p: &'static (dyn std::any::Any + 
     let p = params::<Params>(p);
     let until = charge_until(now_of(w, e), p.ticks);
     w.entity_mut(e).insert(Charge { until, p, done: false });
+    w.entity_mut(e).insert(do_nothing::Invulnerable(until));
     arm_at(w, e, until, Due::Goal(inst.slot));
     crate::goals::arm(w, e, inst.slot, 0);
 }
@@ -68,6 +70,7 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
         return;
     }
     w.get_mut::<Charge>(e).unwrap().done = true;
+    do_nothing::set(w, e, 0);
     let pos = w.get::<Pos>(e).map_or(Vec3::ZERO, |p| p.0);
     let eye = w.get::<Eye>(e).map_or(1.6, |l| l.0);
     let mut ev = w.resource_mut::<Events>();
@@ -80,4 +83,36 @@ fn start(w: &mut World, e: Entity, inst: Inst) {
     });
     ev.host.sound(c.p.sound, [pos.x, pos.y, pos.z], 1.0, 1.0);
     w.resource_mut::<Requests>().0.push(Req::End(e, inst.slot));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::behaviours::Entry;
+    use crate::species::Config;
+    use crate::{cow::{ActiveUntil, Herd, SpeciesTable, spawn_species}, goals::set_lazy_look};
+
+    static SHORT: Params = Params { ticks: 20, ..Params::DEFAULT };
+
+    #[test]
+    fn the_counter_runs_with_the_charge_and_is_zero_after_the_blast() {
+        if std::env::var_os("HORIZON_TEST_RESOURCES").is_none() {
+            crate::cow::skip_note("the_counter_runs_with_the_charge_and_is_zero_after_the_blast", "HORIZON_TEST_RESOURCES is not set");
+            return;
+        }
+        let mut h = Herd::with_slab_awake(20, true, false);
+        set_lazy_look(&mut h.world, false);
+        let mut sp = *h.world.resource::<SpeciesTable>().0.iter().find(|s| s.name == "minecraft:cow").unwrap();
+        let entries = vec![Entry::new(&MODULE, 0, &SHORT), Entry::new(&do_nothing::MODULE, 0, &do_nothing::Params::DEFAULT)];
+        sp.goals = Config { entries: Box::leak(entries.into_boxed_slice()) };
+        let e = spawn_species(&mut h.world, &sp, 0.5, 0.5, 7);
+        h.world.get_mut::<ActiveUntil>(e).unwrap().0 = u64::MAX;
+        h.tick();
+        let first = do_nothing::counter(&h.world, e);
+        assert!((1..=20).contains(&first), "the counter counts down from the charge's ticks, got {first}");
+        for _ in 0..40 {
+            h.tick();
+        }
+        assert_eq!(do_nothing::counter(&h.world, e), 0, "the blast ends the counter");
+    }
 }

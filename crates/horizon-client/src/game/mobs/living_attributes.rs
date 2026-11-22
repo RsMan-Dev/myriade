@@ -380,6 +380,9 @@ mod tests {
     /// A zombie on the ECS, an armor stand and the dragon (which the ECS does
     /// not hold yet), ids 12, 13 and 14.
     fn spawn(game: &mut Game<'_>) {
+        // The item table the ECS reads for worn rows (`ItemModifiers`), as a served level installs it.
+        game.server_items = Some(Arc::new(game.items().clone()));
+        game.ecs.set_item_modifiers_table(game.item_modifiers_fn());
         spawn_id(game, 12, "minecraft:zombie");
         crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
     }

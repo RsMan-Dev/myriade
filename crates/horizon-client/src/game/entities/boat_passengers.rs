@@ -141,7 +141,7 @@ impl Game<'_> {
                 .with_destroying_vehicle(target, |game| {
                     game.dismount_destroyed_vehicle_players(id);
                     match target {
-                        Target::Boat(_) => game.dismount_killed_boat(id),
+                        Target::Boat(_) => {}
                         Target::Cart(_) => game.dismount_killed_cart(id),
                         _ => unreachable!(),
                     }
@@ -194,14 +194,6 @@ impl Game<'_> {
             && self.riding == Some(vehicle)
         {
             self.stop_riding();
-        }
-    }
-
-    /// `Entity.setRemoved`: attempt each passenger once; a veto keeps the edge.
-    pub(super) fn dismount_destroyed_vehicle_mobs(&mut self, vehicle: u32, y: f64) {
-        for rider in self.mob_passenger_ids(vehicle) {
-            // RESTE-SANS-ECS: the retained off-level riders this dismounted are retired.
-            let _ = (rider, y);
         }
     }
 

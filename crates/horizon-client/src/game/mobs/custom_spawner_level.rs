@@ -143,14 +143,16 @@ impl CustomSpawnerLevel for Game<'_> {
         persistent: bool,
         reason: spawn_rules::Reason,
         yaw: f32,
+        finalize_at: Option<[f64; 3]>,
     ) -> Option<u32> {
-        Game::spawn_mob_facing(
+        Game::spawn_mob_facing_at(
             self,
             kind,
             at,
             persistent,
             SpawnSite::Finalizing(reason),
             yaw,
+            finalize_at,
         )
     }
     fn spawn_event_mob(

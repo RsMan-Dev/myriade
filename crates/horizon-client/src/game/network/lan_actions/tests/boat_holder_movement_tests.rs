@@ -85,6 +85,8 @@ fn scene<'a>(
     guest.dimension = "minecraft:overworld".into();
     guest.inventory[0] = Some(ItemStack::new("minecraft:lead", 1));
     g.lan.as_mut().unwrap().hub.guests.push(guest);
+    // The held item reaches the ECS's player facts (`boat_use` reads them) at the tick, as in play.
+    g.sync_player_facts().unwrap();
     g.sync_tick_chunks();
     g.ticked_entities_through = g.next_entity;
     (g, rx)

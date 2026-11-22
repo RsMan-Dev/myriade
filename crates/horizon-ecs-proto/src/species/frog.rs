@@ -3,11 +3,13 @@
 //! Water: the amphibious smooth swimming control (`reset_pitch`: its look control resets xRot each tick). The temptation and the long jump stand aside while pregnant.
 //! Left out (`suivi/ecs-ecarts.md`): the poses (croak, tongue, jump) and their animations, the frog variants; no swim activity (the `Mob` has none).
 use super::Def;
-use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, Cap, Entry};
+use crate::behaviours::{animal_panic, breed, croak, float, lay_spawn, long_jump, look_at_player, random_look, shoot_tongue, stroll, tempt, try_find_land, Cap, Entry};
 use crate::locomotion::{swim, walk, Medium};
 use crate::behaviours::Cond;
 
 static NOT_PREGNANT: Cond = Cond::Not(&Cond::Is("frog:pregnant"));
+static IN_WATER: Cond = Cond::Is("horizon:in_water");
+static OUT_OF_WATER: Cond = Cond::Not(&IN_WATER);
 
 const FOOD: &[&str] = &["minecraft:slime_ball"];
 
@@ -23,8 +25,11 @@ pub static DEF: Def = Def {
         Entry::new(&lay_spawn::MODULE, 2, &lay_spawn::Params::DEFAULT),
         // `FrogAi.initJumpActivity` comes after the lay spawn activity (IS_PREGNANT): a pregnant frog does not leap.
         Entry::new(&long_jump::MODULE, 3, &long_jump::Params::DEFAULT).when(&NOT_PREGNANT),
-        Entry::new(&croak::MODULE, 4, &croak::Params::DEFAULT),
-        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 1.0, interval: Some(1), ..stroll::Params::DEFAULT }),
+        // The SWIM activity (`IS_IN_WATER`): `TryFindLand(8, 1.5)` finds the bank. The IDLE `TryFindLand(6, 1.0)` is not written:
+        // the module holds one state per animal, and the swim entry takes it.
+        Entry::new(&try_find_land::MODULE, 3, &try_find_land::Params { range: 8, speed: 1.5 }).when(&IN_WATER),
+        Entry::new(&croak::MODULE, 4, &croak::Params::DEFAULT).when(&OUT_OF_WATER),
+        Entry::new(&stroll::MODULE, 5, &stroll::Params { speed: 1.0, interval: Some(1), ..stroll::Params::DEFAULT }).when(&OUT_OF_WATER),
         Entry::new(&look_at_player::MODULE, 6, &look_at_player::Params::DEFAULT),
         Entry::new(&random_look::MODULE, 7, &random_look::Params::DEFAULT),
     ],

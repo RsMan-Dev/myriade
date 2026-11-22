@@ -7,6 +7,7 @@ use horizon_client::ecs_bridge::EcsLevel;
 use horizon_ecs_proto::{
     bridge::ids::id_of,
     mount::{self, Mount, Riding},
+    seat::{self, Seated},
     targeting::Who,
 };
 use std::collections::HashSet;
@@ -27,6 +28,12 @@ pub(super) fn mount_in(ecs: &mut EcsLevel, rider: u32, vehicle: u32) -> bool {
     let (Some(r), Some(v)) = (ecs.entity_of(rider), ecs.entity_of(vehicle)) else {
         return false;
     };
+    let Some(w) = ecs.world_mut() else {
+        return false;
+    };
+    if w.get::<Mount>(v).is_none() {
+        return seat::board(w, r, v, None);
+    }
     ecs.ride(v, Who::Entity(r))
 }
 
@@ -38,6 +45,9 @@ pub(super) fn dismount_in(ecs: &mut EcsLevel, rider: u32) -> bool {
     let Some(w) = ecs.world_mut() else {
         return false;
     };
+    if w.get::<Seated>(r).is_some() {
+        return seat::leave(w, r).is_some();
+    }
     let Some(v) = w.get::<Riding>(r).map(|m| m.0) else {
         return false;
     };
@@ -51,14 +61,29 @@ pub(super) fn dismount_in(ecs: &mut EcsLevel, rider: u32) -> bool {
 /// The mob that `rider` rides in the ECS, by its network id.
 pub(super) fn vehicle_of_in(ecs: &EcsLevel, rider: u32) -> Option<u32> {
     let w = ecs.world()?;
-    let v = w.get::<Riding>(ecs.entity_of(rider)?)?.0;
+    let r = ecs.entity_of(rider)?;
+    let v = match w.get::<Riding>(r) {
+        Some(m) => m.0,
+        None => w.get::<Seated>(r)?.vehicle,
+    };
     id_of(w, v)
 }
 
 /// The first rider of the vehicle `vehicle` in the ECS, by its network id.
 pub(super) fn rider_of_in(ecs: &EcsLevel, vehicle: u32) -> Option<u32> {
     let w = ecs.world()?;
-    mob_id(w, mount::rider_of(w, ecs.entity_of(vehicle)?)?)
+    let v = ecs.entity_of(vehicle)?;
+    match mount::rider_of(w, v) {
+        Some(who) => mob_id(w, who),
+        None => seat::riders_of(w, v).first().and_then(|&e| id_of(w, e)),
+    }
+}
+
+/// The arrival place of `rider` in its vehicle (`Seated.order`); 0 for a rider on a mount's chain, which keeps no seat.
+pub(super) fn vehicle_order_in(ecs: &EcsLevel, rider: u32) -> Option<i64> {
+    let w = ecs.world()?;
+    let r = ecs.entity_of(rider)?;
+    Some(w.get::<Seated>(r).map_or(0, |s| i64::from(s.order)))
 }
 
 /// The riders below each of `roots`, down their chains of `Mount.rider`: the ids of the mobs whose vehicle chain reaches a root.
@@ -98,6 +123,11 @@ impl Game<'_> {
     /// The mob the ECS seats on `vehicle`, by its network id; None when no mob rides it.
     pub(in crate::game) fn ecs_rider_of(&self, vehicle: u32) -> Option<u32> {
         rider_of_in(&self.ecs, vehicle)
+    }
+
+    /// The place of the mob `rider` in the ECS seats, as `vehicle_order` gave it; None when it is not in the ECS.
+    pub(in crate::game) fn ecs_vehicle_order(&self, rider: u32) -> Option<i64> {
+        vehicle_order_in(&self.ecs, rider)
     }
 
     /// The riders below the vehicles `roots`, read down the ECS chains.

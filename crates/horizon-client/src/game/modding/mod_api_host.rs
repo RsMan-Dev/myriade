@@ -186,6 +186,9 @@ impl Game<'_> {
     ) -> Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
         use mod_api::AttachmentError;
         if let mod_api::Holder::Entity(id) = holder {
+            if self.ecs.exists(id) {
+                return Ok(self.entity_attachments.entry(id).or_default());
+            }
             if self.entity_initialization.active != Some(holder) {
                 use super::entity_residency::SlotAccess;
                 use horizon_client::join_seq::residency::Kind;

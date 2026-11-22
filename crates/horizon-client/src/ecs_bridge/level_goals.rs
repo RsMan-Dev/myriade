@@ -9,6 +9,7 @@ use horizon_ecs_proto::behaviours::{
     follow_parent, hurt_by, leap_at_target, look_at_player, melee, nearest_target, panic, random_look, restrict_sun, stroll, tempt,
     try_find_water,
 };
+use horizon_client_lib::mobs::MobWorld;
 use mod_api::{GoalSpec, MobFilter, MobGoalEntry};
 use std::{any::Any, collections::HashMap, sync::Mutex};
 
@@ -168,15 +169,15 @@ fn entry_of(spec: &GoalSpec, priority: i32) -> Option<Entry> {
 impl EcsLevel {
     /// `GoalSelector.addGoal` (the goal or the target selector by the kind of goal); false for a creature the module does not suit,
     /// for numbers vanilla refuses and for a kind with no ECS module.
-    pub fn add_goal(&mut self, id: u32, priority: i32, goal: &GoalSpec) -> bool {
+    pub fn add_goal(&mut self, mw: &MobWorld<'_>, id: u32, priority: i32, goal: &GoalSpec) -> bool {
         let Some(entry) = entry_of(goal, priority) else { return false };
         let Some(e) = self.entity_of(id) else { return false };
-        self.ecs_mut().is_some_and(|w| w.add_goal_entry(e, entry))
+        self.ecs_mut().is_some_and(|w| w.add_goal_entry(mw, e, entry))
     }
 
     /// The same as `add_goal`: the selector follows from the kind of goal.
-    pub fn add_target_goal(&mut self, id: u32, priority: i32, goal: &GoalSpec) -> bool {
-        self.add_goal(id, priority, goal)
+    pub fn add_target_goal(&mut self, mw: &MobWorld<'_>, id: u32, priority: i32, goal: &GoalSpec) -> bool {
+        self.add_goal(mw, id, priority, goal)
     }
 
     /// `removeAllGoals` of the kind `kind` (its API id) on the target selector (`target`) or the goal selector: how many went.
@@ -186,9 +187,9 @@ impl EcsLevel {
     }
 
     /// `Mob.registerGoals` again.
-    pub fn reset_goals(&mut self, id: u32) -> bool {
+    pub fn reset_goals(&mut self, mw: &MobWorld<'_>, id: u32) -> bool {
         let Some(e) = self.entity_of(id) else { return false };
-        self.ecs_mut().is_some_and(|w| w.reset_goals(e))
+        self.ecs_mut().is_some_and(|w| w.reset_goals(mw, e))
     }
 
     fn goal_entries(&self, id: u32, target: bool) -> Option<Vec<MobGoalEntry>> {

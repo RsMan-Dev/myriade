@@ -4,7 +4,6 @@
 //! (`ItemEntity.java:300-306`), so a cactus killing an item clicks a sculk
 //! sensor. `Entity.baseTick`'s burning, which runs before the move, posts where
 //! the tick started from, and a hit that destroys the item ends the tick's hits.
-use crate::game::native_machines::tests::server_game;
 use horizon_client::items::ItemStack;
 use horizon_client::motion::PlayerMotion;
 use horizon_core::geometry::Vec3;
@@ -22,7 +21,8 @@ fn take_events() -> Vec<Posted> {
 #[test]
 #[ignore = "daily"]
 fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() {
-    let mut game = server_game();
+    let mut resources = None;
+    let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
     game.update_chunk_tickets();
     assert!(
@@ -49,7 +49,7 @@ fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() 
     // One tick inside the cactus: a point off its 5 health, and the hit is
     // heard at the item's own position, with no source entity (a cactus is
     // not one: `damageSources().cactus()` names none).
-    game.tick_items();
+    game.tick_ecs().unwrap();
     let item = game.ecs.item_views()[0].clone();
     let at = [item.position.x, item.position.y, item.position.z];
     assert_eq!(
@@ -60,7 +60,7 @@ fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() 
     // The hit that kills it is heard too, before the item leaves the level.
     game.ecs.set_item_health(game.ecs.item_ids()[0], 1 as f32);
     capture();
-    game.tick_items();
+    game.tick_ecs().unwrap();
     assert!(game.ecs.item_ids().is_empty(), "1 health: the cactus kills it");
     let events = take_events();
     assert_eq!(events.len(), 1, "{events:?}");
@@ -81,7 +81,8 @@ fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() 
 #[test]
 #[ignore = "daily"]
 fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
-    let mut game = server_game();
+    let mut resources = None;
+    let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
     game.update_chunk_tickets();
     assert!(
@@ -108,7 +109,7 @@ fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
     let start = game.ecs.item_views()[0].position;
     game.ticked_entities_through = u32::MAX;
     capture();
-    game.tick_items();
+    game.tick_ecs().unwrap();
     assert!(game.ecs.item_ids().is_empty(), "the burning hit destroys it");
     assert_eq!(
         take_events(),
@@ -122,7 +123,8 @@ fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
 #[test]
 #[ignore = "daily"]
 fn an_item_expiring_in_a_cactus_is_hurt_before_it_despawns() {
-    let mut game = server_game();
+    let mut resources = None;
+    let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 70.0, 8.5)).unwrap());
     game.update_chunk_tickets();
     let cactus = game
@@ -141,7 +143,7 @@ fn an_item_expiring_in_a_cactus_is_hurt_before_it_despawns() {
     game.ecs.set_item_age(game.ecs.item_ids()[0], 5999);
     game.ticked_entities_through = u32::MAX;
     capture();
-    game.tick_items();
+    game.tick_ecs().unwrap();
     assert!(game.ecs.item_ids().is_empty(), "age 6000 discards it");
     let events = take_events();
     assert_eq!(events.len(), 1, "{events:?}");

@@ -148,6 +148,10 @@ impl Game<'_> {
         if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
+        // BlockAttachedEntity.skipAttackInteraction: a player may not hit it where `mayInteract` refuses.
+        if let Some([x, y, z]) = self.ecs_hanging_pos(id) && !self.may_interact_at(horizon_core::position::BlockPos::new(x, y, z)) {
+            return true;
+        }
         let me = Who::Player(self.own_entity_id() as u32);
         let creative = self.creative;
         self.ecs_with(|ecs, mw| ecs.painting_hit(mw, id, me, creative))

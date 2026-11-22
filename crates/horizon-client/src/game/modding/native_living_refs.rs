@@ -524,6 +524,8 @@ impl Game<'_> {
                     horizon_world::attribute_map::ValueKind::Computed,
                 )
                 .map(|max| max as f32),
+            // An armor stand has no max health of its own: vanilla's LivingEntity default.
+            Target::Mob(id) if self.ecs.kind(id) == Some("minecraft:armor_stand") => Some(20.0),
             Target::Mob(id) if self.ecs.is_active() => self.ecs_living_max_health(id),
             Target::Stand(_) => Some(20.0),
             _ => None,
@@ -706,7 +708,7 @@ impl Game<'_> {
                     slot,
                 )
             }
-            Target::Mob(id) if self.ecs.is_active() => self.ecs.equipment_stack(id, slot as usize),
+            Target::Mob(id) | Target::Dragon(id) if self.ecs.is_active() => self.ecs.equipment_stack(id, slot as usize),
             Target::Stand(id) => self
                 .armor_stand_saved(id)?
                 .equipment
@@ -859,15 +861,18 @@ impl Game<'_> {
         let stack = equipment_stack(stack);
         let equippable = stack.as_ref().and_then(|s| self.equippable_slot_sound(s));
         let hook_stack = stack.clone();
-        if let (Target::Mob(id), true) = (t, self.ecs.is_active()) {
+        if let (Target::Mob(id) | Target::Dragon(id), true) = (t, self.ecs.is_active()) {
             let old = self.ecs.equipment_stack(id, slot as usize);
             let changed = match (&old, &stack) {
                 (None, None) => false,
                 (Some(a), Some(b)) => !a.same_item_same_components(b),
                 _ => true,
             };
-            if !self.ecs.put_equipment_slot(id, slot as usize, stack) {
+            if !self.ecs.put_equipment_slot(id, slot as usize, stack.clone()) {
                 return false;
+            }
+            if matches!(slot, EquipmentSlot::MainHand) {
+                self.ecs.set_main_hand_of(id, stack);
             }
             if changed && !self.ecs.first_tick(id) {
                 let at = self.ecs.position(id).unwrap_or_default();
@@ -1025,6 +1030,8 @@ impl Game<'_> {
         let stack = equipment_stack(Some(stack))?;
         let mut item = None;
         match target {
+            // An armor stand holds its items and drops none: it does not swing either.
+            Target::Mob(id) if self.ecs.kind(id) == Some("minecraft:armor_stand") => return None,
             Target::Mob(id) => {
                 if !throw_randomly {
                     self.living_swing(living, Hand::Main, true);
@@ -2076,16 +2083,15 @@ mod tests {
 
             // The melee goal's own reach: beside it, yes; a stride away, no.
             // The freeze tick's decision, and a freeze-immune wearable on it.
-            // The air tick's gate: a zombie drowns.
+            // The air tick's gate: undead breathe underwater (the tag `can_breathe_under_water` holds `#undead`).
             {
                 let host: &dyn Host = game;
                 assert_eq!(near.in_melee_range(host, beside), Some(true));
                 assert_eq!(near.in_melee_range(host, far), Some(false));
                 assert_eq!(near.can_freeze(host), Some(true));
-                // The air tick's gate: whatever the species table holds for it.
                 assert_eq!(
                     near.can_breathe_underwater(host),
-                    Some(false)
+                    Some(true)
                 );
             }
             assert!(game.living_set_equipment(

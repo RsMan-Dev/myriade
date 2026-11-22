@@ -9,6 +9,7 @@ static LAY: GiftDrop = GiftDrop { table: "minecraft:gameplay/chicken_lay", sound
 
 pub static DEF: Def = Def {
     name: "minecraft:chicken",
+    sounds: Some(&["minecraft:classic", "minecraft:picky"]),
     variant: Some(&super::variants::FARM_ANIMAL),
     reference: Some(&farm_animal::DEF),
     changes: &[

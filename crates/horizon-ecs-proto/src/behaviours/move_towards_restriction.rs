@@ -64,7 +64,7 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
 /// `Mob.isWithinHome` (`goals::within_home` of the `Mob`): the floored position against the restriction, `d^2 < radius^2`.
 fn out_of_home(w: &World, e: Entity) -> bool {
     let (Some(r), Some(p)) = (w.get::<Restriction>(e), w.get::<Pos>(e)) else { return false };
-    !within_home(r.center, r.radius, [p.0.x, p.0.y, p.0.z])
+    r.radius != -1 && !within_home(r.center, r.radius, [p.0.x, p.0.y, p.0.z])
 }
 /// Asks `canUse` again two ticks on, while the animal is out of its restriction.
 fn rearm(w: &mut World, e: Entity, inst: Inst) {
@@ -83,7 +83,7 @@ fn fired(_: &mut World, _: Entity, _: Inst) -> bool {
 fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
     let Some(r) = w.get::<Restriction>(e).copied() else { return false };
     let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return false };
-    if within_home(r.center, r.radius, [p.x, p.y, p.z]) {
+    if r.radius == -1 || within_home(r.center, r.radius, [p.x, p.y, p.z]) {
         return false;
     }
     let to = home_target(r.center);

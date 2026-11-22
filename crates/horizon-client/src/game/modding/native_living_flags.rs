@@ -142,7 +142,11 @@ impl Game<'_> {
                 let Some(at) = self.sleeping_position(pos) else {
                     return false;
                 };
-                self.ecs.start_sleeping(id, pos, at)
+                let slept = self.ecs.start_sleeping(id, pos, at);
+                if slept {
+                    self.set_bed_occupied(pos, true);
+                }
+                slept
             }
             _ => false,
         }
@@ -163,7 +167,17 @@ impl Game<'_> {
                     slept
                 })
             }
-            Some(Target::Mob(id)) if self.ecs.is_active() => self.ecs.stop_sleeping(id),
+            Some(Target::Mob(id)) if self.ecs.is_active() => {
+                let bed = self.ecs.sleeping_pos(id);
+                if bed.is_none() {
+                    return false;
+                }
+                self.ecs.stop_sleeping(id);
+                if let Some(pos) = bed {
+                    self.set_bed_occupied(pos, false);
+                }
+                true
+            }
             _ => false,
         }
     }
@@ -289,7 +303,7 @@ impl Game<'_> {
     /// and the dragon are never babies.
     pub(super) fn living_baby(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
-            Target::Mob(id) if self.ecs.is_active() => Some(self.ecs.age(id)? < 0),
+            Target::Mob(id) if self.ecs.is_active() => self.ecs.is_baby(id),
             Target::Player | Target::Guest(_) | Target::Stand(_) | Target::Dragon(_) => Some(false),
             _ => None,
         }
@@ -358,7 +372,15 @@ impl ClimbingWorld for FlagClimbing<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::super::Game;
-    use super::super::native_entity_refs::tests::{record_key, with_game};
+    use super::super::native_entity_refs::tests::{record_key, with_game as with_plain_game};
+
+    /// `with_game` with the level's ECS attached, so the mobs placed here exist (`ecs_game_with`).
+    fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+        with_plain_game(|game| {
+            game.ecs = game.test_ecs_level();
+            test(game)
+        });
+    }
     use horizon_client::motion::{MotionWorld, PlayerMotion};
     use horizon_core::geometry::Vec3;
     use horizon_core::position::BlockPos;

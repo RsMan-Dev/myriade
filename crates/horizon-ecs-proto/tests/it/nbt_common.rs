@@ -30,14 +30,14 @@ fn fire_is_the_ticks_left_as_a_short_and_a_load_sets_it() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
     let cow = a_cow(&mut a.world);
     let now = now_of(&a.world, cow);
-    a.world.entity_mut(cow).insert(Burning { until: now + 40 });
+    a.world.entity_mut(cow).insert(Burning { until: now as i64 + 40 });
     assert_eq!(nbt::get(&a.world, cow, "Fire"), Some(Tag::Short(40)));
 
     let other = a_cow(&mut a.world);
     a.world.entity_mut(other).insert(Burning { until: 0 });
     assert_eq!(nbt::load(&mut a.world, other, &comp([("Fire", Tag::Short(7))])), Some(0));
     let until = a.world.get::<Burning>(other).expect("still on fire").until;
-    assert_eq!(until, now_of(&a.world, other) + 7);
+    assert_eq!(until, now_of(&a.world, other) as i64 + 7);
     assert_eq!(nbt::load(&mut a.world, other, &comp([("Fire", Tag::Short(0))])), Some(0));
     assert!(a.world.get::<Burning>(other).is_none(), "zero ticks is not on fire");
     assert_eq!(nbt::load(&mut a.world, other, &comp([("Fire", Tag::Int(3))])), Some(1), "a wrong type is refused");

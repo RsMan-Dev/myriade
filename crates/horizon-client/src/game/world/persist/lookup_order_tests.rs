@@ -34,7 +34,7 @@ fn lookup_order(game: &mut Game<'_>) -> Vec<i32> {
     let members = game.level_all_entities(level).unwrap();
     members
         .into_iter()
-        .filter_map(|e| game.persist.uuids.get(&e.id()).copied())
+        .filter_map(|e| game.ecs.uuid_words(e.id()))
         .filter(|uuid| uuid[0] == 2703)
         .map(|uuid| uuid[3])
         .collect()

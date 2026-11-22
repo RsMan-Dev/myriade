@@ -48,7 +48,8 @@ pub static DEF: Def = Def {
             boom_sound: "entity.warden.sonic_boom",
         }),
         Entry::new(&roar_at_target::MODULE, 4, &roar_at_target::Params { duration: 84, anger: 20, sound: "entity.warden.roar" }),
-        Entry::new(&melee::MODULE, 5, &melee::Params { interval: 18, ..melee::Params::DEFAULT }),
+        // Fight: `SetWalkTargetFromAttackTargetIfTargetOutOfReach(1.2)` pursues without sight, then `MeleeAttack(18)` strikes.
+        Entry::new(&melee::MODULE, 5, &melee::Params { speed: 1.2, interval: 18, follow_unseen: true, ..melee::Params::DEFAULT }),
         Entry::new(&go_to_disturbance::MODULE, 6, &go_to_disturbance::Params { speed: 0.7 }),
         Entry::new(&sniff::MODULE, 7, &sniff::Params { duration: 84, cooldown: 150, sound: "entity.warden.sniff", radius: 24.0 }),
         Entry::new(&darkness_pulse::MODULE, 8, &darkness_pulse::Params { radius: 20.0, interval: 120 }),

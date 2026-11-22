@@ -218,14 +218,6 @@ impl Game<'_> {
 }
 
 impl Game<'_> {
-    pub(super) fn dismount_killed_boat(&mut self, id: u32) {
-        if let Some(y) = self.ecs.position(id).map(|p| p[1]) {
-            self.dismount_destroyed_vehicle_mobs(id, y);
-        }
-    }
-}
-
-impl Game<'_> {
     /// `Entity.setRemoved` of a cart: its riders get off by P's seats (`EcsLevel::eject_all`).
     pub(super) fn dismount_killed_cart(&mut self, id: u32) {
         self.ecs_with(|ecs, mw| ecs.eject_all(mw, id));

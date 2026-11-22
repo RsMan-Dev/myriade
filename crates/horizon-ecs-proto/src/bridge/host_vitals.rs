@@ -46,6 +46,12 @@ impl EcsWorld {
         w.get_entity(e).ok()?;
         Some(w.get_resource::<crate::cow::Clock>()?.of(e) as i32)
     }
+    /// `LivingEntity.isBaby`: the entity has its growing timer (`GrowAt`); None when it is gone.
+    pub fn is_baby(&self, e: Entity) -> Option<bool> {
+        let w = self.world();
+        w.get_entity(e).ok()?;
+        Some(w.get::<crate::cow::GrowAt>(e).is_some())
+    }
 
     /// The villager's inventory, slot by slot (`Villager.inventory`): the item and its count; empty when it carries nothing.
     pub fn inventory_stacks(&self, e: Entity) -> Vec<(String, u8)> {

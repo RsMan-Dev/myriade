@@ -170,6 +170,7 @@ keys! {
     PATH = "minecraft:path", Unit;
     CANT_REACH_WALK_TARGET_SINCE = "minecraft:cant_reach_walk_target_since", Int;
     TRANSPORT_ITEMS_COOLDOWN_TICKS = "minecraft:transport_items_cooldown_ticks", Int;
+    GAZE_COOLDOWN_TICKS = "minecraft:gaze_cooldown_ticks", Int;
     NEAREST_PLAYERS = "minecraft:nearest_players", Whos;
     NEAREST_VISIBLE_PLAYER = "minecraft:nearest_visible_player", Who;
     NEAREST_VISIBLE_ADULT = "minecraft:nearest_visible_adult", Who;
@@ -180,6 +181,36 @@ keys! {
     BREED_TARGET = "minecraft:breed_target", Who;
     ATTACK_TARGET = "minecraft:attack_target", Who;
     ATTACK_COOLING_DOWN = "minecraft:attack_cooling_down", Bool;
+    // The piglin's memories (`PiglinSpecificSensor`, `PiglinAi`, `MemoryModuleType`).
+    NEAREST_VISIBLE_NEMESIS = "minecraft:nearest_visible_nemesis", Who;
+    NEAREST_VISIBLE_HUNTABLE_HOGLIN = "minecraft:nearest_visible_huntable_hoglin", Who;
+    NEAREST_VISIBLE_BABY_HOGLIN = "minecraft:nearest_visible_baby_hoglin", Who;
+    NEAREST_VISIBLE_ZOMBIFIED = "minecraft:nearest_visible_zombified", Who;
+    NEAREST_TARGETABLE_PLAYER_NOT_WEARING_GOLD = "minecraft:nearest_targetable_player_not_wearing_gold", Who;
+    NEAREST_PLAYER_HOLDING_WANTED_ITEM = "minecraft:nearest_player_holding_wanted_item", Who;
+    NEARBY_ADULT_PIGLINS = "minecraft:nearby_adult_piglins", Whos;
+    NEAREST_VISIBLE_ADULT_PIGLINS = "minecraft:nearest_visible_adult_piglins", Whos;
+    VISIBLE_ADULT_PIGLIN_COUNT = "minecraft:visible_adult_piglin_count", Int;
+    VISIBLE_ADULT_HOGLIN_COUNT = "minecraft:visible_adult_hoglin_count", Int;
+    // The piglin brute's anger (`PiglinBruteAi.wasHurtBy`, 600 ticks) and its stroll cooldown (`StrollToPoi`, 80 ticks).
+    ANGRY_AT = "minecraft:angry_at", Who;
+    STROLL_TO_POI_COOLDOWN = "minecraft:stroll_to_poi_cooldown", Bool;
+    ADMIRING_ITEM = "minecraft:admiring_item", Bool;
+    ADMIRING_DISABLED = "minecraft:admiring_disabled", Bool;
+    DISABLE_WALK_TO_ADMIRE_ITEM = "minecraft:disable_walk_to_admire_item", Bool;
+    TIME_TRYING_TO_REACH_ADMIRE_ITEM = "minecraft:time_trying_to_reach_admire_item", Int;
+    CELEBRATE_LOCATION = "minecraft:celebrate_location", Block;
+    DANCING = "minecraft:dancing", Bool;
+    HUNTED_RECENTLY = "minecraft:hunted_recently", Bool;
+    RIDE_TARGET = "minecraft:ride_target", Who;
+    // The spear and crossbow fight (`SpearApproach`, `SpearAttack`, `SpearRetreat`, `CrossbowAttack`); the crossbow's two fields are not memories in vanilla.
+    SPEAR_STATUS = "minecraft:spear_status", Int;
+    SPEAR_ENGAGE_TIME = "minecraft:spear_engage_time", Int;
+    SPEAR_CHARGE_POSITION = "minecraft:spear_charge_position", Look;
+    SPEAR_FLEEING_POSITION = "minecraft:spear_fleeing_position", Look;
+    SPEAR_FLEEING_TIME = "minecraft:spear_fleeing_time", Int;
+    CROSSBOW_STATE = "horizon:crossbow_state", Int;
+    CROSSBOW_TIMER = "horizon:crossbow_timer", Bool;
 }
 
 // ---- the modules and the configuration --------------------------------------------------------------------------------

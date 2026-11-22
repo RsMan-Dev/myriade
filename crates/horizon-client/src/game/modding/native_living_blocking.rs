@@ -32,8 +32,16 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game as with_plain_game;
     use horizon_client::items::ItemStack;
+
+    /// `with_game` with the level's ECS attached, so the mobs placed here exist (`ecs_game_with`).
+    fn with_game(test: impl FnOnce(&mut crate::game::Game<'_>)) {
+        with_plain_game(|game| {
+            game.ecs = game.test_ecs_level();
+            test(game)
+        });
+    }
     use horizon_core::geometry::Vec3;
     use mod_api::EquipmentSlot;
     use mod_api::client::first_person::Hand;
@@ -49,6 +57,7 @@ mod tests {
             game.player =
                 Some(horizon_client::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
+            game.right = true;
             let player = game.living(game.entity(20).unwrap()).unwrap();
             let shield = ItemStack::new("minecraft:shield", 1);
             let delay = game.blocks_attacks(&shield).unwrap().delay_seconds;

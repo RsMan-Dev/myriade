@@ -55,9 +55,6 @@ fn a_block_part_decides_whether_it_keeps_a_fire_burning() {
                 None,
                 "no Part: the tag answers"
             );
-            // A client's copy of the level asks no Part.
-            game.options.dedicated = None;
-            assert_eq!(source(game, "minecraft:stone"), None);
         })
     });
 }

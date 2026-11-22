@@ -217,6 +217,14 @@ pub fn spawn_armed(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -
 /// Spawns an animal of species `sp` (with the extra data of a species that attacks).
 pub fn spawn_species(world: &mut World, sp: &Species, x: f64, z: f64, seed: u64) -> Entity {
     let e = spawn_declared(world, sp, x, z, seed, true);
+    if let Ok(r) = crate::species::registry().by_name(sp.name) {
+        if r.merchant {
+            world.entity_mut(e).insert_if_new(crate::behaviours::trade_offers::Merchant::new(false, 0, 0));
+        }
+        if r.no_portal {
+            world.entity_mut(e).insert(crate::portal::NoPortal);
+        }
+    }
     enter_index(world, e);
     crate::rules::equip_all(world, e, sp.rules);
     crate::leash::equip_default(world, e, sp.name);

@@ -318,6 +318,7 @@ if crate::cow::skip_unless_walker("block_changes_wake_only_what_they_touch") {
     // A path is dropped by a change near its middle only.
     let walker = {
         let e = spawn(&mut herd, -30.5, -20.5);
+        herd.world.get_mut::<Nav>(e).unwrap().speed = 1.0;
         // A new animal has no known ground until its first sweep: it cannot update a path before.
         herd.tick();
         herd.tick();

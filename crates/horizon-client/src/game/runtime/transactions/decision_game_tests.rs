@@ -3,13 +3,17 @@
 //! coordinator fixtures in decision_tests.rs do not.
 use super::storage::GameHost;
 use super::*;
-use crate::game::{Game, native_entity_refs::tests::with_game};
+use crate::game::{Game, native_guest_turn_tests::with_guests};
 use horizon_client::{chunk::Chunk, entities::ArmorStand};
 use horizon_core::geometry::Vec3;
 use std::sync::Arc;
 
 fn identity(game: &mut Game<'_>) -> Identity {
+    // The LAN guest 12 owns the menus that `Target::admit` looks up, as in decision_engine_tests.
+    game.lan.as_mut().unwrap().menus.entry(12).or_default();
     crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
+    // The holder must be in the resident table, or `residence` refuses it as Missing.
+    game.reset_entity_residency();
     let holder = game.entity(13).expect("fixture holder");
     Identity {
         side: Side::Server,
@@ -22,7 +26,7 @@ fn identity(game: &mut Game<'_>) -> Identity {
 #[test]
 #[ignore = "daily"]
 fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         game.world
             .chunks
@@ -67,7 +71,7 @@ fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
 #[test]
 #[ignore = "daily"]
 fn nested_real_game_commit_then_trap_rolls_back_next_placement_succeeds() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         game.world
             .chunks
@@ -122,7 +126,7 @@ fn nested_real_game_commit_then_trap_rolls_back_next_placement_succeeds() {
 #[test]
 #[ignore = "daily"]
 fn outer_real_game_abort_undoes_applied_menu_block_cost_rng_and_drops() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         game.world
             .chunks
@@ -172,7 +176,7 @@ fn outer_real_game_abort_undoes_applied_menu_block_cost_rng_and_drops() {
 #[test]
 #[ignore = "daily"]
 fn real_save_gate_and_save_all_refuse_action_savepoint() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
         let root = game.transaction_open();
@@ -202,7 +206,7 @@ fn real_save_gate_and_save_all_refuse_action_savepoint() {
 #[test]
 #[ignore = "daily"]
 fn only_root_commit_publishes_real_listener_and_plan_drops_in_order() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
         let initial = game.ecs.item_ids().len();
@@ -265,7 +269,7 @@ fn only_root_commit_publishes_real_listener_and_plan_drops_in_order() {
 #[test]
 #[ignore = "daily"]
 fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
-    with_game(|game| {
+    with_guests(|game| {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
         let drops = game.ecs.item_ids().len();

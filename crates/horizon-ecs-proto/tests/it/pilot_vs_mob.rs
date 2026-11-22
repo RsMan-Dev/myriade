@@ -521,7 +521,7 @@ fn flee_1_hide_pos_law() {
         h.tick();
     }
     let now = h.world.resource::<Clock>().0;
-    h.world.entity_mut(e).insert(Burning { until: now + 1_000_000 });
+    h.world.entity_mut(e).insert(Burning { until: now as i64 + 1_000_000 });
     h.world.resource_mut::<Events>().ignited.push(e);
     let inst = Inst { slot: 0, nth: 0 };
     let mut ecs = Vec::new();
@@ -615,7 +615,7 @@ fn flee_2_burning_animal_walks_to_the_spot_at_the_first_selector_tick() {
         if t == ign {
             let now = h.world.resource::<Clock>().0;
             for &e in &es {
-                h.world.entity_mut(e).insert(Burning { until: now + 1000 });
+                h.world.entity_mut(e).insert(Burning { until: now as i64 + 1000 });
                 h.world.resource_mut::<Events>().ignited.push(e);
             }
         }
@@ -683,7 +683,7 @@ fn flee_3_night_means_no_start() {
         if t == 10 {
             r.mobs[i].fire_ticks = 1000;
             let now = h.world.resource::<Clock>().0;
-            h.world.entity_mut(e).insert(Burning { until: now + 1000 });
+            h.world.entity_mut(e).insert(Burning { until: now as i64 + 1000 });
             h.world.resource_mut::<Events>().ignited.push(e);
         }
         step_day(&mut r, None, false);
@@ -723,7 +723,7 @@ fn flee_4_the_roof_goes_and_a_burning_monster_flees() {
         if t == 10 {
             r.mobs[i].fire_ticks = 1000;
             let now = h.world.resource::<Clock>().0;
-            h.world.entity_mut(e).insert(Burning { until: now + 1000 });
+            h.world.entity_mut(e).insert(Burning { until: now as i64 + 1000 });
             h.world.resource_mut::<Events>().ignited.push(e);
         }
         if t == 30 {

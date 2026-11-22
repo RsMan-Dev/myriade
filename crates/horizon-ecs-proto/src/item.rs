@@ -26,7 +26,7 @@ pub(crate) use crate::rules::item::box_at;
 pub struct Item {
     pub stack: ItemStack,
     /// `Entity.tickCount = now - born`.
-    pub born: u64,
+    pub born: i64,
     /// `ItemEntity.age = now - age_base` (a merge takes the smaller age).
     pub age_base: i64,
     /// A negative pickup delay is kept as read (`ItemEntity` only counts a positive one down); `ready_at` is then `Some(0)`.
@@ -189,7 +189,7 @@ pub fn drop_item(world: &mut World, stack: ItemStack, at: Vec3, velocity: Vec3, 
     ));
     let now = now_of(world, e);
     world.entity_mut(e).insert(ItemAwake);
-    world.entity_mut(e).insert(Item { stack, born: now, age_base: now as i64, neg_delay: 0, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
+    world.entity_mut(e).insert(Item { stack, born: now as i64, age_base: now as i64, neg_delay: 0, ready_at: ready.map(|d| now + d), target: None, cell, expire: 0, check: 0, id });
     set_resists(world, e, resists);
     crate::nbt::mark_saved(world, e, crate::species::lists::ITEM);
     world.resource_mut::<ItemIndex>().add(e, cell);
@@ -355,7 +355,7 @@ fn item_moved(world: &mut World) {
         let cell = cell_of(p);
         let resting = world.get::<Moving>(e).is_none();
         let Some(it) = world.get::<Item>(e) else { continue };
-        let (old, ticks, pending) = (it.cell, now - it.born, it.check != 0);
+        let (old, ticks, pending) = (it.cell, (now as i64 - it.born) as u64, it.check != 0);
         let changed = old != cell;
         if changed {
             let mut ix = world.resource_mut::<ItemIndex>();
@@ -432,7 +432,7 @@ fn copy_of(world: &World, e: Entity, now: u64) -> ItemEntity {
         age: age_of(it, now),
         pickup_delay: delay,
         bob_offset: 0.0,
-        ticks: (now - it.born) as u32,
+        ticks: (now as i64 - it.born) as u32,
         needs_sync: false,
         stuck: Vec3::ZERO,
         was_touching_water: false,
