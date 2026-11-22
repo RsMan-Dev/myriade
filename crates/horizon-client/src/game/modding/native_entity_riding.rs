@@ -20,8 +20,8 @@ impl Game<'_> {
         passenger: EntityRef,
     ) -> Option<[f64; 3]> {
         let at = if let Some(rider) = rider {
-            if let Some(boat) = self.boats.iter().find(|boat| boat.id == vehicle_id) {
-                Some(self.boat_dismount_target(boat, f64::from(rider.width()), rider.yaw))
+            if self.is_boat_id(vehicle_id) {
+                self.boat_dismount_target(vehicle_id, f64::from(rider.width()), rider.yaw)
             } else if let Some(mount) = vehicle {
                 Some(
                     self.horse_dismount_mobs(mount, rider)
@@ -687,19 +687,17 @@ mod tests {
     fn boat_and_cart_interactions_use_shared_mount_path() {
         use super::super::{
             InteractTarget,
-            boats::Boat,
         };
         use horizon_client::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             game.yaw = 10.0;
-            game.boats
-                .push(Boat::new(60, "oak".into(), Vec3::ZERO, 45.0));
+            let boat = game.spawn_boat_ecs("oak", false, [0.0; 3], 45.0).unwrap();
             assert!(game.interact_boat(Some(InteractTarget {
-                id: 60,
+                id: boat as i32,
                 location: [0.0; 3]
             })));
-            assert_eq!(game.riding, Some(60));
+            assert_eq!(game.riding, Some(boat));
             assert_eq!(game.yaw, 10.0, "mounting keeps the rider's view");
             game.riding = None;
             assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 61)).is_some());
@@ -716,16 +714,13 @@ mod tests {
     fn a_rider_boards_another_cart_or_boat_straight_from_its_vehicle() {
         use super::super::{
             InteractTarget,
-            boats::Boat,
         };
         use horizon_client::motion::PlayerMotion;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 61)).is_some());
             assert!(game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 62)).is_some());
-            let mut chest_boat = Boat::new(63, "oak".into(), Vec3::ZERO, 0.0);
-            chest_boat.chest = true;
-            game.boats.push(chest_boat);
+            let chest_boat = game.spawn_boat_ecs("oak", true, [0.0; 3], 0.0).unwrap();
             let at = |id| {
                 Some(InteractTarget {
                     id,
@@ -740,8 +735,8 @@ mod tests {
             assert_eq!(game.riding, Some(62));
             // AbstractChestBoat.interact tries AbstractBoat.interact's
             // boarding first; the chest only opens when that passes.
-            assert!(game.interact_boat(at(63)));
-            assert_eq!(game.riding, Some(63));
+            assert!(game.interact_boat(at(chest_boat as i32)));
+            assert_eq!(game.riding, Some(chest_boat));
             assert_eq!(game.container, None, "the chest stays closed");
             assert!(game.interact_cart(at(61)));
             assert_eq!(game.riding, Some(61), "and from a boat into a cart");

@@ -130,11 +130,7 @@ pub fn holder_state(w: &MobWorld, holder: Holder) -> Option<HolderState> {
                 velocity: s.velocity,
             })
         }
-        Holder::Boat(id) => w
-            .leash_boats
-            .iter()
-            .find(|(boat, _)| *boat == id)
-            .map(|(_, state)| *state),
+        Holder::Boat(_) => None,
         Holder::Knot(pos) => {
             let fence = w.has_tag("minecraft:fences", w.block_name(pos[0], pos[1], pos[2]));
             fence.then(|| knot_state(pos))

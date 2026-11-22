@@ -86,31 +86,24 @@ impl Game<'_> {
                 )
             }
             LootTarget::Boat(id) => {
-                let Some(i) = self.boats.iter().position(|b| b.id == id) else {
+                let Some(view) = self.ecs_view(id) else {
                     return;
                 };
-                let Some(pending) = self
-                    .persist
-                    .raw
-                    .get(&id)
-                    .and_then(PendingContainerLoot::from_tag)
-                else {
+                let Some((table, seed)) = self.ecs.boat_take_loot(id) else {
                     return;
                 };
-                if let Some(Tag::Compound(map)) = self.persist.raw.get_mut(&id) {
-                    map.remove(&"LootTable".into());
-                    map.remove(&"LootTableSeed".into());
-                }
+                let pending = PendingContainerLoot {
+                    table: Tag::String(table.as_str().into()),
+                    seed: Some(Tag::Long(seed)),
+                };
                 self.store_cart_items((i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32));
-                let b = &self.boats[i];
+                let [x, y, z] = view.position;
                 (
                     pending,
-                    (
-                        b.position.x.floor() as i32,
-                        b.position.y.floor() as i32,
-                        b.position.z.floor() as i32,
-                    ),
-                    b.items.iter().any(Option::is_some),
+                    (x.floor() as i32, y.floor() as i32, z.floor() as i32),
+                    self.ecs
+                        .boat_items(id)
+                        .is_some_and(|items| items.iter().any(Option::is_some)),
                 )
             }
         };
@@ -153,23 +146,15 @@ impl Game<'_> {
                 .get(&key)
                 .map(|e| e.slots().to_vec()),
             LootTarget::Cart(id) => self.ecs.cart_items(id),
-            LootTarget::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map(|b| b.items.clone()),
+            LootTarget::Boat(id) => self.ecs.boat_items(id),
         }) else {
             return;
         };
         let origin = match target {
             LootTarget::Block(_) => [pos.0 as f64 + 0.5, pos.1 as f64 + 0.5, pos.2 as f64 + 0.5],
-            LootTarget::Cart(id) => self
+            LootTarget::Cart(id) | LootTarget::Boat(id) => self
                 .ecs_view(id)
                 .map_or([pos.0 as f64, pos.1 as f64, pos.2 as f64], |v| v.position),
-            LootTarget::Boat(id) => {
-                let p = self.boats.iter().find(|b| b.id == id).unwrap().position;
-                [p.x, p.y, p.z]
-            }
         };
         let mut random = self.world.random.clone();
         let mut sequences = std::mem::take(&mut self.rand_sequences);
@@ -197,8 +182,8 @@ impl Game<'_> {
                 }
             }
             LootTarget::Boat(id) => {
-                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                    self.boats.update(i, |b| b.items = slots);
+                for (slot, stack) in slots.iter().cloned().enumerate() {
+                    self.ecs.boat_set_slot(id, slot, stack);
                 }
             }
         }
@@ -209,11 +194,7 @@ impl Game<'_> {
         if let Some(id) = id {
             let items = match target {
                 LootTarget::Cart(_) => self.ecs.cart_items(id),
-                _ => self
-                    .boats
-                    .iter()
-                    .find(|b| b.id == id)
-                    .map(|b| b.items.clone()),
+                _ => self.ecs.boat_items(id),
             };
             if let (Some(items), Some(BlockEntity::Chest(open))) = (
                 items,
@@ -445,12 +426,9 @@ impl super::GameLevel<'_> {
 mod tests;
 
 impl super::GameLevel<'_> {
-    /// The other lists stay shared; carts are the ECS's, not a list of the walk.
+    /// The lists of the walk; carts are the ECS's, not a list of it.
     pub(super) fn entities(&self) -> super::entity::EntityLists<'_> {
-        super::entity::EntityLists {
-            carts: &[],
-            ..self.other_entities
-        }
+        self.other_entities
     }
     /// Writes the contents of the cart `id` slot by slot through the ECS.
     fn put_cart_slots(&mut self, id: u32, slots: Vec<Option<horizon_client::items::ItemStack>>) {

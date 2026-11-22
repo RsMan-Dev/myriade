@@ -1161,26 +1161,20 @@ impl Game<'_> {
         let stand_box = stand.bounds();
         let vehicle = stand.vehicle;
         let mut applied = Vec::new();
-        for (j, cart) in self.carts.iter().enumerate() {
-            let Some(shove) = armor_stand_cart_shove(
-                stand_pos,
-                stand_box,
-                cart.position,
-                cart.bounds(),
-                cart.kind,
-                vehicle == Some(cart.id),
-            ) else {
+        for id in self.ecs.vehicles_touching(stand_box.min_position(), stand_box.max_position()) {
+            let (Some(kind), Some(at), Some(cart_box)) = (self.cart_genre(id), self.ecs.position(id), self.ecs.bounds(id)) else {
                 continue;
             };
-            applied.push((j, shove));
+            let cart_pos = Vec3::new(at[0], at[1], at[2]);
+            let Some(shove) = armor_stand_cart_shove(stand_pos, stand_box, cart_pos, cart_box, kind, vehicle == Some(id)) else {
+                continue;
+            };
+            applied.push((id, shove));
         }
         let mut stand_x = 0.0;
         let mut stand_z = 0.0;
-        for (j, shove) in applied {
-            self.carts.update(j, |cart| {
-                cart.velocity.x += shove.cart_x;
-                cart.velocity.z += shove.cart_z;
-            });
+        for (id, shove) in applied {
+            self.ecs.cart_push(id, [shove.cart_x, 0.0, shove.cart_z]);
             stand_x += shove.stand_x;
             stand_z += shove.stand_z;
         }

@@ -40,6 +40,11 @@ impl EcsLevel {
         w.set_cart_command(e, c)
     }
     /// The damage the cart `id` last took (`CartHurt`, 0 before any blow); None when it is not a cart or the level is inert.
+    /// The last output the command block of cart `id` synced (`last_output`, raw text); None when it is not a command cart.
+    pub fn cart_last_output(&self, id: u32) -> Option<String> {
+        let e = self.entity_of(id)?;
+        self.ecs()?.cart_command(e).map(|c| c.last_output)
+    }
     pub fn cart_damage(&self, id: u32) -> Option<f32> {
         let e = self.entity_of(id)?;
         let w = self.ecs()?.world();

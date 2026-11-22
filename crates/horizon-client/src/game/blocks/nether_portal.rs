@@ -762,8 +762,8 @@ impl Game<'_> {
     /// entity takes its first passenger's delay when that is a server player
     /// (`Player.getDimensionChangingDelay`), else 300.
     pub(super) fn dimension_changing_delay(&self, id: u32) -> i32 {
-        if self.boats.iter().any(|b| b.id == id)
-            || self.carts.iter().any(|c| c.id == id)
+        if self.is_boat_id(id)
+            || self.cart_genre(id).is_some()
             || self.lan_acting_entity == Some(id)
             || self
                 .lan
@@ -1149,8 +1149,6 @@ impl Game<'_> {
             self.remote_entities.retain(|m| !tree.contains(&m.id));
         }
         self.persist.off_level.retain(|id, _| !tree.contains(id));
-        self.boats.retain(|b| !tree.contains(&b.id));
-        self.carts.retain(|c| !tree.contains(&c.id));
         self.take_passenger_entities(&tree, true);
     }
     /// Where an entity that changes level alone stands, and the width and
@@ -1330,54 +1328,6 @@ impl Game<'_> {
             // Entity.removeAfterChangingDimensions drops the leash.
             if let Tag::Compound(c) = &mut tag {
                 c.remove(&"leash".into());
-            }
-            self.remove_portal_vehicle_tree(id);
-            self.portals.arrivals.push(Arrival {
-                tnt_used_portal: false,
-                plan,
-                tag,
-                transferred: Some(TransferredArrivalState::VehicleTree(state)),
-            });
-            self.portals.dirty = true;
-        } else if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-            let b = &self.boats[i];
-            let (width, height) = (super::boats::WIDTH as f32, super::boats::HEIGHT as f32);
-            let plan = self.entity_plan(entry, b.position, width, height, true);
-            if !self.may_travel_through(id, &plan) {
-                return;
-            }
-            self.release_vehicle_container(id);
-            let Some((tag, state)) = self.take_vehicle_tree_transfer(id) else {
-                return;
-            };
-            self.remove_portal_vehicle_tree(id);
-            self.portals.arrivals.push(Arrival {
-                tnt_used_portal: false,
-                plan,
-                tag,
-                transferred: Some(TransferredArrivalState::VehicleTree(state)),
-            });
-            self.portals.dirty = true;
-        } else if let Some(i) = self.carts.iter().position(|c| c.id == id) {
-            let c = &self.carts[i];
-            let (width, height) = (
-                super::minecarts::WIDTH as f32,
-                super::minecarts::HEIGHT as f32,
-            );
-            let plan = self.entity_plan(entry, c.position, width, height, true);
-            if !self.may_travel_through(id, &plan) {
-                return;
-            }
-            self.release_vehicle_container(id);
-            let Some((mut tag, state)) = self.take_vehicle_tree_transfer(id) else {
-                return;
-            };
-            // `PositionMoveRotation.of(this)` takes the cart's `getKnownMovement`.
-            let m = super::vehicle_teleport::cart_known_movement(
-                horizon_client::entity_nbt::motion(&tag),
-            );
-            if let Tag::Compound(c) = &mut tag {
-                c.insert("Motion".into(), doubles([m.x, m.y, m.z]));
             }
             self.remove_portal_vehicle_tree(id);
             self.portals.arrivals.push(Arrival {
@@ -1775,17 +1725,8 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_follows_the_class_then_the_first_passenger() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
-            game.boats.push(super::super::boats::Boat::new(
-                101,
-                Arc::from("oak"),
-                Vec3::ZERO,
-                0.0,
-            ));
-            game.carts.push(super::super::minecarts::Minecart::new(
-                103,
-                super::super::minecarts::CartKind::Rideable,
-                Vec3::ZERO,
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 101));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 103));
             let mob = |name: &str, id| {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
                 horizon_client::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)

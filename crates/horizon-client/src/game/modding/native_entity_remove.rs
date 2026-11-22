@@ -52,8 +52,7 @@ impl Game<'_> {
     pub(in crate::game) fn remove_target_now(&mut self, entity: EntityRef, t: Target) {
         // Read before the entity counts as removed: its handle stops resolving.
         let vehicle_y = match t {
-            Target::Boat(id) => self.boats.iter().find(|b| b.id == id).map(|b| b.position.y),
-            Target::Cart(id) => self.carts.iter().find(|c| c.id == id).map(|c| c.position.y),
+            Target::Boat(id) | Target::Cart(id) => self.ecs.position(id).map(|p| p[1]),
             _ => None,
         };
         let passengers: Vec<_> = self
@@ -69,7 +68,6 @@ impl Game<'_> {
         // it removed; then the passengers get off and the level is told.
         // Only players and mobs ride, so this kind has no vehicle to leave.
         self.persist.removals.push(t);
-        self.retire_vehicle_registration(t);
         if vehicle_y.is_some() {
             self.persist.notified_vehicle_removals.insert(entity.id());
         }
@@ -187,26 +185,7 @@ impl Game<'_> {
         };
         // What an open menu edited goes back to the vehicle first.
         self.release_vehicle_container(id);
-        let take = |at, items: &mut Vec<_>| {
-            if items.iter().all(Option::is_none) {
-                None
-            } else {
-                Some((at, std::mem::take(items)))
-            }
-        };
-        let held = match t {
-            Target::Cart(_) => self
-                .carts
-                .iter()
-                .position(|c| c.id == id)
-                .and_then(|i| self.carts.update(i, |c| take(c.position, &mut c.items))),
-            _ => self
-                .boats
-                .iter()
-                .position(|b| b.id == id)
-                .and_then(|i| self.boats.update(i, |b| take(b.position, &mut b.items))),
-        };
-        let Some((at, items)) = held else {
+        let Some((at, items)) = self.take_vehicle_items(id) else {
             return;
         };
         let at = BlockPos {
@@ -270,22 +249,18 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn destroying_a_cart_spills_all_slots_after_the_removal_flush() {
-        use super::super::{
-            minecarts::{CartKind, Minecart},
-            native_entity_refs::tests::with_game,
-        };
+        use super::super::native_entity_refs::tests::with_game;
         use super::*;
         with_game(|game| {
-            let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 70.0, 2.0));
-            cart.items[0] = Some(ItemStack::new("minecraft:stone", 64));
-            cart.items[5] = Some(ItemStack::new("minecraft:stone", 19));
-            cart.items[26] = Some(ItemStack::new("minecraft:sand", 7));
-            game.carts.push(cart);
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [1.0, 70.0, 2.0], 0.0, &mut || 600));
+            game.ecs.cart_set_slot(600, 0, Some(ItemStack::new("minecraft:stone", 64)));
+            game.ecs.cart_set_slot(600, 5, Some(ItemStack::new("minecraft:stone", 19)));
+            game.ecs.cart_set_slot(600, 26, Some(ItemStack::new("minecraft:sand", 7)));
             let entity = game.entity(600).unwrap();
             assert!(game.entity_remove(entity, RemovalReason::Killed));
             assert!(game.ecs.item_ids().is_empty());
             game.native_removals_flush();
-            assert!(game.carts.is_empty());
+            assert!(game.ecs.cart_ids().is_empty());
             let mut totals = std::collections::BTreeMap::new();
             for item in game.ecs.item_views().into_iter() {
                 *totals.entry(item.stack.item.to_string()).or_insert(0) += item.stack.count;
@@ -355,12 +330,7 @@ mod tests {
             with_game(|game| {
                 game.native_joins_skip();
                 let boat_id = game.take_entity_id();
-                game.boats.push(Boat::new(
-                    boat_id,
-                    "oak".into(),
-                    Vec3::new(0.0, 64.0, 0.0),
-                    0.0,
-                ));
+                game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0, 64.0, 0.0], 0.0, &mut || boat_id));
                 let mob_id = game.take_entity_id();
                 let cow = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                 game.remote_entities
@@ -373,13 +343,13 @@ mod tests {
 
                 assert!(boat.discard(game));
                 // Told, and off the vehicle, with the boat still in its list.
-                assert!(game.boats.iter().any(|b| b.id == boat_id));
+                assert!(game.ecs.boat_ids().contains(&boat_id));
                 assert_eq!(*observer.0.lock().unwrap(), vec![(boat_id, true)]);
                 assert_eq!(game.entity_vehicle(mob), None);
                 assert!(!game.remote_entities.iter().any(|m| m.extra.mount == Some(boat_id)));
 
                 game.native_leaves_flush();
-                assert!(!game.boats.iter().any(|b| b.id == boat_id));
+                assert!(!game.ecs.boat_ids().contains(&boat_id));
                 assert_eq!(*observer.0.lock().unwrap(), vec![(boat_id, true)]);
             });
         });

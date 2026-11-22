@@ -194,6 +194,11 @@ pub fn cart_boxes_in(w: &World, area: Aabb) -> Vec<Aabb> {
     indexed_in(w, area, |e| w.get::<Cart>(e).is_some()).into_iter().map(|(_, b)| b).collect()
 }
 
+/// The boxes of the boats meeting `area`, by the spatial index.
+pub fn boat_boxes_in(w: &World, area: Aabb) -> Vec<Aabb> {
+    indexed_in(w, area, |e| w.get::<crate::boat_state::BoatMarker>(e).is_some()).into_iter().map(|(_, b)| b).collect()
+}
+
 /// The item frames hanging in the cell `pos` on `face` (`Direction.get3DDataValue`): `(holds an item, rotation)` of each.
 pub fn frames_at(w: &World, pos: [i32; 3], face: u8) -> Vec<(bool, u8)> {
     crate::hanging::at_cell(w, pos, face).into_iter().filter_map(|e| w.get::<Held>(e)).map(|h| (h.stack.is_some(), h.rotation)).collect()

@@ -448,7 +448,7 @@ impl Game<'_> {
             Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.age as i32,
             Target::Item(id) => self.ecs.item(id)?.ticks as i32,
             Target::Orb(id) => self.ecs.orb(id)?.age as i32,
-            Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
+            Target::Cart(id) => self.ecs.age(id)?,
             _ => return None,
         })
     }
@@ -678,12 +678,7 @@ mod tests {
             let item = game.entity(id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
 
-            game.boats.push(super::super::boats::Boat::new(
-                44,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 44));
             let boat = game.entity(44).unwrap();
             assert_eq!(boat.fire_ticks(game), None);
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
@@ -694,7 +689,6 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
-        use super::super::minecarts::{CartKind, Minecart};
         use horizon_client::items::ItemStack;
         use horizon_core::geometry::Vec3;
         use mod_api::WorldEpoch;
@@ -734,18 +728,8 @@ mod tests {
             let orb = game.ecs_orb_moving(7, [0.0; 3], [0.0; 3]).expect("an orb");
             assert_eq!(game.entity(orb).unwrap().tick_count(game), Some(0));
 
-            game.carts
-                .push(Minecart::new(44, CartKind::Rideable, Vec3::ZERO));
-            game.carts.update(0, |c| c.tick_count = 5);
-            let cart = game.entity(44).unwrap();
-            assert_eq!(cart.tick_count(game), Some(5));
 
-            game.boats.push(super::super::boats::Boat::new(
-                45,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 45));
             let boat = game.entity(45).unwrap();
             assert_eq!(boat.tick_count(game), None);
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
@@ -758,7 +742,7 @@ mod tests {
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
         use super::super::native_guest_turn_tests::with_guests;
         use super::super::{
-            Dim, boats::Boat, minecarts::CartKind, minecarts::Minecart,
+            Dim,
         };
         use horizon_client::entities::ArmorStand;
         use horizon_client::items::ItemStack;
@@ -806,10 +790,8 @@ mod tests {
             );
             let item = game.ecs.item_ids()[0];
             let orb = game.ecs_orb_moving(1, [0.0; 3], [0.0; 3]).expect("an orb");
-            game.boats
-                .push(Boat::new(42, "oak".into(), Vec3::ZERO, 0.0));
-            game.carts
-                .push(Minecart::new(43, CartKind::Rideable, Vec3::ZERO));
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 42));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 43));
             game.add_primed_tnt(BlockPos::new(0, 64, 0), 0.0, 80, None, None);
             let tnt = game.ecs.species_ids("minecraft:tnt")[0];
             let arrow = Projectile::new(

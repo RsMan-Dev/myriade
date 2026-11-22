@@ -32,31 +32,6 @@ pub(crate) fn friction(
 }
 
 impl Game<'_> {
-    /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
-    /// `Leashable.angularFriction`), from `own`, the block's value. A boat's type is a built
-    /// name, so it is built only when the block has a part to answer.
-    pub(super) fn boat_friction(
-        &self,
-        b: &Boat,
-        pos: BlockPos,
-        state: BlockStateId,
-        own: f32,
-    ) -> f32 {
-        if !block_state::block_listens(mod_api::HookId::Friction, state) {
-            return own;
-        }
-        let mut friction = own;
-        let kind = b.entity_type();
-        horizon_client::motion::native_friction(
-            &self.loop_context,
-            b.id,
-            &kind,
-            pos,
-            state,
-            &mut friction,
-        );
-        friction
-    }
 }
 
 #[cfg(test)]

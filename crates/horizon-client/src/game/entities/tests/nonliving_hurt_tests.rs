@@ -89,9 +89,10 @@ fn a_cactus_hurts_a_minecart() {
     assert!(game.run_command("summon minecraft:minecart 10.5 100 4.5"));
     capture();
     game.tick_world(true).unwrap();
-    let c = &game.carts[0];
-    assert!(c.damage >= 10.0 && c.hurt_time == 10, "{}", c.damage);
-    let at = [c.position.x, c.position.y, c.position.z];
+    let cart = game.ecs.cart_ids()[0];
+    let damage = game.ecs.cart_damage(cart).unwrap();
+    assert!(damage >= 10.0 && game.ecs.cart_hurt_time(cart) == Some(10), "{damage}");
+    let at = game.ecs.position(cart).unwrap();
     let events = damage_events();
     assert!(
         !events.is_empty()
@@ -102,5 +103,5 @@ fn a_cactus_hurts_a_minecart() {
     for _ in 0..10 {
         game.tick_world(true).unwrap();
     }
-    assert!(game.carts.is_empty(), "the cactus breaks the cart");
+    assert!(game.ecs.cart_ids().is_empty(), "the cactus breaks the cart");
 }

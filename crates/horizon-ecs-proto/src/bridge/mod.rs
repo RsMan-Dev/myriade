@@ -67,3 +67,14 @@ pub mod tnt;
 pub mod trident;
 pub mod vehicle_push;
 pub mod inside_zone;
+
+/// The awake entities that carry the component `T`, read from the archetypes that hold it (no entity is visited unless it has `T`).
+pub(crate) fn marked_entities<T: bevy_ecs::component::Component>(w: &bevy_ecs::world::World) -> Vec<bevy_ecs::entity::Entity> {
+    let Some(c) = w.component_id::<T>() else { return Vec::new() };
+    let disabled = w.component_id::<bevy_ecs::entity_disabling::Disabled>();
+    w.archetypes()
+        .iter()
+        .filter(|a| a.contains(c) && !disabled.is_some_and(|d| a.contains(d)))
+        .flat_map(|a| a.entities().iter().map(|e| e.id()))
+        .collect()
+}

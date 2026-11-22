@@ -137,12 +137,7 @@ impl Game<'_> {
                 .iter()
                 .find(|a| a.id == id)
                 .map_or([0.0; 2], |a| [a.yaw, 0.0]),
-            Target::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map_or([0.0; 2], |b| [b.yaw, b.pitch]),
-            Target::Cart(id) => self.ecs_view(id).map_or([0.0; 2], |v| [v.yaw, 0.0]),
+            Target::Boat(id) | Target::Cart(id) => self.ecs_view(id).map_or([0.0; 2], |v| [v.yaw, 0.0]),
             Target::Fangs(id) => self
                 .fangs
                 .list
@@ -807,11 +802,6 @@ impl Game<'_> {
                         Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id).and_then(|m| {
                             m.extra.leash.map(|holder| (holder, m.extra.leash_player))
                         }),
-                        Target::Boat(id) => self
-                            .boats
-                            .iter()
-                            .find(|b| b.id == id)
-                            .and_then(|b| b.leash.map(|holder| (holder, b.leash_player))),
                         _ => None,
                     };
                 leash

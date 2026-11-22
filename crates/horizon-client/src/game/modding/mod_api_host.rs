@@ -203,8 +203,6 @@ impl Game<'_> {
                             Kind::Orb => "orb",
                             Kind::Projectile => "projectile",
                             Kind::Stand => "armorstand",
-                            Kind::Boat => "boat",
-                            Kind::Cart => "minecart",
                             Kind::Other => "other",
                             Kind::Fangs => "fangs",
                             Kind::Crystal => "crystal",

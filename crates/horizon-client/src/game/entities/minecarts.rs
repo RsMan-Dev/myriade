@@ -25,71 +25,12 @@ use std::sync::Arc;
 // The cart state and its pure rules live in horizon-gameplay; the old paths keep working.
 pub(in crate::game) use horizon_gameplay::minecarts::*;
 impl Game<'_> {
-    fn max_speed(&self, c: &Minecart) -> f64 {
-        let base = if c.in_water { 0.2 } else { 0.4 };
-        furnace_speed(c, base)
-    }
-    /// `AbstractMinecart.getMaxSpeed`: the behavior's, which a furnace
-    /// minecart cuts (`MinecartFurnace.getMaxSpeed`).
-    pub(super) fn cart_max_speed(&self, c: &Minecart) -> f64 {
-        if self.minecart_improvements() {
-            furnace_speed(c, self.max_speed_new(c))
-        } else {
-            self.max_speed(c)
-        }
-    }
     /// `AbstractMinecart`: `minecart_improvements` picks the smoother
     /// physics.
     pub(super) fn minecart_improvements(&self) -> bool {
         self.enabled_feature_ids()
             .iter()
             .any(|f| f == "minecraft:minecart_improvements")
-    }
-    /// `NewMinecartBehavior.getMaxSpeed`: the game rule over water's half,
-    /// every cart alike (`cart_max_speed` cuts a furnace minecart's).
-    fn max_speed_new(&self, c: &Minecart) -> f64 {
-        f64::from(
-            self.session
-                .rules
-                .int_at(horizon_client::gamerules::vanilla::MAX_MINECART_SPEED),
-        ) * if c.in_water { 0.5 } else { 1.0 }
-            / 20.0
-    }
-    /// `positionRider` for the mobs in minecarts: each sits on the cart's
-    /// passenger attachment, less its own vehicle attachment.
-    pub(super) fn seat_cart_mobs(&mut self, riding: &super::passengers::Riders) {
-        // The riders of an ECS cart sit where P puts them: nothing to seat here.
-        if self.ecs.is_active() {
-            return;
-        }
-        for i in 0..self.carts.len() {
-            let id = self.carts[i].id;
-            let Some(js) = riding.get(&id) else {
-                continue;
-            };
-            let (pos, prev) = (self.carts[i].position, self.carts[i].previous);
-            let cart_box = self.carts[i].bounds();
-            let seats: Vec<(usize, f64, f64)> = js
-                .iter()
-                .map(|&j| {
-                    let m = &self.remote_entities[j];
-                    // Minecart's box is 0.98 wide.
-                    let attachment = riders::vehicle_attachment(m, 0.98);
-                    (j, attachment, cart_seat_offset(m.species(), attachment))
-                })
-                .collect();
-            for (j, attachment, offset) in seats {
-                let m = &mut self.remote_entities[j];
-                m.seated(id, attachment, cart_box);
-                m.position = cart_seat(pos, offset);
-                m.previous = cart_seat(prev, offset);
-                m.velocity = Vec3::ZERO;
-                m.fall_distance = 0.0;
-                m.on_ground = false;
-                m.extra.passenger = true;
-                m.ai.nav.stop();
-            }
-        }
     }
     /// The rider's tick: the cart moves with the rider's input as its push.
     pub(super) fn tick_cart_riding(&mut self, keys: Keys) -> bool {
@@ -401,7 +342,7 @@ impl Game<'_> {
         }
     }
     /// The genre of the cart `id`, None when it is not a cart.
-    pub(super) fn cart_genre(&self, id: u32) -> Option<CartKind> {
+    pub(in crate::game) fn cart_genre(&self, id: u32) -> Option<CartKind> {
         CartKind::from_id(self.ecs.cart_kind(id)?)
     }
     /// The player's own blow on the cart `id` (`Player.attack`): a fire aspect lights it first. True when the cart was hurt.

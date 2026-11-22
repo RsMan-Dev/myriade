@@ -157,7 +157,7 @@ fn group(g: &mut Game<'_>, packets: Vec<S>, token: i32) {
 fn walking_then_still_tick_end_preserves_the_accepted_displacement() {
     let mut resources = None;
     let (mut g, _rx) = scene(&mut resources);
-    let id = g.boats[0].id;
+    let id = g.ecs.boat_ids()[0];
     group(
         &mut g,
         vec![S::Interact(play::Interact {

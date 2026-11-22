@@ -3,7 +3,6 @@
 //! `ServerLevel.getEntity`, as any other holder.
 use super::*;
 use horizon_client::chunk::Chunk;
-use horizon_client::mobs::leash::Holder;
 use horizon_core::position::ChunkPos;
 use std::sync::Arc;
 
@@ -38,7 +37,9 @@ fn a_boat_leashed_to_a_knots_uuid_is_tied_to_its_post() {
     for _ in 0..150 {
         game.tick_server(false).unwrap();
     }
-    let boat = game.boats.last().unwrap();
-    assert_eq!(boat.leash, Some(Holder::Knot([4, 64, 6])));
-    assert!(boat.leash_pending.is_none());
+    let boat = *game.ecs.boat_ids().last().unwrap();
+    assert_eq!(
+        game.ecs_view(boat).unwrap().leash,
+        Some(horizon_ecs_proto::leash::Holder::Knot([4, 64, 6]))
+    );
 }

@@ -34,11 +34,9 @@ impl Game<'_> {
     ) -> Option<R> {
         let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
         let at = |p: &horizon_core::geometry::Vec3| [p.x, p.y, p.z];
-        let container = |c: &super::minecarts::Minecart| c.id == id && c.kind.slots() > 0;
-        let position = if let Some(c) = self.carts.iter().find(|c| container(c)) {
-            at(&c.position)
-        } else if let Some(b) = self.boats.iter().find(|b| b.id == id && b.chest) {
-            at(&b.position)
+        let container = self.cart_genre(id).is_some_and(|k| k.slots() > 0);
+        let position = if container || self.boat_has_chest(id) == Some(true) {
+            self.ecs.position(id)?
         } else if let Some(columns) = self.ecs.mount_columns(id) {
             let size = columns * 3;
             let (saddle, body, mut items) = self.ecs.mount_contents(id)?;
@@ -61,14 +59,13 @@ impl Game<'_> {
             }
             return Some(edit(&mut m.extra.items[..size], at(&m.position)));
         };
-        if self.carts.iter().any(container) {
+        if container {
             return self.edit_cart_slots(id, |slots| edit(slots, position));
         }
         if let Some(super::BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
             return Some(edit(open, position));
         }
-        let i = self.boats.iter().position(|b| b.id == id)?;
-        Some(self.boats.update(i, |b| edit(&mut b.items, position)))
+        self.edit_vehicle_slots(id, |slots| edit(slots, position))
     }
     /// Whether this game simulates a world: a client's copy has no places to write.
     fn places_simulated(&self) -> bool {
@@ -133,12 +130,13 @@ impl Game<'_> {
     /// (`EntitySelector.CONTAINER_ENTITY_SELECTOR`: chest and hopper minecarts, chest boats; a
     /// chested mount is not one): none for any other entity, and on a client.
     pub(super) fn entity_automation_size(&self, entity: u32) -> Option<usize> {
-        if let Some(c) = self.carts.iter().find(|c| c.id == entity) {
-            let container = c.kind.slots() > 0;
-            return container.then_some(c.items.len());
+        if let Some(kind) = self.cart_genre(entity) {
+            return if kind.slots() > 0 { self.ecs.cart_items(entity).map(|s| s.len()) } else { None };
         }
-        let b = self.boats.iter().find(|b| b.id == entity)?;
-        b.chest.then_some(b.items.len())
+        if self.boat_has_chest(entity) != Some(true) {
+            return None;
+        }
+        self.ecs.boat_items(entity).map(|s| s.len())
     }
     /// How many equipment slots living entity `entity`'s [`ENTITY_ITEMS`](mod_api::ENTITY_ITEMS)
     /// answers (arismoko/horizon#932, NeoForge's `LivingEntityEquipmentWrapper`): a mob's or an armor stand's
@@ -896,11 +894,7 @@ pub(super) mod tests {
         };
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.carts.push(Minecart::new(
-                500,
-                CartKind::Chest,
-                horizon_core::geometry::Vec3::ZERO,
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.0; 3], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
@@ -999,11 +993,7 @@ pub(super) mod tests {
         use super::super::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
-            game.carts.push(Minecart::new(
-                500,
-                CartKind::Chest,
-                horizon_core::geometry::Vec3::ZERO,
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.0; 3], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let entity = host.entity(500).unwrap();
             let items = entity.capability(host, &ENTITY_ITEMS, ()).unwrap();
@@ -1584,13 +1574,8 @@ pub(super) mod tests {
     #[test]
     #[ignore = "daily"]
     fn scoped_boat_slots_use_the_open_menu_and_refuse_a_removed_owner() {
-        use super::super::boats::Boat;
-        use horizon_core::geometry::Vec3;
         with_game(|game| {
-            let mut boat = Boat::new(600, "oak".into(), Vec3::new(1.0, 65.0, 2.0), 0.0);
-            boat.chest = true;
-            boat.items.resize(27, None);
-            game.boats.push(boat);
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", true, [1.0, 65.0, 2.0], 0.0, &mut || 600));
             assert_eq!(
                 game.edit_entity_slots(600, |slots, at| {
                     assert_eq!(at, [1.0, 65.0, 2.0]);
@@ -1608,14 +1593,16 @@ pub(super) mod tests {
                 slots[0] = Some(ItemStack::new("minecraft:sand", 7));
             });
             assert_eq!(
-                game.boats[0].items[0],
+                game.ecs.boat_items(600).unwrap()[0],
                 Some(ItemStack::new("minecraft:stone", 4))
             );
             assert_eq!(
                 game.edit_entity_slots(600, |slots, _| slots[0].clone()),
                 Some(Some(ItemStack::new("minecraft:sand", 7)))
             );
-            game.boats.remove(0);
+            let boat = game.entity(600).unwrap();
+            assert!(game.entity_remove(boat, mod_api::RemovalReason::Killed));
+            game.native_removals_flush();
             assert_eq!(
                 game.edit_entity_slots(600, |_, _| panic!("stale owner reached its menu")),
                 None::<()>
@@ -1630,8 +1617,7 @@ pub(super) mod tests {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let position = horizon_core::geometry::Vec3::new(0.5, 65.0, 0.5);
-            game.carts
-                .push(Minecart::new(500, CartKind::Chest, position));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [position.x, position.y, position.z], 0.0, &mut || 500));
             let host: &mut dyn ServerHost = game;
             let cart = host.entity(500).unwrap();
             assert_eq!(
@@ -1647,22 +1633,21 @@ pub(super) mod tests {
                 Err::<(), ()>(())
             });
             assert!(aborted.is_err());
-            assert!(game.carts[0].items.iter().all(Option::is_none));
+            assert!(game.ecs.cart_items(500).unwrap().iter().all(Option::is_none));
             let host: &mut dyn ServerHost = game;
             let went =
                 host.transaction(|host, tx| Ok::<_, ()>(items.insert_any(host, tx, &sticks, 70)));
             assert_eq!(went, Ok(70));
             assert_eq!(
-                game.carts[0].items[0],
+                game.ecs.cart_items(500).unwrap()[0],
                 Some(ItemStack::new("minecraft:stick", 64))
             );
             assert_eq!(
-                game.carts[0].items[1],
+                game.ecs.cart_items(500).unwrap()[1],
                 Some(ItemStack::new("minecraft:stick", 6))
             );
             // A plain minecart has no items.
-            game.carts
-                .push(Minecart::new(501, CartKind::Rideable, position));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [position.x, position.y, position.z], 0.0, &mut || 501));
             let host: &mut dyn ServerHost = game;
             let plain = host.entity(501).unwrap();
             assert!(plain.capability(host, &ENTITY_ITEMS, ()).is_none());

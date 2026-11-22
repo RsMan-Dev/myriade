@@ -1,4 +1,4 @@
-//! The creatures a host vehicle (boat, minecart: still in `Game.boats` and `Game.carts`) meets, read on the ECS by network id. The
+//! The creatures a ECS vehicle (boat, minecart) meets, read by network id. The
 //! creatures are found through the spatial index, never by a scan of the entities.
 use super::super::Game;
 use horizon_core::geometry::Vec3;

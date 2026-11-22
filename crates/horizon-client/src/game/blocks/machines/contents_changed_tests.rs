@@ -501,7 +501,6 @@ fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
         "game::machines::contents_changed_tests::a_crafter_notices_its_source_but_not_a_vehicles_placeholder",
         NoticeAction::Observe,
         |game, level, changes| {
-            use crate::game::minecarts::{CartKind, Minecart};
             let pos = [0, 66, 0];
             let base = game
                 .pack
@@ -523,17 +522,13 @@ fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
             };
             crafter.items[0] = Some(ItemStack::new("minecraft:oak_planks", 1));
             crafter.items[3] = Some(ItemStack::new("minecraft:oak_planks", 1));
-            game.carts.push(Minecart::new(
-                700,
-                CartKind::Chest,
-                Vec3::new(0.5, 65.0, 0.5),
-            ));
+            game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [0.5, 65.0, 0.5], 0.0, &mut || 700));
             changes.0.lock().unwrap().clear();
             let dropped = game.ecs.item_ids().len();
             let mut random = game.world.random.clone();
             game.dispense_from(BlockPos::new(0, 66, 0), state).unwrap();
             assert_eq!(
-                game.carts[0].items[0],
+                game.ecs.cart_items(700).unwrap()[0],
                 Some(ItemStack::new("minecraft:stick", 4))
             );
             assert_eq!(game.ecs.item_ids().len(), dropped);

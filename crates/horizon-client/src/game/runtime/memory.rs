@@ -482,8 +482,8 @@ impl Game<'_> {
             [
                 self.ecs.item_ids().len(),
                 self.ecs.species_count("minecraft:experience_orb"),
-                self.carts.len(),
-                self.boats.len(),
+                self.ecs.cart_ids().len(),
+                self.ecs.boat_ids().len(),
             ],
         );
         for dim in self.levels.parked_dims() {

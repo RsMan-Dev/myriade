@@ -472,7 +472,7 @@ impl GameLevel<'_> {
                     .filter(|s| !s.marker)
                     .map(|s| s.bounds()),
             )
-            .chain(b.boats.iter().map(boats::Boat::bounds))
+            .chain(self.ecs.boat_bounds_in(zone))
             .chain(self.crystals.iter().map(dragon::Crystal::bounds))
             .chain(self.ecs.species_bounds("minecraft:tnt"))
             .chain(self.ecs.species_bounds("minecraft:falling_block"))
@@ -1065,12 +1065,8 @@ struct Game<'a> {
     spectated_post_effect: Option<&'static str>,
     /// `LocalPlayer.experienceDisplayStartTick`: (last progress, seen a change, tick).
     experience_display: (f32, bool, u64),
-    boats: horizon_client::join_seq::JoinList<boats::Boat, false>,
     /// The boats a mob's lead can hang on, for this tick's mob ticks.
-    leash_boats: Vec<(u32, horizon_client::mobs::leash::HolderState)>,
-    carts: horizon_client::join_seq::JoinList<minecarts::Minecart, false>,
     /// The boats and minecarts `native_vehicle_moved` follows (lan_vehicles.rs).
-    watched_vehicles: Vec<lan_vehicles::WatchedVehicle>,
     /// Songs playing from jukeboxes (tracked sound handles).
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: Vec<lightning::Bolt>,
@@ -3937,8 +3933,6 @@ impl Game<'_> {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
         self.creatures.projectiles.clear();
-        self.boats.clear();
-        self.carts.clear();
         self.armor_stands.clear();
         self.cushions.clear();
         self.others.clear();
@@ -5473,10 +5467,6 @@ impl<'a> Game<'a> {
             post_effects: Vec::new(),
             spectated_post_effect: None,
             experience_display: Default::default(),
-            boats: Default::default(),
-            leash_boats: Vec::new(),
-            carts: Default::default(),
-            watched_vehicles: Vec::new(),
             jukebox_sounds: HashMap::new(),
             bolts: Vec::new(),
             maps: maps::Maps::default(),

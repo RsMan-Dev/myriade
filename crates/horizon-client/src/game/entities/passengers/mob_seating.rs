@@ -167,7 +167,6 @@ impl Game<'_> {
                 .filter_map(|(j, m)| (m.extra.mount == Some(vehicle)).then_some(j))
                 .collect();
             let riders = Riders::from([(vehicle, aboard)]);
-            self.seat_cart_mobs(&riders);
             self.seat_cushion_mobs(&riders);
             self.seat_static_mobs(&riders);
         }

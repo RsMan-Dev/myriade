@@ -15,4 +15,11 @@ impl EcsLevel {
         let e = self.entity_of(id)?;
         self.ecs()?.cart_kind(e)
     }
+    /// The network ids of every cart of the level, by the cart marker (`EcsWorld::cart_entities`), in id order.
+    pub fn cart_ids(&self) -> Vec<u32> {
+        let Some(ecs) = self.ecs() else { return Vec::new() };
+        let mut ids: Vec<u32> = ecs.cart_entities().into_iter().filter_map(|e| self.id_of(e)).collect();
+        ids.sort_unstable();
+        ids
+    }
 }

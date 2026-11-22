@@ -56,6 +56,8 @@ pub(super) struct LanHost {
     pub hub: Hub,
     /// The mods heard that everyone still here leaves with the server.
     pub players_told_left: bool,
+    /// The vehicles guests ride, bounded by the guests (`VehicleMoveEvent` watch).
+    pub watched_vehicles: Vec<super::lan_vehicles::WatchedVehicle>,
     pub settings: LanSettings,
     pub play: HashMap<u32, super::lan_actions::GuestPlay>,
     /// Each guest's menu owners, outside `play` (`as_guest` lifts that).
@@ -1182,6 +1184,7 @@ impl Game<'_> {
         self.world.light_log = Some(Default::default());
         self.lan = Some(LanHost {
             players_told_left: false,
+            watched_vehicles: Vec::new(),
             hub,
             settings: LanSettings { port, ..settings },
             play: HashMap::new(),
@@ -2596,7 +2599,6 @@ impl Game<'_> {
                 states.clear();
                 // Nobody can receive past movement. A returning viewer pairs
                 // from the cart's current position/rotation, as AddEntity does.
-                self.carts.for_each_mut(|cart| cart.lerp_steps.clear());
             }
             // Persist is swapped per level, so parked dimensions retain their marks.
             self.spend_forced_meta();

@@ -1172,18 +1172,6 @@ impl Game<'_> {
                             self.resolve_player_responsible(victim, source);
                         }
                     }
-                    // `VehicleEntity.hurtServer`: damage * 10, broken past 40.
-                    EntityHandle::Boat(i) => {
-                        let kind = self.boats[i].entity_type();
-                        if !blocked_damage!(entity as i32, &kind) {
-                            let Some(EntityHandle::Boat(_)) =
-                                self.refresh_entity_handle(entity, handle)
-                            else {
-                                continue;
-                            };
-                            self.hurt_boat_by(entity, amount, false, self.explosion_kill_credit());
-                        }
-                    }
                     // `hurtServer` does nothing to the rest.
                     _ => {}
                 }
@@ -1200,12 +1188,7 @@ impl Game<'_> {
                 let Some(handle) = self.refresh_entity_handle(entity, handle) else {
                     continue;
                 };
-                match handle {
-                    EntityHandle::Boat(i) => {
-                        self.boats.update(i, |boat| boat.push_from_explosion(push))
-                    }
-                    other => with_entity_mut!(self, other, e => e.push_from_explosion(push)),
-                }
+                with_entity_mut!(self, handle, e => e.push_from_explosion(push));
             }
         }
         self.native_leaves_flush();

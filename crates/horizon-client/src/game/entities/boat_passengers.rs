@@ -263,11 +263,6 @@ impl Game<'_> {
         let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         !self.boat_obstacles(u32::MAX, area).is_empty()
     }
-    /// What boat `b` may run into this tick.
-    pub(super) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
-        let reach = b.velocity.length() + 1.0;
-        self.boat_obstacles(b.id, b.bounds().inflate(Vec3::new(reach, reach, reach)))
-    }
 
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.

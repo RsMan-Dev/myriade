@@ -316,7 +316,6 @@ impl Game<'_> {
     /// instead, which this doesn't cover, and the player moves itself.
     fn pushed_entity_colliders(&self, target: MoveWho, movement: Vec3) -> Vec<Aabb> {
         match target {
-            MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
             MoveWho::Entity(handle) => {
                 let own = with_entity!(self, handle, entity => Entity::bounds(entity));
                 let mut boxes = self.item_entity_collisions([own.expand_towards(movement)]);

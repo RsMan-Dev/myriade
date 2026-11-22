@@ -27,6 +27,11 @@ impl EcsLevel {
         let e = self.entity_of(id)?;
         self.ecs()?.cart_hurt_time(e)
     }
+    /// The wobble direction of cart `id`; None when it is not a cart or the level is inert.
+    pub fn cart_hurt_dir(&self, id: u32) -> Option<i32> {
+        let e = self.entity_of(id)?;
+        self.ecs()?.cart_hurt_dir(e)
+    }
     /// Sets the wobble ticks of cart `id`; false when it is not a cart or the level is inert.
     pub fn set_cart_hurt_time(&mut self, id: u32, ticks: i32) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

@@ -15,7 +15,7 @@
 use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, Game, Mob, boats, commands,
+    Dim, Game, Mob, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
@@ -88,7 +88,7 @@ macro_rules! entity_count_view {
             fixed: [
                 ("minecraft:item", $level.ecs.item_ids().len()),
                 ("minecraft:experience_orb", $level.ecs.species_count("minecraft:experience_orb")),
-                ("minecraft:boat", $level.boats.len()),
+                ("minecraft:boat", $level.ecs.boat_ids().len()),
                 ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
                 ("minecraft:painting", $level.ecs.species_count("minecraft:painting")),
                 ("minecraft:item_frame", $level.ecs.species_count("minecraft:item_frame") + $level.ecs.species_count("minecraft:glow_item_frame")),
@@ -147,7 +147,6 @@ pub(super) struct Parked {
     cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
     others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     fangs: super::fangs::FangState,
-    pub(super) boats: horizon_client::join_seq::JoinList<boats::Boat, false>,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
     bolts: Vec<lightning::Bolt>,
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
@@ -623,7 +622,6 @@ impl Levels {
         Some(
             l.remote_entities.iter().filter(|m| !m.removed).count()
                 + l.ecs.entity_count()
-                + l.boats.len()
                 + l.ecs.species_count("minecraft:falling_block")
                 + l.paintings.len()
                 + l.item_frames.len()
@@ -667,7 +665,7 @@ impl Levels {
                 l.ecs.species_count("minecraft:item"),
                 l.ecs.species_count("minecraft:experience_orb"),
                 0,
-                l.boats.len(),
+                l.ecs.boat_ids().len(),
             ]
         })
     }
@@ -737,7 +735,6 @@ impl Game<'_> {
             cushions: Default::default(),
             others: Default::default(),
             fangs: Default::default(),
-            boats: Default::default(),
             jukebox_sounds: HashMap::new(),
             bolts: Vec::new(),
             crystals: Default::default(),
@@ -876,7 +873,6 @@ impl Game<'_> {
         swap(&mut self.cushions, &mut p.cushions);
         swap(&mut self.others, &mut p.others);
         swap(&mut self.fangs, &mut p.fangs);
-        swap(&mut self.boats, &mut p.boats);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
         swap(&mut self.bolts, &mut p.bolts);
         swap(&mut self.crystals, &mut p.crystals);

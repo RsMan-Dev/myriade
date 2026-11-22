@@ -405,16 +405,15 @@ impl Game<'_> {
                 p.needs_sync = true;
             }
         });
-        self.boats.for_each_mut(|boat| {
-            if boat.bounds().intersects(area) && boat.velocity.y < limit {
-                boat.velocity.y += push;
+        for id in self.ecs.vehicles_touching(area.min_position(), area.max_position()) {
+            if self.ecs.velocity(id).is_some_and(|v| v.y < limit) {
+                if self.cart_genre(id).is_some() {
+                    self.ecs.cart_push(id, [0.0, push, 0.0]);
+                } else {
+                    self.ecs.push_entity(id, [0.0, push, 0.0]);
+                }
             }
-        });
-        self.carts.for_each_mut(|cart| {
-            if cart.bounds().intersects(area) && cart.velocity.y < limit {
-                cart.velocity.y += push;
-            }
-        });
+        }
     }
 
 

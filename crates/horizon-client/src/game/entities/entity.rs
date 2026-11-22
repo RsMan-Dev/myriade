@@ -324,8 +324,6 @@ macro_rules! entity_lists {
         $crate::game::entity::$then! {
             ($($args)*)
             Mob(Mob) mobs: remote_entities,
-            Boat(Boat) boats: boats,
-            Cart(Minecart) carts: carts,
             ArmorStand(ArmorStand) armor_stands: armor_stands,
             Projectile(Projectile) projectiles: creatures.projectiles,
             General(GeneralRow) general: resident_entities.general.rows,

@@ -46,11 +46,10 @@ impl Game<'_> {
                     [p.position.x + w, p.position.y + h, p.position.z + w],
                 )
             })
-            .chain(self.carts.iter().map(|c| {
-                let p = c.position;
+            .chain(self.ecs.cart_ids().into_iter().filter_map(|id| self.ecs.position(id)).map(|[x, y, z]| {
                 (
-                    [p.x - 0.49, p.y, p.z - 0.49],
-                    [p.x + 0.49, p.y + 0.7, p.z + 0.49],
+                    [x - 0.49, y, z - 0.49],
+                    [x + 0.49, y + 0.7, z + 0.49],
                 )
             }))
             .chain(guests);
@@ -134,10 +133,11 @@ impl Game<'_> {
                 }
             }
         }
-        for c in &self.carts {
-            let at = c.position;
-            if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
-                standing_feet(&mut scratch.standing, [at.x, at.y, at.z], c.on_ground, 0.49);
+        // Every cart: no bounded query finds the carts that stand on a ticking block (no bound known, listed in the report).
+        for id in self.ecs.cart_ids() {
+            let (Some(at), Some(view)) = (self.ecs.position(id), self.ecs_view(id)) else { continue };
+            if entity_ticking(at[0].floor() as i32, at[2].floor() as i32) {
+                standing_feet(&mut scratch.standing, at, view.on_ground, 0.49);
             }
         }
         let first_contact_drop = self.next_entity + 1;

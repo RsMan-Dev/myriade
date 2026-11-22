@@ -108,12 +108,6 @@ impl Game<'_> {
         if let Some(i) = self.remote_entities.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Mob(i));
         }
-        if let Some(i) = self.boats.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Boat(i));
-        }
-        if let Some(i) = self.carts.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Cart(i));
-        }
         if let Some(i) = self.armor_stands.iter().position(|m| m.id == id) {
             return Some(EntityHandle::ArmorStand(i));
         }

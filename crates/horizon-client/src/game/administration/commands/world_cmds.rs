@@ -1553,8 +1553,11 @@ impl Game<'_> {
             ));
         }
         let (width, yaw) = (f64::from(mob.width()), mob.yaw);
+        if self.is_boat_id(v) {
+            return self.boat_dismount_target(v, width, yaw);
+        }
         if let Some(b) = self.boat_object(v) {
-            return Some(self.boat_dismount_target(b, width, yaw));
+            return Some(self.boat_dismount_at(b.position.x, b.position.z, b.bounds().max_position().y, width, yaw));
         }
         self.horse_dismount_point(v, rider)
             .or_else(|| self.cart_dismount_point(v, rider))

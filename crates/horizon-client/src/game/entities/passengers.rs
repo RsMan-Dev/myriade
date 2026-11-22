@@ -57,7 +57,7 @@ impl Game<'_> {
     /// `Entity.startRiding` for two mobs: false when a mod canceled it.
     pub(super) fn try_mount_mob(&mut self, rider: u32, vehicle: u32) -> bool {
         // `start_riding_target` asks the mod hooks, then mounts the ECS rider (its `Mob` arm).
-        let vehicle = if self.ecs.boat_status(vehicle).is_some() || self.boats.iter().any(|b| b.id == vehicle) {
+        let vehicle = if self.ecs.boat_status(vehicle).is_some() || self.is_boat_id(vehicle) {
             super::commands::Target::Boat(vehicle)
         } else if self.ecs.cart_kind(vehicle).is_some() {
             super::commands::Target::Cart(vehicle)
@@ -214,7 +214,6 @@ impl Game<'_> {
                 riders.entry(v).or_default().push(j);
             }
         }
-        self.seat_cart_mobs(&riders);
         self.seat_cushion_mobs(&riders);
         self.seat_static_mobs(&riders);
         // Riders of riders settle over a few passes.
@@ -231,7 +230,7 @@ impl Game<'_> {
     /// A vehicle whose `seat_*_mobs` pass places its mob riders itself.
     fn seats_own_riders(&self, vehicle: u32) -> bool {
         self.ecs.boat_status(vehicle).is_some()
-            || self.boats.iter().any(|b| b.id == vehicle)
+            || self.is_boat_id(vehicle)
             || self.ecs.cart_kind(vehicle).is_some()
             || self.cushions.iter().any(|c| c.id == vehicle)
             || self.ecs.species(vehicle) == Some("minecraft:tnt")
@@ -300,10 +299,11 @@ impl Game<'_> {
             let at = i.position;
             return Some(glam::DVec3::new(at.x, at.y, at.z));
         }
-        if let Some(b) = self.boats.iter().find(|b| b.id == vehicle) {
+        if self.is_boat_id(vehicle) {
             let count = self.boat_players(vehicle).max(1) + self.boat_mobs(vehicle).len();
-            let at = b.seat(0, count, false, 0.0, false);
-            return Some(glam::DVec3::new(at.x, at.y, at.z));
+            if let Some(at) = self.ecs.boat_seat(vehicle, 0, count) {
+                return Some(glam::DVec3::new(at.x, at.y, at.z));
+            }
         }
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == vehicle) {
             // ArmorStand.getDefaultDimensions: a marker has no box to sit on.

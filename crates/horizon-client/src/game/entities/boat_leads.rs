@@ -49,22 +49,6 @@ impl Game<'_> {
             .is_some_and(|me| self.ecs_leash_holder(id) == Some(EcsHolder::Player(me)))
     }
 
-    /// The boat with this UUID (`ServerLevel.getEntity`).
-    pub(super) fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
-        self.persist
-            .uuids
-            .iter()
-            .find(|(id, u)| {
-                **u == uuid
-                    && self.ecs.boat_status(**id).is_some()
-                    && self.resident_source_target_visible(
-                        self.dim.key(),
-                        super::commands::Target::Boat(**id),
-                    )
-            })
-            .map(|(id, _)| *id)
-    }
-
     /// The boats on the acting player's lead within 16 blocks of a point
     /// (`Leashable.leashableInArea`), found by the spatial index.
     pub(super) fn player_led_boats(&self, around: glam::DVec3) -> Vec<u32> {

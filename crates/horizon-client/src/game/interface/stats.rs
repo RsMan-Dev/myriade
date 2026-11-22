@@ -253,9 +253,9 @@ impl Game<'_> {
                 }
             }
             Some(Err(())) => {
-                if self.boats.iter().any(|b| Some(b.id) == self.riding) {
+                if self.riding.is_some_and(|r| self.is_boat_id(r)) {
                     self.award_custom_stat("boat_one_cm", total)
-                } else if self.carts.iter().any(|c| Some(c.id) == self.riding) {
+                } else if self.riding.is_some_and(|r| self.cart_genre(r).is_some()) {
                     self.award_custom_stat("minecart_one_cm", total)
                 }
             }

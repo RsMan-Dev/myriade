@@ -25,8 +25,6 @@ pub enum Kind {
     Orb,
     Projectile,
     Stand,
-    Boat,
-    Cart,
     Other,
     Fangs,
     Crystal,

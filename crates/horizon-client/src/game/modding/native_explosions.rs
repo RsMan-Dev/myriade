@@ -285,11 +285,7 @@ impl Game<'_> {
                 self.combat.explosion_direct = Some(id);
             }
             // MinecartTNT.isPrimed (fuse > -1).
-            Target::Cart(_)
-                if self
-                    .carts
-                    .iter()
-                    .any(|c| c.id == id && c.kind == CartKind::Tnt && c.fuse >= 0) =>
+            Target::Cart(_) if self.ecs.cart_fuse(id).is_some_and(|fuse| fuse >= 0) =>
             {
                 self.combat.rail_proof_blast = true;
                 self.combat.explosion_direct = Some(id);

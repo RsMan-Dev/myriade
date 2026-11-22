@@ -286,7 +286,7 @@ fn a_removal_then_commit_runs_each_effect_once() {
         let queued = game.persist.removals.iter();
         assert_eq!(queued.filter(|t| **t == boat_target).count(), 1);
         game.native_leaves_flush();
-        assert!(!game.boats.iter().any(|b| b.id == boat.id()));
+        assert!(!game.ecs.boat_ids().contains(&boat.id()));
         assert_eq!(heard().left, [boat.id()], "told once");
     });
 }

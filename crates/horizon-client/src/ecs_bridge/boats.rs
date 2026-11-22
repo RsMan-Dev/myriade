@@ -65,4 +65,11 @@ impl EcsLevel {
         let e = self.entity_of(id)?;
         self.ecs()?.boat_max_passengers(e)
     }
+    /// The network ids of every boat of the level, by the boat marker (`EcsWorld::boat_entities`), in id order.
+    pub fn boat_ids(&self) -> Vec<u32> {
+        let Some(ecs) = self.ecs() else { return Vec::new() };
+        let mut ids: Vec<u32> = ecs.boat_entities().into_iter().filter_map(|e| self.id_of(e)).collect();
+        ids.sort_unstable();
+        ids
+    }
 }

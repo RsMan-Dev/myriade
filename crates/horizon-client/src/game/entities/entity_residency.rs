@@ -45,7 +45,6 @@ macro_rules! resident_owners {
             ($this)
             Mob => Mob: remote_entities,
             Stand => Stand: armor_stands,
-            Boat => Boat: boats,
             Other => Other: others,
             Fangs => Fangs: fangs.list,
             Crystal => Crystal: crystals,
@@ -98,25 +97,6 @@ macro_rules! bind_resident_list {
                     "minecraft:block_display" => EntitySubtype::BlockDisplay,
                     "minecraft:item_display" => EntitySubtype::ItemDisplay,
                     "minecraft:text_display" => EntitySubtype::TextDisplay,
-                    _ => EntitySubtype::Ordinary,
-                }
-            },
-        )
-    };
-    (Cart, $list:expr, $journal:expr, $owner:expr) => {
-        $list.bind_residency_with_subtype(
-            $journal,
-            $owner,
-            |entity| (entity.id, entity.join_seq()),
-            |entity| {
-                use horizon_client::join_seq::residency::EntitySubtype;
-                use $crate::game::minecarts::CartKind;
-                match entity.kind {
-                    CartKind::Chest => EntitySubtype::ChestCart,
-                    CartKind::Furnace => EntitySubtype::FurnaceCart,
-                    CartKind::Hopper => EntitySubtype::HopperCart,
-                    CartKind::Tnt => EntitySubtype::TntCart,
-                    CartKind::CommandBlock => EntitySubtype::CommandCart,
                     _ => EntitySubtype::Ordinary,
                 }
             },
@@ -184,7 +164,7 @@ macro_rules! define_resident_access {
                     let Some(part) = $this.dragon.as_mut().and_then(|dragon| dragon.parts.get_mut(usize::from(offset))) else { return SlotAccess::Missing; };
                     SlotAccess::Done(visit(part.attachment_lifetime()))
                 },
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
+                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::General => SlotAccess::UnsupportedKind(at.owner.kind),
             }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
@@ -211,7 +191,7 @@ macro_rules! define_resident_access {
                     let visible = true;
                     Some(SourceEntity { id, value: (Target::DragonPart(id), visible) })
                 }
-                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Cart | Kind::General => None,
+                Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::General => None,
             };
             source
         }

@@ -2228,10 +2228,8 @@ impl Game<'_> {
         }
         let p = if let Some(i) = self.mob_slot(id) {
             self.remote_entities[i].position
-        } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            b.position
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-            c.position
+        } else if let Some(p) = self.ecs.position(id) {
+            return Some(p);
         } else {
             self.cushions.iter().find(|c| c.id == id)?.position
         };

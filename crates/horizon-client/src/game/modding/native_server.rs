@@ -4343,11 +4343,10 @@ pub(super) mod fake_action_tests {
                 assert!(game.ecs.cart_set_slot(id, 3, diamonds.clone()));
                 vehicles.push((id, false));
             }
-            let mut boat = Boat::new(6102, "oak".into(), at, 0.0).with_chest();
-            boat.items[3] = diamonds.clone();
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", true, [at.x, at.y, at.z], 0.0, &mut || 6102));
+            game.ecs.boat_set_slot(6102, 3, diamonds.clone());
             // ChestBoat.interact opens the chest for a sneaking player.
             vehicles.push((6102, true));
-            game.boats.push(boat);
 
             for (id, sneaking) in vehicles {
                 let target = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id);
@@ -4374,9 +4373,7 @@ pub(super) mod fake_action_tests {
                         "vehicle {id} left a stand-in",
                     );
                     assert!(game.container.is_none());
-                    let items = game.ecs.cart_items(id).or_else(|| {
-                        game.boats.iter().find(|b| b.id == id).map(|b| b.items.to_vec())
-                    });
+                    let items = game.ecs.cart_items(id).or_else(|| game.ecs.boat_items(id));
                     assert_eq!(items.unwrap()[3], diamonds, "vehicle {id} lost its items");
                 }
             }

@@ -1190,32 +1190,6 @@ impl Game<'_> {
             .iter()
             .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
             .map(|m| (m.id, m.position, m.width(), m.height()))
-            .chain(
-                self.boats
-                    .iter()
-                    .filter(|b| ticks(b.position) && self.vehicle_can_use_portal(b.id))
-                    .map(|b| {
-                        (
-                            b.id,
-                            b.position,
-                            super::boats::WIDTH as f32,
-                            super::boats::HEIGHT as f32,
-                        )
-                    }),
-            )
-            .chain(
-                self.carts
-                    .iter()
-                    .filter(|c| ticks(c.position) && self.vehicle_can_use_portal(c.id))
-                    .map(|c| {
-                        (
-                            c.id,
-                            c.position,
-                            super::minecarts::WIDTH as f32,
-                            super::minecarts::HEIGHT as f32,
-                        )
-                    }),
-            )
             .collect();
         // The ECS creatures, items and carts that moved (`portal_entries`): the legacy lists above are empty while the ECS is active.
         if self.ecs.is_active() {
@@ -1318,16 +1292,6 @@ impl Game<'_> {
                 self.remote_entities
                     .iter()
                     .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
-            )
-            .chain(
-                self.boats
-                    .iter()
-                    .map(|b| (b.id, self.vehicle_can_use_portal(b.id), ticks(b.position))),
-            )
-            .chain(
-                self.carts
-                    .iter()
-                    .map(|c| (c.id, self.vehicle_can_use_portal(c.id), ticks(c.position))),
             )
             .chain(
                 self.creatures

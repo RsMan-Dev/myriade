@@ -282,8 +282,8 @@ impl Game<'_> {
     /// `ChestMenu` for a chest boat or a chest minecart, a `HopperMenu` for a
     /// hopper minecart - titled with the vehicle's name.
     pub(super) fn lan_open_vehicle_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> bool {
-        let entity_type = if let Some(cart) = self.carts.iter().find(|c| c.id as i32 == pos.2) {
-            cart.kind.id().to_owned()
+        let entity_type = if let Some(k) = self.cart_genre(pos.2 as u32) {
+            k.id().to_owned()
         } else if self.boat_has_chest(pos.2 as u32) == Some(true) {
             self.ecs.kind(pos.2 as u32).unwrap_or_default().to_owned()
         } else {
@@ -481,12 +481,8 @@ impl Game<'_> {
         }
         let at = if self.boat_has_chest(key.2 as u32).is_some() {
             self.ecs.position(key.2 as u32)
-        } else if let Some(c) = self.carts.iter().find(|c| c.id as i32 == key.2) {
-            (c.kind == crate::game::minecarts::CartKind::Chest).then_some([
-                c.position.x,
-                c.position.y,
-                c.position.z,
-            ])
+        } else if let Some(k) = self.cart_genre(key.2 as u32) {
+            (k == crate::game::minecarts::CartKind::Chest).then(|| self.ecs.position(key.2 as u32)).flatten()
         } else {
             None
         };
@@ -636,12 +632,8 @@ impl Game<'_> {
         id: i32,
         g: &horizon_client::lan::guest::Guest,
     ) -> bool {
-        let bounds = self
-            .carts
-            .iter()
-            .find(|c| c.id as i32 == id)
-            .map(|c| c.bounds())
-            .or_else(|| self.ecs.boat_status(id as u32).and_then(|_| self.ecs.bounds(id as u32)));
+        let id = id as u32;
+        let bounds = (self.is_boat_id(id) || self.cart_genre(id).is_some()).then(|| self.ecs.bounds(id)).flatten();
         bounds.is_some_and(|b| guest_within_entity_range(g, &b, 4.0))
     }
 }

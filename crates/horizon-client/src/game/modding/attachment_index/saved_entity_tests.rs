@@ -178,10 +178,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
             let work = index.lock().unwrap().work_count();
             // Exercise the clone-replay boundary used by vehicle/projectile ticks.
             match kind {
-                "oak_boat" => {
-                    let copy = game.boats[0].clone();
-                    assert!(game.boats.store_back(0, copy));
-                }
                 "arrow" | "small_fireball" | "snowball" => {
                     let copy = game.creatures.projectiles[0].clone();
                     assert!(game.creatures.projectiles.store_back(0, copy));

@@ -33,6 +33,11 @@ impl EcsWorld {
         }))
     }
 
+    /// Every awake boat of the level, read from the archetypes that hold `BoatMarker`: the cost is the boats, not the entities.
+    pub fn boat_entities(&self) -> Vec<Entity> {
+        crate::bridge::marked_entities::<BoatMarker>(self.world())
+    }
+
     /// The wood name and chest flag of boat `e`, None when `e` is no boat.
     pub fn boat_wood(&self, e: Entity) -> Option<(&'static str, bool)> {
         boat_state::wood_of(self.world(), e)

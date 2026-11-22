@@ -196,7 +196,11 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("tick freeze"));
         assert!(game.run_command("summon minecraft:oak_boat 0.5 100 0.5"));
-        let (boat, start) = (game.boats[0].id, game.boats[0].position);
+        let boat = game.ecs.boat_ids()[0];
+        let start = {
+            let p = game.ecs.position(boat).unwrap();
+            horizon_core::geometry::Vec3::new(p[0], p[1], p[2])
+        };
         game.lan_host(
             crate::game::lan::LanSettings {
                 port: 0,
@@ -271,7 +275,7 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         game.tick_lan_packets();
         // The cancelled move left the boat where it was.
         assert_eq!(
-            game.boats[0].position, start,
+            game.ecs.position(boat).unwrap(), [start.x, start.y, start.z],
             "the cancelled packet did not move the boat"
         );
         // The hook heard the move with the player cause.

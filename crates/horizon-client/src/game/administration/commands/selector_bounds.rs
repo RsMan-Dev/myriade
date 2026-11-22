@@ -40,7 +40,7 @@ impl Game<'_> {
                 .iter()
                 .find(|e| e.id == id)
                 .map(Entity::bounds),
-            Target::Boat(id) => self.boats.iter().find(|e| e.id == id).map(Entity::bounds),
+            Target::Boat(id) => self.ecs.bounds(id),
             Target::Cart(id) => self.ecs.bounds(id),
             Target::Tnt(id) | Target::Falling(id) => self.ecs.bounds(id),
             Target::Rocket(id) | Target::Trident(id) => self.ecs.bounds(id),

@@ -35,15 +35,14 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
     game.set_allow_commands(true);
     let clock = game.world.game_time;
     let mut differences = Vec::new();
-    // Minecarts left the host list (`game.carts`): their kill is the ECS's, not this host test.
     for (index, kind) in ["oak_chest_boat", "bamboo_chest_raft", "oak_boat"].iter().enumerate() {
         let uuid = [51, 0, 0, index as i32 + 1];
         let source = r#"{Pos:[5.25d,200d,4.75d],NoGravity:1b,Items:[{Slot:0b,id:"minecraft:diamond",count:3,components:{"minecraft:custom_data":{h051:1}}},{Slot:1b,id:"minecraft:dirt",count:5},{Slot:2b,id:"minecraft:stick",count:7}]}"#.to_string();
         let (tag, _) = parse_snbt(&source).unwrap();
         game.load_boat(tag, Some(uuid), &format!("minecraft:{kind}"));
-        let b = game.boats.last().unwrap();
-        assert_eq!(b.position, Vec3::new(5.25, 200.0, 4.75));
-        let (id, mut slots) = (b.id, b.items.clone());
+        let id = *game.ecs.boat_ids().last().unwrap();
+        assert_eq!(game.ecs.position(id), Some([5.25, 200.0, 4.75]));
+        let mut slots = game.ecs.boat_items(id).unwrap();
         let container = index < 2;
         assert_eq!(
             slots.iter().flatten().map(|s| s.count).sum::<u32>(),
@@ -69,8 +68,8 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
             game.run_command(&format!("kill {actor}")),
             "{kind}: actual command admitted"
         );
-        assert!(!game.boats.iter().any(|b| b.id == id));
-        assert!(!game.carts.iter().any(|c| c.id == id));
+        assert!(!game.ecs.boat_ids().contains(&id));
+        assert!(!game.ecs.cart_ids().contains(&id));
         assert!(!game.world.block_entities.contains_key(&key));
         assert_ne!(game.container, Some(key));
         let dropped = game.ecs.item_views()[old_len..].to_vec();

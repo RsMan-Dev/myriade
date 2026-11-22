@@ -1416,8 +1416,10 @@ impl Game<'_> {
             } else if let Some(m) = self.remote_entities.iter().find(|m| m.id == v) {
                 boxes.push(m.bounds());
             }
-            if let Some(b) = self.boats.iter().find(|b| b.id == v) {
-                boxes.push(b.bounds());
+            if self.is_boat_id(v)
+                && let Some(b) = self.ecs.bounds(v)
+            {
+                boxes.push(b);
             }
         }
         (who, vehicle, boxes)

@@ -1650,18 +1650,7 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Boat(id) => {
-                if let Some(i) = self.boats.iter().position(|b| b.id == id) {
-                    self.boats.update(i, |b| {
-                        b.position = v;
-                        b.previous = v;
-                        if let Some(r) = rotation {
-                            Entity::set_rotation(b, r);
-                        }
-                    });
-                }
-            }
-            Target::Cart(id) => {
+            Target::Boat(id) | Target::Cart(id) => {
                 if let Some(e) = self.ecs.entity_of(id) {
                     let at = [v.x, v.y, v.z];
                     self.ecs_with(|ecs, mw| ecs.teleport(mw, e, at));

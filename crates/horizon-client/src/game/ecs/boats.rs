@@ -94,4 +94,45 @@ impl Game<'_> {
             self.riding = None;
         }
     }
+    /// Whether network id `id` is a boat of the ECS level.
+    pub(in crate::game) fn is_boat_id(&self, id: u32) -> bool {
+        self.ecs.entity_of(id).and_then(|e| self.ecs.boat_wood(e)).is_some()
+    }
+    /// The item name of the ECS boat `id` (`BoatEntity.entity_type`), None when it is not a boat.
+    pub(in crate::game) fn boat_entity_type(&self, id: u32) -> Option<String> {
+        let (wood, chest) = self.ecs.entity_of(id).and_then(|e| self.ecs.boat_wood(e))?;
+        let chest = if chest { "chest_" } else { "" };
+        Some(if wood == "bamboo" { format!("minecraft:bamboo_{chest}raft") } else { format!("minecraft:{wood}_{chest}boat") })
+    }
+    /// Takes the stacks out of the ECS vehicle `id` (its box and its slots), None when it holds nothing.
+    pub(in crate::game) fn take_vehicle_items(&mut self, id: u32) -> Option<(horizon_core::geometry::Vec3, Vec<Option<horizon_client::items::ItemStack>>)> {
+        let at = self.ecs.position(id)?;
+        let boat = self.is_boat_id(id);
+        let items = if boat { self.ecs.boat_items(id)? } else { self.ecs.cart_items(id)? };
+        if items.iter().all(Option::is_none) {
+            return None;
+        }
+        for slot in 0..items.len() {
+            if boat {
+                self.ecs.boat_set_slot(id, slot, None);
+            } else {
+                self.ecs.cart_set_slot(id, slot, None);
+            }
+        }
+        Some((horizon_core::geometry::Vec3::new(at[0], at[1], at[2]), items))
+    }
+    /// Edits the slots of the ECS vehicle `id` (a boat or a cart) and writes back every slot it changed.
+    pub(in crate::game) fn edit_vehicle_slots<R>(&mut self, id: u32, edit: impl FnOnce(&mut Vec<Option<horizon_client::items::ItemStack>>) -> R) -> Option<R> {
+        let boat = self.is_boat_id(id);
+        let mut items = if boat { self.ecs.boat_items(id)? } else { self.ecs.cart_items(id)? };
+        let r = edit(&mut items);
+        for (slot, stack) in items.into_iter().enumerate() {
+            if boat {
+                self.ecs.boat_set_slot(id, slot, stack);
+            } else {
+                self.ecs.cart_set_slot(id, slot, stack);
+            }
+        }
+        Some(r)
+    }
 }

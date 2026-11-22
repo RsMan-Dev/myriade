@@ -744,13 +744,15 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
     fixture(
         "game::machines::native_items::storage_attempt_tests::vanilla_container_provider_and_entity_never_ask_their_storage",
         |game, _, probe| {
-            use crate::game::minecarts::{CartKind, Minecart};
             for target in ["minecraft:chest", "minecraft:composter", "minecraft:air"] {
                 hopper(game, vec![None; 5]);
                 game.hoppers.clear();
                 place(game, ABOVE, target);
                 game.world.block_entities.remove(&ABOVE);
-                game.carts.clear();
+                for id in game.ecs.cart_ids() {
+                    let e = game.ecs.entity_of(id).unwrap();
+                    game.ecs.despawn(e);
+                }
                 match target {
                     "minecraft:chest" => {
                         game.world.block_entities.insert(
@@ -767,10 +769,8 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
                         game.world.set(8, 65, 8, full).unwrap();
                     }
                     _ => {
-                        let mut cart =
-                            Minecart::new(700, CartKind::Chest, Vec3::new(8.5, 65.0, 8.5));
-                        cart.items[0] = Some(ItemStack::new("minecraft:stone", 1));
-                        game.carts.push(cart);
+                        game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:chest_minecart", [8.5, 65.0, 8.5], 0.0, &mut || 700));
+                        game.ecs.cart_set_slot(700, 0, Some(ItemStack::new("minecraft:stone", 1)));
                     }
                 }
                 game.tick_hopper(HOPPER);

@@ -55,17 +55,7 @@ pub(super) struct WatchedVehicle {
 impl Game<'_> {
     /// Where the boat or minecart `id` of this level is.
     fn watched_vehicle_position(&self, id: u32) -> Option<[f64; 3]> {
-        let at = |v: Vec3| [v.x, v.y, v.z];
-        self.boats
-            .iter()
-            .find(|b| b.id == id)
-            .map(|b| at(b.position))
-            .or_else(|| {
-                self.carts
-                    .iter()
-                    .find(|c| c.id == id)
-                    .map(|c| at(c.position))
-            })
+        (self.is_boat_id(id) || self.cart_genre(id).is_some()).then(|| self.ecs.position(id)).flatten()
     }
 
     /// `VehicleMoveEvent` for the boats and minecarts server players ride
@@ -78,7 +68,8 @@ impl Game<'_> {
                 .filter_map(|g| Some((g.vehicle?, g.conn, g.uuid)))
                 .collect()
         });
-        if riders.is_empty() && self.watched_vehicles.is_empty() {
+        let mut watched = self.lan.as_mut().map_or_else(Vec::new, |h| std::mem::take(&mut h.watched_vehicles));
+        if riders.is_empty() && watched.is_empty() {
             return;
         }
         let dim = self.dim;
@@ -86,9 +77,9 @@ impl Game<'_> {
             let Some(at) = self.watched_vehicle_position(id) else {
                 continue;
             };
-            match self.watched_vehicles.iter_mut().find(|w| w.id == id) {
+            match watched.iter_mut().find(|w| w.id == id) {
                 Some(w) => (w.dim, w.rider) = (dim, Some(uuid)),
-                None => self.watched_vehicles.push(WatchedVehicle {
+                None => watched.push(WatchedVehicle {
                     id,
                     dim,
                     rider: Some(uuid),
@@ -100,7 +91,7 @@ impl Game<'_> {
         let mut kept = Vec::new();
         // (rider's connection and UUID, vehicle type, from, to)
         let mut moved = Vec::new();
-        for mut w in std::mem::take(&mut self.watched_vehicles) {
+        for mut w in std::mem::take(&mut watched) {
             // Another level's vehicle is told of on that level's tick.
             if w.dim != dim {
                 kept.push(w);
@@ -128,7 +119,9 @@ impl Game<'_> {
             }
             kept.push(w);
         }
-        self.watched_vehicles = kept;
+        if let Some(h) = self.lan.as_mut() {
+            h.watched_vehicles = kept;
+        }
         // The rider's state is swapped in for the call, so the helpers reach
         // them; a vehicle nobody rides is told of with nobody swapped in.
         for (rider, kind, from, to) in moved {
@@ -156,13 +149,9 @@ impl Game<'_> {
             return Some((lo, hi, at(i.position)));
         }
         let id = u32::try_from(id).ok()?;
-        if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            let (lo, hi) = corners(b.bounds());
-            return Some((lo, hi, at(b.position)));
-        }
-        if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-            let (lo, hi) = corners(c.bounds());
-            return Some((lo, hi, at(c.position)));
+        if self.is_boat_id(id) || self.cart_genre(id).is_some() {
+            let (lo, hi) = corners(self.ecs.bounds(id)?);
+            return Some((lo, hi, self.ecs.position(id)?));
         }
         if let Some(a) = self.armor_stands.iter().find(|a| a.id == id) {
             let (lo, hi) = corners(a.bounds());
@@ -341,10 +330,9 @@ impl Game<'_> {
             .and_then(|_| self.ecs_view(vehicle))
             .map(|v| (Vec3::new(v.position[0], v.position[1], v.position[2]), self.player_boat_seat(vehicle)))
             .or_else(|| {
-                self.carts
-                    .iter()
-                    .find(|c| c.id == vehicle)
-                    .map(|c| (c.position, c.position.add_vector(Vec3::new(0.0, SEAT, 0.0))))
+                self.cart_genre(vehicle)?;
+                let p = self.ecs.position(vehicle).map(|p| Vec3::new(p[0], p[1], p[2]))?;
+                Some((p, p.add_vector(Vec3::new(0.0, SEAT, 0.0))))
             })
             .or_else(|| {
                 self.cushions

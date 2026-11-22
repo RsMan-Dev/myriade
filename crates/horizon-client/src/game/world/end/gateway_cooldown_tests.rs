@@ -1,8 +1,4 @@
 //! Production gateway counters and direct phases over a silent, empty Game.
-use crate::game::{
-    boats::Boat,
-    minecarts::{CartKind, Minecart},
-};
 use horizon_client::{
     end_gateway::Traveller,
     projectiles::{Projectile, ProjectileKind},
@@ -16,8 +12,6 @@ fn gateway_counters_match_actual_vanilla_methods() {
         &std::fs::read_to_string(std::env::var_os("HORIZON_PORTAL_REFERENCE").unwrap()).unwrap(),
     )
     .unwrap();
-    let boat = Boat::new(1, "oak".into(), Vec3::ZERO, 0.0);
-    let cart = Minecart::new(2, CartKind::Rideable, Vec3::ZERO);
     let arrow = Projectile::new(
         ProjectileKind::Arrow {
             base_damage: 2.0,
@@ -29,14 +23,15 @@ fn gateway_counters_match_actual_vanilla_methods() {
     );
     let mut delays = [0; 4];
     crate::game::native_entity_refs::tests::with_game(|game| {
-        game.boats.push(boat);
-        game.carts.push(cart);
+        game.summon_with_nbt("minecraft:oak_boat", [0.0, 100.0, 0.0], "{}").unwrap();
+        game.summon_with_nbt("minecraft:minecart", [0.0, 100.0, 0.0], "{}").unwrap();
+        let (boat_id, cart_id) = (game.ecs.boat_ids()[0], game.ecs.cart_ids()[0]);
         let mut arrow = arrow;
         arrow.id = 3;
         game.creatures.projectiles.push(arrow);
         delays = [
-            game.dimension_changing_delay(1),
-            game.dimension_changing_delay(2),
+            game.dimension_changing_delay(boat_id),
+            game.dimension_changing_delay(cart_id),
             game.dimension_changing_delay(3),
             game.dimension_changing_delay(999),
         ];
@@ -143,7 +138,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         game.load_listed(kind, Some(uuid), None, tag).unwrap();
         ids.push(game.next_entity);
     }
-    assert_eq!(game.boats.len(), 1);
+    assert_eq!(game.ecs.boat_ids().len(), 1);
     assert_eq!(game.creatures.projectiles.len(), 1);
     assert!(matches!(
         game.creatures.projectiles[0].kind,

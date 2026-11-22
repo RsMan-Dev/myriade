@@ -32,6 +32,11 @@ impl EcsLevel {
         self.ecs().map_or_else(Vec::new, |e| e.cart_bounds_in(area))
     }
 
+    /// The boxes of the boats meeting `area`.
+    pub fn boat_bounds_in(&self, area: Aabb) -> Vec<Aabb> {
+        self.ecs().map_or_else(Vec::new, |e| e.boat_bounds_in(area))
+    }
+
     /// The boxes of the fishing hooks meeting `area`, each with whether it triggers blocks.
     pub fn hooks_in(&self, area: Aabb) -> Vec<(Aabb, bool)> {
         self.ecs().map_or_else(Vec::new, |e| e.hooks_in(area))

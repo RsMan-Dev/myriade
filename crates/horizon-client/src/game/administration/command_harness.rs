@@ -628,9 +628,9 @@ impl Game<'_> {
                         16,
                     )?;
                     self.in_owner_level(|g| -> Result<()> {
-                        let id = g
-                            .boat_by_uuid(horizon_client::lan::playerdata::uuid_ints(uuid))
-                            .ok_or("boat click: missing live boat")?;
+                        let Some(super::commands::Target::Boat(id)) = g.target_by_uuid(uuid) else {
+                            return Err("boat click: missing live boat".into());
+                        };
                         let owner = g.serving.as_ref().ok_or("boat click: no server")?.owner;
                         let conn = g
                             .lan

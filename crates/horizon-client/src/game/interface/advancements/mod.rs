@@ -646,12 +646,7 @@ impl Game<'_> {
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| Box::new(self.mob_entity(m)))
-                .or_else(|| {
-                    self.boats
-                        .iter()
-                        .find(|b| b.id == id)
-                        .map(|b| Box::new(self.boat_entity(b)))
-                })
+                .or_else(|| self.is_boat_id(id).then(|| Box::new(self.ecs_predicate_view(id))))
         });
         EntityView {
             kind: "minecraft:player".into(),
@@ -1705,7 +1700,7 @@ impl Game<'_> {
         }
         Some(match t {
             Target::Mob(id) => self.mob_entity(self.remote_entities.iter().find(|m| m.id == id)?),
-            Target::Boat(id) => self.boat_entity(self.boats.iter().find(|b| b.id == id)?),
+            Target::Boat(id) => self.is_boat_id(id).then(|| self.ecs_predicate_view(id))?,
             other => self.entity_view_of(other),
         })
     }

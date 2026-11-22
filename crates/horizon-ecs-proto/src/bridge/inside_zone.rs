@@ -38,6 +38,11 @@ impl EcsWorld {
         inside::cart_boxes_in(self.world(), area)
     }
 
+    /// The boxes of the boats meeting `area`, by the spatial index.
+    pub fn boat_bounds_in(&self, area: Aabb) -> Vec<Aabb> {
+        inside::boat_boxes_in(self.world(), area)
+    }
+
     /// The boxes of the fishing hooks meeting `area`, each with whether it triggers blocks.
     pub fn hooks_in(&self, area: Aabb) -> Vec<(Aabb, bool)> {
         inside::hooks_in(self.world(), area)

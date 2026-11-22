@@ -30,22 +30,12 @@ impl Game<'_> {
             }
             Target::Painting(_) => "minecraft:painting",
             Target::Boat(id) => {
-                let boat = self.boats.iter().find(|boat| boat.id == id)?;
-                let chest = if boat.chest { "chest_" } else { "" };
-                let suffix = if &*boat.wood == "bamboo" {
-                    "raft"
-                } else {
-                    "boat"
-                };
-                return mod_api::__private::resolved_entity_type_key_parts(&[
-                    "minecraft:",
-                    &boat.wood,
-                    "_",
-                    chest,
-                    suffix,
-                ]);
+                let (wood, chest) = self.ecs.entity_of(id).and_then(|e| self.ecs.boat_wood(e))?;
+                let chest = if chest { "chest_" } else { "" };
+                let suffix = if wood == "bamboo" { "raft" } else { "boat" };
+                return mod_api::__private::resolved_entity_type_key_parts(&["minecraft:", wood, "_", chest, suffix]);
             }
-            Target::Cart(id) => self.carts.iter().find(|cart| cart.id == id)?.kind.id(),
+            Target::Cart(id) => self.cart_genre(id)?.id(),
             Target::Other(id) => &self.others.iter().find(|other| other.id == id)?.kind,
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon",

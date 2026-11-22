@@ -203,43 +203,31 @@ impl Game<'_> {
         if self.lan.is_none() {
             return;
         }
-        let improvements = self.minecart_improvements();
-        self.carts.for_each_mut(|c| {
-            if c.id <= after {
-                return;
+        // Every ECS cart; the unsent movement steps are not kept by the ECS (`minecart_steps` stays None).
+        for id in self.ecs.cart_ids() {
+            if id <= after {
+                continue;
             }
-            let p = c.position;
-            let shown = c.custom_display.as_ref().and_then(|t| {
-                horizon_client::entity_nbt::state_from_nbt(self.pack.assets.registry, t)
-            });
-            let default = super::minecarts::default_display_offset(c.kind) as i32;
-            let e = add_state(
-                out,
-                c.id,
-                c.kind.id(),
-                [p.x, p.y, p.z],
-                c.yaw,
-                c.on_ground(),
-            );
-            e.pitch = c.pitch;
-            e.velocity = [c.velocity.x, c.velocity.y, c.velocity.z];
-            if improvements {
-                // Joining another dimension only takes a spawn snapshot; its
-                // regular tracking tick still owns the unsent steps.
-                e.minecart_steps = Some(if drain_minecart_steps {
-                    std::mem::take(&mut c.lerp_steps)
-                } else {
-                    Vec::new()
-                });
-            }
-            vehicle_meta(e, c.hurt_time, c.hurt_dir, c.damage);
-            cart_display_data(e, shown, c.custom_offset, default);
-            match c.kind {
+            let (Some(p), Some(view), Some(kind)) = (self.ecs.position(id), self.ecs_view(id), self.cart_genre(id)) else {
+                continue;
+            };
+            let default = super::minecarts::default_display_offset(kind) as i32;
+            let (shown, offset) = self.ecs.cart_display(self.pack.assets.registry, id).unwrap_or((None, default));
+            let e = add_state(out, id, kind.id(), p, view.yaw, view.on_ground);
+            e.pitch = self.ecs.pitch(id).unwrap_or(0.0);
+            e.velocity = view.velocity;
+            let hurt_time = self.ecs.cart_hurt_time(id).unwrap_or(0);
+            let hurt_dir = self.ecs.cart_hurt_dir(id).unwrap_or(1);
+            let damage = self.ecs.cart_damage(id).unwrap_or(0.0);
+            vehicle_meta(e, hurt_time, hurt_dir, damage);
+            cart_display_data(e, shown, Some(offset), default);
+            let fuel = self.ecs.cart_fuel(id).unwrap_or(0);
+            match kind {
                 // MinecartFurnace.DATA_ID_FUEL.
                 super::minecarts::CartKind::Furnace => {
                     e.defaults
                         .push((13, serializer::BOOLEAN, Value::Bool(false)));
-                    if c.fuel > 0 {
+                    if fuel > 0 {
                         e.meta.push((13, serializer::BOOLEAN, Value::Bool(true)));
                     }
                 }
@@ -251,24 +239,26 @@ impl Game<'_> {
                         .push((13, serializer::STRING, Value::String(String::new())));
                     e.defaults
                         .push((14, serializer::COMPONENT, Value::Text(empty)));
-                    if !c.synced_command.is_empty() {
+                    let synced_command = self.ecs.cart_command(id).map(|c| c.command).unwrap_or_default();
+                    let synced_output = self.ecs.cart_last_output(id).unwrap_or_default();
+                    if !synced_command.is_empty() {
                         e.meta.push((
                             13,
                             serializer::STRING,
-                            Value::String(c.synced_command.clone()),
+                            Value::String(synced_command),
                         ));
                     }
-                    if !c.synced_output.is_empty() {
+                    if !synced_output.is_empty() {
                         e.meta.push((
                             14,
                             serializer::COMPONENT,
-                            Value::Text(Tag::String(c.synced_output.as_str().into())),
+                            Value::Text(Tag::String(synced_output.as_str().into())),
                         ));
                     }
                 }
                 _ => {}
             }
-        });
+        }
         for a in self.armor_stands.iter().filter(|a| a.id > after) {
             let p = a.position;
             let attributes = self.stand_attributes(&a.live);

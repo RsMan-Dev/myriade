@@ -883,7 +883,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn leash_holder_reads_live_state() {
-        use super::super::{boats::Boat, lan::LanSettings};
+        use super::super::lan::LanSettings;
         use horizon_client::lan::{
             Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, playerdata::uuid_ints,
         };
@@ -945,8 +945,7 @@ mod tests {
             game.lan.as_mut().unwrap().hub.guests.push(guest);
             let cow = add_mob(game, 12, "minecraft:cow");
             let other = add_mob(game, 13, "minecraft:cow");
-            game.boats
-                .push(Boat::new(14, "oak".into(), Vec3::ZERO, 0.0));
+            game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 14));
             let boat = game.entity(14).unwrap();
             assert_eq!(
                 cow.entity().leash_holder(game),

@@ -28,12 +28,6 @@ impl Game<'_> {
                     || (m.species() == horizon_client::mobs::Species::Shulker && m.alive())
             })
             .map(|m| m.bounds())
-            .chain(
-                self.boats
-                    .iter()
-                    .filter(|b| Some(b.id) != self.riding)
-                    .map(super::boats::Boat::bounds),
-            )
             .chain(solid)
             .collect()
     }
@@ -259,7 +253,7 @@ mod item_collision_tests {
                 .unwrap()
         };
         assert_eq!(rest(4.5), 200.0, "through the minecart to the stone");
-        let boat_top = game.boats[0].bounds().max_position().y;
+        let boat_top = game.ecs.bounds(game.ecs.boat_ids()[0]).unwrap().max_position().y;
         assert_eq!(rest(10.5), boat_top, "on the boat");
     }
 }

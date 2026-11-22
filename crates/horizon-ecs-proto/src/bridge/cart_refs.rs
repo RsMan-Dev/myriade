@@ -27,6 +27,11 @@ impl EcsWorld {
         self.world().get::<Cart>(e)?;
         Some(self.world().get::<CartHurt>(e).map_or(0, |h| h.time))
     }
+    /// The wobble direction of cart `e` (`CartHurt`'s dir); None when it is not a cart.
+    pub fn cart_hurt_dir(&self, e: Entity) -> Option<i32> {
+        self.world().get::<Cart>(e)?;
+        Some(self.world().get::<CartHurt>(e).map_or(1, |h| h.dir))
+    }
     /// Sets the wobble ticks of cart `e` and wakes it; false when it is not a cart.
     pub fn set_cart_hurt_time(&mut self, e: Entity, ticks: i32) -> bool {
         self.set_hurt(e, |h| h.time = ticks)

@@ -54,11 +54,7 @@ impl Game<'_> {
                     (lo[2] + hi[2]) / 2.0,
                 ]
             }),
-            Target::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map(|b| [b.position.x, b.position.y, b.position.z]),
+            Target::Boat(id) => self.ecs.position(id),
             Target::Cart(id) => self.ecs_view(id).map(|v| v.position),
             Target::Other(id) => self
                 .others
@@ -126,11 +122,7 @@ impl Game<'_> {
                 }
             }
             Target::Painting(_) => "minecraft:painting".into(),
-            Target::Boat(id) => self
-                .boats
-                .iter()
-                .find(|b| b.id == id)
-                .map_or_else(|| "minecraft:oak_boat".into(), |b| b.entity_type()),
+            Target::Boat(id) => self.boat_entity_type(id).unwrap_or_else(|| "minecraft:oak_boat".into()),
             Target::Cart(id) => self
                 .ecs
                 .cart_kind(id)

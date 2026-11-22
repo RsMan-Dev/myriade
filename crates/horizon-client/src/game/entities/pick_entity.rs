@@ -67,10 +67,10 @@ impl Game<'_> {
             // Mob.getPickResult: SpawnEggItem.byId.
             let egg = format!("{kind}_spawn_egg");
             return self.items().get(&egg).map(|_| ItemStack::new(&egg, 1));
-        } else if let Some(b) = self.boats.iter().find(|b| b.id == id) {
-            b.entity_type()
-        } else if let Some(c) = self.carts.iter().find(|c| c.id == id) {
-            c.kind.item().to_owned()
+        } else if let Some(name) = self.boat_entity_type(id) {
+            name
+        } else if let Some(k) = self.cart_genre(id) {
+            k.item().to_owned()
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             "minecraft:armor_stand".to_owned()
         } else if let Some(c) = self.cushions.iter().find(|c| c.id == id) {

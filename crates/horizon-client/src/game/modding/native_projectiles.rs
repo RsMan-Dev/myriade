@@ -149,8 +149,8 @@ impl Game<'_> {
         if let Some(mob) = self.remote_entities.iter().find(|m| m.id == id) {
             return (id, mob_kind(mob));
         }
-        if let Some(cart) = self.carts.iter().find(|c| c.id == id) {
-            return (id, cart.kind.id().into());
+        if let Some(k) = self.cart_genre(id) {
+            return (id, k.id().into());
         }
         if self.lan_guest_entities().iter().any(|&(_, e)| e == id) {
             return (id, "minecraft:player".into());

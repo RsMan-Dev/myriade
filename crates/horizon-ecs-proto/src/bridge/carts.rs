@@ -19,6 +19,11 @@ impl EcsWorld {
         }))
     }
 
+    /// Every awake cart of the level, of every genre, read from the archetypes that hold `Cart`: the cost is the carts.
+    pub fn cart_entities(&self) -> Vec<Entity> {
+        crate::bridge::marked_entities::<Cart>(self.world())
+    }
+
     /// The species name of a cart's genre; None when `e` is no cart.
     pub fn cart_kind(&self, e: Entity) -> Option<&'static str> {
         let w = self.world();

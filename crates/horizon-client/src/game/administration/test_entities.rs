@@ -117,8 +117,17 @@ impl Game<'_> {
             }
         }
         let (cart_w, cart_h) = (super::minecarts::WIDTH, super::minecarts::HEIGHT);
-        self.carts
-            .retain(|c| !intersects(standing(at(c.position), cart_w, cart_h), bounds));
+        let gone: Vec<u32> = self
+            .ecs
+            .carts_in(horizon_core::geometry::Vec3::new(bounds.0[0], bounds.0[1], bounds.0[2]), horizon_core::geometry::Vec3::new(bounds.1[0], bounds.1[1], bounds.1[2]))
+            .into_iter()
+            .filter(|&id| self.ecs.position(id).is_some_and(|p| intersects(standing(p, cart_w, cart_h), bounds)))
+            .collect();
+        for id in gone {
+            if let Some(e) = self.ecs.entity_of(id) {
+                self.ecs.despawn(e);
+            }
+        }
         // EntityType.END_CRYSTAL is 2 by 2.
         self.crystals
             .retain(|c| !intersects(standing(at(c.position), 2.0, 2.0), bounds));

@@ -608,7 +608,7 @@ fn a_reads_calculator_is_the_one_the_blasts_rays_use() {
         // A primed TNT minecart's blast neither resists on nor breaks a rail; without it the
         // rail resists 0.7 and breaks.
         assert!(game.run_command("summon minecraft:tnt_minecart 2.5 80 12.5 {fuse:80s}"));
-        let cart = game.carts.iter().next().unwrap().id;
+        let cart = game.ecs.cart_ids()[0];
         let cart = game.entity(cart);
         assert!(game.run_command("setblock 12 80 4 minecraft:stone"));
         assert!(game.run_command("setblock 12 81 4 minecraft:rail"));

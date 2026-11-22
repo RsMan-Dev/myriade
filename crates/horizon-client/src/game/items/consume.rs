@@ -438,10 +438,7 @@ impl Game<'_> {
                 if self.persist.removals.contains(&boat)
                     || self.persist.destroying_vehicles.contains(&boat)
                 {
-                    self.boats
-                        .iter()
-                        .find(|vehicle| vehicle.id == id)
-                        .map(|vehicle| vehicle.position.y)
+                    self.ecs_view(id).map(|v| v.position[1])
                 } else if self.persist.removals.contains(&cart)
                     || self.persist.destroying_vehicles.contains(&cart)
                 {

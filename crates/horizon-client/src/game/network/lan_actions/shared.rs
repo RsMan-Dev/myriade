@@ -2971,7 +2971,7 @@ mod guest_close_listener_tests {
         assert!(
             game.run_command("summon oak_chest_boat 6.5 100 4.5 {UUID:[I;112,0,0,9],NoGravity:1b}")
         );
-        let boat = game.boats.last().unwrap().id;
+        let boat = *game.ecs.boat_ids().last().unwrap();
         // Chest boats open for a sneaking guest; a plain empty-hand click boards.
         game.lan
             .as_mut()
