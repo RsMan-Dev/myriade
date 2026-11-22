@@ -1,8 +1,5 @@
 //! Production gateway counters and direct phases over a silent, empty Game.
-use horizon_client::{
-    end_gateway::Traveller,
-    projectiles::{Projectile, ProjectileKind},
-};
+use horizon_client::end_gateway::Traveller;
 use horizon_core::{geometry::Vec3, position::BlockPos};
 
 #[test]
@@ -12,23 +9,12 @@ fn gateway_counters_match_actual_vanilla_methods() {
         &std::fs::read_to_string(std::env::var_os("HORIZON_PORTAL_REFERENCE").unwrap()).unwrap(),
     )
     .unwrap();
-    let arrow = Projectile::new(
-        ProjectileKind::Arrow {
-            base_damage: 2.0,
-            critical: false,
-            effect: None,
-        },
-        Vec3::ZERO,
-        None,
-    );
     let mut delays = [0; 4];
     crate::game::native_entity_refs::tests::with_game(|game| {
         game.summon_with_nbt("minecraft:oak_boat", [0.0, 100.0, 0.0], "{}").unwrap();
         game.summon_with_nbt("minecraft:minecart", [0.0, 100.0, 0.0], "{}").unwrap();
         let (boat_id, cart_id) = (game.ecs.boat_ids()[0], game.ecs.cart_ids()[0]);
-        let mut arrow = arrow;
-        arrow.id = 3;
-        game.creatures.projectiles.push(arrow);
+        game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:arrow", [0.0; 3], [0.0; 3], None, &mut || 3));
         delays = [
             game.dimension_changing_delay(boat_id),
             game.dimension_changing_delay(cart_id),
@@ -139,11 +125,7 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         ids.push(game.next_entity);
     }
     assert_eq!(game.ecs.boat_ids().len(), 1);
-    assert_eq!(game.creatures.projectiles.len(), 1);
-    assert!(matches!(
-        game.creatures.projectiles[0].kind,
-        ProjectileKind::EnderPearl
-    ));
+    assert_eq!(game.ecs.species_count("minecraft:ender_pearl"), 1);
     game.tickets.update(Some(crate::ticket_levels::Sources {
         forced: vec![(0, 0)],
         ..Default::default()
@@ -170,6 +152,6 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
         assert_eq!(rows[tick * 2 + 1], [4 - tick as i32, 4 - tick as i32]);
     }
     assert!(game.end.arrivals.is_empty());
-    assert_eq!(game.creatures.projectiles.len(), 1);
+    assert_eq!(game.ecs.species_count("minecraft:ender_pearl"), 1);
     rows
 }

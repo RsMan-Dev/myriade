@@ -453,32 +453,14 @@ impl Game<'_> {
             ));
         }
         self.lan_projectile_states(out, after);
-        for o in self.others.iter().filter(|o| o.id > after) {
-            let p = o.position;
-            let e = add_state(out, o.id, &o.kind, [p.x, p.y, p.z], o.yaw, false);
-            e.pitch = o.pitch;
-            e.head_yaw = o.yaw;
-            if let Some(tag) = self.persist.raw.get(&o.id)
-                && let Some(item) = self.lan_display_data_kept(o.id, tag, e)
-                && let Some((_, _, Value::Item(stack))) =
-                    e.meta.iter_mut().find(|(index, _, _)| *index == 23)
-            {
-                *stack = self
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.hub.stack(&Some(item)));
-            }
-        }
         // Only this level's displays: the others are kept for their own level's pass.
         KEPT_DISPLAYS.with(|kept| {
             let mut kept = kept.borrow_mut();
             let Some(kept) = kept.get_mut(&self.dim) else {
                 return;
             };
-            if kept.len() > self.others.len() + 64 {
-                let ids: horizon_client::fast_hash::FxHashSet<u32> =
-                    self.others.iter().map(|o| o.id).collect();
-                kept.retain(|id, _| ids.contains(id));
+            if kept.len() > 64 {
+                kept.retain(|id, _| self.ecs.alive(*id));
             }
         });
     }
@@ -649,9 +631,6 @@ impl Game<'_> {
         let next = &mut self.next_entity;
         use super::entity_residency::assign_resident_ids;
         assign_resident_ids!(self.crystals, c, next, None);
-        self.bolts.iter_mut().for_each(|b| {
-            assign_entity_id(next, &mut b.id);
-        });
         assign_resident_ids!(self.ominous_spawners, o, next, None);
         self.potions.thrown_ids().for_each(|id| {
             assign_entity_id(next, id);
@@ -673,10 +652,6 @@ impl Game<'_> {
         let at = |p: horizon_core::geometry::Vec3| [p.x, p.y, p.z];
         for f in self.fangs.list.iter().filter(|f| f.id > after) {
             add_state(out, f.id, "minecraft:evoker_fangs", f.pos, f.yaw, false);
-        }
-        // LightningBolt: each client draws and flashes its own.
-        for b in self.bolts.iter().filter(|b| b.id > after) {
-            add_state(out, b.id, "minecraft:lightning_bolt", b.at, 0.0, false);
         }
         // Thrown potions and bottles: ThrowableItemProjectile.DATA_ITEM_STACK
         // (the potion's colour), which a plain bottle's type already has.

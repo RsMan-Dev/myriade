@@ -280,7 +280,6 @@ impl Game<'_> {
                 self.ecs.despawn(e);
             }
         }
-        self.others.retain(|e| !gone.contains(&e.id));
         self.cushions.retain(|e| !gone.contains(&e.id));
         self.fangs.list.retain(|e| !gone.contains(&e.id));
         self.crystals.retain(|e| !gone.contains(&e.id));

@@ -111,9 +111,6 @@ impl Game<'_> {
         if let Some(i) = self.armor_stands.iter().position(|m| m.id == id) {
             return Some(EntityHandle::ArmorStand(i));
         }
-        if let Some(i) = self.creatures.projectiles.iter().position(|m| m.id == id) {
-            return Some(EntityHandle::Projectile(i));
-        }
         None
     }
 }

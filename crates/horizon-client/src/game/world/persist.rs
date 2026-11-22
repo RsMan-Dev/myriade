@@ -1518,12 +1518,6 @@ impl Game<'_> {
             |m| m.silent,
         )
     }
-    /// The `Tags` of the projectile `add_projectile` just pushed.
-    fn remember_last_projectile_tags(&mut self, tag: &Tag) {
-        if let Some(id) = self.creatures.projectiles.last().map(|p| p.id) {
-            self.remember_tags(id, tag);
-        }
-    }
     fn remember(&mut self, id: u32, uuid: Option<[i32; 4]>, mut tag: Tag) {
         self.restore_portal_cooldown(id, &tag);
         self.remember_uuid(id, uuid, &tag);
@@ -1700,30 +1694,6 @@ impl Game<'_> {
                 .entry(chunk_of(at))
                 .or_default()
                 .push((c.id, c.join_seq(), tag));
-        }
-        for o in &self.others {
-            // EntityType.noSave: Entity.getEncodeId is null, so the chunk never stores it.
-            if keys.contains(&chunk_of(o.position)) && o.kind.as_str() != "minecraft:leash_knot" {
-                let uuid = self
-                    .persist
-                    .uuids
-                    .get(&o.id)
-                    .copied()
-                    .unwrap_or_else(random_uuid);
-                let tag = if super::general::quarantined_kind(&o.kind)
-                    && let Some(raw) = self.persist.raw.get(&o.id)
-                {
-                    raw.clone()
-                } else {
-                    let mut tag = self.other_to_nbt(o, uuid);
-                    write_attachments(&mut tag, o.id, &self.entity_attachments);
-                    tag
-                };
-                roots
-                    .entry(chunk_of(o.position))
-                    .or_default()
-                    .push((o.id, o.join_seq(), tag));
-            }
         }
         // `PersistentEntitySectionManager.storeChunkSections`: section by
         // section, each in the order its entities joined it. An entity not
@@ -1951,46 +1921,6 @@ impl Game<'_> {
             && keys.contains(&chunk_of(m.position))
             && !m.removed;
         saves.then(|| (chunk_of(self.remote_entities[i].position), self.mob_tree_nbt(i)))
-    }
-    pub(super) fn save_projectile(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let p = &self.creatures.projectiles[i];
-        if !keys.contains(&chunk_of(p.position)) || !entity_nbt::saved_with_chunk(p) {
-            return None;
-        }
-        // `ShulkerBullet`'s target, over the UUID bridge: a mob the level has
-        // no UUID for writes no `Target` rather than a made-up one.
-        let target = match &p.kind {
-            horizon_client::projectiles::ProjectileKind::ShulkerBullet {
-                target: Some(who),
-                ..
-            } => self.save_who_uuid(*who),
-            _ => None,
-        };
-        let owner = p.owner_uuid;
-        let raw = anon_raw(&self.persist, p.kind.id(), p.position);
-        let uuid = saved_uuid(&self.persist, p.id);
-        let in_block = p
-            .arrow
-            .as_ref()
-            .and_then(|a| a.last_state)
-            .map(|s| self.state_to_nbt(s));
-        let tag = entity_nbt::arrow_to_nbt(p, uuid, owner, in_block, raw.as_ref())
-            .or_else(|| entity_nbt::fireball_to_nbt(p, uuid, owner, raw.as_ref()))
-            .or_else(|| entity_nbt::throwable_to_nbt(p, uuid, owner, raw.as_ref()))
-            .or_else(|| entity_nbt::spit_or_bullet_to_nbt(p, uuid, owner, target, raw.as_ref()))?;
-        // HasBeenShot is modeled for these projectiles. The generic raw
-        // overlay also serves entity types whose shot flag is still opaque.
-        let shot = tag.get("HasBeenShot").cloned();
-        let mut tag = with_raw(tag, self.persist.raw.get(&p.id));
-        if let (Some(shot), Tag::Compound(map)) = (shot, &mut tag) {
-            map.insert("HasBeenShot".into(), shot);
-        }
-        self.save_projectile_portal_cooldown(p, &mut tag);
-        Some((chunk_of(p.position), tag))
     }
     /// The UUID a save writes for a reference to `who`, as `mob_to_nbt`'s
     /// `angry_at` does: the bridge's `who_uuid` over `EntityMemory::uuid_of`,
@@ -2276,15 +2206,15 @@ mod item_display_saved_transform_tests {
             .map(|t| format!(",transformation:{t}"))
             .unwrap_or_default();
         assert!(game.run_command(&format!("summon item_display 6.5 200 6.5 {{UUID:[I;132,0,0,{n}],Rotation:[12.5f,-20f],NoGravity:1b,CustomName:\"display\",Tags:[\"h132\"],item:{{id:\"minecraft:diamond\",count:2,components:{{\"minecraft:custom_data\":{{h132:7}}}}}}{suffix}}}")));
-        let o = game
-            .others
-            .iter()
-            .find(|o| game.persist.uuid_of(o.id) == Some([132, 0, 0, n]))
+        let id = game
+            .ecs
+            .species_ids("minecraft:item_display")
+            .into_iter()
+            .find(|&id| game.persist.uuid_of(id) == Some([132, 0, 0, n]))
             .unwrap();
-        assert_eq!(o.kind, "minecraft:item_display");
-        assert_eq!(o.position, Vec3::new(6.5, 200.0, 6.5));
-        assert_eq!([o.yaw, o.pitch], [12.5, -20.0]);
-        let id = o.id;
+        assert_eq!(game.ecs.kind(id), Some("minecraft:item_display"));
+        assert_eq!(game.ecs.position(id), Some([6.5, 200.0, 6.5]));
+        assert_eq!(game.ecs.rotation(id), Some([12.5, -20.0]));
         let saved = game.command_target_nbt(Target::Other(id)).unwrap();
         let stack = horizon_client::save::item_from_nbt(saved.get("item").unwrap()).unwrap();
         assert_eq!(&*stack.item, "minecraft:diamond");

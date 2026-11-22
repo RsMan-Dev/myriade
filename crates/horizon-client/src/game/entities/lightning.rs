@@ -13,19 +13,6 @@ use horizon_core::{
 };
 use horizon_world::level::Ticks;
 
-/// A server's bolt, as this client shows it: its flashes and sound. The server's bolts run in P.
-pub(super) struct Bolt {
-    /// The entity id a server's players know it by.
-    pub id: u32,
-    pub at: [f64; 3],
-    life: i32,
-    flashes: i32,
-    seed: i64,
-    /// The bolt's own random (`Entity.random`): its seed, flashes, flash
-    /// timing and thunder pitch draw from it, never the level's.
-    random: EntityRandom,
-}
-
 /// `ServerLevel.tickThunder` -> `Level.getBlockRandomPos(minX, 0, minZ, 15)`:
 /// picks the strike column from the level's separate `randValue` LCG.
 fn thunder_strike_column(ticks: &mut Ticks, cx: i32, cz: i32) -> (i32, i32) {
@@ -228,7 +215,6 @@ impl Game<'_> {
             let ctx = horizon_client::sculk::Context::default();
             self.post_game_event("minecraft:lightning_strike", at, ctx);
         }
-        self.lightning_seen[0] += 1;
         self.ecs_strike(at, visual_only);
     }
     pub(super) fn lightning_strike_allowed(
@@ -285,40 +271,6 @@ impl Game<'_> {
             }
         }
         set
-    }
-    /// `LightningBolt.tick` for the server's bolts this client shows: the flashes and the sounds. Their strikes are P's.
-    pub(super) fn tick_bolts(&mut self) {
-        let _save_lease = horizon_client::join_seq::visibility::PassLease::enter();
-        let mut bolts = std::mem::take(&mut self.bolts);
-        bolts.retain_mut(|b| {
-            if b.life == 2 {
-                // One bolt stands for the server's copy and the client's, both unseeded.
-                let pitch = 0.8 + b.random.next_float() * 0.2;
-                self.audio.play("minecraft:entity.lightning_bolt.thunder", Some(b.at), 10000.0, pitch);
-                let pitch = 0.5 + b.random.next_float() * 0.2;
-                self.audio.play("minecraft:entity.lightning_bolt.impact", Some(b.at), 2.0, pitch);
-            }
-            b.life -= 1;
-            if b.life < 0 {
-                if b.flashes == 0 {
-                    return false;
-                }
-                if b.life < -b.random.next_int_bound(10).unwrap_or(0) {
-                    b.flashes -= 1;
-                    b.life = 1;
-                    b.seed = b.random.next_long();
-                }
-            }
-            if b.life >= 0 {
-                if self.flash == 0 {
-                    self.lightning_seen[1] += 1;
-                }
-                self.flash = 2;
-            }
-            true
-        });
-        bolts.append(&mut self.bolts);
-        self.bolts = bolts;
     }
     /// `LightningRodBlock.onLightningStrike`: powered for 8 ticks.
     pub(in crate::game) fn strike_rod(&mut self, at: [f64; 3]) {

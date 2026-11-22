@@ -54,8 +54,6 @@ impl Game<'_> {
             mob_kind(m)
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             self.target_type(Target::Stand(id))
-        } else if self.others.iter().any(|o| o.id == id) {
-            self.target_type(Target::Other(id))
         } else {
             String::new()
         }

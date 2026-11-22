@@ -453,13 +453,13 @@ mod tests {
                 assert_eq!(game.living_used_item_hand(player), Some(hand));
                 assert_eq!(game.living_item_use_remaining(player), Some(71_975));
 
-                let arrows = game.creatures.projectiles.len();
+                let arrows = game.ecs.species_count("minecraft:arrow");
                 assert!(game.living_release_using_item(player));
-                assert_eq!(game.creatures.projectiles.len(), arrows + 1);
+                assert_eq!(game.ecs.species_count("minecraft:arrow"), arrows + 1);
                 assert_eq!(game.living_used_item_hand(player), None);
                 assert_eq!(game.living_item_use_remaining(player), Some(0));
                 assert!(!game.living_release_using_item(player));
-                assert_eq!(game.creatures.projectiles.len(), arrows + 1);
+                assert_eq!(game.ecs.species_count("minecraft:arrow"), arrows + 1);
                 let uses = uses.lock().unwrap();
                 assert_eq!(uses.stops.len(), round + 1);
                 assert_eq!(uses.stops[round], (None, hand, 71_975));
@@ -563,7 +563,7 @@ mod tests {
                 assert_eq!(game.living_item_use_remaining(zombie), Some(100));
 
                 game.remote_entities[0].extra.using_item = 6;
-                let arrows = game.creatures.projectiles.len();
+                let arrows = game.ecs.species_count("minecraft:arrow");
                 assert!(game.living_release_using_item(zombie));
                 assert_eq!(game.living_used_item_hand(zombie), None);
                 assert!(!game.living_release_using_item(zombie));
@@ -571,7 +571,7 @@ mod tests {
                 assert_eq!(game.living_item_use_remaining(zombie), Some(0));
                 assert!(!game.living_set_item_use_remaining(zombie, 5));
                 // `BowItem.releaseUsing` shoots for a player only.
-                assert_eq!(game.creatures.projectiles.len(), arrows);
+                assert_eq!(game.ecs.species_count("minecraft:arrow"), arrows);
                 let uses = uses.lock().unwrap();
                 assert_eq!(uses.stops.len(), round + 1);
                 assert_eq!(uses.stops[round], (Some(12), hand, 71_995));

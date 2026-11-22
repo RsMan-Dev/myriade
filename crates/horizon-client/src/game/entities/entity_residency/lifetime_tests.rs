@@ -59,7 +59,6 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         game.summon_with_nbt("minecraft:marker", [0.5, 70.0, 0.5], "{}")
             .unwrap();
         game.lan_assign_ids();
-        check_list!(game, others);
 
         game.add_fangs([0.5, 70.0, 0.5], 0.0, 0, 0);
         check_list!(game, fangs.list);

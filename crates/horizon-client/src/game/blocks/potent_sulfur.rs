@@ -398,13 +398,7 @@ impl Game<'_> {
         }
         self.ecs_tnt_lift(area, limit, push);
         // Every entity in the column is launched (`getEntitiesOfClass(Entity.class)`):
-        // a projectile in flight or at rest, a boat and a minecart too.
-        self.creatures.projectiles.for_each_mut(|p| {
-            if p.bounds().intersects(area) && p.velocity.y < limit {
-                p.velocity.y += push;
-                p.needs_sync = true;
-            }
-        });
+        // a boat and a minecart too.
         for id in self.ecs.vehicles_touching(area.min_position(), area.max_position()) {
             if self.ecs.velocity(id).is_some_and(|v| v.y < limit) {
                 if self.cart_genre(id).is_some() {

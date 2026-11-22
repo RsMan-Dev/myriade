@@ -1433,8 +1433,6 @@ impl Game<'_> {
             Target::Cart(id)
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Target::Stand(id)
-        } else if self.others.iter().any(|o| o.id == id) {
-            Target::Other(id)
         } else {
             Target::Mob(id)
         })

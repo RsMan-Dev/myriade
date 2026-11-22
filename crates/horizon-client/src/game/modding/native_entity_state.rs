@@ -190,11 +190,7 @@ impl Game<'_> {
                 return Some(play.map_or(0, |p| p.portal.cooldown));
             }
             Target::Projectile(id) => {
-                let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
-                if matches!(
-                    p.kind,
-                    horizon_client::projectiles::ProjectileKind::EnderPearl
-                ) {
+                if self.ecs.kind(id) == Some("minecraft:ender_pearl") {
                     return Some(self.pearl_portal_cooldown(id));
                 }
                 // A client-side projectile has no portal state: the server's go through the ECS.
@@ -746,7 +742,6 @@ mod tests {
         };
         use horizon_client::entities::ArmorStand;
         use horizon_client::items::ItemStack;
-        use horizon_client::projectiles::{Projectile, ProjectileKind};
         use horizon_core::{geometry::Vec3, position::BlockPos};
         use mod_api::WorldEpoch;
 
@@ -794,19 +789,9 @@ mod tests {
             game.ecs_with(|ecs, mw| ecs.spawn_cart_id(mw, "minecraft:minecart", [0.0; 3], 0.0, &mut || 43));
             game.add_primed_tnt(BlockPos::new(0, 64, 0), 0.0, 80, None, None);
             let tnt = game.ecs.species_ids("minecraft:tnt")[0];
-            let arrow = Projectile::new(
-                ProjectileKind::Arrow {
-                    base_damage: 2.0,
-                    critical: false,
-                    effect: None,
-                },
-                Vec3::ZERO,
-                None,
-            );
-            game.add_projectile(arrow);
-            let arrow = game.creatures.projectiles[0].id;
-            game.add_projectile(Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None));
-            let snowball = game.creatures.projectiles[1].id;
+            game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:arrow", [0.0; 3], [0.0; 3], None, &mut || 48));
+            game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:snowball", [0.0; 3], [0.0; 3], None, &mut || 49));
+            let (arrow, snowball) = (48, 49);
             game.ecs_with(|ecs, mw| {
                 ecs.launch_rocket(mw, [0.0; 3], [0.0; 3], false, Vec::new(), 0, None, None, &mut || 44)
             });
@@ -859,12 +844,8 @@ mod tests {
             game.armor_stands.push(ArmorStand::new(46, Vec3::ZERO, 0.0));
             let stand = game.entity(46).unwrap();
             assert_eq!(stand.portal_cooldown(game), None);
-            game.add_projectile(Projectile::new(
-                ProjectileKind::WindCharge,
-                Vec3::ZERO,
-                None,
-            ));
-            let charge = game.entity(game.creatures.projectiles[2].id).unwrap();
+            game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:breeze_wind_charge", [0.0; 3], [0.0; 3], None, &mut || 50));
+            let charge = game.entity(50).unwrap();
             assert_eq!(charge.portal_cooldown(game), None);
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
             assert_eq!(stale.portal_cooldown(game), None);
@@ -1019,20 +1000,9 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_arrow() {
         use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::projectiles::{Projectile, ProjectileKind};
-        use horizon_core::geometry::Vec3;
-
         with_game(|game| {
-            game.add_projectile(Projectile::new(
-                ProjectileKind::Arrow {
-                    base_damage: 2.0,
-                    critical: false,
-                    effect: None,
-                },
-                Vec3::ZERO,
-                None,
-            ));
-            let arrow = game.entity(game.creatures.projectiles[0].id).unwrap();
+            game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:arrow", [0.0; 3], [0.0; 3], None, &mut || 51));
+            let arrow = game.entity(51).unwrap();
             assert!(arrow.set_portal_cooldown(game, 40));
             assert_eq!(arrow.portal_cooldown(game), Some(40));
         });
@@ -1042,16 +1012,9 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_non_portal_projectile() {
         use super::super::native_entity_refs::tests::with_game;
-        use horizon_client::projectiles::{Projectile, ProjectileKind};
-        use horizon_core::geometry::Vec3;
-
         with_game(|game| {
-            game.add_projectile(Projectile::new(
-                ProjectileKind::WindCharge,
-                Vec3::ZERO,
-                None,
-            ));
-            let charge = game.entity(game.creatures.projectiles[0].id).unwrap();
+            game.ecs_with(|ecs, mw| ecs.launch(mw, "minecraft:breeze_wind_charge", [0.0; 3], [0.0; 3], None, &mut || 52));
+            let charge = game.entity(52).unwrap();
             assert!(!charge.set_portal_cooldown(game, 40));
             assert_eq!(charge.portal_cooldown(game), None);
         });

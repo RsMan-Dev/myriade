@@ -1654,12 +1654,6 @@ impl Game<'_> {
         let player = self.command_player(cause);
         // A perched dragon shrugs off a direct arrow or wind charge (`onHurt`).
         let direct = match by {
-            Some(Target::Projectile(p)) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|q| q.id == p)
-                .map(|q| q.kind.clone()),
             Some(Target::Trident(_)) => Some(ProjectileKind::Trident),
             _ => None,
         };

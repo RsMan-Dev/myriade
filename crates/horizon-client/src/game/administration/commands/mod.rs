@@ -869,7 +869,6 @@ impl Game<'_> {
         candidates.extend(self.ecs_frames().into_iter().map(|f| Target::Frame(f.id)));
         candidates.extend(self.ecs_paintings().into_iter().map(|p| Target::Painting(p.id)));
         candidates.extend(self.cushions.iter().map(|c| Target::Cushion(c.id)));
-        candidates.extend(self.others.iter().map(|o| Target::Other(o.id)));
         candidates.extend(self.fangs.list.iter().map(|f| Target::Fangs(f.id)));
         // The End crystals and the dragon (EndCrystal and EnderDragon
         // are entities of their own).
@@ -1669,21 +1668,8 @@ impl Game<'_> {
                     });
                 }
             }
-            Target::Other(id) => {
-                if let Some(i) = self.others.iter().position(|e| e.id == id) {
-                    self.others.update(i, |o| {
-                        o.position = v;
-                        if let Some([yaw, pitch]) = rotation {
-                            if yaw.is_finite() {
-                                o.yaw = yaw;
-                            }
-                            if !pitch.is_nan() {
-                                o.pitch = entity_pitch(pitch);
-                            }
-                        }
-                    });
-                }
-            }
+            // No `others` list: an entity of this kind lives in the ECS.
+            Target::Other(_) => {}
             Target::Crystal(id) => {
                 if let Some(c) = self.crystals.iter_mut().find(|c| c.id == id) {
                     (c.position, c.fall.0) = (v, true); // performTeleport: setOnGround(true)
@@ -2145,10 +2131,7 @@ impl Game<'_> {
                     return;
                 }
             }
-            Target::Other(id) => {
-                self.others.retain(|o| o.id != id);
-                self.forget_entity(id);
-            }
+            Target::Other(id) => self.forget_entity(id),
             Target::Fangs(id) => self.fangs.list.retain(|f| f.id != id),
             Target::Crystal(id) => self.kill_crystal(id),
             Target::Dragon(id) => self.kill_dragon(id),

@@ -419,7 +419,7 @@ fn late_id_kinds_spawned_then_aborted_are_removed() {
                 game.ecs.species_count("minecraft:falling_block"),
                 game.ecs.species_count("minecraft:firework_rocket"),
                 game.ecs.species_count("minecraft:trident"),
-                game.creatures.projectiles.len(),
+                game.ecs.species_count("minecraft:arrow"),
             ]
         };
         let before = counts(game);

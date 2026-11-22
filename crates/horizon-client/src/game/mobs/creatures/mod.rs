@@ -167,7 +167,6 @@ impl<T> Drop for RemainingActions<'_, T> {
 /// Mob-system state owned by the game.
 #[derive(Default)]
 pub(super) struct Creatures {
-    pub projectiles: horizon_client::join_seq::JoinList<Projectile, false>,
     /// The entities a family tells the mods ticked, kept between ticks
     /// (game/modding/native_ticks.rs).
     pub tick_buffer: Vec<(u32, super::native_ticks::TickKind)>,
@@ -841,7 +840,7 @@ impl Game<'_> {
                 state
             })
             .collect();
-        serde_json::json!({ "count": self.remote_entities.len(), "near": list, "projectiles": self.creatures.projectiles.len() })
+        serde_json::json!({ "count": self.remote_entities.len(), "near": list })
     }
     /// Highest motion-blocking (no leaves) block + 1 (Heightmap MOTION_BLOCKING_NO_LEAVES).
     pub(super) fn motion_top(&self, x: i32, z: i32) -> i32 {
@@ -1069,7 +1068,6 @@ impl Game<'_> {
         self.flush_lan_explosions();
         self.flush_wind_bursts()?;
         self.drain_entity_inside();
-        laps.lap("creature_projectiles");
         self.tick_sniffer_effects();
         self.sulfur_cube_pickups();
         self.sulfur_cube_power_priming(primable);
@@ -1476,48 +1474,19 @@ impl Game<'_> {
         &mut self,
         p: horizon_client::projectiles::Projectile,
     ) -> u32 {
-        {
-            // Already in the level: its flight is the ECS's.
-            if p.id != 0 {
-                return p.id;
-            }
-            let Some(id) = self.ecs_launch_item(
-                p.entity_type(),
-                [p.position.x, p.position.y, p.position.z],
-                [p.velocity.x, p.velocity.y, p.velocity.z],
-                self.ecs_owner(p.owner),
-                p.item.clone(),
-            ) else {
-                return 0;
-            };
-            let player = (p.owner == Some(Who::Player))
-                .then(|| horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid()));
-            let name = if player.is_some() {
-                self.acting_player_name().to_owned()
-            } else {
-                String::new()
-            };
-            self.native_projectile_launch(player, &name, id, p.entity_type());
-            return id;
+        // Already in the level: its flight is the ECS's.
+        if p.id != 0 {
+            return p.id;
         }
-        if p.id == 0 {
-            self.next_entity += 1;
-            p.id = self.next_entity;
-        }
-        // The UUID its own random made, unless it already has one (a client
-        // copy's from the spawn packet).
-        if let Some(uuid) = p.uuid.take() {
-            self.persist.uuids.get_or_insert_with(p.id, || uuid);
-        }
-        // Projectile.setOwner: the acting player's or the mob's UUID, which
-        // its save keeps even once the owner is gone.
-        if p.owner_uuid.is_none() {
-            p.owner_uuid = match p.owner {
-                Some(Who::Player) => Some(self.acting_player_uuid()),
-                Some(Who::Mob(id)) => Some(self.uuid_for(id)),
-                None => None,
-            };
-        }
+        let Some(id) = self.ecs_launch_item(
+            p.entity_type(),
+            [p.position.x, p.position.y, p.position.z],
+            [p.velocity.x, p.velocity.y, p.velocity.z],
+            self.ecs_owner(p.owner),
+            p.item.clone(),
+        ) else {
+            return 0;
+        };
         let player = (p.owner == Some(Who::Player))
             .then(|| horizon_client::lan::playerdata::ints_uuid(self.acting_player_uuid()));
         let name = if player.is_some() {
@@ -1525,27 +1494,7 @@ impl Game<'_> {
         } else {
             String::new()
         };
-        let (id, kind) = (p.id, p.entity_type());
-        if let Some(a) = p.arrow.as_mut()
-            && !p.stuck
-        {
-            a.spawn_pos = Some(p.position);
-            a.spawn_velocity = Some(p.velocity);
-            a.spawn_rot = Some((p.pitch, p.yaw));
-        }
-        // A projectile that already has a join number (a bounced arrow put back
-        // after its hit) keeps its place in the tick order; a new one goes last.
-        if p.join.is_joined() {
-            let join = p.join;
-            let at = self
-                .creatures
-                .projectiles
-                .partition_point(|q| q.join < join);
-            self.creatures.projectiles.insert(at, p);
-        } else {
-            self.creatures.projectiles.push(p);
-        }
-        self.native_projectile_launch(player, &name, id, kind);
+        self.native_projectile_launch(player, &name, id, p.entity_type());
         id
     }
     /// `MushroomCow.shear`'s `sendParticles(EXPLOSION, x, getY(0.5), z, 1, 0, 0, 0, 0)`:

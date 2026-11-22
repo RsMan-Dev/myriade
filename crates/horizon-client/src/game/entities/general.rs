@@ -703,20 +703,6 @@ impl Game<'_> {
             );
             return false;
         }
-        let chunk = chunk_of(at);
-        let quarantined_here = self
-            .others
-            .iter()
-            .filter(|other| quarantined_kind(&other.kind) && chunk_of(other.position) == chunk)
-            .count();
-        if quarantined_here >= limits::QUARANTINE_CHUNK_LIMIT {
-            log::warn!(
-                "Horizon: chunk {:?} already holds {} quarantined general entity records; skipping the next",
-                chunk,
-                limits::QUARANTINE_CHUNK_LIMIT
-            );
-            return false;
-        }
         true
     }
 

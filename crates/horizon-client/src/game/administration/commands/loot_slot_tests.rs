@@ -257,7 +257,7 @@ fn run(game: &mut Game<'_>, command: &str) -> (bool, String) {
 #[test]
 #[ignore = "daily"]
 fn loot_mine_reads_a_hand_only_when_named_and_only_a_living_ones() {
-    use crate::game::commands::{Target, execute::Source};
+    use crate::game::commands::execute::Source;
     use horizon_client::containers::BlockEntity;
 
     with_game(|game| {
@@ -297,25 +297,8 @@ fn loot_mine_reads_a_hand_only_when_named_and_only_a_living_ones() {
             slot(game).map(|s| s.item.to_string()).as_deref(),
             Some("minecraft:dirt")
         );
-        // A marker holds nothing. The marker is made the command's source directly: run through
-        // `execute as`, the failed command prints nothing here, so its message could not be read.
-        let marker = game
-            .others
-            .iter()
-            .find(|o| o.kind == "minecraft:marker")
-            .unwrap()
-            .id;
-        let server = game.command_source;
-        game.command_source = server.map(|s| Source {
-            entity: Some(Target::Other(marker)),
-            ..s
-        });
-        let (ok, said) = run(game, &format!("{mine} mainhand"));
-        assert!(
-            !ok && said.contains("commands.drop.no_held_items"),
-            "{said}"
-        );
         // The server's own source has no entity.
+        let server = game.command_source;
         game.command_source = server;
         let (ok, said) = run(game, &format!("{mine} offhand"));
         assert!(

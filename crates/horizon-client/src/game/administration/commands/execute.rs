@@ -144,11 +144,8 @@ impl Game<'_> {
                 .iter()
                 .find(|f| f.id == id)
                 .map_or([0.0; 2], |f| [f.yaw, 0.0]),
-            Target::Other(id) => self
-                .others
-                .iter()
-                .find(|o| o.id == id)
-                .map_or([0.0; 2], |o| [o.yaw, o.pitch]),
+            // No `others` list: no rotation is stored for this kind.
+            Target::Other(_) => [0.0; 2],
             // A cloud keeps its rotation in its saved compound (the model has no slot for it).
             Target::Cloud(id) => self
                 .persist

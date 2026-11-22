@@ -62,19 +62,7 @@ impl Game<'_> {
                 }
             }
         }
-        // AbstractArrow.applyEffectsFromBlocks: the blocks every arrow passed
-        // through this tick (a wooden button is pressed by one inside it), and
-        // the ones a thrown trident is in.
-        for p in self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| p.arrow.is_some())
-        {
-            scratch.inside.extend(horizon_client::arrows::blocks_inside(
-                p.previous, p.position,
-            ));
-        }
+        // The blocks a thrown trident is in (AbstractArrow.applyEffectsFromBlocks).
         for id in self.ecs.species_ids("minecraft:trident") {
             if let Some(p) = self.ecs.position(id) {
                 let p = Vec3::new(p[0], p[1], p[2]);

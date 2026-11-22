@@ -53,11 +53,12 @@ fn end_game<'a>(resources: &'a mut Option<std::sync::Arc<crate::game::Resources>
 }
 
 /// The level's dragon fireballs: its projectiles of that kind.
-fn dragon_fireballs<'a>(game: &'a Game<'_>) -> Vec<&'a horizon_client::projectiles::Projectile> {
-    game.creatures
-        .projectiles
-        .iter()
-        .filter(|p| p.kind == horizon_client::projectiles::ProjectileKind::DragonFireball)
+fn dragon_fireballs(game: &Game<'_>) -> Vec<(Vec3, Vec3)> {
+    game.ecs
+        .species_ids("minecraft:dragon_fireball")
+        .into_iter()
+        .filter_map(|id| game.ecs.projectile_motion(id))
+        .map(|(position, velocity, _, _)| (position, velocity))
         .collect()
 }
 
@@ -83,9 +84,9 @@ fn the_dragons_fireball_starts_at_its_start_with_a_tenth_of_its_direction() {
         .last()
         .copied()
         .expect("one fireball");
-    assert_eq!(b.position, start);
+    assert_eq!(b.0, start);
     // `Vec3.normalize().scale(0.1)` in doubles: 4 / 5 × 0.1 is 0.08000000000000002.
-    assert_eq!(b.velocity, Vec3::new(3.0 / 5.0 * 0.1, 0.0, 4.0 / 5.0 * 0.1));
+    assert_eq!(b.1, Vec3::new(3.0 / 5.0 * 0.1, 0.0, 4.0 / 5.0 * 0.1));
 }
 
 /// The old engine's first End world tick (recorded, then compared with
@@ -102,10 +103,7 @@ fn the_dragons_fireball_first_world_tick() {
     game.tick_server(false).unwrap();
     // Back in the End level to read its own list.
     let _ = game.enter_command_level(crate::game::Dim::End);
-    let after: Vec<(Vec3, Vec3)> = dragon_fireballs(&game)
-        .iter()
-        .map(|b| (b.position, b.velocity))
-        .collect();
+    let after: Vec<(Vec3, Vec3)> = dragon_fireballs(&game);
     eprintln!(
         "H127 after one End tick: fireballs {}, breath clouds {}, dim end {}",
         dragon_fireballs(&game).len(),
@@ -142,7 +140,7 @@ fn the_dragons_fireball_direction_is_normalized_twice() {
         .copied()
         .expect("one fireball");
     assert_eq!(
-        b.velocity,
+        b.1,
         Vec3::new(0.07071067811865477, 0.0, -0.07071067811865477)
     );
 }

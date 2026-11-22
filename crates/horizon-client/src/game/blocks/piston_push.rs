@@ -198,82 +198,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// `moveEntityByPiston`'s `applyEffectsFromBlocks(previousPos, position)`
-    /// for projectile `i`: a cobweb (`WebBlock.entityInside`) or powder snow
-    /// (`PowderSnowBlock.entityInside`) its box met on the way makes it stuck
-    /// (`makeStuckInBlock`), the last one met deciding. A push moves along one
-    /// axis, so the boxes it started and ended in cover the blocks it crossed.
-    fn projectile_piston_block_effects(&mut self, i: usize, from: Vec3) {
-        let p = &self.creatures.projectiles[i];
-        let end = p.aabb();
-        let offset = from.subtract(p.position);
-        let start = end.move_by(offset);
-        let (lo, hi) = (
-            Vec3::new(
-                start.min_position().x.min(end.min_position().x) + 1.0e-5,
-                start.min_position().y.min(end.min_position().y) + 1.0e-5,
-                start.min_position().z.min(end.min_position().z) + 1.0e-5,
-            ),
-            Vec3::new(
-                start.max_position().x.max(end.max_position().x) - 1.0e-5,
-                start.max_position().y.max(end.max_position().y) - 1.0e-5,
-                start.max_position().z.max(end.max_position().z) - 1.0e-5,
-            ),
-        );
-        let mut stuck = None;
-        for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
-            for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
-                for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
-                    let name = &self.res.facts().get(self.world.block(x, y, z)).name;
-                    if let Some(s) = horizon_client::projectiles::stuck_speed_of(name) {
-                        stuck = Some(s);
-                    }
-                }
-            }
-        }
-        if let Some(stuck) = stuck {
-            self.creatures
-                .projectiles
-                .update(i, |p| p.stuck_speed = stuck);
-        }
-        // The bubble columns it went through push it too
-        // (`Projectile.onInsideBubbleColumn` / `onAboveBubbleColumn`): every
-        // projectile, arrows and llama spit included, whatever its own tick
-        // applies. A stuck arrow isn't pushed (`AbstractArrow`'s overrides
-        // return when `isInGround`), as in its own tick.
-        let stuck_arrow = self.creatures.projectiles[i]
-            .arrow
-            .as_ref()
-            .is_some_and(|a| a.in_ground);
-        if !stuck_arrow {
-            let (world, registry, facts, collision) = (
-                &self.world,
-                self.pack.assets.registry,
-                self.res.facts(),
-                self.collision,
-            );
-            let tops = self.creatures.projectiles.update(i, |p| {
-                p.bubble_surfaces.clear();
-                p.bubble_columns_since(from, |at| {
-                    horizon_client::motion::bubble_column_at(
-                        world,
-                        registry,
-                        facts,
-                        collision,
-                        BlockPos::new(at[0], at[1], at[2]),
-                    )
-                    .map(|c| (c.drag, c.surface))
-                });
-                std::mem::take(&mut p.bubble_surfaces)
-            });
-            {
-                for [x, y, z] in tops {
-                    self.bubble_column_particles(BlockPos::new(x, y, z));
-                }
-            }
-        }
-    }
-
     /// `moveEntityByPiston`'s `applyEffectsFromBlocks` for the entity-sensing
     /// blocks (pressure plates, tripwires, buttons, detector rails): the ones
     /// the pushed box covered, from `start` to `end`, sense it during the push
@@ -936,29 +860,11 @@ impl Game<'_> {
         if limited == Vec3::ZERO {
             // `Entity.move` stops there; `moveEntityByPiston` still applies
             // the block effects.
-            if let MoveWho::Entity(EntityHandle::Projectile(i)) = target {
-                let at = self.creatures.projectiles[i].position;
-                self.projectile_piston_block_effects(i, at);
-            }
             self.piston_block_triggers(before, before);
             self.piston_cactus_contact(target, before, before, pricked);
             self.release_after_block_move(target);
             return;
         }
-        // `Entity.move`: a projectile a cobweb or powder snow holds stops dead
-        // (`setDeltaMovement(Vec3.ZERO)`); a piston's push is not scaled.
-        let projectile_from = match target {
-            MoveWho::Entity(EntityHandle::Projectile(i)) => {
-                self.creatures.projectiles.update(i, |p| {
-                    if p.stuck_speed.length_squared() > 1.0e-7 {
-                        p.stuck_speed = Vec3::ZERO;
-                        p.velocity = Vec3::ZERO;
-                    }
-                    Some((i, p.position))
-                })
-            }
-            _ => None,
-        };
         let entities = self.pushed_entity_colliders(target, limited);
         let resolved = with_piston_noclip(piston_direction, || {
             pushed_movement(
@@ -1043,9 +949,6 @@ impl Game<'_> {
             if let Err(payload) = result {
                 std::panic::resume_unwind(payload);
             }
-        }
-        if let Some((i, from)) = projectile_from {
-            self.projectile_piston_block_effects(i, from);
         }
         let after = if moved {
             before.move_by(resolved)
@@ -1830,48 +1733,6 @@ mod h255_mob_piston_ground_tests {
             assert!(crate::game::ticking_chunk(&game.world, 0, 0));
             assert!(game.tickets.levels().block_ticking(0, 0));
             test(&mut game);
-        });
-    }
-    /// `AbstractArrow.move` after a push the collisions cut to nothing: a stuck
-    /// arrow with nothing within 0.06 of it starts falling all the same.
-    #[test]
-    #[ignore = "daily"]
-    fn a_stuck_arrow_whose_push_a_wall_stops_falls_when_nothing_holds_it() {
-        with_game(|game| {
-            assert!(game.run_command("setblock 6 202 4 minecraft:stone"));
-            game.creatures.projectiles.clear();
-            assert!(game.run_command("summon minecraft:arrow 5.75 202.5 4.5 {NoGravity:0b}"));
-            let i = game
-                .creatures
-                .projectiles
-                .iter()
-                .position(|p| p.arrow.is_some())
-                .expect("the arrow");
-            game.creatures.projectiles.update(i, |p| {
-                p.velocity = Vec3::ZERO;
-                p.stuck = true;
-                p.arrow.as_mut().unwrap().in_ground = true;
-            });
-            let p = &game.creatures.projectiles[i];
-            let (bounds, at) = (p.bounds(), [p.position.x, p.position.z]);
-            let before = p.position;
-            game.move_pushed(
-                MoveWho::Entity(EntityHandle::Projectile(i)),
-                bounds,
-                at,
-                0.0,
-                false,
-                Vec3::new(0.3, 0.0, 0.0),
-                Direction::East,
-                &mut std::collections::HashMap::new(),
-                &mut Vec::new(),
-            );
-            let p = &game.creatures.projectiles[i];
-            assert_eq!(p.position, before, "the stone stops the push");
-            assert!(
-                !p.arrow.as_ref().unwrap().in_ground,
-                "nothing holds it, so it falls"
-            );
         });
     }
     #[test]

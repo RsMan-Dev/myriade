@@ -306,8 +306,8 @@ impl Game<'_> {
                         if horizon_client::lan::playerdata::ints_uuid(actual) != uuid {
                             return Err("projectile type: UUID mismatch".into());
                         }
-                        let p = g.creatures.projectiles.iter().find(|p| p.id == id)
-                            .ok_or("projectile type: missing model")?;
+                        // RESTE: the list is gone; the ECS projectile model is not ported here yet.
+                        let p: &horizon_client::projectiles::Projectile = Err("projectile type: missing model")?;
                         // Read the live save adapter's type, not the generic selector alias.
                         // No Duration value is supplied by this admission observation.
                         let saved = horizon_client::entity_nbt::arrow_to_nbt(p, actual, None, None, None)

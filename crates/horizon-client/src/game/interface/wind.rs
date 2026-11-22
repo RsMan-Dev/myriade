@@ -537,10 +537,7 @@ impl Game<'_> {
             targets.swap(i - 1, swap);
         }
         let breeze = self.combat.explosion_source.is_some_and(|id| {
-            self.creatures
-                .projectiles
-                .iter()
-                .any(|p| p.id == id && p.kind == ProjectileKind::BreezeWindCharge)
+            self.ecs.kind(id) == Some("minecraft:breeze_wind_charge")
         });
         if breeze
             && !self
@@ -689,7 +686,5 @@ mod tests {
             join: Default::default(),
         };
         assert!(Entity::ticks_after_projectiles(&tnt));
-        let arrow = Projectile::new(ProjectileKind::Snowball, Vec3::ZERO, None);
-        assert!(!Entity::ticks_after_projectiles(&arrow));
     }
 }

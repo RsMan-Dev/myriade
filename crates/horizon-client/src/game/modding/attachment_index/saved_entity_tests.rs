@@ -176,14 +176,6 @@ fn saved_entity_loaders_publish_and_retire_the_authoritative_owner() {
             let old = game.query_mut(&VALUE).unwrap();
             let row = old.iter().next().unwrap().unwrap();
             let work = index.lock().unwrap().work_count();
-            // Exercise the clone-replay boundary used by vehicle/projectile ticks.
-            match kind {
-                "arrow" | "small_fireball" | "snowball" => {
-                    let copy = game.creatures.projectiles[0].clone();
-                    assert!(game.creatures.projectiles.store_back(0, copy));
-                }
-                _ => (),
-            }
             assert_eq!(
                 index.lock().unwrap().work_count(),
                 work,

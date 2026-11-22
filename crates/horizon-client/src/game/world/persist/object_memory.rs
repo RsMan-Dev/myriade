@@ -102,9 +102,7 @@ impl Game<'_> {
         _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
-            self.remember_last_projectile_tags(&tag);
-        }
+        self.load_projectile_ecs(&tag, uuid, transferred);
     }
 
     pub(in crate::game) fn load_fireball_transferred(
@@ -114,9 +112,7 @@ impl Game<'_> {
         _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
-            self.remember_last_projectile_tags(&tag);
-        }
+        self.load_projectile_ecs(&tag, uuid, transferred);
     }
 
     pub(in crate::game) fn load_throwable_transferred(
@@ -126,9 +122,7 @@ impl Game<'_> {
         _player_uuid: Option<[i32; 4]>,
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if self.load_projectile_ecs(&tag, uuid, transferred).is_some() {
-            self.remember_last_projectile_tags(&tag);
-        }
+        self.load_projectile_ecs(&tag, uuid, transferred);
     }
 
     pub(in crate::game) fn load_falling_transferred(

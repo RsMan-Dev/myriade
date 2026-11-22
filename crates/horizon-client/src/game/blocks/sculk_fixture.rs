@@ -351,9 +351,6 @@ impl Game<'_> {
             self.ecs = self.new_ecs_level(self.dim, s.level_seed);
         }
         self.remote_entities.clear();
-        if s.trace_events {
-            self.creatures.projectiles.clear();
-        }
         self.level_events.clear();
         self.session.rules = Default::default();
         for (rule, value) in [
@@ -633,13 +630,6 @@ impl Game<'_> {
                         ));
                     }
                 }
-                for p in &self.creatures.projectiles {
-                    lines.push(format!(
-                        "projectile {}",
-                        serde_json::json!({"kind": p.kind.id(),
-                        "pos": [p.position.x, p.position.y, p.position.z]})
-                    ));
-                }
                 for (_, event) in self.lan_entity_events.drain(..) {
                     lines.push(format!("entity_event {event}"));
                 }
@@ -718,10 +708,10 @@ impl Game<'_> {
                     let nbt = words[1..]
                         .join(" ")
                         .replace("$owner", &format!("[I;{owner}]"));
-                    let before = self.creatures.projectiles.len();
+                    let before = self.ecs.species_count("minecraft:snowball");
                     self.summon_with_nbt("minecraft:snowball", [30.5, 205.0, 10.5], &nbt)
                         .map_err(|_| "fixture summon failed")?;
-                    if self.creatures.projectiles.len() != before + 1 {
+                    if self.ecs.species_count("minecraft:snowball") != before + 1 {
                         return Err("fixture summon created no projectile".into());
                     }
                 }

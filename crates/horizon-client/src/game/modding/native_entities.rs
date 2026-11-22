@@ -250,13 +250,6 @@ impl Game<'_> {
 
     fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
-        use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(
-            self.creatures.projectiles,
-            p,
-            &mut self.next_entity,
-            Some(&p.attachment_lifetime)
-        );
     }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
@@ -459,48 +452,6 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use mod_api::ServerHost;
-
-    #[test]
-    #[ignore = "daily"]
-    fn pending_assignment_refuses_a_bound_zero_owner_before_consuming_an_id() {
-        use horizon_mod_runtime::attachments::{
-            AttachmentType, Attachments, Holder, index::AttachmentIndex,
-        };
-        use std::sync::{Arc, Mutex};
-        static VALUE: AttachmentType<i32> = AttachmentType {
-            namespace: "test",
-            name: "pending_id",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        for (kind, nbt) in [("minecraft:arrow", "{}")] {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.summon_with_nbt(kind, [1.0, 70.0, 1.0], nbt).unwrap();
-                let mut values = Attachments::default();
-                VALUE.set(&mut values, Holder::Entity(0), 7).unwrap();
-                let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-                let holder = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), 0);
-                macro_rules! bind_zero {
-                    ($list:expr) => {{
-                        let mut owner = $list.pop().unwrap();
-                        owner.id = 0;
-                        owner.attachment_lifetime.bind(&mut values, &index, holder);
-                        $list.push(owner);
-                    }};
-                }
-                bind_zero!(game.creatures.projectiles);
-                let before = game.next_entity;
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    game.assign_pending_join_ids()
-                }));
-                assert!(result.is_err());
-                assert_eq!(game.next_entity, before);
-                assert!(game.creatures.projectiles.iter().all(|owner| owner.id == 0));
-            });
-        }
-    }
 
     #[test]
     #[ignore = "daily"]

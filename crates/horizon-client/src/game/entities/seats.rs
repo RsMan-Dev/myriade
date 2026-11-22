@@ -78,14 +78,9 @@ impl Game<'_> {
                 width,
             });
         }
-        // The kept entities live in the ECS now (`others` is no longer filled): its kind and place.
-        let (kind, position) = match self.others.iter().find(|o| o.id == id) {
-            Some(o) => (o.kind.clone(), o.position),
-            None => {
-                let p = self.ecs.position(id)?;
-                (self.ecs.kind(id)?.to_string(), Vec3::new(p[0], p[1], p[2]))
-            }
-        };
+        // The kept entities live in the ECS: its kind and place.
+        let p = self.ecs.position(id)?;
+        let (kind, position) = (self.ecs.kind(id)?.to_string(), Vec3::new(p[0], p[1], p[2]));
         // `Marker.couldAcceptPassenger` is false: not even `/ride`'s forced
         // `startRiding(vehicle, true, true)` puts a rider on a marker.
         if matches!(kind.as_str(), "minecraft:marker" | "marker") {

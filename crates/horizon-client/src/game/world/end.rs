@@ -208,38 +208,6 @@ impl SummonedEye {
 }
 
 impl Game<'_> {
-    /// `EyeOfEnder.tick` for the summoned and loaded eyes: they fly on by
-    /// their motion and shatter on tick 81, dropping nothing.
-    pub(super) fn tick_summoned_eyes(&mut self) {
-        let ticking = self.entity_ticking_area();
-        let mut shattered = Vec::new();
-        self.others.retain_mut(|o| {
-            let Some(eye) = o.eye.as_mut() else {
-                return true;
-            };
-            // ServerLevel.tick: only entities in entity-ticking chunks tick.
-            if !ticking(o.position.x.floor() as i32, o.position.z.floor() as i32) {
-                return true;
-            }
-            // Entity.baseTick: a burning eye's loaded Fire counts down.
-            if let Some(raw) = self.persist.raw.get_mut(&o.id) {
-                horizon_client::entity_nbt::count_down_fire(raw);
-            }
-            let m = eye.motion;
-            o.position = Vec3::new(o.position.x + m.x, o.position.y + m.y, o.position.z + m.z);
-            eye.life += 1;
-            if eye.life <= 80 {
-                return true;
-            }
-            shattered.push([o.position.x, o.position.y, o.position.z]);
-            false
-        });
-        for at in shattered {
-            self.audio
-                .play("minecraft:entity.ender_eye.death", Some(at), 1.0, 1.0);
-            self.level_event_at(2003, at.map(|v| v.floor() as i32), 0);
-        }
-    }
 }
 
 /// The EyeOfEnder entity.
@@ -1213,23 +1181,6 @@ impl Game<'_> {
                 inside.push((id, pos));
             }
         }
-        // A pearl's move this tick, from where it started it.
-        let pearls: Vec<(u32, Option<Who>, Option<u32>, BlockPos)> = self
-            .creatures
-            .projectiles
-            .iter()
-            .filter(|p| ticks(p.position))
-            .filter_map(|p| {
-                let pos = horizon_client::end_gateway::pearl_gateway(p, |b| is_gateway(self, b))?;
-                Some((p.id, p.owner, p.guest, pos))
-            })
-            .collect();
-        for (id, owner, guest, pos) in pearls {
-            if owner == Some(Who::Player) {
-                self.pearl_owner_in_gateway(guest, pos);
-            }
-            inside.push((id, pos));
-        }
         for (id, pos) in inside {
             // One entity at a time: the gateway cools down for 40 ticks.
             if !self.gateway_enter([pos.x, pos.y, pos.z]) {
@@ -1293,13 +1244,6 @@ impl Game<'_> {
                     .iter()
                     .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
             )
-            .chain(
-                self.creatures
-                    .projectiles
-                    .iter()
-                    .filter(|p| matches!(p.kind, ProjectileKind::EnderPearl))
-                    .map(|p| (p.id, true, ticks(p.position))),
-            )
             .collect();
         if self.ecs.is_active() {
             // Only the entities in a gateway have a state: the ECS rows are asked for those alone.
@@ -1328,12 +1272,7 @@ impl Game<'_> {
             if !self.end.gateways.contains_key(&id) {
                 continue;
             }
-            let is_pearl = self
-                .creatures
-                .projectiles
-                .iter()
-                .any(|p| p.id == id && matches!(p.kind, ProjectileKind::EnderPearl));
-            if is_pearl != after_move {
+            if after_move {
                 continue;
             }
             let delay = self.dimension_changing_delay(id);
@@ -1376,20 +1315,6 @@ impl Game<'_> {
                 self.end.arrivals.push(waiting);
             }
             return;
-        }
-        if let Some(i) = self.creatures.projectiles.iter().position(|p| p.id == id) {
-            let pearl = Box::new(self.creatures.projectiles.remove(i));
-            self.native_leave_skip(id);
-            let (job, target) = self.gateway_job([gateway.x, gateway.y, gateway.z]);
-            let arrival = GatewayArrival {
-                traveller: Arriving::Pearl(pearl),
-                job,
-                target,
-            };
-            // It is at the exit before it moves this tick, once that has loaded.
-            if let Some(waiting) = self.arrive_through_gateway(arrival) {
-                self.end.arrivals.push(waiting);
-            }
         }
     }
 
@@ -1587,12 +1512,11 @@ mod tests {
         use super::super::native_entity_refs::tests::with_game;
 
         with_game(|game| {
-            game.add_projectile(Projectile::new(
+            let id = game.add_projectile(Projectile::new(
                 ProjectileKind::EnderPearl,
                 Vec3::ZERO,
                 None,
             ));
-            let id = game.creatures.projectiles[0].id;
             let pearl = game.entity(id).unwrap();
             assert_eq!(pearl.portal_cooldown(game), Some(0));
             // The write refuses a pearl by name: its cooldown is the End

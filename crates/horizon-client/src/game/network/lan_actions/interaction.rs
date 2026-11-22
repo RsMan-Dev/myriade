@@ -239,11 +239,7 @@ impl Game<'_> {
                 Vec3::new(p.x + half, p.y + knot.height, p.z + half),
             ));
         }
-        self.creatures
-            .projectiles
-            .iter()
-            .find(|p| p.id != 0 && p.id as i32 == id)
-            .map(|p| p.bounds())
+        None
     }
 
     /// The fence of the knot whose entity id is `id` (`lan_assign_ids`).

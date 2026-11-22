@@ -513,11 +513,13 @@ mod tests {
             }
             crossbow.data_mut().charged = vec![ItemStack::new(ARROW, 1); shots];
             *game.held_mut() = Some(crossbow);
-            let before = game.creatures.projectiles.len();
+            let before = game.ecs.species_ids("minecraft:arrow");
             game.shoot_crossbow();
-            game.creatures.projectiles[before..]
-                .iter()
-                .map(|p| p.arrow.as_ref().expect("an arrow").fire_ticks)
+            game.ecs
+                .species_ids("minecraft:arrow")
+                .into_iter()
+                .filter(|id| !before.contains(id))
+                .map(|id| game.ecs.projectile_fire_ticks(id).expect("an arrow") as i32)
                 .collect()
         };
         assert_eq!(shoot(&[], 1), vec![0]);

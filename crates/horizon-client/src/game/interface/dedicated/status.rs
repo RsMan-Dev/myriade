@@ -120,7 +120,6 @@ impl Game<'_> {
         self.ecs.entity_count()
             + self.remote_entities.iter().filter(|m| !m.removed).count()
             + self.ecs.item_ids().len()
-            + self.creatures.projectiles.len()
             + self.ecs.cart_ids().len()
             + self.ecs.boat_ids().len()
             + self.ecs.species_count("minecraft:falling_block")

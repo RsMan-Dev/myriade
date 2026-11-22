@@ -30,13 +30,6 @@ impl Game<'_> {
             }
             keep
         });
-        self.others.retain(|o| {
-            let keep = !gone(o.position);
-            if !keep {
-                removed.push(o.id);
-            }
-            keep
-        });
         self.armor_stands.retain(|a| {
             let keep = !gone(a.position);
             if !keep {

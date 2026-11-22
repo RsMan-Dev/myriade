@@ -381,7 +381,6 @@ impl Game<'_> {
         let block_sounds = std::mem::take(&mut self.guest_block_sounds);
         let equipment_breaks = std::mem::take(&mut self.guest_equipment_breaks);
         let swings = self.swings_started;
-        let projectiles = self.creatures.projectiles.len();
         let modifiers = std::mem::replace(
             &mut self.applied_modifiers,
             std::mem::take(&mut play.modifiers),
@@ -471,7 +470,6 @@ impl Game<'_> {
             entity_events,
             equipment_breaks,
             swings,
-            projectiles,
             modifiers,
             cooldown_events,
             player_sounds,
@@ -610,7 +608,6 @@ impl Game<'_> {
             entity_events,
             equipment_breaks,
             swings,
-            projectiles,
             modifiers,
             cooldown_events,
             player_sounds,
@@ -623,46 +620,6 @@ impl Game<'_> {
         let guest_combat = std::mem::replace(&mut self.combat, combat);
         self.guest_combat.insert(conn, guest_combat);
         play.modifiers = std::mem::replace(&mut self.applied_modifiers, modifiers);
-        // What the guest shot is theirs (Projectile.setOwner).
-        for i in projectiles..self.creatures.projectiles.len() {
-            self.creatures.projectiles.update(i, |p| {
-                if p.owner == Some(horizon_client::mobs::Who::Player) && p.guest.is_none() {
-                    p.guest = Some(conn);
-                }
-            });
-        }
-        let listening = mod_api::__private::listened(mod_api::HookId::PlayerLaunchProjectile);
-        for projectile in projectiles..self.creatures.projectiles.len() {
-            if !listening {
-                break;
-            }
-            let item = match &self.creatures.projectiles[projectile].kind {
-                horizon_client::projectiles::ProjectileKind::Snowball => {
-                    Some("minecraft:snowball".to_owned())
-                }
-                horizon_client::projectiles::ProjectileKind::Egg => {
-                    Some("minecraft:egg".to_owned())
-                }
-                horizon_client::projectiles::ProjectileKind::EnderPearl => {
-                    Some("minecraft:ender_pearl".to_owned())
-                }
-                horizon_client::projectiles::ProjectileKind::Trident => {
-                    Some("minecraft:trident".to_owned())
-                }
-                horizon_client::projectiles::ProjectileKind::Potion(stack, _) => {
-                    Some(stack.item.to_string())
-                }
-                _ => None,
-            };
-            if let Some(item) = item {
-                let Some(host) = self.lan.as_ref() else {
-                    unreachable!("LanHost dropped inside a guest turn; closes are deferred");
-                };
-                let guest = &host.hub.guests[i];
-                let (uuid, name) = (guest.uuid, guest.name.clone());
-                self.native_player_launch_projectile(uuid, &name, &item);
-            }
-        }
         // The guest's swings are theirs: the host's own count stays the host's.
         play.swings += self.swings_started.wrapping_sub(swings);
         self.swings_started = swings;

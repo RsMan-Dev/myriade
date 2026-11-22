@@ -991,8 +991,6 @@ struct Game<'a> {
     hand_strength: horizon_client::attack_strength::AttackStrength,
     dragging: bool,
     flash: u32,
-    /// Bolts that struck here and sky flashes they made, in total (`status`).
-    lightning_seen: [u32; 2],
     /// The head of the bed while sleeping; the visual timer also survives waking.
     sleeping: Option<[i32; 3]>,
     sleep_timer: u32,
@@ -1050,8 +1048,6 @@ struct Game<'a> {
     location_armor: [Option<ItemStack>; 4],
     /// `Cushion` decoration entities (game/entities/cushions.rs).
     cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
-    /// Entities of types Horizon does not simulate.
-    others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     /// The yaw and pitch a native mod's camera drew the last frame from (`native_camera_pose`),
     /// none when it drew from vanilla's.
     posed_rotation: Option<(f32, f32)>,
@@ -1069,7 +1065,6 @@ struct Game<'a> {
     /// The boats and minecarts `native_vehicle_moved` follows (lan_vehicles.rs).
     /// Songs playing from jukeboxes (tracked sound handles).
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    bolts: Vec<lightning::Bolt>,
     maps: maps::Maps,
     /// The ender dragon fight (game/mobs/dragon.rs).
     fight: dragon::Fight,
@@ -1985,10 +1980,12 @@ impl Game<'_> {
             .collect();
         // EntityType.LIGHTNING_BOLT: 0 x 0.
         let trigger_extras: Vec<Aabb> = self
-            .bolts
-            .iter()
-            .map(|b| {
-                let at = Vec3::new(b.at[0], b.at[1], b.at[2]);
+            .ecs
+            .species_ids("lightning_bolt")
+            .into_iter()
+            .filter_map(|id| self.ecs.position(id))
+            .map(|p| {
+                let at = Vec3::new(p[0], p[1], p[2]);
                 Aabb::new(at, at)
             })
             .collect();
@@ -3400,8 +3397,6 @@ impl Game<'_> {
             span("save_chunks_eagerly", || self.save_chunks_eagerly());
         }
         if running {
-            self.tick_explicit_knots();
-            self.tick_summoned_eyes();
             horizon_client::spans::time("tick_armor_stands", || self.tick_armor_stands())?;
             horizon_client::spans::time("tick_cushions", || self.tick_cushions());
             // ServerLevel.tick: the arrivals of this server tick are in the level
@@ -3416,7 +3411,6 @@ impl Game<'_> {
             horizon_client::spans::time("tick_lecterns", || self.tick_lecterns());
             horizon_client::spans::time("tick_maps", || self.tick_maps());
             self.tick_lodestone_compasses();
-            horizon_client::spans::time("tick_bolts", || self.tick_bolts());
             horizon_client::spans::time("tick_ominous_item_spawners", || {
                 self.tick_ominous_item_spawners()
             });
@@ -3932,14 +3926,11 @@ impl Game<'_> {
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
-        self.creatures.projectiles.clear();
         self.armor_stands.clear();
         self.cushions.clear();
-        self.others.clear();
         self.dragon.discard();
         self.crystals.clear();
         self.breath_clouds.clear();
-        self.bolts.clear();
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();
@@ -5431,7 +5422,6 @@ impl<'a> Game<'a> {
             hand_strength: Default::default(),
             dragging: false,
             flash: 0,
-            lightning_seen: [0; 2],
             sleeping: None,
             sleep_timer: 0,
             player_beds: Vec::new(),
@@ -5461,14 +5451,12 @@ impl<'a> Game<'a> {
             armor_stands: Default::default(),
             location_armor: Default::default(),
             cushions: Default::default(),
-            others: Default::default(),
             posed_rotation: None,
             posed_roll: 0.0,
             post_effects: Vec::new(),
             spectated_post_effect: None,
             experience_display: Default::default(),
             jukebox_sounds: HashMap::new(),
-            bolts: Vec::new(),
             maps: maps::Maps::default(),
             fight: dragon::Fight::default(),
             dragon: Default::default(),

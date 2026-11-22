@@ -588,13 +588,7 @@ fn a_reads_calculator_is_the_one_the_blasts_rays_use() {
         // A dangerous wither skull caps obsidian at 0.8, and its blast breaks it; without it
         // obsidian resists 1200 and stays.
         assert!(game.run_command("summon minecraft:wither_skull 1.5 90 14.5 {dangerous:1b}"));
-        let skull = game
-            .creatures
-            .projectiles
-            .iter()
-            .find(|p| matches!(p.kind, ProjectileKind::WitherSkull { dangerous: true }))
-            .unwrap()
-            .id;
+        let skull = game.ecs.species_ids("minecraft:wither_skull")[0];
         let skull = game.entity(skull);
         assert!(game.run_command("setblock 12 80 12 minecraft:obsidian"));
         read_and_blast(

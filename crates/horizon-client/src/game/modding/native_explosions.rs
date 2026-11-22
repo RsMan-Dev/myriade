@@ -247,14 +247,8 @@ impl Game<'_> {
                 self.combat.blast_owner = Some((id, self.explosion_entity_name(id, kind)));
                 return;
             }
-            Target::Projectile(_) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|p| p.id == id)
-                .and_then(|p| Some((p.owner?, p.guest))),
-            // A thrown trident's or a rocket's owner comes from its ECS projectile.
-            Target::Trident(_) | Target::Rocket(_) => self.ecs.projectile_owner(id).map(|w| (self.host_who(w), self.lan_acting)),
+            // A projectile's, trident's or rocket's owner comes from its ECS projectile.
+            Target::Projectile(_) | Target::Trident(_) | Target::Rocket(_) => self.ecs.projectile_owner(id).map(|w| (self.host_who(w), self.lan_acting)),
             Target::Hook(_) => self.fishing_hook_by_id(id).map(|(_, caster)| match caster {
                 Target::Guest(conn) => (Who::Player, Some(conn)),
                 _ => (Who::Player, self.lan_acting),

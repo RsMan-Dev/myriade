@@ -325,7 +325,6 @@ macro_rules! entity_lists {
             ($($args)*)
             Mob(Mob) mobs: remote_entities,
             ArmorStand(ArmorStand) armor_stands: armor_stands,
-            Projectile(Projectile) projectiles: creatures.projectiles,
             General(GeneralRow) general: resident_entities.general.rows,
         }
     };
@@ -333,9 +332,6 @@ macro_rules! entity_lists {
 pub(crate) use entity_lists;
 
 macro_rules! direct_entity_edit {
-    (Projectile) => {
-        false
-    };
     (Cart) => {
         false
     };
@@ -813,7 +809,6 @@ impl Game<'_> {
             .map(|e| e.id)
             .chain(self.ecs_frames().into_iter().map(|e| e.id))
             .chain(self.ecs_paintings().into_iter().map(|e| e.id))
-            .chain(self.others.iter().map(|e| e.id))
             .chain(self.breath_clouds.iter().map(|e| e.id))
             .chain(self.fangs.list.iter().map(|e| e.id))
             .chain(self.crystals.iter().map(|e| e.id))
@@ -1400,172 +1395,6 @@ impl Entity for PrimedTnt {
     }
 }
 
-
-impl Entity for Projectile {
-    fn reset_fall_distance(&mut self) {
-        if let Some(arrow) = self.arrow.as_deref_mut() {
-            arrow.fall_distance = 0.0;
-        }
-    }
-    fn portal_after_move(&self) -> bool {
-        !matches!(
-            self.kind,
-            horizon_client::projectiles::ProjectileKind::LlamaSpit
-                | horizon_client::projectiles::ProjectileKind::ShulkerBullet { .. }
-        )
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.pitch = pitch.clamp(-90.0, 90.0);
-        self.previous_yaw = self.yaw;
-        self.previous_pitch = self.pitch;
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    /// `Entity.move(MoverType.PISTON)` ends in `setOnGroundWithMovement`.
-    fn set_piston_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    fn native_type(&self) -> Cow<'static, str> {
-        self.entity_type().into()
-    }
-    fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        game.save_projectile(index, keys)
-    }
-    fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        player_uuid: Option<[i32; 4]>,
-        tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Result<(), Tag> {
-        match kind {
-            "minecraft:arrow" | "minecraft:spectral_arrow" => {
-                load_with_transfer!(
-                    game,
-                    transferred,
-                    load_arrow,
-                    load_arrow_transferred,
-                    tag,
-                    uuid,
-                    player_uuid
-                )
-            }
-            "minecraft:llama_spit" | "minecraft:shulker_bullet" => {
-                load_with_transfer!(
-                    game,
-                    transferred,
-                    load_spit_or_bullet,
-                    load_spit_or_bullet_transferred,
-                    tag,
-                    uuid,
-                    player_uuid
-                )
-            }
-            "minecraft:fireball"
-            | "minecraft:small_fireball"
-            | "minecraft:dragon_fireball"
-            | "minecraft:wind_charge"
-            | "minecraft:breeze_wind_charge"
-            | "minecraft:wither_skull" => load_with_transfer!(
-                game,
-                transferred,
-                load_fireball,
-                load_fireball_transferred,
-                tag,
-                uuid,
-                player_uuid
-            ),
-            id if horizon_client::entity_nbt::throwable_kind(id).is_some() => {
-                load_with_transfer!(
-                    game,
-                    transferred,
-                    load_throwable,
-                    load_throwable_transferred,
-                    tag,
-                    uuid,
-                    player_uuid
-                )
-            }
-            _ => return Err(tag),
-        }
-        Ok(())
-    }
-    stored_motion!();
-    fn selector_target(&self) -> Option<Target> {
-        use horizon_client::projectiles::ProjectileKind as K;
-        // The kinds /data can write (entity_nbt).
-        let selectable = self.is_arrow()
-            || horizon_client::entity_nbt::saved_with_chunk(self)
-            || matches!(
-                self.kind,
-                K::LargeFireball { .. }
-                    | K::SmallFireball
-                    | K::DragonFireball
-                    | K::WindCharge
-                    | K::BreezeWindCharge
-            );
-        selectable.then_some(Target::Projectile(self.id))
-    }
-    /// `AbstractArrow.push` does nothing in the ground; a wind charge's motion
-    /// stays 0.
-    fn pushed_by_explosion(&self) -> bool {
-        !self.stuck && !self.kind.ignores_blast()
-    }
-    fn explosion_eye_height(&self) -> f64 {
-        self.kind.eye_height()
-    }
-    fn push_from_explosion(&mut self, push: Vec3) {
-        self.velocity = Vec3::new(
-            self.velocity.x + push.x,
-            self.velocity.y + push.y,
-            self.velocity.z + push.z,
-        );
-        self.needs_sync = true;
-    }
-    fn bounds(&self) -> Aabb {
-        Projectile::bounds(self)
-    }
-    /// A shulker bullet's, set when it is made, unless a mod wrote one: the
-    /// write has no field on this struct and lands in `stored`, so a cleared
-    /// flag is what the movement code reads; an arrow's `AbstractArrow.noPhysics`.
-    fn no_physics(&self, stored: Option<bool>) -> bool {
-        stored.unwrap_or_else(|| {
-            matches!(self.kind, ProjectileKind::ShulkerBullet { .. })
-                || self.arrow.as_ref().is_some_and(|a| a.no_physics)
-        })
-    }
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        Projectile::move_by_piston(self, movement);
-    }
-    fn piston_release_bounds(&self) -> Option<Aabb> {
-        Projectile::piston_release_bounds(self)
-    }
-    fn release_after_piston(&mut self, no_block_collision: bool) {
-        Projectile::release_after_piston(self, no_block_collision);
-    }
-    fn piston_slime_bounce(&mut self, movement: Direction) {
-        Projectile::piston_slime_bounce(self, movement);
-    }
-}
 
 impl Entity for Rocket {
     fn reset_fall_distance(&mut self) {

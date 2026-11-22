@@ -1236,7 +1236,7 @@ impl Game<'_> {
                     self.ecs_remove_hanging(id);
                 }
                 Target::Cushion(_) => self.cushions.retain(|e| e.id != id),
-                Target::Other(_) => self.others.retain(|e| e.id != id),
+                Target::Other(_) => {}
                 Target::Fangs(_) => self.fangs.list.retain(|e| e.id != id),
                 Target::Crystal(_) => self.crystals.retain(|e| e.id != id),
                 Target::Dragon(_) => self.discard_resident_dragon(),

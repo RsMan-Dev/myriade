@@ -224,8 +224,6 @@ pub(super) struct GuestSwap {
     block_sounds: Vec<(String, [f64; 3], f32, f32)>,
     /// The host's count of swings started, kept while the guest acts.
     swings: u32,
-    /// How many projectiles there were: those added since are the guest's.
-    projectiles: usize,
     /// The host's equipment modifiers.
     modifiers: Vec<(String, String)>,
 }

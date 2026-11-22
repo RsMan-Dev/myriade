@@ -197,11 +197,7 @@ impl Game<'_> {
                 let f = self.fangs.list.iter().find(|f| f.id == id)?;
                 self.fangs_to_nbt(f, uuid)
             }
-            Target::Other(id) => {
-                let uuid = self.uuid_for(id);
-                let o = self.others.iter().find(|o| o.id == id)?.clone();
-                self.other_to_nbt(&o, uuid)
-            }
+            Target::Other(_) => return None,
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
                 let raw = self.persist_anon("minecraft:end_crystal", c.position);
@@ -488,26 +484,7 @@ impl Game<'_> {
                     self.close_opaque_merchant(id);
                 }
             }
-            Target::Other(id) => {
-                let i = self
-                    .others
-                    .iter()
-                    .position(|o| o.id == id)
-                    .ok_or_else(stale)?;
-                let slot = &self.others[i];
-                let mut new = Self::other_from_nbt(&mut tag, id, &slot.kind).ok_or_else(stale)?;
-                new.join = slot.join;
-                let is_display = matches!(
-                    slot.kind.as_str(),
-                    "minecraft:block_display" | "minecraft:item_display" | "minecraft:text_display"
-                );
-                self.others.update(i, |slot| *slot = new);
-                // `EntityDataAccessor.setData` keeps the entity's UUID.
-                set_key(&mut tag, "UUID", Tag::IntArray(self.uuid_for(id).to_vec()));
-                if is_display {
-                    self.persist.force_meta(id, 8);
-                }
-            }
+            Target::Other(_) => return Err(stale()),
             Target::Fangs(id) => {
                 let owner = self.loaded_fangs_owner(&tag);
                 let at = entity_nbt::position(&tag).ok_or_else(stale)?;
@@ -1169,8 +1146,6 @@ impl Game<'_> {
             Some(Target::Boat(id))
         } else if self.ecs.cart_kind(id).is_some() {
             Some(Target::Cart(id))
-        } else if self.others.iter().any(|o| o.id == id) {
-            Some(Target::Other(id))
         } else if self.ecs.species(id) == Some("minecraft:tnt") {
             Some(Target::Tnt(id))
         } else if self.crystals.iter().any(|c| c.id == id) {

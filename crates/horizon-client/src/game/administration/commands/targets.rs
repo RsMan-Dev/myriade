@@ -56,11 +56,7 @@ impl Game<'_> {
             }),
             Target::Boat(id) => self.ecs.position(id),
             Target::Cart(id) => self.ecs_view(id).map(|v| v.position),
-            Target::Other(id) => self
-                .others
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| [o.position.x, o.position.y, o.position.z]),
+            Target::Other(id) => self.ecs.position(id),
             Target::Crystal(id) => self
                 .crystals
                 .iter()
@@ -127,13 +123,7 @@ impl Game<'_> {
                 .ecs
                 .cart_kind(id)
                 .map_or_else(|| "minecraft:minecart".into(), Into::into),
-            Target::Other(id) => self
-                .others
-                .iter()
-                .find(|o| o.id == id)
-                .map(|o| o.kind.clone())
-                .or_else(|| self.ecs.kind(id).map(str::to_owned))
-                .unwrap_or_default(),
+            Target::Other(id) => self.ecs.kind(id).map(str::to_owned).unwrap_or_default(),
             Target::Crystal(_) => "minecraft:end_crystal".into(),
             // `EnderDragonPart` takes its parent's type.
             Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon".into(),

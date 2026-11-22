@@ -103,7 +103,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
     assert!(game.ecs.item_ids().is_empty(), "the item left the overworld");
     assert!(game.ecs_frames().is_empty(), "the frame left the overworld");
     assert!(
-        game.creatures.projectiles.is_empty(),
+        game.ecs.species_ids("minecraft:arrow").is_empty(),
         "the arrow left the overworld"
     );
     assert_eq!(game.ecs.species_count("minecraft:tnt"), 0, "the tnt left the overworld");
@@ -121,16 +121,8 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
     );
     let frame = game.ecs_frames().first().cloned().expect("frame crossed");
     assert_eq!(frame.pos, [12, 64, 0]);
-    let arrow = game
-        .creatures
-        .projectiles
-        .iter()
-        .next()
-        .expect("arrow crossed");
-    assert_eq!(
-        [arrow.position.x, arrow.position.y, arrow.position.z],
-        [13.5, 64.0, 0.5]
-    );
+    let arrow = *game.ecs.species_ids("minecraft:arrow").first().expect("arrow crossed");
+    assert_eq!(game.ecs.position(arrow), Some([13.5, 64.0, 0.5]));
     let tnt = *game.ecs.species_ids("minecraft:tnt").first().expect("tnt crossed");
     assert_eq!(game.ecs.position(tnt), Some([14.5, 64.0, 0.5]));
     // `PrimedTnt.teleport`: the new entity has used a portal.

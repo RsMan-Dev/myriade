@@ -156,16 +156,7 @@ impl Game<'_> {
                 m.needs_sync = true;
                 true
             }
-            Target::Other(id) => {
-                let Some(i) = self.others.iter().position(|o| o.id == id) else {
-                    return false;
-                };
-                self.others.update(i, |o| {
-                    o.yaw = yaw;
-                    o.pitch = pitch;
-                });
-                true
-            }
+            Target::Other(_) => false,
             _ => false,
         }
     }

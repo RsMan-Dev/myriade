@@ -9,12 +9,7 @@ impl Game<'_> {
             Target::Mob(id) => &self.remote_entities.iter().find(|mob| mob.id == id)?.kind.id,
             Target::Item(_) => "minecraft:item",
             Target::Orb(_) => "minecraft:experience_orb",
-            Target::Projectile(id) => self
-                .creatures
-                .projectiles
-                .iter()
-                .find(|p| p.id == id)?
-                .entity_type(),
+            Target::Projectile(id) => self.ecs.kind(id)?,
             Target::Stand(_) => "minecraft:armor_stand",
             Target::General(_) => return None,
             Target::Frame(id) => {
@@ -36,7 +31,7 @@ impl Game<'_> {
                 return mod_api::__private::resolved_entity_type_key_parts(&["minecraft:", wood, "_", chest, suffix]);
             }
             Target::Cart(id) => self.cart_genre(id)?.id(),
-            Target::Other(id) => &self.others.iter().find(|other| other.id == id)?.kind,
+            Target::Other(id) => self.ecs.kind(id)?,
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon",
             Target::Tnt(_) => "minecraft:tnt",

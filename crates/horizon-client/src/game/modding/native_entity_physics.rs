@@ -102,23 +102,8 @@ impl Game<'_> {
                     s.no_physics = Some(no_physics);
                     true
                 }),
-            Some(Target::Other(id)) => {
-                if !self.others.iter().any(|o| o.id == id) {
-                    return false;
-                }
-                use horizon_core::nbt::Tag;
-                let mut compound = match self.persist.raw.get(&id) {
-                    Some(Tag::Compound(map)) => map.clone(),
-                    _ => std::collections::BTreeMap::new(),
-                };
-                if no_physics {
-                    compound.insert("NoPhysics".into(), Tag::Byte(1));
-                } else {
-                    compound.remove(&horizon_core::nbt::JavaString::from("NoPhysics"));
-                }
-                self.persist.raw.insert(id, Tag::Compound(compound));
-                true
-            }
+            // No `others` list: nothing of this kind is held to flag.
+            Some(Target::Other(_)) => false,
             _ => false,
         }
     }

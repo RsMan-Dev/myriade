@@ -48,18 +48,14 @@ use std::{
 
 /// A borrowed counting view: no resident-table scans and no allocation for gauges.
 pub(super) struct EntityCountView<'a> {
-    pub(super) fixed: [(&'static str, usize); 18],
+    pub(super) fixed: [(&'static str, usize); 17],
     pub(super) mobs: &'a [Mob],
     /// The entities the level's ECS world holds (`EcsLevel::count`), beside the remote list.
     pub(super) ecs: usize,
-    pub(super) others: &'a [commands::OtherEntity],
 }
 impl EntityCountView<'_> {
     pub(super) fn total(&self) -> usize {
-        self.fixed.iter().map(|(_, n)| n).sum::<usize>()
-            + self.mobs.len()
-            + self.ecs
-            + self.others.len()
+        self.fixed.iter().map(|(_, n)| n).sum::<usize>() + self.mobs.len() + self.ecs
     }
     pub(super) fn registry_counts(&self, ecs_kinds: &[(&'static str, usize)]) -> Vec<(String, u32)> {
         let mut counts = std::collections::BTreeMap::<String, u32>::new();
@@ -73,9 +69,6 @@ impl EntityCountView<'_> {
         }
         for mob in self.mobs.iter().filter(|mob| !mob.removed) {
             *counts.entry(mob.kind.id.clone()).or_default() += 1;
-        }
-        for row in self.others {
-            *counts.entry(row.kind.clone()).or_default() += 1;
         }
         counts.into_iter().collect()
     }
@@ -104,7 +97,6 @@ macro_rules! entity_count_view {
                 ),
                 ("minecraft:cushion", $level.cushions.len()),
                 ("minecraft:area_effect_cloud", $level.breath_clouds.len()),
-                ("minecraft:lightning_bolt", $level.bolts.len()),
                 ("minecraft:evoker_fangs", $level.fangs.perf_count()),
                 // Multipart hitboxes are not independently admitted world entities.
                 (
@@ -114,7 +106,6 @@ macro_rules! entity_count_view {
             ],
             mobs: &$level.remote_entities,
             ecs: $level.ecs.entity_count(),
-            others: &$level.others,
         }
     };
 }
@@ -145,10 +136,8 @@ pub(super) struct Parked {
     item_frames: horizon_client::join_seq::JoinList<horizon_client::entities::ItemFrame>,
     armor_stands: horizon_client::join_seq::JoinList<horizon_client::entities::ArmorStand>,
     cushions: horizon_client::join_seq::JoinList<horizon_client::entities::Cushion>,
-    others: horizon_client::join_seq::ResidentList<commands::OtherEntity>,
     fangs: super::fangs::FangState,
     jukebox_sounds: HashMap<(i32, i32, i32), u64>,
-    bolts: Vec<lightning::Bolt>,
     crystals: horizon_client::join_seq::JoinList<dragon::Crystal>,
     dragon: super::native_entity_refs::dragon_parts_table::DragonSlot,
     breath_clouds: horizon_client::join_seq::ResidentList<dragon::Breath>,
@@ -733,10 +722,8 @@ impl Game<'_> {
             item_frames: Default::default(),
             armor_stands: Default::default(),
             cushions: Default::default(),
-            others: Default::default(),
             fangs: Default::default(),
             jukebox_sounds: HashMap::new(),
-            bolts: Vec::new(),
             crystals: Default::default(),
             dragon: Default::default(),
             breath_clouds: Default::default(),
@@ -871,10 +858,8 @@ impl Game<'_> {
         swap(&mut self.portals.sections, &mut p.portal_sections);
         swap(&mut self.armor_stands, &mut p.armor_stands);
         swap(&mut self.cushions, &mut p.cushions);
-        swap(&mut self.others, &mut p.others);
         swap(&mut self.fangs, &mut p.fangs);
         swap(&mut self.jukebox_sounds, &mut p.jukebox_sounds);
-        swap(&mut self.bolts, &mut p.bolts);
         swap(&mut self.crystals, &mut p.crystals);
         swap(&mut self.dragon, &mut p.dragon);
         swap(&mut self.breath_clouds, &mut p.breath_clouds);
