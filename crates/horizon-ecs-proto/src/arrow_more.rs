@@ -107,6 +107,12 @@ pub fn pickup(w: &mut World, arrow: Entity, by: Who) -> bool {
     if w.get::<Stuck>(arrow).is_none() {
         return false;
     }
+    // `AbstractArrow.playerTouch`: nothing while `shakeTime > 0`, the 7 ticks after the block hit (`expires` is the hit plus its life).
+    if let (Some(p), true) = (w.get::<Projectile>(arrow), w.contains_resource::<crate::cow::Clock>())
+        && crate::cow::now_of(w, arrow) < p.expires.saturating_sub(crate::projectile::LIFE) + crate::projectile::SHAKE
+    {
+        return false;
+    }
     let stack = match rule {
         Pickup::Disallowed => return false,
         Pickup::Allowed => stack,
@@ -407,6 +413,20 @@ mod tests {
     }
 
     #[test]
+    fn a_stuck_arrow_is_taken_only_once_its_shake_of_7_ticks_is_over() {
+        let mut w = world(false);
+        w.insert_resource(crate::cow::Clock::default());
+        let e = stuck(&mut w, Pickup::Allowed);
+        let hit = crate::cow::now_of(&w, e);
+        w.entity_mut(e).insert(Projectile { owner: None, age: 0, left_owner: false, expires: hit + crate::projectile::LIFE });
+        assert!(!pickup(&mut w, e, Who::Player(1)), "taken during the shake");
+        w.resource_mut::<crate::cow::Clock>().0 += 6;
+        assert!(!pickup(&mut w, e, Who::Player(1)), "taken with shakeTime 1");
+        w.resource_mut::<crate::cow::Clock>().0 += 1;
+        assert!(pickup(&mut w, e, Who::Player(1)), "refused once shakeTime is 0");
+    }
+
+    #[test]
     fn a_flying_arrow_is_not_picked_up() {
         let mut w = world(false);
         let e = w.spawn((Pos(Vec3::new(0.0, 64.0, 0.0)), Flight::ARROW, shot(Pickup::Allowed))).id();
@@ -455,5 +475,88 @@ mod tests {
         let events = drain(&mut w);
         assert!(!events.iter().any(|ev| matches!(ev, ArrowEvent::PotionEffect { .. })));
         assert!(events.iter().any(|ev| matches!(ev, ArrowEvent::Hit { victim: None, .. })));
+    }
+    /// A slab with a stone wall at x = 4 (y 1 to 3, z 0 to 12), a player beside the shooting line; None without the game's data.
+    fn wall_scene() -> Option<crate::cow::Herd> {
+        std::env::var_os("HORIZON_TEST_RESOURCES")?;
+        let mut h = crate::cow::Herd::with_slab(40, true, false);
+        h.set_players(vec![(0.5, 6.5)]);
+        for y in 1..=3 {
+            for z in 0..=12 {
+                h.set_block(4, y, z, "minecraft:stone");
+            }
+        }
+        h.tick();
+        Some(h)
+    }
+
+    fn shoot_east(h: &mut crate::cow::Herd, z: f64) -> Entity {
+        crate::projectile::launch(&mut h.world, Flight::ARROW, Vec3::new(0.5, 1.5, z), Vec3::new(1.0, 0.0, 0.0), None)
+    }
+
+    /// `AbstractArrow.tick`/`tickDespawn`: stuck in the wall it has no motion, and it is discarded on its 1 200th tick there.
+    #[test]
+    fn an_arrow_stuck_in_a_block_stays_still_and_goes_on_its_1200th_tick() {
+        let Some(mut h) = wall_scene() else { return };
+        let e = shoot_east(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        assert!(h.world.get::<Stuck>(e).is_some(), "the arrow did not stick");
+        assert!(h.world.get::<Flying>(e).is_none());
+        let stuck_at = h.world.get::<Pos>(e).unwrap().0;
+        let expires = h.world.get::<Projectile>(e).unwrap().expires;
+        let now = crate::cow::now_of(&h.world, e);
+        assert!(expires > now && expires - now <= crate::projectile::LIFE, "expires {expires} now {now}");
+        while crate::cow::now_of(&h.world, e) + 1 < expires {
+            h.tick();
+            assert!(h.world.get_entity(e).is_ok(), "gone at {} before {expires}", crate::cow::now_of(&h.world, e));
+        }
+        assert_eq!(h.world.get::<Pos>(e).unwrap().0, stuck_at, "a stuck arrow moved");
+        h.tick();
+        h.tick();
+        assert!(h.world.get_entity(e).is_err(), "still there after its life");
+    }
+
+    /// `AbstractArrow.hitTargetOrDeflectSelf` on an item frame: the first hit takes the item out and spends the arrow, the second
+    /// breaks the empty frame (`ItemFrame.hurtServer`).
+    #[test]
+    fn an_arrow_knocks_the_item_out_of_a_frame_then_breaks_it() {
+        let Some(mut h) = wall_scene() else { return };
+        crate::hanging::insert_resources(&mut h.world);
+        let frame = crate::frame_item::place(&mut h.world, [3, 1, 6], 4, false, None).expect("the frame hangs on the wall");
+        assert!(crate::frame_item::put(&mut h.world, frame, ItemStack { item: "minecraft:diamond".into(), count: 1, damage: 0, extra: None }, None));
+        let first = shoot_east(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        let held = h.world.get::<crate::frame_item::Held>(frame).map(|f| f.stack.is_some());
+        assert_eq!(held, Some(false), "the item did not come out (None: the frame is gone)");
+        assert!(h.world.get_entity(first).is_err(), "the arrow that struck the frame is spent");
+        shoot_east(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        assert!(h.world.get_entity(frame).is_err(), "the empty frame did not break");
+    }
+
+    /// `ButtonBlock.entityInside` (wooden buttons count arrows): an arrow flying through the cell of a button reports it, and so does
+    /// the arrow that stops there.
+    #[test]
+    fn an_arrow_reports_the_wooden_button_cell_it_flies_into() {
+        let Some(mut h) = wall_scene() else { return };
+        h.set_block(3, 1, 6, "minecraft:oak_button");
+        h.tick();
+        let state = h.world.resource::<crate::cow::Level>().mw.0.registry.default_state("minecraft:oak_button").expect("the button").0 as usize;
+        let mut bits = vec![0u64; state / 64 + 1];
+        bits[state / 64] |= 1 << (state % 64);
+        h.world.resource_mut::<crate::inside::Sensitive>().0 = Some(std::sync::Arc::from(bits));
+        h.world.resource_mut::<crate::host_out_inside::InsideOut>().0.clear();
+        let e = shoot_east(&mut h, 6.5);
+        for _ in 0..10 {
+            h.tick();
+        }
+        let out = std::mem::take(&mut h.world.resource_mut::<crate::host_out_inside::InsideOut>().0);
+        assert!(out.iter().any(|ev| ev.entity == e && ev.cells.contains(&[3, 1, 6])), "no report of the button cell: {out:?}");
     }
 }

@@ -211,7 +211,9 @@ pub struct StuckIndex {
 }
 
 /// How long a stuck arrow stays (`AbstractArrow.tickDespawn`: 1 200 ticks).
-const LIFE: u64 = 1200;
+/// `AbstractArrow.tickDespawn`: the ticks a stuck arrow lives; `shakeTime` (7 after a block hit) keeps `playerTouch` from taking it meanwhile.
+pub const LIFE: u64 = 1200;
+pub const SHAKE: u64 = 7;
 
 pub fn insert_resources(w: &mut World) {
     w.insert_resource(StuckIndex::default());
