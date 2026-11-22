@@ -954,7 +954,7 @@ impl Game<'_> {
         f: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
         // A mob the ECS holds is in the level in place: the ECS is that level's.
-        if let Target::Mob(id) = t
+        if let Target::Mob(id) | Target::Frame(id) | Target::Painting(id) = t
             && self.ecs.is_active()
             && self.ecs.exists(id)
         {
@@ -1588,6 +1588,8 @@ impl Game<'_> {
                         });
                 }
             }
+            // A frame or a painting is an ECS entity that hangs on a block: it takes the block that holds the position.
+            Target::Mob(id) if self.ecs.is_active() && self.ecs_hangs(id) => self.teleport_hanging(id, v),
             Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) | Target::Item(id) if self.ecs.is_active() => {
                 // Entity.teleport, as the ECS's mob: the same stopRiding, then the place, the motion and the turn.
                 self.dismount_mob(id);
@@ -1756,7 +1758,7 @@ impl Game<'_> {
             }
             // Wall-mounted entities do not move; a hook follows its own tick and a
             // dragon part its dragon's.
-            Target::Frame(_) | Target::Painting(_) => self.teleport_hanging(t, v),
+            Target::Frame(id) | Target::Painting(id) => self.teleport_hanging(id, v),
             Target::Hook(_) | Target::DragonPart(_) | Target::Knot(_) => {}
         }
         if !matches!(t, Target::Player | Target::Guest(_) | Target::Mob(_)) {

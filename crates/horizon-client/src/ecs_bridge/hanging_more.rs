@@ -85,6 +85,12 @@ impl EcsLevel {
         self.ecs_mut().is_some_and(|w| w.set_frame_fixed(mw, e, on))
     }
 
+    /// `BlockAttachedEntity.setPos` of the hanging entity `id` to the cell `pos`; false when it is unknown or hangs on nothing.
+    pub fn move_hanging(&mut self, mw: &MobWorld<'_>, id: u32, pos: [i32; 3]) -> bool {
+        let Some(e) = self.entity_of(id) else { return false };
+        self.ecs_mut().is_some_and(|w| w.move_hanging(mw, e, pos))
+    }
+
     /// `Entity.setDirection` of the hanging entity `id` to `face`; false when it is unknown or the wall does not hold there.
     pub fn set_hanging_facing(&mut self, mw: &MobWorld<'_>, id: u32, face: u8) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

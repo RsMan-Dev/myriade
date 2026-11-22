@@ -133,7 +133,14 @@ fn item_entities_round_trip() {
 #[test]
 #[ignore = "daily"]
 fn loaded_item_lifetime_counters_tick_with_signed_sentinels() {
-    let (mut game, _) = ecs_game_with("minecraft:cow", [0.0, 64.0, 0.0]);
+    // An item only ticks in a chunk that ticks (`ServerLevel.tick`): a player stands in the chunk, as the game's tick reads it.
+    let mut resources = None;
+    let mut game = crate::game::ecs::test_support::active_server_game(&mut resources);
+    game.build_registries();
+    game.world.chunks.insert((0, 0), std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)));
+    let feet = horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5);
+    game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
+    game.update_chunk_tickets();
     for delay in [32767_i16, -1, 0, 1, 2] {
         for age in [-32768_i16, -1, 0, 5998, 5999, 6000, 32767] {
             let c = item_compound(&format!("NoGravity:1b,Pos:[4.5d,210d,4.5d],Age:{age}s,PickupDelay:{delay}s"));

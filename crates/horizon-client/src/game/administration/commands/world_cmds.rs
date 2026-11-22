@@ -282,6 +282,8 @@ impl Game<'_> {
                 })
                 .unwrap_or(false)
             }
+            // The ECS owns the dropped items: a handle that names one reaches `ItemEntity.hurtServer`.
+            Target::Mob(id) if self.ecs.item(id).is_some() => self.hurt_item_entity(id, amount, ty, by, cause.or(by), from),
             Target::Mob(id) => {
                 let attacker = cause.or(by).and_then(|t| match t {
                     Target::Player | Target::Guest(_) => Some(Who::Player),

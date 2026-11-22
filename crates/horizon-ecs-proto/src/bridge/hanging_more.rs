@@ -92,6 +92,11 @@ impl EcsWorld {
         self.lent(mw, |w| frame_item::set_invisible(w, e, on))
     }
 
+    /// `BlockAttachedEntity.setPos` of the hanging entity `e` to the cell `pos`; false when it hangs on nothing.
+    pub fn move_hanging(&mut self, mw: &MobWorld<'_>, e: Entity, pos: [i32; 3]) -> bool {
+        self.lent(mw, |w| hanging::move_to(w, e, pos))
+    }
+
     /// `Entity.setDirection` of the hanging entity `e` to `face`, its place kept; false when the wall does not hold there.
     pub fn set_hanging_facing(&mut self, mw: &MobWorld<'_>, e: Entity, face: u8) -> bool {
         self.lent(mw, |w| {

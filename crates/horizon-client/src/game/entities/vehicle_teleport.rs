@@ -534,15 +534,16 @@ impl Game<'_> {
         )
     }
 
+    /// Whether the ECS entity `id` is a frame or a painting.
+    pub(in crate::game) fn ecs_hangs(&self, id: u32) -> bool {
+        self.ecs_frames().iter().any(|f| f.id == id) || self.ecs_paintings().iter().any(|p| p.id == id)
+    }
+
     /// `BlockAttachedEntity.setPos`: a frame or painting moves to the block
     /// holding the position; its bounds follow from it.
-    pub(super) fn teleport_hanging(&mut self, t: Target, v: Vec3) {
-        let pos = [v.x.floor(), v.y.floor(), v.z.floor()];
-        if let Target::Frame(id) | Target::Painting(id) = t
-            && let Some(e) = self.ecs.entity_of(id)
-        {
-            self.ecs_with(|ecs, mw| ecs.teleport(mw, e, pos));
-        }
+    pub(super) fn teleport_hanging(&mut self, id: u32, v: Vec3) {
+        let pos = [v.x, v.y, v.z].map(|c| c.floor() as i32);
+        self.ecs_with(|ecs, mw| ecs.move_hanging(mw, id, pos));
     }
 
     /// `Entity.teleportSameDimension`: after `t` moved from `from` to `to`, its

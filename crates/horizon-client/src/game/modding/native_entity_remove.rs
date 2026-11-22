@@ -113,11 +113,13 @@ impl Game<'_> {
             Target::Mob(id) | Target::Frame(id) | Target::Painting(id) => Some(id),
             _ => None,
         };
-        let step = hanging.and_then(|id| {
-            self.ecs_frames().into_iter().find(|f| f.id == id).map(|f| f.step())
-                .or_else(|| self.ecs_paintings().into_iter().find(|p| p.id == id).map(|p| p.step()))
+        // A hanging entity's position is the centre of its box, not of its cell: the drop sits 0.15 out from there.
+        let drop = hanging.and_then(|id| {
+            let centre = |(lo, hi): ([f64; 3], [f64; 3])| std::array::from_fn(|i| (lo[i] + hi[i]) / 2.0);
+            self.ecs_frames().into_iter().find(|f| f.id == id).map(|f| (centre(f.bounds()), f.step()))
+                .or_else(|| self.ecs_paintings().into_iter().find(|p| p.id == id).map(|p| (centre(p.bounds()), p.step())))
         });
-        let [x, y, z] = step.map_or(at, |step| super::frames::hanging_drop_position(at, step));
+        let [x, y, z] = drop.map_or(at, |(centre, step)| super::frames::hanging_drop_position(centre, step));
         // Found by its id: the hooks the spawn runs may add entities after it.
         let id = self.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);

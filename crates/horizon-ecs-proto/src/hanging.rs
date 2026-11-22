@@ -77,6 +77,41 @@ fn size_of(w: &World, e: Entity) -> (u8, u8) {
     w.get::<Size>(e).map_or((1, 1), |s| (s.width, s.height))
 }
 
+/// The box of a hanging entity (`ItemFrame.createBoundingBox`, `Painting.calculateBoundingBox`): 1/16 thick, 0.46875 out from the cell's
+/// centre; a painting is its width by its height, its centre shifted along its left when its width is even.
+pub fn bounds_of(a: &Attached, size: Option<(u8, u8)>) -> horizon_core::geometry::Aabb {
+    let (s, l) = (step(a.face).map(f64::from), left(a.face).map(f64::from));
+    let (w, h) = size.map_or((1.0, 1.0), |(w, h)| (f64::from(w), f64::from(h)));
+    let shift = |n: f64| if n % 2.0 == 0.0 { 0.5 } else { 0.0 };
+    let p = a.pos.map(f64::from);
+    let c = [p[0] + 0.5 - 0.46875 * s[0] + l[0] * shift(w), p[1] + 0.5 + shift(h), p[2] + 0.5 - 0.46875 * s[2] + l[2] * shift(w)];
+    let sz = match size {
+        Some(_) => [if s[0] != 0.0 { 0.0625 } else { w }, h, if s[2] != 0.0 { 0.0625 } else { w }],
+        None => [0, 1, 2].map(|i| if s[i] != 0.0 { 0.0625 } else { 0.75 }),
+    };
+    horizon_core::geometry::Aabb::new(
+        Vec3::new(c[0] - sz[0] / 2.0, c[1] - sz[1] / 2.0, c[2] - sz[2] / 2.0),
+        Vec3::new(c[0] + sz[0] / 2.0, c[1] + sz[1] / 2.0, c[2] + sz[2] / 2.0),
+    )
+}
+
+impl AttachIndex {
+    /// The hanging entities that hang on a block within one cell of `area` (their box may reach into it).
+    pub fn near(&self, area: horizon_core::geometry::Aabb) -> Vec<Entity> {
+        let (lo, hi) = (area.min_position(), area.max_position());
+        let (a, b) = ([lo.x, lo.y, lo.z].map(|v| v.floor() as i32 - 1), [hi.x, hi.y, hi.z].map(|v| v.floor() as i32 + 1));
+        let mut found = Vec::new();
+        for x in a[0]..=b[0] {
+            for y in a[1]..=b[1] {
+                for z in a[2]..=b[2] {
+                    found.extend(self.0.get(&[x, y, z]).into_iter().flatten().copied());
+                }
+            }
+        }
+        found
+    }
+}
+
 /// Hangs an entity of `kind` at `pos` on `face`. Its survival check is armed when it overlaps another hanging entity (the one
 /// created and the ones it overlaps, which vanilla checks in the same way).
 pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>) -> Entity {
@@ -105,11 +140,27 @@ pub fn hang(w: &mut World, pos: [i32; 3], face: u8, kind: u8, size: Option<Size>
 /// `setPos` and `setDirection` of a hanging entity: it moves to `pos` on `face` when the wall of its footprint holds there, and its support
 /// index follows. False when the wall does not hold, or `e` hangs on nothing.
 pub fn set_placement(w: &mut World, e: Entity, pos: [i32; 3], face: u8) -> bool {
-    let Some(a) = w.get::<Attached>(e).copied() else { return false };
+    if w.get::<Attached>(e).is_none() {
+        return false;
+    }
     let size = size_of(w, e);
     if !w.get_resource::<Walls>().map_or(true, |f| (f.0)(w, pos, face, size)) {
         return false;
     }
+    relocate(w, e, pos, face);
+    true
+}
+
+/// `BlockAttachedEntity.setPos`: the entity takes the cell `pos` (the block holding the requested position), its face kept, with no wall
+/// check (the survival check breaks it later when nothing holds it). False when `e` hangs on nothing.
+pub fn move_to(w: &mut World, e: Entity, pos: [i32; 3]) -> bool {
+    let Some(a) = w.get::<Attached>(e).copied() else { return false };
+    relocate(w, e, pos, a.face);
+    true
+}
+
+fn relocate(w: &mut World, e: Entity, pos: [i32; 3], face: u8) {
+    let Some(a) = w.get::<Attached>(e).copied() else { return };
     let index = &mut w.resource_mut::<AttachIndex>().0;
     if let Some(list) = index.get_mut(&support(a.pos, a.face)) {
         list.retain(|&o| o != e);
@@ -120,7 +171,6 @@ pub fn set_placement(w: &mut World, e: Entity, pos: [i32; 3], face: u8) -> bool 
     }
     let centre = Vec3::new(f64::from(pos[0]) + 0.5, f64::from(pos[1]) + 0.5, f64::from(pos[2]) + 0.5);
     w.entity_mut(e).insert(crate::cow::Pos(centre));
-    true
 }
 
 /// The other hanging entities whose footprint shares a cell with `e`'s (same face: the cells of one plane).

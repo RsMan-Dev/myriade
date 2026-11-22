@@ -73,7 +73,14 @@ impl Game<'_> {
         let context = self.who_context(who, None);
         self.post_game_event("minecraft:entity_damage", [at.x, at.y, at.z], context);
         if health <= 0 {
-            self.ecs.spill_item(id);
+            if let Some(held) = self.ecs.item(id) {
+                let mut stack = held.stack.clone();
+                let mut spilled = crate::bundle::destroyed(&mut stack);
+                spilled.extend(horizon_client::item_data::destroyed_container(&mut stack));
+                for s in spilled {
+                    self.spawn_item_own_id(s, [at.x, at.y, at.z], 0);
+                }
+            }
             self.ecs_remove_item(id);
         }
         true

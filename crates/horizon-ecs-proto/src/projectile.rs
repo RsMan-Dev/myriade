@@ -292,12 +292,14 @@ pub fn fly(
         ResMut<StuckIndex>,
         ResMut<crate::arrow_more::ArrowRng>,
     ),
-    (creatures, dodgers, hurts, potion, healths): (
+    (creatures, dodgers, hurts, potion, healths, hangers, wall): (
         Query<&Bounds, With<Health>>,
         Query<(), With<crate::behaviours::ender_teleport::Dodges>>,
         Query<&crate::cow::HurtAt>,
         Query<&crate::arrow_more::ThrownItem>,
         Query<&Health>,
+        Query<(&crate::hanging::Attached, Option<&crate::hanging::Size>)>,
+        Res<crate::hanging::AttachIndex>,
     ),
     mut q: Query<(Entity, &mut Pos, &mut Vel, &mut Projectile, &Flight, Option<&BornAt>, Option<&mut crate::arrow_more::PierceLevel>, Option<&crate::arrow_more::ModGate>, Option<&crate::arrow_more::GateOpen>, Option<&crate::arrow_more::Critical>, Option<&crate::arrow_more::BaseDamage>, Option<&crate::arrow_more::HurtAccel>), With<Flying>>,
     mut commands: Commands,
@@ -375,6 +377,12 @@ pub fn fly(
             }
         });
         on.for_near(original.x, original.z, reach, |pl| consider(Who::Player(pl.id), player_box(&pl)));
+        // Frames and paintings are pickable too (`BlockAttachedEntity.isPickable`).
+        for h in wall.near(area) {
+            if let Ok((a, size)) = hangers.get(h) {
+                consider(Who::Entity(h), crate::hanging::bounds_of(a, size.map(|s| (s.width, s.height))));
+            }
+        }
         if let Some((who, at, _)) = best {
             // A mod's gate: the impact is announced and waits for `resolve_impact`, the arrow not moved.
             if gate.is_some() && open.is_none() {
@@ -391,6 +399,21 @@ pub fn fly(
             };
             if pierced == Some(false) {
                 commands.entity(e).despawn();
+                continue;
+            }
+            if let Who::Entity(t) = who
+                && let Ok((a, _)) = hangers.get(t)
+            {
+                // `AbstractArrow.onHitEntity` on a frame or a painting: spent when it took the hit, turned back when a fixed frame refused it.
+                let (owner, painting, dir) = (p.owner, a.kind == crate::hanging::PAINTING, movement);
+                commands.queue(move |w: &mut World| {
+                    let hurt = if painting { crate::painting::hit(w, t, owner, false) } else { crate::frame_item::hit(w, t, owner, false) };
+                    if hurt {
+                        w.despawn(e);
+                    } else {
+                        crate::arrow_more::deflect(w, e, owner, dir);
+                    }
+                });
                 continue;
             }
             if let Who::Entity(t) = who
