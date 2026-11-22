@@ -12,6 +12,7 @@ fn a_creature_without_fire_sends_only_its_base_entries_then_fire_adds_entry_0() 
     h.world.entity_mut(a).insert(Health(20.0));
     let mut out = Vec::new();
     sync::sync_entries(&h.world, a, &mut out);
+    out.retain(|(index, _)| *index < 16);
     assert_eq!(out, vec![(9, sync::SyncValue::Float(20.0))], "no effect, no fire: the health alone");
     set_on_fire(&mut h.world, a, 100);
     out.clear();

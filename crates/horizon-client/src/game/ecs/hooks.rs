@@ -82,7 +82,7 @@ mod tests {
     #[test]
     fn a_conversion_unlinks_the_old_id_and_links_the_new_one() {
         with_game(|game| {
-            game.ecs = game.new_ecs_level(game.dim, 0);
+            game.ecs = game.test_ecs_level();
             let at = [0.5, 64.0, 0.5];
             let mut ecs = std::mem::replace(&mut game.ecs, EcsLevel::inert());
             let (old, new) = {
@@ -105,7 +105,7 @@ mod tests {
     #[test]
     fn a_death_post_hook_reads_the_entity_by_its_view_after_the_death() {
         with_game(|game| {
-            game.ecs = game.new_ecs_level(game.dim, 0);
+            game.ecs = game.test_ecs_level();
             let id = game.ecs_spawn("minecraft:cow", [1.5, 64.0, 1.5], None).unwrap();
             game.native_ecs_death_post(id, "minecraft:generic", 0);
             assert_eq!(game.ecs_kind(id).as_deref(), Some("minecraft:cow"));
@@ -116,7 +116,7 @@ mod tests {
     #[test]
     fn a_vetoable_kill_keeps_the_entity_until_it_is_resolved() {
         with_game(|game| {
-            game.ecs = game.new_ecs_level(game.dim, 0);
+            game.ecs = game.test_ecs_level();
             let id = game.ecs_spawn("minecraft:cow", [1.5, 64.0, 1.5], None).unwrap();
             game.ecs.set_death_vetoable(true);
             game.ecs_with(|ecs, mw| ecs.kill(mw, id));

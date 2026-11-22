@@ -1,0 +1,1 @@
+{"criteria":{"five":{"conditions":{"distance":{"y":{"max":5.1,"min":4.9}}},"trigger":"minecraft:fall_from_height"}}}

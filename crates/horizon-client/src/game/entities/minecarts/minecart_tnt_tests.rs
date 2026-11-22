@@ -16,6 +16,8 @@ fn server(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Opt
 
 /// A lone TNT cart at (0.5, 64, 0.5), spawned through the bridge.
 fn tnt_cart(game: &mut Game<'_>, id: u32) {
+    // A cart far from every player sleeps: the player's place is told to the level first.
+    game.sync_player_facts().unwrap();
     game.ecs_with(|ecs, mw| {
         ecs.spawn_cart_id(mw, CartKind::Tnt.id(), [0.5, 64.0, 0.5], 0.0, &mut || id)
     })

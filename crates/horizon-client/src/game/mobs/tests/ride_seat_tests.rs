@@ -24,6 +24,10 @@ fn a_marker_takes_no_rider() {
     let Some(mut game) = server_game(&mut resources) else {
         return;
     };
+    game.player =
+        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).expect("a player to ride"));
+    // The level knows the player before the entities are made: a creature far from every player sleeps.
+    game.sync_player_facts().unwrap();
     for (id, kind) in [(9, "minecraft:marker"), (10, "minecraft:item_display")] {
         game.load_other_as(id, kind, [0.5, 64.0, 0.5]);
     }
@@ -35,8 +39,6 @@ fn a_marker_takes_no_rider() {
         "vanilla's `ERROR_MOUNT_FAILED`"
     );
     assert_eq!(game.riding, None, "the player stays off the marker");
-    game.player =
-        Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).expect("a player to ride"));
     game.ride_mount(Target::Player, Target::Other(10))
         .expect("a display takes a rider");
     assert_eq!(game.riding, Some(10));

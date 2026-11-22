@@ -105,7 +105,7 @@ impl EcsWorld {
 
     /// True when the projectile `id` is an arrow or a spectral arrow.
     pub fn projectile_is_arrow(&self, id: u32) -> bool {
-        matches!(self.projectile_kind(id), Some("minecraft:arrow") | Some(crate::species::lists::SPECTRAL_ARROW))
+        matches!(self.projectile_kind(id), Some(crate::species::lists::ARROW) | Some(crate::species::lists::SPECTRAL_ARROW))
     }
 
     /// Sets the shooter of the projectile `id` to `by`; false when `id` is no projectile.

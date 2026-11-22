@@ -1,0 +1,8 @@
+{
+  "DataVersion": 5023,
+  "stats": {
+    "minecraft:custom": {
+      "minecraft:leave_game": 1
+    }
+  }
+}

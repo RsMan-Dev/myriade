@@ -304,6 +304,7 @@ fn save_all_then_restore_in_a_new_world_gives_the_same_nbt() {
     let mut a = Herd::new(0, 1.0, true, false, 1);
     let cow_species = species_table().0.into_iter().find(|s| s.name == "minecraft:cow").expect("the cow");
     let cow = spawn_species(&mut a.world, &cow_species, 3.0, 4.0, 1);
+    horizon_ecs_proto::behaviours::variant::set_variant(&mut a.world, cow, 0);
     nbt_tag::add(&mut a.world, cow, "marked");
     nbt::load(&mut a.world, cow, &comp([("data", Tag::Int(4))]));
     let display = passive::spawn(&mut a.world, "minecraft:block_display", Vec3::new(1.0, 2.0, 3.0), Tag::Compound(Compound::new()));

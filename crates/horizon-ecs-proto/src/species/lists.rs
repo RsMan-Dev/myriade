@@ -19,6 +19,7 @@ pub const FIREWORK_ROCKET: &str = "minecraft:firework_rocket";
 pub const SHULKER_BULLET: &str = "minecraft:shulker_bullet";
 pub const EGG: &str = "minecraft:egg";
 pub const ARROW: &str = "minecraft:arrow";
+pub const CREAKING: &str = "minecraft:creaking";
 pub const CHICKEN: &str = "minecraft:chicken";
 pub const VILLAGER: &str = "minecraft:villager";
 pub const SKELETON: &str = "minecraft:skeleton";

@@ -125,9 +125,9 @@ pub fn category_of(name: &str) -> Option<&'static str> {
     types.types.get(name).map(|t| t.category.as_str())
 }
 
-/// `Mob.isEnemy` (`instanceof Enemy`): a monster, but not a zombie horse, camel husk or zombie nautilus.
+/// `Mob.isEnemy` (`instanceof Enemy`): a monster, but not one that carries `NotEnemy` (zombie horse, camel husk, zombie nautilus).
 pub fn is_enemy(w: &World, e: Entity) -> bool {
-    category(w, e) == Some("monster") && !matches!(species(w, e), Some("minecraft:zombie_horse" | "minecraft:camel_husk" | "minecraft:zombie_nautilus"))
+    category(w, e) == Some("monster") && w.get::<crate::hostile::NotEnemy>(e).is_none()
 }
 
 /// The largest half width of the prepared mob types (0 before they are set); computed once they are.

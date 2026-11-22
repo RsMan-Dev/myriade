@@ -63,7 +63,7 @@ pub fn ask_heart(w: &mut World, e: Entity) {
 const MALUS: [(&str, f32); 5] = [("DAMAGING", 8.0), ("POWDER_SNOW", 8.0), ("LAVA", 8.0), ("FIRE", 0.0), ("FIRE_IN_NEIGHBOR", 0.0)];
 
 /// `Creaking.CREAKING` species name.
-const KIND: &str = "minecraft:creaking";
+const KIND: &str = crate::species::lists::CREAKING;
 /// `SoundEvents.CREAKING_DEATH`.
 const DEATH_SOUND: &str = "entity.creaking.death";
 

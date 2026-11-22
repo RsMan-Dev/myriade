@@ -1,10 +1,10 @@
 //! Mod-supplied repository sources. Discovery owns the metadata and retained
 //! readers; selection and resource/data reloads use the ordinary pack paths.
-use super::mods::ModsState;
+use super::{api_values::TryIntoEngine, mods::ModsState};
 use horizon_assets::resource_source::{ResourceSource, stays_inside};
 use horizon_client::datapack::DataPack;
 use mod_api::{
-    ClientHost, HookId, Host, HostSide, PackFinderError, PackFinders, PackRegistration, PackType,
+    ClientHost, HookId, Host, HostSide, PackFinderError, PackFinders, PackRegistration, PackSource, PackType,
     ServerHost,
 };
 
@@ -15,6 +15,10 @@ mod tests;
 pub(super) struct Found {
     id: String,
     source: ResourceSource,
+    /// From the feature source: its flags are the world's choices (`feature_repository`).
+    feature: bool,
+    /// `always_active`: the selection always holds it.
+    required: bool,
 }
 
 struct Registry {
@@ -73,10 +77,17 @@ impl PackFinders for Registry {
         let source = source
             .subdirectory(location.path())
             .map_err(|_| PackFinderError::InvalidPath)?;
+        // The title is not kept (no screen shows it), but a form the engine refuses is refused here as before.
+        entry.title.try_into_engine(&())?;
         if !matches!(self.kind, PackType::ClientResources | PackType::ServerData) {
             return Err(PackFinderError::InvalidMetadata);
         }
-        self.packs.push(Found { id, source });
+        let feature = match entry.source {
+            PackSource::BuiltIn => false,
+            PackSource::Feature => true,
+            _ => return Err(PackFinderError::InvalidMetadata),
+        };
+        self.packs.push(Found { id, source, feature, required: entry.always_active });
         Ok(())
     }
 }
@@ -110,7 +121,10 @@ pub(super) fn data_packs(mods: &ModsState) -> Vec<std::sync::Arc<DataPack>> {
     discover(PackType::ServerData, mods)
         .into_iter()
         .map(|pack| {
-            std::sync::Arc::new(DataPack::from_source(pack.id, pack.source))
+            let mut data = DataPack::from_source(pack.id, pack.source);
+            data.feature = pack.feature;
+            data.required = pack.required;
+            std::sync::Arc::new(data)
         })
         .collect()
 }

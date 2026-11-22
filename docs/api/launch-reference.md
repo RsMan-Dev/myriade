@@ -56,12 +56,6 @@ Prints one JSON object on stdout and exits 0. `horizon` is the build's version; 
         97,
         1
       ]
-    },
-    "shader": {
-      "api": [
-        "0.2"
-      ],
-      "schema": 1
     }
   },
   "crash_report_line": "Horizon: crash report saved to ",

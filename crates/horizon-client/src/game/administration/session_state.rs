@@ -458,6 +458,10 @@ impl Game<'_> {
     /// A server message: the console's log, the players' copy being sent by the caller.
     pub(in crate::game) fn system_message(&mut self, text: horizon_client::text::Text) {
         log::info!("System chat: {}", text.plain());
+        // The output of a command run for someone (a guest, a function, the console) is gathered, not only logged.
+        if let Some(capture) = self.chat_capture.as_mut() {
+            capture.push(text);
+        }
     }
     /// A player's line on the server: the console's log.
     pub(in crate::game) fn player_message(&mut self, text: horizon_client::text::Text) {

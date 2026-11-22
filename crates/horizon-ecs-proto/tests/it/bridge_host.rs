@@ -58,7 +58,7 @@ fn no_player_means_nothing_wakes() {
     let mut h = EcsWorld::new(&setup(), mw, types, &tags);
     let e = h.spawn(mw, "minecraft:cow", [0.5, 1.0, 0.5], None).expect("a known species");
     let at = h.world().get::<Pos>(e).unwrap().0;
-    assert!(h.step(mw).is_empty());
+    assert!(h.step(mw).iter().all(|ev| matches!(ev, HostEvent::Spawned { .. })), "only the spawn is told");
     assert_eq!(h.world().get::<Pos>(e).unwrap().0, at, "at 0 players the schedule does not run");
 }
 
@@ -77,9 +77,7 @@ fn block_change_is_reported_as_set_block() {
 #[test]
 fn select_by_kind_and_radius_finds_the_cows_near() {
     have_data();
-    let tags = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"));
-    let (mw, types, _) = leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-    let mut h = EcsWorld::new(&setup(), mw, types, &tags);
+    let (mw, mut h) = awake_host(&setup());
     let near = h.spawn(mw, "minecraft:cow", [2.5, 1.0, 2.5], None).expect("a known species");
     let far = h.spawn(mw, "minecraft:cow", [40.5, 1.0, 40.5], None).expect("a known species");
     let q = Select { kind: Some("minecraft:cow".into()), near: Some(([0.5, 1.0, 0.5], 8.0)), ..Default::default() };

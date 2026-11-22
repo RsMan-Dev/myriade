@@ -2,7 +2,7 @@
 //! `sync_entries` gives the core's slots (`sync_core`, indices 0..=15) then the species' (`sync_a`, `sync_b`). A slot gives an
 //! entry only when its value differs from the default; a missing source component gives none. Nothing is kept here: the last
 //! state sent lives on the tracker's side (lot 08).
-use super::{sync_a, sync_b, sync_core, view};
+use super::{sync_core, view};
 use bevy_ecs::prelude::*;
 use horizon_core::nbt::Tag;
 use horizon_protocol::entity_data::{Particle, Profile, Value, serializer};
@@ -67,13 +67,13 @@ pub struct SyncSlot {
     pub read: fn(&World, Entity) -> Option<SyncValue>,
 }
 
-/// The species' slots for the registry id `kind` (flattened inheritance, built once from `sync_a::TABLE` then `sync_b::TABLE`);
+/// The species' slots for the registry id `kind` (flattened inheritance, built once from `species::sync_a_table` then `sync_b_table`);
 /// an unknown species has none.
 pub fn species_slots(kind: &str) -> &'static [SyncSlot] {
     static TABLES: OnceLock<HashMap<&'static str, &'static [SyncSlot]>> = OnceLock::new();
     TABLES
         .get_or_init(|| {
-            let mut all: HashMap<&'static str, &'static [SyncSlot]> = sync_a::TABLE.iter().chain(sync_b::TABLE).copied().collect();
+            let mut all: HashMap<&'static str, &'static [SyncSlot]> = crate::species::sync_a_table::TABLE.iter().chain(crate::species::sync_b_table::TABLE).copied().collect();
             all.extend(crate::species::boats::species().map(|(id, _, _)| (id, super::sync_boats::SLOTS)));
             all
         })

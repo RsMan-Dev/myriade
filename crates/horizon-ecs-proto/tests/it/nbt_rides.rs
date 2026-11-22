@@ -107,6 +107,9 @@ fn a_mount_saves_its_riders_under_one_root_and_restores_them_seated() {
     let first = spawn_species(&mut a.world, &cow, 0.5, 0.5, 2);
     let second = spawn_species(&mut a.world, &camel, 0.5, 0.5, 3);
     let third = spawn_species(&mut a.world, &cow, 0.5, 0.5, 4);
+    for c in [first, third] {
+        horizon_ecs_proto::behaviours::variant::set_variant(&mut a.world, c, 0);
+    }
     assert!(ride(&mut a.world, root, Who::Entity(first)));
     assert!(ride(&mut a.world, root, Who::Entity(second)));
     assert!(ride(&mut a.world, second, Who::Entity(third)));

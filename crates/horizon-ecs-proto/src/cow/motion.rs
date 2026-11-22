@@ -516,7 +516,16 @@ pub(crate) fn apply_pushes(
 
 /// Puts the entity at `at`: its box follows, and the events that can put it into blocks or a fluid are raised.
 pub fn teleport(world: &mut World, e: Entity, at: Vec3) {
-    let b = *world.get::<Body>(e).unwrap();
+    // A thing without a body (an orb, a stack) is only put at the place: its own systems move it.
+    let Some(b) = world.get::<Body>(e).copied() else {
+        let Some(mut p) = world.get_mut::<Pos>(e) else { return };
+        let by = at.subtract(p.0);
+        p.0 = at;
+        if let Some(mut bb) = world.get_mut::<Bounds>(e) {
+            bb.0 = bb.0.move_by(by);
+        }
+        return;
+    };
     world.get_mut::<Pos>(e).unwrap().0 = at;
     world.get_mut::<Vel>(e).unwrap().0 = Vec3::ZERO;
     world.get_mut::<Bounds>(e).unwrap().0 = box_at(at, b.width, b.height);

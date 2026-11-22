@@ -30,6 +30,11 @@ fn stack_with(name: &str, component: &str, block: &str) -> ItemStack {
     stack
 }
 
+/// The primed TNT the level holds (the ECS owns them).
+fn tnt_count(game: &crate::game::Game<'_>) -> usize {
+    game.ecs.count_by_kind().iter().filter(|(k, _)| *k == "minecraft:tnt").map(|(_, n)| n).sum()
+}
+
 /// A click on the block at `pos` from above, at the centre of its top face.
 fn hit(pos: [i32; 3]) -> Hit {
     Hit {
@@ -89,7 +94,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
         "TntBlock.useItemOn's SUCCESS still ends the click"
     );
     assert!(
-        game.tnts.is_empty(),
+        tnt_count(&game) == 0,
         "an adventure player without can_break primes nothing"
     );
     assert_eq!(game.world.block(pos[0], pos[1], pos[2]), tnt);
@@ -104,7 +109,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
         "minecraft:tnt",
     ));
     let events = click(&mut game, pos).1;
-    assert_eq!(game.tnts.len(), 1);
+    assert_eq!(tnt_count(&game), 1);
     assert_eq!(game.world.block(pos[0], pos[1], pos[2]), air);
     assert_eq!(game.held().map(|s| s.damage), Some(1));
     assert_eq!(

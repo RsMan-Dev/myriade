@@ -1,6 +1,6 @@
 //! The game events of a movement (`Entity.move`: `checkFallDamage`, `applyMovementEmissionAndPlaySound`, `updateFluidInteraction`): `step`,
 //! `swim`, `flap`, `hit_ground`, `splash`, each with its entity as the source, for the vibration listeners (sculk sensors, the warden). Off
-//! unless the host asks (`MoveEventsOn`); only an entity that moved this tick is visited, a resting one costs nothing.
+//! unless the host asks (`MoveEventsOn`); only an entity that moved this tick (or the tick before, to see it stop) is visited, a resting one costs nothing.
 use crate::behaviours::move_emission::{Cfg, Flap, Params};
 use crate::cow::{Body, Clock, Contact, FluidState, Moving, Pos};
 use crate::goals::Events;
@@ -40,12 +40,13 @@ type Visit<'a> = (
     Option<&'a mut StepState>,
     Option<&'a crate::pose_state::PoseOverride>,
     Option<&'a Cfg>,
+    Has<Moving>,
 );
 
 /// `Entity.moveDist += 0.6 * horizontal distance`, then the emission when it passes `nextStep`. The distance is the one between this tick's
 /// position and the last seen, which is the applied movement (a `do_move` is the only thing that moves a visited entity).
-pub fn move_events(clock: Res<Clock>, mut ev: ResMut<Events>, mut cmd: Commands, mut q: Query<Visit, With<Moving>>) {
-    for (e, p, c, fs, b, st, pose, cfg) in &mut q {
+pub fn move_events(clock: Res<Clock>, mut ev: ResMut<Events>, mut cmd: Commands, mut q: Query<Visit, Or<(With<Moving>, With<StepState>)>>) {
+    for (e, p, c, fs, b, st, pose, cfg, moving) in &mut q {
         if b.object || b.orb || b.tnt {
             continue;
         }
@@ -89,6 +90,10 @@ pub fn move_events(clock: Res<Clock>, mut ev: ResMut<Events>, mut cmd: Commands,
         }
         s.fall = if c.on_ground { 0.0 } else { c.fall_distance.max(s.fall) };
         (s.last, s.was_ground, s.was_water) = (p.0, c.on_ground, fs.in_water);
+        // The tick that stopped it (`travel` took `Moving` off) is the last one seen: a landing is in it.
+        if !moving {
+            cmd.entity(e).remove::<StepState>();
+        }
     }
 }
 

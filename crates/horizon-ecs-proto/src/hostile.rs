@@ -206,6 +206,10 @@ pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
 }
 
 /// The rule `sun_burn` (no params): the undead that burn in daylight (`Mob.isSunBurnTick`): the eye height they look at the sky from.
+/// A monster by category that is not an `Enemy` in the jar (zombie horse, camel husk, zombie nautilus): the rule `NOT_ENEMY`.
+#[derive(Component)]
+pub struct NotEnemy;
+pub static NOT_ENEMY: crate::rules::Rule = crate::rules::Rule { name: "not_enemy", equip: |w, e, _| { w.entity_mut(e).insert(NotEnemy); }, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 pub static SUN_BURN: crate::rules::Rule = crate::rules::Rule { name: "sun_burn", equip: equip_sun_burn, attrs: crate::rules::no_attrs, interact: crate::rules::no_interact };
 fn equip_sun_burn(world: &mut World, e: Entity, _: &'static (dyn std::any::Any + Sync)) {
     let eye = world.get::<FluidParams>(e).map_or(0.0, |f| f.eye_height);

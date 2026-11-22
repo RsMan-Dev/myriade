@@ -18,6 +18,7 @@ pub static DEF: Def = Def {
 };
 /// The nautilus's rules with its own dash sounds.
 const RULES: &[crate::rules::RuleEntry] = &[
+    crate::rules::RuleEntry::new(&crate::hostile::NOT_ENEMY, &()),
     crate::rules::RuleEntry::new(&crate::keep_on_use::KEEP_ON_USE, &()),
     crate::rules::RuleEntry::new(&crate::tame::TAME, &crate::tame::TameParams::NAUTILUS),
     crate::rules::RuleEntry::new(&crate::heal_by_food::HEAL_BY_FOOD, &crate::heal_by_food::HealParams::NAUTILUS),

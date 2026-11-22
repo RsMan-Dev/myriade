@@ -8,6 +8,7 @@ pub static DEF: Def = Def {
     reference: Some(&camel::DEF),
     // jar: only `CamelHusk.interact` calls `setPersistenceRequired` (the camel does not); a `reference`'s rules come first, these follow.
     rules: &[
+        crate::rules::RuleEntry::new(&crate::hostile::NOT_ENEMY, &()),
         crate::rules::RuleEntry::new(&crate::keep_on_use::KEEP_ON_USE, &()),
         crate::rules::RuleEntry::new(&crate::mount_jump::JUMP_SOUND, &crate::mount_jump::JumpSound { sound: "entity.camel_husk.dash", volume: 1.0 }),
     ],

@@ -33,7 +33,7 @@ const NAMES: [(&str, Kind); 18] = [
     ("minecraft:slowness", Kind::Slowness),
     ("minecraft:weakness", Kind::Weakness),
     ("minecraft:poison", Kind::Poison),
-    ("minecraft:wither", Kind::Wither),
+    (crate::species::lists::WITHER_EFFECT, Kind::Wither),
     ("minecraft:regeneration", Kind::Regeneration),
     ("minecraft:fire_resistance", Kind::FireResistance),
     ("minecraft:water_breathing", Kind::WaterBreathing),

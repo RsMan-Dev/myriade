@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 pub mod lists;
+pub mod sync_a_table;
+pub mod sync_b_table;
 pub mod variants;
 pub mod mob_heads;
 pub mod minecart;

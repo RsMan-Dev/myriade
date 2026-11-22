@@ -5821,6 +5821,15 @@ impl<'a> Game<'a> {
             player_model: None,
         };
         game.reset_entity_residency();
+        // A server runs an ECS level once its world opens (`adopt_world`); a fixture that builds a
+        // game without opening one still has non-player entities to hold, so give it the overworld's.
+        #[cfg(test)]
+        {
+            game.ecs = game.test_ecs_level();
+            if !game.ecs_role_active() {
+                game.ecs = horizon_client::ecs_bridge::EcsLevel::inert();
+            }
+        }
         Ok(game)
     }
 }
