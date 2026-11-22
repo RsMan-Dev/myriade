@@ -27,6 +27,7 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     spawn: Some(crate::spawning::SpawnDef { cluster: 6, ..crate::spawning::SpawnDef::ANIMAL }), despawn: Some(crate::despawn::DespawnDef::KEPT),
     draws: Some(&DRAWS),
+    random_max_health: true,
     ..Def::EMPTY
 };
 

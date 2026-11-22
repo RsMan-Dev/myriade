@@ -264,6 +264,8 @@ pub struct Def {
     pub lost_horn: Option<f64>,
     /// `Llama.finalizeSpawn`: the strength drawn at the pose (`LlamaStrength`, the `Strength` key), for a llama and a trader's llama.
     pub llama_strength: bool,
+    /// `AbstractHorse.randomizeAttributes`: the max health is drawn at the birth (`spawn_declared`), for a horse, a donkey, a mule and a llama.
+    pub random_max_health: bool,
     /// `EntityType.notInPeaceful`: `Mob.checkDespawn` discards it in peaceful difficulty (`peaceful::NotInPeaceful`).
     pub not_in_peaceful: bool,
     /// The variant drawn at a spawn (`rules::variant::Table`, `Variant`): `None` for a species with no such draw.
@@ -290,7 +292,7 @@ pub const FIRE_WITHER_IMMUNE_CAPS: &[Cap] = &[Cap::Transform, Cap::Solid, Cap::B
 /// A capability that supposes others (declared, checked when the registry is frozen): the dependency, not a guess.
 const NEEDS: &[(Cap, Cap)] = &[(Cap::Body, Cap::Transform), (Cap::Body, Cap::Solid), (Cap::Living, Cap::Body), (Cap::Locomotion, Cap::Body), (Cap::Tamable, Cap::Transform), (Cap::Rideable, Cap::Body), (Cap::Stand, Cap::Living), (Cap::Projectile, Cap::Transform), (Cap::Passive, Cap::Transform), (Cap::Hanging, Cap::Transform)];
 impl Def {
-    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
+    pub const EMPTY: Def = Def { name: "", reference: None, targets: &[], goals: &[], changes: &[], rules: &[], caps: None, brain: crate::brain::BrainDef::EMPTY, locomotion: &[], spawn: None, despawn: None, saved: true, gravity: true, screaming: None, lost_horn: None, llama_strength: false, random_max_health: false, not_in_peaceful: false, variant: None, sounds: None, sound_on_breed: false, draws: None, merchant: false, no_portal: false };
     fn all_rules(&self) -> Vec<crate::rules::RuleEntry> {
         let mut v = self.reference.map_or_else(Vec::new, Def::all_rules);
         v.extend_from_slice(self.rules);
@@ -371,6 +373,8 @@ pub struct Resolved {
     pub no_portal: bool,
     /// `Def::llama_strength`.
     pub llama_strength: bool,
+    /// `Def::random_max_health`.
+    pub random_max_health: bool,
     /// `Def::not_in_peaceful`.
     pub not_in_peaceful: bool,
 }
@@ -484,7 +488,7 @@ impl Builder {
             let (list, targets) = resolve(src, d, &self.modules)?;
             by_name.insert(d.name, species.len());
             lists.push((list, targets));
-            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity,screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
+            species.push(Resolved { name: d.name, config: Config { entries: &[] }, rules: Box::leak(d.all_rules().into_boxed_slice()), caps: d.capabilities(), brain: None, modes: d.modes(), spawn: d.spawn_def().map(|x| &*Box::leak(Box::new(x))), despawn: d.despawn_def().map(|x| &*Box::leak(Box::new(x))), saved: d.saved, gravity: d.gravity,screaming: d.screaming, lost_horn: d.lost_horn, llama_strength: d.llama_strength, random_max_health: d.random_max_health, not_in_peaceful: d.not_in_peaceful, variant: d.variant, sounds: d.sounds, sound_on_breed: d.sound_on_breed, draws: d.draws, merchant: d.merchant, no_portal: d.no_portal });
         }
         for (src, name, changes) in &self.alters {
             let Some(&i) = by_name.get(name) else {

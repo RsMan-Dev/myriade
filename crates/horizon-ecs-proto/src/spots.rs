@@ -262,15 +262,15 @@ impl Spotter<'_> {
             Pick::LandAway { .. } | Pick::LandTowards { .. } | Pick::Flying { .. } | Pick::AirTowards { .. } => unreachable!("drawn by `pick`"),
         }
     }
-    /// `HoverRandomPos.generateRandomPos(8, 7, 3, 1)`: a stable spot (a solid with a sturdy top) raised 1..=3 blocks above the ground, out of water.
+    /// `HoverRandomPos.generateRandomPos(8, 7, 3, 1)`: the spot, raised 1..=3 blocks above a solid it is in, out of water.
     fn hover(&mut self, xd: f64, zd: f64, max_rad: f64) -> Option<[i32; 3]> {
         let d = self.direction_within(0.0, 8.0, 7, xd, zd, max_rad)?;
         let p = self.toward(d);
         let mw = self.mw;
-        let sturdy = horizon_client_lib::mobs::data::STURDY_TOP;
-        if !self.in_height(p) || mw.data.state(mw.world.block(p[0], p[1], p[2])).flags & sturdy == 0 {
+        if !self.in_height(p) {
             return None;
         }
+        // Not solid: the spot stays in the air (`moveUpToAboveSolid` returns it as is), as vanilla's `HoverRandomPos` keeps it.
         let above = self.rng.next_int(3) + 1;
         let p = self.move_up_to_above_solid(p, above);
         let water = mw.fluid(p[0], p[1], p[2]) == horizon_client_lib::blocks::Fluid::Water;

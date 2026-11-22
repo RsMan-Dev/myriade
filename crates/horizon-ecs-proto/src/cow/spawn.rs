@@ -132,6 +132,8 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
         let max: u32 = if rng.next_f64() < 0.04 { 5 } else { 3 };
         1 + (rng.next_u32() % max) as i32
     });
+    // `AbstractHorse.randomizeAttributes` (`Horse`, `AbstractChestedHorse`, a llama): `generateMaxHealth`, 15 and a `nextInt(8)` and two `nextInt(9)`.
+    let max_health = sp.random_max_health.then(|| 15.0 + (rng.next_u32() % 8) as f32 + (rng.next_u32() % 9) as f32 + (rng.next_u32() % 9) as f32);
     let uid = crate::goals::next_uid();
     let has = |c: crate::behaviours::Cap| sp.caps.contains(&c);
     // The species markers are zero-size: they go in first, so the bundle below is the only one that writes data.
@@ -160,6 +162,9 @@ pub(crate) fn spawn_declared(world: &mut World, sp: &Species, x: f64, z: f64, se
     }
     if has(crate::behaviours::Cap::Living) {
         e.insert(living_bundle(sp));
+    }
+    if let Some(m) = max_health {
+        e.insert((crate::attr_mod::AttrMods(vec![("max_health".to_owned(), f64::from(m), Vec::new())]), Health(m)));
     }
     if has(crate::behaviours::Cap::Locomotion) {
         e.insert(locomotion_bundle(sp, yaw));

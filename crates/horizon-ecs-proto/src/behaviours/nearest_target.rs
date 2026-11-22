@@ -180,6 +180,14 @@ fn player_in_reach(w: &mut World, e: Entity, n: &Nearest) -> bool {
 }
 /// A player came within the watch of an animal whose player goal sleeps: the goal is armed again.
 fn tick(w: &mut World) {
+    // A target lost by another goal (`clear_target`, the guardian's beam): the instances that held it end, so their ask is armed again.
+    let lost: Vec<Entity> = w.resource::<Events>().target_lost.iter().collect();
+    for e in lost {
+        let slots: Vec<u8> = w.get::<NearestTargets>(e).map_or(Vec::new(), |ts| ts.0.iter().map(|n| n.slot).collect());
+        for s in slots {
+            end_goal(w, e, s);
+        }
+    }
     if w.resource::<Events>().player_entered.is_empty() {
         return;
     }
@@ -260,6 +268,7 @@ fn can_use(w: &mut World, e: Entity, inst: Inst) -> bool {
                 targeting::sight_range(range, ps.visibility(p.id))
             };
             d <= reach * reach
+                && n.p.beyond_sqr.is_none_or(|b| d > b)
                 && !(n.p.spare_owner && owner == Some(Who::Player(p.id)))
                 && n.p.max_dy.is_none_or(|m| (p.y - pos.y).abs() <= m)
                 && n.p.attach_reach.is_none_or(|m| {

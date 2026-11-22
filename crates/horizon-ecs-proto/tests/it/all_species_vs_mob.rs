@@ -101,8 +101,10 @@ impl Gap {
 /// The pool `pool_if_aquatic` digs for a species that breathes under water, given to `set` (the `Mob` world or the ECS one).
 pub(super) fn pool(sp: &Species, mut set: impl FnMut(i32, i32, i32, &'static str)) {
     use horizon_ecs_proto::rules::locomotion::Medium;
-    // A swimmer with no ground mode: the others stand on the floor.
-    if sp.modes.iter().any(|(m, _)| *m == Medium::Ground) || !sp.modes.iter().any(|(m, _)| *m == Medium::Water) {
+    use horizon_ecs_proto::locomotion::swim::Params as SwimParams;
+    // A swimmer whose navigation is bound to the water (`WaterBoundPathNavigation`, not the amphibious turtle's): the others stand on the floor.
+    let bound = |en: &horizon_ecs_proto::behaviours::Entry| (en.params as &dyn std::any::Any).downcast_ref::<SwimParams>().is_some_and(|p| p.amphibious.is_none());
+    if sp.modes.iter().any(|(m, _)| *m == Medium::Ground) || !sp.modes.iter().any(|(m, en)| *m == Medium::Water && bound(en)) {
         return;
     }
     for dx in -2..=2 {

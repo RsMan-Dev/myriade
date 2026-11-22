@@ -26,6 +26,7 @@ pub static MODULE: Module = Module {
     ends_with_path: true,
     blocked: Some(blocked),
     equip,
+    arm: arm_first,
     fired,
     can_use,
     start,
@@ -39,6 +40,10 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
     if let Some(mut s) = w.get_mut::<Stroll>(e) {
         s.interval = p.interval;
     }
+}
+/// `arm_all` at birth: the first swim is armed, as the turtle's (a timer set by the herd or the bench does not arm it).
+fn arm_first(w: &mut World, e: Entity, _: Inst) {
+    arm_now(w, e);
 }
 fn arm_now(w: &mut World, e: Entity) {
     let mut s = *w.get::<Stroll>(e).unwrap();

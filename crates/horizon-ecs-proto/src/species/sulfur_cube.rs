@@ -10,6 +10,7 @@ use crate::locomotion::{hop, Medium};
 use crate::behaviours::shear::ShearDef;
 use crate::behaviours::swallow_hold::{release, Held, SearchAfter};
 use crate::rules::RuleEntry;
+use crate::rules::size::HealthLaw;
 use crate::size::{SizeParams, SIZE};
 
 /// `SulfurCube.shear`: the held block comes out (an item thrown from the top of its body) and it does not search for 100 ticks.
@@ -47,7 +48,7 @@ pub static DEF: Def = Def {
         Entry::new(&tempt::MODULE, 3, &tempt::Params { speed: 1.25, items: SWALLOWABLE, stop: 2.5, range: 10.0, look_y: 95.0, calm: 100, ..tempt::Params::DEFAULT }),
         Entry::new(&item_seek::MODULE, 3, &item_seek::Params::DEFAULT),
     ],
-    rules: &[RuleEntry::new(&SIZE, &SizeParams { split: None, ..SizeParams::SLIME }), RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING), RuleEntry::new(&crate::hand_swallow::HAND_SWALLOW, &crate::hand_swallow::SwallowParams::SULFUR_CUBE)],
+    rules: &[RuleEntry::new(&SIZE, &SizeParams { split: None, health: HealthLaw::PerSize(4.0), ..SizeParams::SLIME }), RuleEntry::new(&crate::behaviours::shear::SHEAR, &SHEARING), RuleEntry::new(&crate::hand_swallow::HAND_SWALLOW, &crate::hand_swallow::SwallowParams::SULFUR_CUBE)],
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::SLIME))],
     draws: Some(&crate::behaviours::spawn_draw::SPAWN_SIZE_BY_AGE),
     ..Def::EMPTY

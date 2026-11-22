@@ -35,10 +35,16 @@ pub struct Waking;
 pub struct Perching;
 
 pub static MODULE: Module = Module { name: "bat_flutter", equip, systems, requires: &[Cap::Locomotion], ..Module::DEFAULT };
-/// `Bat(EntityType, Level)`: a new bat hangs.
+/// `Bat(EntityType, Level)` rests; its first AI step wakes it unless a redstone conductor is above it (`customServerAiStep`).
 fn equip(w: &mut World, e: Entity, _: Inst, _: &'static (dyn std::any::Any + Sync)) {
     w.entity_mut(e).insert(Flutter::default());
-    perch(w, e);
+    let Some(p) = w.get::<Pos>(e).map(|p| p.0) else { return };
+    let level = *w.resource::<Level>();
+    if conductor(&level, bat_flutter::above(p.x, p.y, p.z)) {
+        perch(w, e);
+    } else {
+        w.entity_mut(e).insert((Fluttering, Moving));
+    }
 }
 /// Hangs from the block above: at rest, asleep (`Bat.tick` of a resting bat), watched for a player within 4 blocks.
 pub fn perch(w: &mut World, e: Entity) {

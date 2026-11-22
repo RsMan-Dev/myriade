@@ -51,9 +51,21 @@ pub static MODULE_LOOK: Module = Module {
     requires: &[Cap::Locomotion, Cap::Head],
     ..Module::DEFAULT
 };
-/// The module this entity's stroll entry uses: the guardian's `.looking()` stroll holds LOOK too, the same code otherwise.
+/// The module this entity's stroll entry uses: the guardian's `.looking()` stroll holds LOOK too, the same code otherwise. A swimmer's,
+/// a flier's or a turtle's stroll is the same timer with its own `fired` (`Due::Stroll` reaches it here, not the walk's module).
 pub fn module_of(w: &World, e: Entity) -> &'static Module {
-    if w.get::<GoalSet>(e).is_some_and(|g| g.has(&MODULE_LOOK)) { &MODULE_LOOK } else { &MODULE }
+    let Some(g) = w.get::<GoalSet>(e) else { return &MODULE };
+    if g.has(&MODULE_LOOK) {
+        &MODULE_LOOK
+    } else if g.has(&crate::behaviours::fish_swim::MODULE) {
+        &crate::behaviours::fish_swim::MODULE
+    } else if g.has(&crate::behaviours::fly_stroll::MODULE) {
+        &crate::behaviours::fly_stroll::MODULE
+    } else if g.has(&crate::behaviours::turtle_stroll::MODULE) {
+        &crate::behaviours::turtle_stroll::MODULE
+    } else {
+        &MODULE
+    }
 }
 /// `ai::after_hurt`: `noActionTime = 0`: the animal is active for 100 more ticks and its stroll attempt, if none is armed, is armed
 /// (the wait is drawn from a stream of its own: the animal's random belongs to its goals, which the hit must not shift).

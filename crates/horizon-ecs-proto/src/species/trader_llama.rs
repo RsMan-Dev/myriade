@@ -16,5 +16,6 @@ pub static DEF: Def = Def {
         ),
     ],
     llama_strength: true,
+    random_max_health: true,
     ..Def::EMPTY
 };

@@ -3,14 +3,14 @@
 //! body with `split` leaves smaller ones where it dies (`2 + nextInt(3)` of half its size). The rule is a rule of the species
 //! (`SIZE`, `SizeParams`); the size of a body is the component `Size`, set at creation (`spawn_sized`) or by `set_size`.
 use crate::cow::*;
-use crate::rules::size::{box_of, damage_of, health_of, speed_of, split_offset};
+use crate::rules::size::{box_of, damage_of, health_of, speed_of, split_offset, HealthLaw};
 use crate::rules::{no_attrs, no_interact, params, Rule};
 use bevy_ecs::prelude::*;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SizeParams {
-    pub health_per_sq: f32,
+    pub health: HealthLaw,
     pub speed_base: f64,
     pub speed_per_size: f64,
     pub damage_per_size: f32,
@@ -20,7 +20,7 @@ pub struct SizeParams {
     pub split: Option<(i32, i32)>,
 }
 impl SizeParams {
-    pub const SLIME: Self = Self { health_per_sq: 1.0, speed_base: 0.2, speed_per_size: 0.1, damage_per_size: 1.0, delay_mul: 1, split: Some((2, 3)) };
+    pub const SLIME: Self = Self { health: HealthLaw::PerSquare(1.0), speed_base: 0.2, speed_per_size: 0.1, damage_per_size: 1.0, delay_mul: 1, split: Some((2, 3)) };
     pub const MAGMA_CUBE: Self = Self { delay_mul: 4, ..Self::SLIME };
 }
 #[derive(Component, Clone, Copy, Debug)]
@@ -54,7 +54,7 @@ pub fn set_size(w: &mut World, e: Entity, size: i32) {
         crate::behaviours::contact_damage::widen(w, e);
     }
     if let Some(mut h) = w.get_mut::<Health>(e) {
-        h.0 = health_of(r.p.health_per_sq, s);
+        h.0 = health_of(r.p.health, s);
     }
     if let Some(mut d) = w.get_mut::<AttackDamage>(e) {
         d.0 = damage_of(r.p.damage_per_size, s);

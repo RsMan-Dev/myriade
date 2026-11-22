@@ -329,6 +329,21 @@ pub(crate) fn push(
                 }
             });
         }
+        // `LivingEntity.pushEntities` takes the players too (`getPushableEntities`): a creature standing on a player's box is pushed
+        // off it, twice per tick as the pair's two calls give. The player's side is the host's, not written here.
+        if let Some(on) = online.as_deref().filter(|_| !is_object(e) && !fixed.contains(e)) {
+            let r = (mx.x - mn.x).max(mx.z - mn.z) / 2.0 + 0.3;
+            on.for_near(cx, cz, r, |p| {
+                let pb = crate::targeting::player_box(&p);
+                if b.0.intersects(pb) {
+                    let away = crate::rules::push_rules::push_impulse(Vec3::new(p.x, 0.0, p.z), Vec3::new(cx, 0.0, cz));
+                    if let Some(v) = away {
+                        dv.0 += 2.0 * v.x;
+                        dv.1 += 2.0 * v.z;
+                    }
+                }
+            });
+        }
         {
         idx.for_near_touching(cx, cz, (mn.x, mn.z), (mx.x, mx.z), |o| {
             if o == e {

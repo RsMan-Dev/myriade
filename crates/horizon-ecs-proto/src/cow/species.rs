@@ -185,6 +185,8 @@ pub struct Species {
     pub lost_horn: Option<f64>,
     /// `Def::llama_strength`: the strength is drawn at the pose (`spawn_declared`).
     pub llama_strength: bool,
+    /// `Def::random_max_health`: the max health is drawn at the birth (`spawn_declared`).
+    pub random_max_health: bool,
     /// `Def::not_in_peaceful`.
     pub not_in_peaceful: bool,
 }

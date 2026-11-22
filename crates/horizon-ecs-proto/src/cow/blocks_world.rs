@@ -226,6 +226,7 @@ fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Speci
             screaming,
             lost_horn,
             llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
+            random_max_health: crate::species::registry().by_name(name).unwrap().random_max_health,
             not_in_peaceful: crate::species::registry().by_name(name).unwrap().not_in_peaceful,
         });
     }

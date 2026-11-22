@@ -40,5 +40,6 @@ pub static DEF: Def = Def {
     rules: &[RuleEntry::new(&RIDE, &RideParams::LLAMA), RuleEntry::new(&crate::make_mad::ANGRY, &crate::make_mad::Angry::LLAMA), RuleEntry::new(&LEASH, &LeashParams::LLAMA), RuleEntry::new(&crate::equipment::EQUIP, &crate::equipment::EquipParams::BODY), RuleEntry::new(&crate::fit_chest::FIT_CHEST, &crate::fit_chest::ChestParams::LLAMA)],
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::Tamable, Cap::Rideable]),
     llama_strength: true,
+    random_max_health: true,
     ..Def::EMPTY
 };

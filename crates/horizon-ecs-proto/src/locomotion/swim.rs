@@ -85,6 +85,8 @@ pub struct SquidState {
     pub movement: f32,
     pub speed: f32,
     pub vector: [f64; 3],
+    /// `Squid.yBodyRot`: the body turns toward the movement each tick, and the yaw is set to it.
+    pub body_yaw: f32,
 }
 /// The animal's air runs down while it is out of the water (set by `equip`, with `Dry` out of the water).
 #[derive(Component, Clone, Copy, Debug)]
@@ -105,7 +107,8 @@ fn equip(w: &mut World, e: Entity, _: Inst, p: &'static (dyn std::any::Any + Syn
             Some(mut r) => tentacle_speed(r.next_float()),
             None => tentacle_speed(crate::cow::Rng(e.to_bits() | 1).next_float()),
         };
-        w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3] }, Moving));
+        let body_yaw = w.get::<Yaw>(e).map_or(0.0, |y| y.0);
+        w.entity_mut(e).insert((SquidState { movement: 0.0, speed, vector: [0.0; 3], body_yaw }, Moving));
     }
     if sp.needs_water {
         // Out of the water until the first event says otherwise.
@@ -470,7 +473,7 @@ fn dry(
 
 /// `Squid.aiStep` (server side): the tentacle cycle advances by its speed; in the water the stroke from 3/4 of the first half sets the velocity
 /// to the goals' vector, the second half slows it by 0.9; out of the water it falls straight down (no control).
-fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, gravity: f64) {
+fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, gravity: f64, yaw: &mut Yaw) {
     st.movement += st.speed;
     if cycle_turned(st.movement) {
         st.movement = cycle_back(st.movement);
@@ -483,6 +486,9 @@ fn squid_step(st: &mut SquidState, v: &mut Vel, rng: &mut Rng, in_water: bool, g
     } else {
         v.0 = squid_dry(v.0, gravity);
     }
+    // The body turns toward the movement after the stroke (`Squid.aiStep`: `yBodyRot += (-atan2(x, z) - yBodyRot) * 0.1`, then `setYRot`).
+    st.body_yaw += (-trig::atan2_degrees(v.0.x, v.0.z) - st.body_yaw) * 0.1;
+    yaw.0 = st.body_yaw;
 }
 
 /// `AbstractFish.travelInWater` of an animal in the water; out of it (partly) the walk's `travel_one` (gravity on the ground).
@@ -493,11 +499,11 @@ fn travel(
     targets: Query<(), With<crate::targeting::Target>>,
     following: Query<(), With<Following>>,
     mut q: Query<
-        (Entity, &mut Pos, &mut Vel, &Yaw, &mut Contact, &mut Drive, (&Body, Option<&Gravity>), &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
+        (Entity, &mut Pos, &mut Vel, &mut Yaw, &mut Contact, &mut Drive, (&Body, Option<&Gravity>), &mut Bounds, &FluidState, &FluidParams, &Immune, &SwimParams, Option<&mut SquidState>, &mut Rng, Has<WantsToSwim>),
         (With<Moving>, Without<Overlapping>, Without<crate::dragon::flight::NoAi>, With<SwimMode>),
     >,
 ) {
-    for (e, mut p, mut v, y, mut c, mut d, (b, gr), mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
+    for (e, mut p, mut v, mut y, mut c, mut d, (b, gr), mut bb, fs, fp, imm, swp, squid, mut rng, wants) in &mut q {
         let has_target = targets.contains(e);
         let mut fall = 0.0_f32;
         let was_in_air = !c.on_ground;
@@ -515,7 +521,7 @@ fn travel(
                 in_water = level.mw.0.fluids(bb.0, p.0.y + fp.eye_height).in_water;
             }
             if let Some(mut st) = squid {
-                squid_step(&mut st, &mut v, &mut rng, in_water, gr.map_or(0.0, |g| g.0));
+                squid_step(&mut st, &mut v, &mut rng, in_water, gr.map_or(0.0, |g| g.0), &mut *y);
             }
             continue;
         }
@@ -540,7 +546,7 @@ fn travel(
             let sink = sink_rate(swp.sinks, swp.control == Control::Guardian, d.speed == 0.0 && !has_target);
             v.0 = swim_drag(m, sink);
         } else {
-            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, y, &mut c, &mut d, b, gr.map(|g| g.0), &mut bb, fs, false, &mut fall, false);
+            let rest = crate::cow::travel_one_with(&level, fp, &mut p, &mut v, &y, &mut c, &mut d, b, gr.map(|g| g.0), &mut bb, fs, false, &mut fall, false);
             // At rest out of the water (on the ground, still) and not following a path: inactive until something moves it, as the cow's physics.
             if rest && !following.contains(e) {
                 par.command_scope(e, |mut cmd| {

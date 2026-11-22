@@ -4,10 +4,10 @@
 //! apart by more than 25 %. `head_turn` and `body_turn` alone are `lod`: the ECS does not look without a spectator (`LazyLook`). A measure
 //! missing from the reference is `no_reference`. The journal (`BEHAVIOUR_LOG`, TSV) has one line per measure, a panic one line per seed.
 //! The test asserts nothing on the verdicts. `BENCH_SPECIES` (comma-separated, with or without `minecraft:`) plays only those species.
-use crate::all_species_vs_mob::{pool, read_ecs, Row, ALIVE};
+use crate::all_species_vs_mob::{read_ecs, Row, ALIVE};
 use crate::common::*;
 use bevy_ecs::prelude::*;
-use horizon_ecs_proto::{cow::*, goals::*};
+use horizon_ecs_proto::{cow::*, goals::*, spawning::Category};
 use std::{collections::HashMap, fs::File, io::Write, panic::AssertUnwindSafe, path::PathBuf};
 
 const TICKS: usize = 400;
@@ -72,9 +72,29 @@ fn measures(rows: &[Row], with_player: bool) -> Measures {
     out
 }
 
-/// One run of `sp` in a fresh flat scene: the rows of the ECS, stepped while it lives.
+/// The pool of `Probe.java` (`pool`): a water creature (its spawn category) stands in a block of water, 5 by 7, two high.
+fn pool_probe(sp: &Species, mut set: impl FnMut(i32, i32, i32, &'static str)) {
+    let water = horizon_ecs_proto::species::registry().by_name(sp.name).ok().and_then(|r| r.spawn).is_some_and(|s| {
+        matches!(s.category, Category::UndergroundWaterCreature | Category::WaterCreature | Category::WaterAmbient)
+    });
+    if !water {
+        return;
+    }
+    for dx in -2..=2 {
+        for dz in -3..=3 {
+            for y in 1..=2 {
+                set(dx, y, dz, "minecraft:water");
+            }
+        }
+    }
+}
+
+/// One run of `sp` in a fresh flat scene at midnight in the overworld (as the probe): the rows of the ECS, stepped while it lives.
 fn run(sp: &Species, with_player: bool, seed: u64) -> Vec<Row> {
     let (_, mut h) = flat_pair();
+    h.set_daylight(false);
+    // The overworld is not safe for piglins: they and the hoglins turn into zombies there.
+    h.world.insert_resource(UnsafePlace(|_, _| true));
     let e = spawn_species(&mut h.world, sp, 0.5, 0.5, seed);
     if let Some(mut yaw) = h.world.get_mut::<Yaw>(e) {
         yaw.0 = 0.0;
@@ -90,7 +110,7 @@ fn run(sp: &Species, with_player: bool, seed: u64) -> Vec<Row> {
         arm_at(&mut h.world, e, at, Due::Stroll);
         h.world.get_mut::<Stroll>(e).unwrap().scheduled = true;
     }
-    pool(sp, |x, y, z, n| h.set_block(x, y, z, n));
+    pool_probe(sp, |x, y, z, n| h.set_block(x, y, z, n));
     if with_player {
         h.set_online(&[PLAYER]);
     }
@@ -100,7 +120,12 @@ fn run(sp: &Species, with_player: bool, seed: u64) -> Vec<Row> {
             break;
         }
         h.tick();
-        rows.push(read_ecs(&h.world, e));
+        let mut row = read_ecs(&h.world, e);
+        // A creature the game removes (a creeper's blast, a conversion) keeps its last health, as a discarded `Mob` does.
+        if h.world.get_entity(e).is_err() {
+            row[HEALTH] = rows[rows.len() - 1][HEALTH];
+        }
+        rows.push(row);
     }
     rows
 }
