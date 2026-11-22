@@ -523,7 +523,7 @@ fn piston_push_reaction_real_block_entity_payload_lifecycle() {
                 matches!(game.world.block_entities.get(&(3,64,2)), Some(BlockEntity::Chest(before)) if before == &slots)
             );
             assert_eq!(game.world.block_entities.iter_mut().count(), 1);
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
             game.with_level(|b, level, ticks| {
                 b.client_block_event(
                     level,
@@ -616,8 +616,8 @@ fn piston_push_reaction_real_block_entity_payload_lifecycle() {
                 assert_eq!(game.world.block_entities.iter_mut().count(), 1);
             }
             let diamonds: Vec<_> = game
-                .dropped
-                .iter()
+                .ecs.item_views()
+                .into_iter()
                 .filter(|e| &*e.stack.item == "minecraft:diamond")
                 .collect();
             assert_eq!(

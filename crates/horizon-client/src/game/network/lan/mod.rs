@@ -1775,46 +1775,6 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_ref() {
             states.fill(self, &self.remote_entities, host.hub.sync_data(), out);
         }
-        for d in self.dropped.iter().filter(|d| d.id > after) {
-            let Some(host) = self.lan.as_ref() else {
-                return;
-            };
-            let idle = idle_at(d.position);
-            let place = super::lan_idle::Place {
-                position: [d.position.x, d.position.y, d.position.z],
-                rotation: (0.0, 0.0, 0.0),
-                on_ground: d.on_ground,
-                velocity: [d.velocity.x, d.velocity.y, d.velocity.z],
-            };
-            let bare = idle
-                && (kept.as_deref_mut())
-                    .is_some_and(|k| k.bare(&host.hub, d.id as i32, "minecraft:item", &place))
-                && !d.needs_sync;
-            let e = out.add(d.id as i32, entity_uuid(d.id), "minecraft:item");
-            e.position = place.position;
-            e.on_ground = place.on_ground;
-            e.velocity = place.velocity;
-            (e.idle, e.bare) = (idle, bare);
-            if bare {
-                continue;
-            }
-            let Some(host) = self.lan.as_mut() else {
-                return;
-            };
-            let stack = host.hub.stack(&Some(d.stack.clone()));
-            // `ServerEntity.getRequiresPrecisePosition` is false for an item:
-            // `needs_sync` asks for its data again, not for an exact position.
-            // The collision case is `full_precision_required` in the tracker.
-            e.precise = false;
-            e.needs_sync = d.needs_sync;
-            e.vertical_collision = d.vertical_collision;
-            e.horizontal_collision = d.horizontal_collision;
-            // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
-            if self.tracked_entity_glowing(d.id) {
-                e.meta.push((0, serializer::BYTE, Value::Byte(0x40)));
-            }
-            e.meta.push((8, serializer::ITEM_STACK, Value::Item(stack)));
-        }
         self.lan_object_states(out, drain_minecart_steps, after);
     }
 

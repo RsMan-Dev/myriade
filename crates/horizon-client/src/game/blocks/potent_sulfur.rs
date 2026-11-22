@@ -391,13 +391,9 @@ impl Game<'_> {
         {
             pass.wrote(&self.remote_entities);
         }
-        for item in self
-            .dropped
-            .iter_mut()
-            .filter(|i| i.bounds().intersects(area))
-        {
-            if item.velocity.y < limit {
-                item.velocity.y += push;
+        for item in self.ecs.item_views() {
+            if self.ecs.bounds(item.id).is_some_and(|b| b.intersects(area)) && item.velocity.y < limit {
+                self.ecs.add_item_velocity(item.id, Vec3::new(0.0, push, 0.0));
             }
         }
         self.ecs_tnt_lift(area, limit, push);

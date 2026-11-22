@@ -12,7 +12,7 @@ fn unscoped_item_entity_reads() {
             [0.0; 3],
             0,
         );
-        let entity = game.entity(game.dropped[0].id).unwrap();
+        let entity = game.entity(game.ecs.item_ids()[0]).unwrap();
         let item = game.item_entity(entity).unwrap();
         let mut times = Vec::with_capacity(240);
         for round in 0..260 {

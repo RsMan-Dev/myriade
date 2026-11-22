@@ -203,7 +203,7 @@ fn unchanged(game: &Game<'_>, seen: &Seen) {
     assert_eq!(game.audio.capture.as_ref().unwrap().len(), 0);
     assert_eq!(events(), 0);
     assert_eq!(seen.drops.load(Ordering::SeqCst), 0);
-    assert_eq!(game.dropped.len(), 0);
+    assert_eq!(game.ecs.item_ids().len(), 0);
     assert_eq!(
         game.inventory
             .iter()

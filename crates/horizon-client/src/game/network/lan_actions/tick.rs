@@ -6,7 +6,6 @@ impl Game<'_> {
         building_cache(self.lan.as_ref());
         self.tick_guests_inner();
         building_cache(None);
-        self.pickup_columns = None;
     }
 
     fn tick_guests_inner(&mut self) {
@@ -45,9 +44,6 @@ impl Game<'_> {
             .filter(|g| host.hub.here(g))
             .map(|g| g.conn)
             .collect();
-        // The players' pickups ask which columns items reach before
-        // scanning every item: most players stand on none.
-        self.pickup_columns = Some(Default::default());
         for conn in conns {
             let Some(host) = self.lan.as_mut() else {
                 return;

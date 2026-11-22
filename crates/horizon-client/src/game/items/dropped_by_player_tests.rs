@@ -91,7 +91,7 @@ fn a_part_keeps_the_stack_in_the_slot() {
     with_probe(&probe, || {
         with_guests(|game| {
             let gi = game.guest_index(12).unwrap();
-            let items = game.dropped.len();
+            let items = game.ecs.item_ids().len();
 
             // Refused: nothing leaves the slot, the client is told so.
             probe.0.lock().unwrap().refuse = true;
@@ -107,7 +107,7 @@ fn a_part_keeps_the_stack_in_the_slot() {
                 .unwrap();
             game.guest_drop_held(gi, 12, true);
             assert_eq!(held(game), (Some(5), (state + 1) & 0x7FFF));
-            assert_eq!(game.dropped.len(), items);
+            assert_eq!(game.ecs.item_ids().len(), items);
             assert_eq!(
                 game.as_guest(12, |g| {
                     (
@@ -128,7 +128,7 @@ fn a_part_keeps_the_stack_in_the_slot() {
             probe.0.lock().unwrap().refuse = false;
             game.guest_drop_held(gi, 12, false);
             assert_eq!(held(game).0, Some(4));
-            assert_eq!(game.dropped.len(), items + 1);
+            assert_eq!(game.ecs.item_ids().len(), items + 1);
             {
                 let heard = probe.0.lock().unwrap();
                 assert_eq!(heard.drops.len(), 2);

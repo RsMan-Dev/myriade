@@ -120,17 +120,17 @@ fn portal_arrival_effects_mod_items_merge_immediately() {
             [0.5, 80.0, 0.5],
             10,
         );
-        game.dropped[0].age = 7;
-        game.dropped[0].velocity = Vec3::new(0.1, 0.2, -0.3);
-        let item = game.entity(game.dropped[0].id).unwrap();
+        game.ecs.set_item_age(game.ecs.item_ids()[0], 7);
+        { let e = game.ecs.entity_of(game.ecs.item_ids()[0]).unwrap(); game.ecs.set_velocity(e, Vec3::new(0.1, 0.2, -0.3)); }
+        let item = game.entity(game.ecs.item_ids()[0]).unwrap();
         game.enter_level(Dim::Nether).unwrap();
         game.spawn_item_own(
             horizon_client::items::ItemStack::new("minecraft:diamond", 5),
             [3.5, 70.0, -2.5],
             10,
         );
-        game.dropped[0].age = 41;
-        let waiting = game.dropped[0].id;
+        game.ecs.set_item_age(game.ecs.item_ids()[0], 41);
+        let waiting = game.ecs.item_ids()[0];
         game.enter_level(Dim::Overworld).unwrap();
         assert!(game.entity_teleport_to_level(
             item,
@@ -138,10 +138,10 @@ fn portal_arrival_effects_mod_items_merge_immediately() {
             [3.5, 70.0, -2.5],
             None
         ));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         game.enter_level(Dim::Nether).unwrap();
-        assert_eq!(game.dropped.len(), 1);
-        let survivor = &game.dropped[0];
+        assert_eq!(game.ecs.item_ids().len(), 1);
+        let survivor = game.ecs.item_views()[0].clone();
         assert_eq!(survivor.id, waiting);
         assert_eq!(
             (survivor.stack.count, survivor.age, survivor.ticks),

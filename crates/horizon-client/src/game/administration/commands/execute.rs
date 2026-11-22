@@ -854,9 +854,7 @@ impl Game<'_> {
                     .into_iter()
                     .collect(),
                 Target::Item(id) => self
-                    .dropped
-                    .iter()
-                    .find(|d| d.id == id)
+                    .ecs.item(id)
                     .and_then(|d| d.thrower)
                     .and_then(|words| {
                         let uuid = words

@@ -2259,7 +2259,7 @@ impl Game<'_> {
                                 count: 1,
                                 ..stack.clone()
                             };
-                            self.spawn_at_location(at, 1.0, one);
+                            let dropped = self.spawn_item_own_id(one, [at.x, at.y + 1.0, at.z], 10);
                             // Sheep.shear nudges each item with the sheep's own random.
                             let r = &mut self.remote_entities[i].random;
                             let push = [
@@ -2267,12 +2267,8 @@ impl Game<'_> {
                                 f64::from(r.next_float() * 0.05),
                                 f64::from((r.next_float() - r.next_float()) * 0.1),
                             ];
-                            if let Some(item) = self.just_spawned_item() {
-                                item.velocity = Vec3::new(
-                                    item.velocity.x + push[0],
-                                    item.velocity.y + push[1],
-                                    item.velocity.z + push[2],
-                                );
+                            if let Some(id) = dropped {
+                                self.ecs.add_item_velocity(id, Vec3::new(push[0], push[1], push[2]));
                             }
                         }
                     }
@@ -2781,7 +2777,7 @@ mod tests {
                     "minecraft:block.dispenser.fail"
                 );
                 assert!(
-                    game.dropped.is_empty(),
+                    game.ecs.item_ids().is_empty(),
                     "the block's answer owns the dispense"
                 );
                 game.audio.capture.as_mut().unwrap().clear();
@@ -2794,7 +2790,7 @@ mod tests {
                     game.audio.capture.as_ref().unwrap().last().unwrap().event,
                     "minecraft:block.dispenser.fail"
                 );
-                assert!(game.dropped.is_empty());
+                assert!(game.ecs.item_ids().is_empty());
                 game.audio.capture.as_mut().unwrap().clear();
 
                 // 3. No block answer: the item's part decides.
@@ -2807,15 +2803,15 @@ mod tests {
                     game.audio.capture.as_ref().unwrap().last().unwrap().event,
                     "minecraft:block.dispenser.dispense"
                 );
-                assert!(game.dropped.is_empty());
+                assert!(game.ecs.item_ids().is_empty());
                 game.audio.capture.as_mut().unwrap().clear();
 
                 // 4. Neither the block in front nor the item has a part: vanilla drops one.
                 game.world.set(6, 64, 5, air).unwrap();
                 assert_eq!(dispense(game, "minecraft:stick"), None);
                 assert!(heard.take().is_empty());
-                assert_eq!(game.dropped.len(), 1);
-                assert_eq!(game.dropped[0].stack, ItemStack::new("minecraft:stick", 1));
+                assert_eq!(game.ecs.item_ids().len(), 1);
+                assert_eq!(game.ecs.item_views()[0].stack, ItemStack::new("minecraft:stick", 1));
                 assert_eq!(
                     game.audio.capture.as_ref().unwrap().last().unwrap().event,
                     "minecraft:block.dispenser.dispense"
@@ -3174,7 +3170,7 @@ mod tests {
             game.remote_entities.push(mob);
             let incoming = ItemStack::new("minecraft:dirt", 5);
             assert!(game.sulfur_cube_swallow((0, 0, 0), &incoming));
-            assert!(game.dropped.iter().any(|drop| drop.stack == old));
+            assert!(game.ecs.item_views().iter().any(|drop| drop.stack == old));
             assert_eq!(
                 game.remote_entities[0].equipment_stacks()[6],
                 Some(ItemStack::new("minecraft:dirt", 1))

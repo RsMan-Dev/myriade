@@ -18,17 +18,13 @@ impl Game<'_> {
             let dimension = self.dim.id();
             return self.native_set_item_entity(dimension, id, stack);
         };
-        let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) else {
+        let Some(item) = self.ecs.item(id) else {
             return false;
         };
-        level
-            .item_entities
-            .entry(id)
-            .or_insert_with(|| e.stack.clone());
+        level.item_entities.entry(id).or_insert_with(|| item.stack.clone());
         if stack.count == 0 {
             level.after.push(After::Emptied(id));
         }
-        e.stack = stack;
-        true
+        self.ecs.set_item_stack(id, stack)
     }
 }

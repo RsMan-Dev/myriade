@@ -133,7 +133,7 @@ impl OffLevel {
 
 /// The UUID an entity loads with: the saved one, else the one its constructor made.
 /// `Entity.<init>` always draws it from the entity's own random, so the draw is taken
-/// whether or not the tag has a UUID (as `load_item_transferred` and `load_mob` do).
+/// whether or not the tag has a UUID (as `load_mob` does).
 fn with_constructor_uuid(saved: Option<[i32; 4]>) -> Option<[i32; 4]> {
     let made = horizon_client::save::insecure_uuid(&mut random_source::entity());
     Some(saved.unwrap_or(made))
@@ -873,11 +873,6 @@ impl Game<'_> {
         }
         Ok(())
     }
-    /// A saved dropped item.
-    pub(super) fn load_item(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_item_transferred(tag, uuid, None);
-    }
-
     /// A saved arrow or spectral arrow.
     pub(super) fn load_arrow(
         &mut self,
@@ -2080,25 +2075,6 @@ impl Game<'_> {
             && keys.contains(&chunk_of(m.position))
             && !m.removed;
         saves.then(|| (chunk_of(self.remote_entities[i].position), self.mob_tree_nbt(i)))
-    }
-    pub(super) fn save_item(
-        &mut self,
-        i: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        let at = self.dropped[i].position;
-        keys.contains(&chunk_of(at)).then(|| {
-            let id = self.dropped[i].id;
-            let uuid = self.uuid_for(id);
-            let mut tag = entity_nbt::item_entity_to_nbt_with_items(
-                &self.dropped[i],
-                uuid,
-                self.persist.raw.get(&id),
-                self.items(),
-            );
-            self.save_portal_cooldown(id, &mut tag);
-            (chunk_of(at), tag)
-        })
     }
     pub(super) fn save_projectile(
         &mut self,

@@ -174,7 +174,7 @@ impl Game<'_> {
                 Some(self.armor_stands.iter().find(|s| s.id == id)?.fire_ticks)
             }
             Body::Other(Target::Item(id)) => {
-                Some(self.dropped.iter().find(|i| i.id == id)?.fire_ticks)
+                Some(self.ecs.item(id)?.fire_ticks)
             }
             Body::Other(_) => None,
         }
@@ -282,15 +282,7 @@ impl Game<'_> {
                     s.fire_ticks = ticks;
                     true
                 }),
-            Some(Target::Item(id)) => {
-                self.dropped
-                    .iter_mut()
-                    .find(|i| i.id == id)
-                    .is_some_and(|i| {
-                        i.fire_ticks = ticks;
-                        true
-                    })
-            }
+            Some(Target::Item(id)) => self.ecs_put(id, "Fire", Tag::Short(ticks as i16)),
             _ => false,
         }
     }
@@ -454,7 +446,7 @@ impl Game<'_> {
         Some(match self.native_entity_target(entity)? {
             Target::Mob(id) if self.ecs_has(id) => self.ecs.age(id)?,
             Target::Mob(id) => self.remote_entities.iter().find(|m| m.id == id)?.age as i32,
-            Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
+            Target::Item(id) => self.ecs.item(id)?.ticks as i32,
             Target::Orb(id) => self.ecs.orb(id)?.age as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
             _ => return None,
@@ -681,8 +673,9 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            game.dropped[0].fire_ticks = 19;
-            let item = game.entity(game.dropped[0].id).unwrap();
+            let id = game.ecs.item_ids()[0];
+            game.ecs.set_on_fire(id, 19);
+            let item = game.entity(id).unwrap();
             assert_eq!(item.fire_ticks(game), Some(19));
 
             game.boats.push(super::super::boats::Boat::new(
@@ -732,9 +725,10 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            game.dropped[0].ticks = 77;
-            game.dropped[0].age = 5000;
-            let item = game.entity(game.dropped[0].id).unwrap();
+            let id = game.ecs.item_ids()[0];
+            game.ecs.set_item_ticks(id, 77);
+            game.ecs.set_item_age(id, 5000);
+            let item = game.entity(id).unwrap();
             assert_eq!(item.tick_count(game), Some(77));
 
             let orb = game.ecs_orb_moving(7, [0.0; 3], [0.0; 3]).expect("an orb");
@@ -810,7 +804,7 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            let item = game.dropped[0].id;
+            let item = game.ecs.item_ids()[0];
             let orb = game.ecs_orb_moving(1, [0.0; 3], [0.0; 3]).expect("an orb");
             game.boats
                 .push(Boat::new(42, "oak".into(), Vec3::ZERO, 0.0));
@@ -1033,7 +1027,7 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            let item = game.entity(game.dropped[0].id).unwrap();
+            let item = game.entity(game.ecs.item_ids()[0]).unwrap();
             assert!(item.set_portal_cooldown(game, 40));
             assert_eq!(item.portal_cooldown(game), Some(40));
         });

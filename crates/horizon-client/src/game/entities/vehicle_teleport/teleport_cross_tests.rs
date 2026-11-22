@@ -100,7 +100,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
         assert!(game.run_command(&command), "{command}");
     }
     assert!(game.armor_stands.is_empty(), "the stand left the overworld");
-    assert!(game.dropped.is_empty(), "the item left the overworld");
+    assert!(game.ecs.item_ids().is_empty(), "the item left the overworld");
     assert!(game.item_frames.is_empty(), "the frame left the overworld");
     assert!(
         game.creatures.projectiles.is_empty(),
@@ -114,7 +114,7 @@ fn every_entity_kind_follows_a_cross_dimension_tp() {
         [stand.position.x, stand.position.y, stand.position.z],
         [10.5, 64.0, 0.5]
     );
-    let item = game.dropped.iter().next().expect("item crossed");
+    let item = game.ecs.item_views().into_iter().next().expect("item crossed");
     assert_eq!(
         [item.position.x, item.position.y, item.position.z],
         [11.5, 64.0, 0.5]

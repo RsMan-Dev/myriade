@@ -123,12 +123,12 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
                 });
             })
             .unwrap();
-        let before = game.dropped.len();
+        let before = game.ecs.item_ids().len();
         assert_eq!(b.give_stack(game, named.clone()), Ok(()));
         let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert_eq!(g.inventory[5].as_ref().map(|s| s.count), Some(64));
-        assert_eq!(game.dropped.len(), before + 1);
-        let dropped = game.dropped.last().unwrap();
+        assert_eq!(game.ecs.item_ids().len(), before + 1);
+        let dropped = game.ecs.item_views().pop().unwrap();
         assert_eq!(dropped.stack.count, 6);
         assert_eq!(dropped.stack.extra, engine.extra);
         assert_eq!(dropped.pickup_delay, 0, "no pickup delay");
@@ -146,7 +146,7 @@ fn a_given_stack_fills_the_inventory_then_drops_for_its_player() {
         assert_eq!(b.give_stack(game, named), Ok(()));
         let g = game.lan.as_ref().unwrap().hub.guest(13).unwrap();
         assert_eq!(g.inventory[7], Some(engine));
-        assert_eq!(game.dropped.len(), before + 1);
+        assert_eq!(game.ecs.item_ids().len(), before + 1);
     });
 }
 
@@ -163,9 +163,9 @@ fn a_dead_player_is_given_nothing() {
             .hub
             .guests
             .update_connection(13, |g| g.dead = true);
-        let before = game.dropped.len();
+        let before = game.ecs.item_ids().len();
         assert_eq!(b.give_stack(game, rock), Err(PlayerDataRefusal::Dead));
         assert_eq!(b.inventory_slots(game), Some(Vec::new()));
-        assert_eq!(game.dropped.len(), before);
+        assert_eq!(game.ecs.item_ids().len(), before);
     });
 }

@@ -6,45 +6,10 @@
 use crate::game::Dim;
 use crate::game::game_tests::tests::server_game;
 use horizon_client::chunk::Chunk;
-use horizon_client::entities::ItemEntity;
 use horizon_client::items::ItemStack;
 use horizon_core::geometry::Vec3;
 use std::sync::Arc;
 
-fn item(id: u32, at: Vec3) -> ItemEntity {
-    ItemEntity {
-        attachment_lifetime: Default::default(),
-        fall_distance: 0.0,
-        random: horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-        rotation: [0.0, 0.0],
-        join: Default::default(),
-        no_gravity: true,
-        id,
-        thrower: None,
-        target: None,
-        stack: ItemStack {
-            item: Arc::from("minecraft:white_carpet"),
-            count: 1,
-            damage: 0,
-            extra: None,
-        },
-        health: 5,
-        fire_ticks: 0,
-        position: at,
-        previous: at,
-        velocity: Vec3::ZERO,
-        on_ground: false,
-        vertical_collision: false,
-        horizontal_collision: false,
-        age: 97,
-        pickup_delay: 0,
-        bob_offset: 0.0,
-        ticks: 97,
-        needs_sync: false,
-        stuck: Vec3::ZERO,
-        was_touching_water: false,
-    }
-}
 
 #[test]
 #[ignore = "daily"]
@@ -66,14 +31,15 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     game.player = Some(
         horizon_client::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 65.0, 8.5)).unwrap(),
     );
-    for (id, cx, x) in [(1, 2, 40), (2, 8, 136)] {
+    for (cx, x) in [(2, 40), (8, 136)] {
         game.world
             .chunks
             .insert((cx, 0), Arc::new(Chunk::empty(cx, 0)));
         game.load_ticking_neighbourhood(cx, 0);
         game.world.set(x, 64, 8, gateway).unwrap();
-        game.dropped
-            .push(item(id, Vec3::new(f64::from(x) + 0.5, 64.2, 8.5)));
+        let at = [f64::from(x) + 0.5, 64.2, 8.5];
+        let item = game.spawn_item(ItemStack::new("minecraft:white_carpet", 1), at, [0.0; 3], 0).expect("an item");
+        game.ecs.set_no_gravity(item, true);
     }
     game.update_chunk_tickets();
     let ticking = game.entity_ticking_area();
@@ -93,7 +59,7 @@ fn items_past_the_simulation_distance_enter_no_end_gateway() {
     );
     // It waits there: the gateways' pass leaves it alone.
     game.handle_end_gateway_portals();
-    assert!(game.dropped.iter().any(|d| d.id == 2));
+    assert!(game.ecs.item_views().iter().any(|d| d.id == 2));
 }
 
 /// `TheEndGatewayBlockEntity.portalTick` counts the Age up in the block entity

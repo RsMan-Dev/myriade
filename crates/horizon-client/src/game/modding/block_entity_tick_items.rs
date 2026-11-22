@@ -122,12 +122,7 @@ impl Game<'_> {
         let EntityLookup::Found { location, .. } = self.server_resident_entity(id) else {
             return Some(false);
         };
-        let Some(original) = self
-            .dropped
-            .iter()
-            .find(|e| e.id == id)
-            .map(|e| e.stack.clone())
-        else {
+        let Some(original) = self.ecs.item(id).map(|e| e.stack) else {
             return Some(false);
         };
         let generation = self
@@ -187,7 +182,7 @@ impl Game<'_> {
             && scope.failure_generation == self.wasm_dispatch_failures.get()
             && scope.items.as_ref().is_none_or(|items| items.iter().all(|proposal| {
                 matches!(self.server_resident_entity(proposal.id), EntityLookup::Found { location, .. } if location == proposal.location)
-                    && self.dropped.iter().any(|e| e.id == proposal.id && e.stack == proposal.original)
+                    && self.ecs.item(proposal.id).is_some_and(|e| e.stack == proposal.original)
             }));
         let accepted = if scope.unchanged {
             valid
@@ -212,11 +207,12 @@ impl Game<'_> {
         let mut removed = Vec::new();
         if accepted && let Some(items) = scope.items.take() {
             for proposal in items {
-                if let Some(index) = self.dropped.iter().position(|e| e.id == proposal.id) {
+                if self.ecs.item(proposal.id).is_some() {
                     if let Some(stack) = proposal.replacement {
-                        self.dropped[index].stack = stack;
+                        self.ecs.set_item_stack(proposal.id, stack);
                     } else {
-                        removed.push(self.dropped.remove(index).id);
+                        self.ecs_remove_item(proposal.id);
+                        removed.push(proposal.id);
                     }
                 }
             }

@@ -42,7 +42,7 @@ impl Game<'_> {
         for e in self.hot_ecs_entities() {
             self.ecs.despawn(e);
         }
-        self.dropped.clear();
+        self.ecs_clear_items();
         self.hoppers.clear();
         self.level_events.clear();
         self.session.rules = Default::default();

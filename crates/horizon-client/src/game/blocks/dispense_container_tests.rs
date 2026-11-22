@@ -176,7 +176,7 @@ fn a_bucket_like_container_fills_from_a_source_and_empties_into_the_air() {
         let emptied = dispense(game, filled.unwrap());
         assert_eq!(item(&emptied), Some(("minecraft:bucket".into(), 1)));
         assert_eq!(front(game), state(game, "minecraft:water"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
     });
 }
 
@@ -201,6 +201,6 @@ fn a_stack_of_custom_containers_gives_their_handler_one_at_a_time() {
             .map(|stack| (stack.item.to_string(), stack.count))
             .collect();
         assert_eq!(held, [("minecraft:potion".to_owned(), 1)]);
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
     });
 }

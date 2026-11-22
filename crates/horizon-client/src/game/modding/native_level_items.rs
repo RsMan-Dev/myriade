@@ -31,7 +31,7 @@ impl Game<'_> {
         // `spawn_item` takes the next id.
         let id = self.next_entity + 1;
         self.add_item_entity(stack, at, motion, pickup_delay);
-        self.dropped
+        self.ecs.item_views()
             .iter()
             .rev()
             .any(|d| d.id == id)
@@ -180,7 +180,7 @@ mod tests {
                 Some("minecraft:item")
             );
             assert_eq!(game.entity_position(popped), Some(at));
-            let item = game.dropped.last().unwrap();
+            let item = game.ecs.item_views().pop().unwrap();
             assert_eq!((item.pickup_delay, item.stack.count), (10, 3));
             assert_eq!(item.velocity.y, 0.2);
             // The offsets are drawn even when nothing drops.
@@ -203,13 +203,13 @@ mod tests {
                 .level_spawn_item_with_motion(level, 1.5, 70.0, 2.5, stone(), [0.0, 0.3, 0.0], 40)
                 .unwrap();
             assert_eq!(game.entity_position(spawned), Some([1.5, 70.0, 2.5]));
-            let item = game.dropped.last().unwrap();
+            let item = game.ecs.item_views().pop().unwrap();
             assert_eq!((item.pickup_delay, item.velocity.y), (40, 0.3));
             assert!(
                 game.level_spawn_item(level, 1.5, 70.0, 2.5, stone(), 32767)
                     .is_some()
             );
-            assert_eq!(game.dropped.last().unwrap().pickup_delay, 32767);
+            assert_eq!(game.ecs.item_views().pop().unwrap().pickup_delay, 32767);
             assert!(
                 game.level_spawn_item(level, f64::NAN, 70.0, 2.5, stone(), 0)
                     .is_none()

@@ -36,3 +36,10 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
     let id = game.ecs_spawn(kind, at, None).expect("a known species");
     (game, id)
 }
+
+/// A test game with its ECS level active (`test_ecs_level`), over the shared test server.
+pub(in crate::game) fn active_server_game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
+    let mut game = crate::game::game_tests::tests::server_game(resources);
+    game.ecs = game.test_ecs_level();
+    game
+}

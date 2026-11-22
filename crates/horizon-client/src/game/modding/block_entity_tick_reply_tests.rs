@@ -149,7 +149,7 @@ fn native_and_compiled_wasm_tick_reply_matrix() {
                     [0.0; 3],
                     0,
                 );
-                let item_id = game.dropped[0].id;
+                let item_id = game.ecs.item_ids()[0];
                 let entity = |mode| {
                     ModBlockEntity::new(
                         "wasm_fixture:tick_reply".into(),
@@ -230,7 +230,7 @@ fn native_and_compiled_wasm_tick_reply_matrix() {
                         for counter in effects.iter() {
                             assert_eq!(counter.load(Ordering::Relaxed), u32::from(mode == 10));
                         }
-                        assert_eq!(game.dropped[0].stack.count, expected_item_count);
+                        assert_eq!(game.ecs.item_views()[0].stack.count, expected_item_count);
                     }
                     if mode == 3 {
                         let Some(BlockEntity::Mod(sink)) =

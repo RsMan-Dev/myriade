@@ -43,11 +43,10 @@ impl Game<'_> {
             p[1] + self.target_eye_height(Target::Player),
             p[2],
         ]);
-        self.throw_from_eyes(rest, eye, false, false);
-        if let Some(item) = self.just_spawned_item() {
-            item.thrower = None;
-            item.pickup_delay = 0;
-            item.target = owner;
+        if let Some(id) = self.throw_from_eyes(rest, eye, false, false) {
+            self.ecs.set_item_thrower(id, None);
+            self.ecs.set_item_pickup_delay(id, 0);
+            self.ecs.set_item_target(id, owner);
         }
     }
 }

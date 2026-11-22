@@ -150,14 +150,14 @@ fn a_cancelled_drop_keeps_the_replacement() {
             game.options.dedicated = Some(Vec::new());
             let poppy = state(game, "minecraft:poppy");
             game.world.set(AT[0], AT[1], AT[2], poppy).unwrap();
-            let items = game.dropped.len();
+            let items = game.ecs.item_ids().len();
             let root = game.transaction_open();
             let water = key("minecraft:water");
             assert!(game.level_place_fluid(level, AT, water, None, false, root.transaction()));
             game.transaction_close(&root, true);
             // The listener saw the poppy and cancelled: no drop, but the water is there.
             assert_eq!(*seen.lock().unwrap(), [Some("minecraft:poppy".to_owned())]);
-            assert_eq!(game.dropped.len(), items);
+            assert_eq!(game.ecs.item_ids().len(), items);
             assert_eq!(block(game), state(game, "minecraft:water"));
         });
     });

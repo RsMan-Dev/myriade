@@ -69,14 +69,14 @@ fn an_item_dropping_through_water_onto_honey_slides_before_it_splashes() {
     with_game(|game| {
         assert!(game.run_command("setblock 6 200 10 honey_block"));
         assert!(game.run_command("setblock 6 201 10 water"));
-        game.dropped.clear();
+        game.ecs_clear_items();
         game.spawn_item(
             crate::items::ItemStack::new("minecraft:stone", 1),
             [6.5, 202.05, 10.5],
             [0.0, -1.2, 0.0],
             10,
         );
-        game.dropped[0].ticks = 1;
+        game.ecs.set_item_ticks(game.ecs.item_ids()[0], 1);
         game.ticked_entities_through = u32::MAX;
         game.audio.capture = Some(Vec::new());
         game.tick_items();
@@ -93,7 +93,7 @@ fn an_item_dropping_through_water_onto_honey_slides_before_it_splashes() {
                 "minecraft:entity.generic.splash"
             ],
             "{sounds:?} at {:?}",
-            game.dropped.first().map(|i| i.position)
+            game.ecs.item_views().into_iter().next().map(|i| i.position)
         );
     });
 }

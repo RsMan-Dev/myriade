@@ -13,7 +13,7 @@ impl Game<'_> {
         causing: Option<Target>,
         position: Option<[f64; 3]>,
     ) -> bool {
-        let Some(index) = self.dropped.iter().position(|item| item.id == id) else {
+        let Some(item) = self.ecs.item(id) else {
             return false;
         };
         let registry = &self.health_resources.damage;
@@ -53,18 +53,16 @@ impl Game<'_> {
         {
             return false;
         }
-        if self.stack_can_be_hurt_by(&self.dropped[index].stack, damage_type) == Some(false)
+        if self.stack_can_be_hurt_by(&item.stack, damage_type) == Some(false)
             || registry.in_tag(kind, "minecraft:is_fire")
-                && self.stack_can_be_hurt_by(&self.dropped[index].stack, "minecraft:in_fire")
-                    == Some(false)
+                && self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false)
         {
             return false;
         }
-        let item = &mut self.dropped[index];
         // Java subtracts in float before truncating to int, including fractions
         // and accepted zero-damage hits.
-        item.health = (item.health as f32 - amount) as i32;
-        item.needs_sync = true;
+        let health = (item.health - amount) as i32;
+        self.ecs.set_item_health(id, health as f32);
         let at = item.position;
         self.sculk_prepare();
         let who = match causing {
@@ -74,10 +72,9 @@ impl Game<'_> {
         };
         let context = self.who_context(who, None);
         self.post_game_event("minecraft:entity_damage", [at.x, at.y, at.z], context);
-        if self.dropped[index].health <= 0 {
-            let contents = self.dropped[index].hurt(0).unwrap_or_default();
-            self.dropped.remove(index);
-            self.spawn_destroyed_contents(contents.into_iter().map(|stack| (stack, at)).collect());
+        if health <= 0 {
+            self.ecs.spill_item(id);
+            self.ecs_remove_item(id);
         }
         true
     }

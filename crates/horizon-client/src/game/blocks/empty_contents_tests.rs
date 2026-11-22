@@ -123,13 +123,13 @@ fn a_part_empties_its_item_from_a_dispenser() {
         jar.0.lock().unwrap().answer = Some(true);
         let left = dispense(game).map(|stack| stack.item.to_string());
         assert_eq!(left.as_deref(), Some("minecraft:bucket"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
 
         for answer in [Some(false), None] {
             jar.0.lock().unwrap().answer = answer;
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             assert_eq!(dispense(game), None);
-            assert_eq!(game.dropped.len(), dropped + 1);
+            assert_eq!(game.ecs.item_ids().len(), dropped + 1);
         }
         assert_eq!(jar.0.lock().unwrap().asks, [(false, false); 3]);
     });

@@ -1159,8 +1159,10 @@ impl Game<'_> {
     /// (`is_portal_projectile`). None for every other entity: a mob, a boat or
     /// a minecart crosses as a vehicle tree with its riders.
     pub(super) fn lone_traveller_box(&self, id: u32) -> Option<(Vec3, f32, f32)> {
-        if let Some(e) = self.dropped.iter().find(|e| e.id == id) {
-            return Some((e.position, 0.25, 0.25));
+        if self.ecs.item(id).is_some()
+            && let Some(p) = self.ecs.position(id)
+        {
+            return Some((Vec3::new(p[0], p[1], p[2]), 0.25, 0.25));
         }
         if let Some(p) = self.ecs.position(id) {
             return Some((Vec3::new(p[0], p[1], p[2]), 0.98, 0.98));
@@ -1254,15 +1256,8 @@ impl Game<'_> {
         enum List {
             Item,
         }
-        let (mut tag, list, i) = if let Some(i) = self.dropped.iter().position(|e| e.id == id) {
-            let uuid = self.uuid_for(id);
-            let tag = horizon_client::entity_nbt::item_entity_to_nbt_with_items(
-                &self.dropped[i],
-                uuid,
-                self.persist_raw(id),
-                self.items(),
-            );
-            (tag, List::Item, i)
+        let (mut tag, list) = if let Some(e) = self.ecs.entity_of(id).filter(|_| self.ecs.item(id).is_some()) {
+            (Tag::Compound(self.ecs.entity_nbt(e)?), List::Item)
         } else {
             return None;
         };
@@ -1270,7 +1265,7 @@ impl Game<'_> {
         let state = self.take_transferred_entity_state(id);
         match list {
             List::Item => {
-                self.remove_dropped(i);
+                self.ecs_remove_item(id);
                 self.detach_entity(id);
             }
         }
@@ -1556,43 +1551,6 @@ impl Game<'_> {
             if location.is_some() {
                 self.ecs_set_tnt_used_portal(id, true);
             }
-        } else {
-            let mut items = self.dropped.lift();
-            let mut arrival = None;
-            let mut removed: Vec<_> = items
-                .iter()
-                .enumerate()
-                .map(|(i, item)| {
-                    if item.id == id {
-                        arrival = Some(i);
-                    }
-                    self.persist
-                        .removals
-                        .contains(&super::commands::Target::Item(item.id))
-                })
-                .collect();
-            if let Some(item) = arrival {
-                let mut cells = horizon_client::entities::ItemCells::new(&items);
-                horizon_client::entities::merge_with_neighbours(
-                    &mut items,
-                    &mut removed,
-                    &mut cells,
-                    item,
-                    false,
-                    &|stack| self.stack_max_size(stack).max(1),
-                );
-            }
-            let mut removed = removed.into_iter();
-            // A logically removed row belongs to the native removal sweep, not
-            // this merge's structural retirement.
-            items.retain(|item| {
-                !removed.next().unwrap()
-                    || self
-                        .persist
-                        .removals
-                        .contains(&super::commands::Target::Item(item.id))
-            });
-            self.put_back_dropped(items);
         }
     }
 
@@ -1947,13 +1905,13 @@ mod tests {
             let stone = || horizon_client::items::ItemStack::new("minecraft:stone", 1);
             game.spawn_item(stone(), [0.5, 64.0, 0.5], [0.0; 3], 0);
             game.spawn_item(stone(), [2.5, 64.0, 0.5], [0.0; 3], 0);
-            let ids: Vec<u32> = game.dropped.iter().map(|d| d.id).collect();
+            let ids: Vec<u32> = game.ecs.item_views().iter().map(|d| d.id).collect();
             assert_eq!(ids.len(), 2);
             spare.store(ids[0], Ordering::Relaxed);
             for id in &ids {
                 game.send_through_portal(*id, BlockPos::new(0, 64, 0));
             }
-            let left: Vec<u32> = game.dropped.iter().map(|d| d.id).collect();
+            let left: Vec<u32> = game.ecs.item_views().iter().map(|d| d.id).collect();
             assert_eq!(left, [ids[0]]);
             assert_eq!(game.portals.arrivals.len(), 1);
             assert_eq!(game.portals.arrivals[0].plan.dim, Dim::Nether);
@@ -1980,17 +1938,17 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            let id = game.dropped[0].id;
+            let id = game.ecs.item_ids()[0];
             game.send_through_portal(id, BlockPos::new(0, 64, 0));
             assert!(game.portals.arrivals.is_empty());
             assert_eq!(heard.lock().unwrap().len(), 1);
             assert!(game.level_entity(id as i32).is_none());
             assert_eq!(game.persist.removals.len(), 1);
             game.native_removals_flush();
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
             assert!(game.persist.removals.is_empty());
             game.native_removals_flush();
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
         });
     }
 

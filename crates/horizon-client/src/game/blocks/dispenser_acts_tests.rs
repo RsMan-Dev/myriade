@@ -91,7 +91,7 @@ fn a_mods_global_answer_replaces_vanillas_dispense_and_no_answer_keeps_it() {
                 None
             );
             assert!(heard.lock().unwrap().is_empty());
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
             assert_eq!(
                 game.dispense_item(
                     at,
@@ -102,7 +102,7 @@ fn a_mods_global_answer_replaces_vanillas_dispense_and_no_answer_keeps_it() {
                 None
             );
             assert_eq!(*heard.lock().unwrap(), ["block", "item"]);
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
             let left = game
                 .dispense_item(at, Direction::East, ItemStack::new("minecraft:dirt", 3))
                 .unwrap()

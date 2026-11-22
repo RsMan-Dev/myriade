@@ -170,7 +170,7 @@ mod tests {
         held.filter(|s| &*s.item == item).map(|s| s.count).sum()
     }
     fn popped(game: &Game<'_>, item: &str) -> bool {
-        game.dropped.iter().any(|e| &*e.stack.item == item)
+        game.ecs.item_views().iter().any(|e| &*e.stack.item == item)
     }
 
     /// Stone broken with a diamond pickaxe drops cobblestone, wears the
@@ -365,7 +365,7 @@ mod tests {
                     (0..3).all(|i| (at[i] - (f64::from(origin[i]) + 0.5)).abs() <= by)
                 };
                 let mut stacks: Vec<(String, u32)> = Vec::new();
-                for item in game.dropped.iter() {
+                for item in game.ecs.item_views().iter() {
                     let at = [item.position.x, item.position.y, item.position.z];
                     assert!(near(at, 0.5), "every drop pops at the origin: {at:?}");
                     stacks.push((item.stack.item.to_string(), item.stack.count));

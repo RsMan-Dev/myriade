@@ -1051,13 +1051,13 @@ fn a_vetoed_drop_gives_the_stack_back() {
         with_guests(|game| {
             let player = game.player(13).unwrap();
             let stone = ItemStack::new("minecraft:stone", 3);
-            let before = game.dropped.len();
+            let before = game.ecs.item_ids().len();
             assert_eq!(
                 player.drop_stack(game, stone.try_into_api().unwrap(), true),
                 Ok(Some(stone.try_into_api().unwrap())),
                 "a vetoed toss comes back whole"
             );
-            assert_eq!(game.dropped.len(), before, "and makes no item entity");
+            assert_eq!(game.ecs.item_ids().len(), before, "and makes no item entity");
             let empty = ItemStack::new("minecraft:stone", 0);
             assert_eq!(
                 game.player_drop_stack(player, empty.clone(), false),

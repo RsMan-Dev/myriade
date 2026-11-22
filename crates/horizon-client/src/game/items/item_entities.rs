@@ -55,284 +55,14 @@ impl Game<'_> {
     pub(super) fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.ticked_entities_through || self.contact_drops.contains(&id)
     }
-    pub(super) fn tick_dropped_items(&mut self, round: &mut native_ticks::TickRound) {
-        if self.ecs.is_active() {
-            // The stacks tick, merge and expire in the ECS (P's `item`): the host only lets the player take those in reach, by position.
-            if let Some(p) = self.player.as_ref().filter(|p| !p.health.dead_or_dying() && !self.spectator()) {
-                let feet = [p.position.x, p.position.y, p.position.z];
-                self.ecs_player_pickups(feet);
-            }
-            return;
+    pub(super) fn tick_dropped_items(&mut self, _round: &mut native_ticks::TickRound) {
+        // The stacks tick, merge and expire in the ECS (P's `item`): the host only lets the player take those in reach, by position.
+        if self.ecs.is_active()
+            && let Some(p) = self.player.as_ref().filter(|p| !p.health.dead_or_dying() && !self.spectator())
+        {
+            let feet = [p.position.x, p.position.y, p.position.z];
+            self.ecs_player_pickups(feet);
         }
-        let mut items = self.dropped.lift();
-        // ServerLevel.tick: only entities in entity-ticking chunks tick.
-        let ticking = self.entity_ticking_area();
-        let mut removed = vec![false; items.len()];
-        let mut cells = horizon_client::entities::ItemCells::new(&items);
-        // A LAN or server guest only shows the host's items.
-        let merging = true;
-        // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
-        let void = f64::from(self.level_min_y() - 64);
-        let mut obstacles =
-            horizon_client::entities::ObstacleGrid::new(
-                self.item_entity_collisions(items.iter().map(ahead::reach)),
-            );
-        let mut nearby = Vec::new();
-        let mut bubble_tops = Vec::new();
-        let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
-            !self.joined_during_entity_pass(item.id)
-                && ticking(
-                    item.position.x.floor() as i32,
-                    item.position.z.floor() as i32,
-                )
-        });
-        // `ItemUtils.onContainerDestroyed`: what a destroyed item held, and
-        // where it lay, for adding to the level once its own tick is done.
-        let mut destroyed: Vec<(ItemStack, Vec3)> = Vec::new();
-        let item_type = horizon_threads::work::entity_id("minecraft:item");
-        for i in 0..items.len() {
-            horizon_threads::work::set_entity(item_type);
-            if removed[i] {
-                // Merged into an earlier item before its own tick: it never ticked.
-                round.not_ticked(items[i].id);
-                continue;
-            }
-            // `addFreshEntity` during the entity pass: the item ticks from the
-            // next tick on (`EntityTickList`).
-            if merging && self.joined_during_entity_pass(items[i].id) {
-                continue;
-            }
-            if !ticking(
-                items[i].position.x.floor() as i32,
-                items[i].position.z.floor() as i32,
-            ) || round.canceled(items[i].id)
-                || round.halted(items[i].id)
-            {
-                continue;
-            }
-            self.tick_saved_invulnerable_time(items[i].id);
-            let item = &mut items[i];
-            // `Entity.baseTick` reads the fluid the item starts the tick in,
-            // before `ItemEntity.tick` moves it.
-            let (start, start_in_lava) =
-                (item.position, item.in_lava(&self.world, self.res.facts()));
-            let mut at_turn = |item: &mut ItemEntity| {
-                // `getEntityCollisions(entity, bounds.expandTowards(movement))`: the boxes around
-                // where the item can reach this tick.
-                obstacles.near(ahead::reach(item), &mut nearby);
-                // ItemEntity.tick's noPhysics (servers only): out of a block, a solid entity
-                // or the border, placed or closed on it, towards the closest open side (arismoko/horizon#1252).
-                let no_physics = merging
-                    && item.inside_block(
-                        &self.world,
-                        self.collision,
-                        &nearby,
-                        Some(self.border.geometry()),
-                    );
-                // `moveTowardsClosestSpace` draws the speed from the item's own random.
-                let escape_speed = no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
-                let mut entered = Vec::new();
-                let (alive, discarded, landed) = self.tick_item_with_block_contacts(
-                    item,
-                    escape_speed,
-                    &nearby,
-                    false,
-                    &mut |splash| entered.push(splash),
-                );
-                (no_physics, alive, discarded, entered, landed)
-            };
-            let (no_physics, alive, discarded, entered, landed) =
-                match moves.take(i, item, &mut at_turn) {
-                    Some(moved) => moved,
-                    None => at_turn(item),
-                };
-            // Entity.doWaterSplashEffect: the server plays the sound (broadcast
-            // to clients). Its addParticle is empty. Entity.checkFallDamage
-            // runs the landing block's fallOn during the move: after baseTick's
-            // splash, before the water entry after the move.
-            let before_landing = landed.map_or(entered.len(), |l| l.3);
-            let mut entered = entered.into_iter();
-            for splash in entered.by_ref().take(before_landing) {
-                self.apply_item_splash(splash);
-            }
-            if let Some((fall, at, bounds, _)) = landed {
-                self.non_living_fall_on(item.id, at, bounds, fall);
-            }
-            for splash in entered {
-                self.apply_item_splash(splash);
-            }
-            // `Entity.baseTick`'s burning, heard where the tick started.
-            let item_id = item.id;
-            let saved = native_components::ITEM_ENVIRONMENT_DAMAGE
-                .map(|damage| self.saved_refuses_damage(item_id, damage, false));
-            let burning = item.burning_tick_with_hook(
-                start_in_lava,
-                &native_components::item_damage_resolver(
-                    &self.res.item_defaults().entries(),
-                    &self.health_resources.damage,
-                ),
-                |damage| item_refuses!(self, item_id, saved, &mut self.world, damage),
-            );
-            self.post_item_hits(merging, burning.events, start);
-            if item.health <= 0 {
-                removed[i] = true;
-                cells.remove(i, item.previous);
-                destroyed.extend(burning.spilled.into_iter().map(|s| (s, start)));
-                continue;
-            }
-            if discarded {
-                removed[i] = true;
-                cells.remove(i, item.previous);
-                continue;
-            }
-            if merging && !no_physics {
-                self.item_landing_event(item.id, item.previous, item.position, item.on_ground);
-                self.entity_powder_snow_particles(
-                    item.previous,
-                    item.position,
-                    item.bounds(),
-                    item.velocity,
-                    false,
-                );
-            }
-            cells.moved(i, item.previous, item.position);
-            // Entity.handleOnAboveBubbleColumn: the server sends the particles of
-            // the surface of a bubble column the item is at the top of.
-            if merging {
-                bubble_tops.extend(horizon_client::motion::bubble_column_surfaces(
-                    &self.world,
-                    self.pack.assets.registry,
-                    self.res.facts(),
-                    self.collision,
-                    item.bounds(),
-                ));
-            }
-            // `Entity.applyEffectsFromBlocks` after the move, before the merge
-            // and the lifetime check; an item below the world was discarded
-            // by `Entity.checkBelowWorld` and takes none.
-            // A step through a section the round does not tick ends the item here, before
-            // the block effects (the fork's section-step check).
-            if round.sections() {
-                let (from, to) = (item.previous, item.position);
-                let live = self.entity_section_step_visible(
-                    item.id,
-                    [from.x, from.y, from.z],
-                    [to.x, to.y, to.z],
-                );
-                if !live {
-                    removed[i] = true;
-                    cells.remove(i, to);
-                    continue;
-                }
-            }
-            if start.y >= void {
-                let environment = item.environment_tick_with_hook(
-                    &mut self.world,
-                    self.res.facts(),
-                    self.pack.assets.registry,
-                    &native_components::item_damage_resolver(
-                        &self.res.item_defaults().entries(),
-                        &self.health_resources.damage,
-                    ),
-                    |world, damage| item_refuses!(self, item_id, saved, world, damage),
-                );
-                let at = item.position;
-                self.post_item_hits(merging, environment.damage_events, at);
-                if environment.should_play_lava_hurt_sound(item.ticks) {
-                    // `Entity.lavaHurt` pitches the burn from `this.random`, the item's own.
-                    let pitch = 2.0 + item.random.next_float() * 0.4;
-                    self.audio.play(
-                        "minecraft:entity.generic.burn",
-                        Some([at.x, at.y, at.z]),
-                        0.4,
-                        pitch,
-                    );
-                }
-                if !environment.alive {
-                    removed[i] = true;
-                    cells.remove(i, at);
-                    destroyed.extend(environment.spilled.into_iter().map(|s| (s, at)));
-                    continue;
-                }
-            }
-            // ItemEntity.tick: merge every 2 ticks while moving between
-            // blocks, every 40 otherwise, before the lifetime check.
-            let block = |v: Vec3| (v.x.floor(), v.y.floor(), v.z.floor());
-            let rate = if block(item.previous) == block(item.position) {
-                40
-            } else {
-                2
-            };
-            if merging
-                && (alive || item.age == 6000 && item.position.y >= void)
-                && item.ticks.is_multiple_of(rate)
-            {
-                let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
-                horizon_client::entities::merge_with_neighbours(
-                    &mut items,
-                    &mut removed,
-                    &mut cells,
-                    i,
-                    true,
-                    &max_stack,
-                );
-            }
-            let item = &mut items[i];
-            let mut alive = alive || (item.age < 6000 && item.position.y >= void);
-            if merging && !removed[i] && item.age >= 6000 && item.position.y >= void {
-                let mut extra_life = 0;
-                self.native_item_expire(item.id, &item.stack, &mut extra_life);
-                if extra_life > 0 {
-                    item.age = 6000 - extra_life.min(32766);
-                    alive = true;
-                } else if self.serving.is_some() || self.options.dedicated.is_some() {
-                    self.native_item_despawn(
-                        item.id,
-                        &item.stack.item,
-                        item.stack.count as i32,
-                        [item.position.x, item.position.y, item.position.z],
-                    );
-                }
-            }
-            if !alive || removed[i] {
-                removed[i] = true;
-                cells.remove(i, item.position);
-                continue;
-            }
-        }
-        for pos in bubble_tops {
-            self.bubble_column_particles(pos);
-        }
-        let mut removed = removed.into_iter();
-        items.retain(|_| !removed.next().unwrap_or(false));
-        let Some(p) = self.player.as_ref() else {
-            self.put_back_dropped(items);
-            self.spawn_destroyed_contents(destroyed);
-            return;
-        };
-        if p.health.dead_or_dying() || self.spectator() {
-            self.put_back_dropped(items);
-            self.spawn_destroyed_contents(destroyed);
-            return;
-        }
-        let w = f64::from(p.dimensions.width) / 2.0;
-        let (min, max) = (
-            [
-                p.position.x - w - 1.0,
-                p.position.y - 0.5,
-                p.position.z - w - 1.0,
-            ],
-            [
-                p.position.x + w + 1.0,
-                p.position.y + f64::from(p.dimensions.height) + 0.5,
-                p.position.z + w + 1.0,
-            ],
-        );
-        let feet = [p.position.x, p.position.y, p.position.z];
-        let own = self.level.ensure_player_uuid();
-        self.native_player_pickups(&mut items, (min, max), feet, own);
-        self.put_back_dropped(items);
-        self.spawn_destroyed_contents(destroyed);
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
@@ -452,20 +182,6 @@ impl Game<'_> {
         });
     }
 
-    /// Item entity `i` leaves the level (`Entity.discard`); mods hear it.
-    pub(super) fn remove_dropped(&mut self, i: usize) -> ItemEntity {
-        let e = self.dropped.remove(i);
-        self.native_entity_left(e.id);
-        e
-    }
-
-    /// The item entity `spawn_item` just added, unless a native mod kept it
-    /// out of the level (`native_entity_join_level`).
-    pub(super) fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
-        let id = self.next_entity;
-        self.dropped.last_mut().filter(|d| d.id == id)
-    }
-
     /// `new ItemEntity(level, x, y, z, stack, dx, dy, dz)`.
     pub(super) fn spawn_item(
         &mut self,
@@ -473,12 +189,8 @@ impl Game<'_> {
         position: [f64; 3],
         velocity: [f64; 3],
         pickup_delay: u32,
-    ) {
-        if self.ecs.is_active() {
-            self.ecs_drop_after(stack, position, velocity, i16::try_from(pickup_delay).unwrap_or(i16::MAX));
-            return;
-        }
-        self.add_item_entity(stack, position, Some(velocity), pickup_delay);
+    ) -> Option<u32> {
+        self.spawn_prepared_item(stack, position, Some(velocity), pickup_delay, None).0
     }
 
     /// `new ItemEntity(level, x, y, z, stack)`: the item leaves with its own
@@ -641,14 +353,14 @@ impl Game<'_> {
         }
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
         let id = if randomly {
-            self.spawn_item(thrown, at, v, 40);
-            self.next_entity
+            self.spawn_item(thrown, at, v, 40)?
         } else {
             self.toss_item(thrown, at, v, uuid)?
         };
-        let item = self.dropped.iter_mut().rev().find(|d| d.id == id)?;
-        item.thrower = uuid;
-        Some(item.id)
+        if let (Some(e), Some(who)) = (self.ecs.entity_of(id), uuid) {
+            self.ecs.set_thrower(e, who);
+        }
+        Some(id)
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements`: the player took from the output of the
@@ -677,13 +389,14 @@ impl Game<'_> {
 #[cfg(test)]
 mod destroyed_contents_tests {
     use super::*;
-    use crate::game::game_tests::tests::server_game;
+    use crate::game::ecs::test_support::active_server_game;
     use horizon_client::items::ItemStack;
     use horizon_core::random::RandomSource;
 
     /// The motion of each spilled stack, in the order the spill made them.
     fn spilled_motions(game: &Game<'_>) -> Vec<[f64; 3]> {
-        game.dropped
+        game.ecs
+            .item_views()
             .iter()
             .map(|item| [item.velocity.x, item.velocity.y, item.velocity.z])
             .collect()
@@ -699,7 +412,7 @@ mod destroyed_contents_tests {
     #[ignore = "daily"]
     fn spilled_stacks_rise_from_their_own_randoms() {
         let mut resources = None;
-        let mut game = server_game(&mut resources);
+        let mut game = active_server_game(&mut resources);
         let at = Vec3::new(8.5, 70.0, 8.5);
         let stacks = ["minecraft:stone", "minecraft:dirt", "minecraft:glass"]
             .into_iter()
@@ -729,7 +442,7 @@ mod destroyed_contents_tests {
     #[ignore = "daily"]
     fn a_damaged_shulker_box_spills_its_stacks_upward() {
         let mut resources = None;
-        let mut game = server_game(&mut resources);
+        let mut game = active_server_game(&mut resources);
         game.build_registries();
         game.set_allow_commands(true);
         game.world.chunks.insert(
@@ -748,10 +461,11 @@ mod destroyed_contents_tests {
         .unwrap()
         .unwrap();
         game.spawn_item(boxed, [8.5, 70.0, 8.5], [0.0; 3], 0);
-        assert_eq!(game.dropped.len(), 1);
+        assert_eq!(game.ecs.item_ids().len(), 1);
         assert!(game.run_command("damage @e[type=minecraft:item,limit=1] 100 minecraft:generic"));
         let mut spilled: Vec<_> = game
-            .dropped
+            .ecs
+            .item_views()
             .iter()
             .map(|item| (item.stack.item.to_string(), item.stack.count))
             .collect();
@@ -764,7 +478,7 @@ mod destroyed_contents_tests {
                 ("minecraft:stone".to_owned(), 2)
             ]
         );
-        for item in &game.dropped {
+        for item in game.ecs.item_views() {
             assert_eq!(item.velocity.y, 0.2, "{item:?}");
         }
     }
@@ -772,7 +486,7 @@ mod destroyed_contents_tests {
 
 #[cfg(test)]
 mod escape_tests {
-    use crate::game::game_tests::tests::server_game;
+    use crate::game::ecs::test_support::active_server_game;
     use horizon_client::items::ItemStack;
     use horizon_core::random::RandomSource;
 
@@ -782,7 +496,7 @@ mod escape_tests {
     #[ignore = "daily"]
     fn an_item_escapes_a_block_at_its_own_randoms_speed() {
         let mut game_resources = None;
-        let mut game = server_game(&mut game_resources);
+        let mut game = active_server_game(&mut game_resources);
         let feet = horizon_core::geometry::Vec3::new(8.5, 70.0, 8.5);
         game.player = Some(horizon_client::motion::PlayerMotion::new(game.motion, feet).unwrap());
         super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
@@ -800,16 +514,13 @@ mod escape_tests {
         game.world.set(8, 64, 8, stone).unwrap();
         let stack = ItemStack::new("minecraft:stone", 2);
         game.spawn_item(stack, [8.5, 64.4, 8.5], [0.0, 0.0, 0.0], 10);
-        let item = game.dropped.last_mut().unwrap();
-        item.random = horizon_core::random::EntityRandom::own(horizon_core::random::LegacyRandom::new(12345));
         let mut level = game.world.random.clone();
         game.ticked_entities_through = u32::MAX;
         game.tick_items();
-        let item = game.dropped.last().unwrap();
+        let item = game.ecs.item_views().pop().unwrap();
         // Up is the nearest open side. Independent Java Random(12345):
         // nextFloat()*0.2F+0.1F, widened before multiplying by widened 0.98F.
         assert_eq!(item.velocity.y, f64::from_bits(0x3fc5_9ef4_570f_5500));
-        assert_eq!(item.random.clone().next_float().to_bits(), 0x3f03_61b3);
         assert_eq!(game.world.random.next_float(), level.next_float());
     }
 }

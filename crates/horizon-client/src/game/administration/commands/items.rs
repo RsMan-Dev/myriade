@@ -459,10 +459,9 @@ impl Game<'_> {
                 .get(*i)
                 .cloned(),
             Slot::Item(id) => self
-                .dropped
-                .iter()
-                .find(|e| e.id == *id)
-                .map(|e| e.stack.clone())
+                .ecs
+                .item(*id)
+                .map(|e| e.stack)
                 .filter(|s| &*s.item != "minecraft:air" && s.count > 0),
             Slot::Dragon(id, i) => self
                 .dragon
@@ -785,17 +784,13 @@ impl Game<'_> {
                 .as_mut()
                 .filter(|d| d.id == *id)
                 .is_some_and(|d| d.equipment.set(*i, stack)),
-            Slot::Item(id) => match self.dropped.iter_mut().find(|e| e.id == *id) {
-                Some(entity) => {
-                    // `ItemEntity.setItem`: the stack is the entity's.
-                    match stack.filter(|s| &*s.item != "minecraft:air" && s.count > 0) {
-                        Some(stack) => entity.stack = stack,
-                        None => entity.stack = ItemStack::new("minecraft:air", 0),
-                    }
-                    true
-                }
-                None => false,
-            },
+            Slot::Item(id) => {
+                // `ItemEntity.setItem`: the stack is the entity's.
+                let stack = stack
+                    .filter(|s| &*s.item != "minecraft:air" && s.count > 0)
+                    .unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
+                self.ecs.set_item_stack(*id, stack)
+            }
             Slot::Frame(id) => {
                 let stack = stack.unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
                 self.ecs_with_mw(|ecs, mw| ecs.set_frame_item(mw, *id, stack))

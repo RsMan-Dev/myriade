@@ -89,16 +89,16 @@ fn pig_owner(game: &mut Game<'_>) -> Option<ShotBy> {
     game.ecs_owner(Some(crate::mobs::Who::Mob(pig)))
 }
 fn dropped(game: &Game<'_>, item: &str) {
-    assert_eq!(game.dropped.len(), 1, "actual unfiltered item collection");
-    assert_eq!(&*game.dropped[0].stack.item, item);
-    assert_eq!(game.dropped[0].stack.count, 1);
+    assert_eq!(game.ecs.item_ids().len(), 1, "actual unfiltered item collection");
+    assert_eq!(&*game.ecs.item_views()[0].stack.item, item);
+    assert_eq!(game.ecs.item_views()[0].stack.count, 1);
 }
 #[test]
 #[ignore = "daily"]
 fn a_registered_arrow_collision_keeps_the_actual_projectile_for_chorus_loot() {
     with_game(|game| {
         source(game, 4, 4, "chorus_flower");
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         let id = launch(game, "arrow", 4, 4, None);
         game.tick_ecs().unwrap();
         assert!(
@@ -130,7 +130,7 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
         launch(game, "arrow", 4, 4, None);
         game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 4 200 4 chorus_flower"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         assert!(game.run_command("gamerule projectiles_can_break_blocks true"));
         assert!(
             game.session
@@ -146,27 +146,27 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
         launch(game, "arrow", 8, 4, owner);
         game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 8 200 4 chorus_flower"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         source(game, 12, 4, "chorus_flower");
         launch(game, "ender_pearl", 12, 4, None);
         game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 12 200 4 chorus_flower"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         source(game, 4, 8, "stone");
         launch(game, "arrow", 4, 8, None);
         game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 4 200 8 stone"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         assert!(game.run_command("gamerule block_drops false"));
         source(game, 8, 8, "chorus_flower");
         launch(game, "snowball", 8, 8, None);
         game.tick_ecs().unwrap();
         assert!(game.run_command("execute if block 8 200 8 air"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         assert!(game.run_command("gamerule block_drops true"));
         source(game, 4, 12, "chorus_flower");
         assert!(game.run_command("setblock 4 200 12 air destroy"));
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
         source(game, 8, 12, "dirt");
         assert!(game.run_command("setblock 8 200 12 air destroy"));
         dropped(game, "minecraft:dirt");
@@ -224,7 +224,7 @@ fn default_drop_rng_continues_identically_with_table_sequence_or_level_fallback(
                 assert!(b.destroy_block(level, ticks, BlockPos::new(4, 200, 4), true));
             });
             game.process_level_events().unwrap();
-            assert_eq!(game.dropped.len(), 1);
+            assert_eq!(game.ecs.item_ids().len(), 1);
             let pool = game.rand_sequences.to_nbt();
             let sequence_words = match pool
                 .get("sequences")
@@ -242,7 +242,7 @@ fn default_drop_rng_continues_identically_with_table_sequence_or_level_fallback(
             let mut random = game.world.random.clone();
             let continuation: Vec<i64> = (0..4).map(|_| random.next_long()).collect();
             let drops: Vec<_> = game
-                .dropped
+                .ecs.item_views()
                 .iter()
                 .map(|d| (d.stack.item.to_string(), d.stack.count))
                 .collect();

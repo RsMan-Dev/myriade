@@ -463,7 +463,7 @@ mod tests {
             );
             let cart = game.carts.first().expect("the cart is still there");
             assert_eq!(cart.items[0].as_ref().map(|s| s.count), Some(3));
-            assert!(game.dropped.is_empty(), "nothing is dropped beside it");
+            assert!(game.ecs.item_ids().is_empty(), "nothing is dropped beside it");
         }
         game.carts.clear();
         game.boats
@@ -476,7 +476,7 @@ mod tests {
         );
         let boat = game.boats.first().expect("the boat is still there");
         assert_eq!(boat.items[0].as_ref().map(|s| s.count), Some(3));
-        assert!(game.dropped.is_empty(), "nothing is dropped beside it");
+        assert!(game.ecs.item_ids().is_empty(), "nothing is dropped beside it");
     }
     /// One transfer into a composter is one item, however big the stack: the
     /// `InputContainer` is `changed` after it composts, and its
@@ -504,7 +504,7 @@ mod tests {
         );
         assert_eq!(game.composter_level([pos.0, pos.1, pos.2]), Some(1));
         let dropped: Vec<(String, u32)> = game
-            .dropped
+            .ecs.item_views()
             .iter()
             .map(|d| (d.stack.item.to_string(), d.stack.count))
             .collect();
@@ -564,10 +564,10 @@ mod part_remainder_tests {
                 game.world
                     .block_entities
                     .insert((0, 100, 0), BlockEntity::Crafter(crafter));
-                game.dropped.clear();
+                game.ecs_clear_items();
                 game.crafter_dispense(pos, state).unwrap();
                 let output: Vec<_> = game
-                    .dropped
+                    .ecs.item_views()
                     .iter()
                     .map(|e| (e.stack.item.to_string(), e.stack.count))
                     .collect();

@@ -529,14 +529,14 @@ fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
                 Vec3::new(0.5, 65.0, 0.5),
             ));
             changes.0.lock().unwrap().clear();
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             let mut random = game.world.random.clone();
             game.dispense_from(BlockPos::new(0, 66, 0), state).unwrap();
             assert_eq!(
                 game.carts[0].items[0],
                 Some(ItemStack::new("minecraft:stick", 4))
             );
-            assert_eq!(game.dropped.len(), dropped);
+            assert_eq!(game.ecs.item_ids().len(), dropped);
             assert_eq!(
                 *changes.0.lock().unwrap(),
                 [Notice {

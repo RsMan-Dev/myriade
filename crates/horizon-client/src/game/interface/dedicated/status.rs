@@ -119,7 +119,7 @@ impl Game<'_> {
     fn entity_count(&self) -> usize {
         self.ecs.entity_count()
             + self.remote_entities.iter().filter(|m| !m.removed).count()
-            + self.dropped.len()
+            + self.ecs.item_ids().len()
             + self.creatures.projectiles.len()
             + self.carts.len()
             + self.boats.len()

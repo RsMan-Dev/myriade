@@ -32,6 +32,7 @@ mod entity_inside_tests {
         use horizon_world::level::LandingWrite;
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
+            game.ecs = game.test_ecs_level();
             let state = |name| game.pack.assets.registry.default_state(name).unwrap();
             let (farmland, dirt, stone, air) = (
                 state("minecraft:farmland"),
@@ -48,7 +49,7 @@ mod entity_inside_tests {
             game.world.set(3, 64, 1, stone).unwrap();
             game.world.set(4, 64, 1, dirt).unwrap();
             game.world.set(5, 64, 1, dirt).unwrap();
-            let drops_before = game.dropped.len();
+            let drops_before = game.ecs.item_ids().len();
             let at = |x| BlockPos::new(x, 64, 1);
             let requested = vec![
                 mod_api::LandingWrite::SetBlock(stone.try_into_api().unwrap()),
@@ -86,11 +87,11 @@ mod entity_inside_tests {
             assert_eq!(game.world.block(4, 64, 1), air);
             assert_eq!(game.world.block(5, 64, 1), air);
             assert_eq!(
-                game.dropped.len(),
+                game.ecs.item_ids().len(),
                 drops_before + 1,
                 "only drop=true creates dirt resources"
             );
-            let dropped = &game.dropped[drops_before];
+            let dropped = game.ecs.item_views().pop().unwrap();
             assert_eq!(dropped.stack.item.as_ref(), "minecraft:dirt");
             assert_eq!(
                 dropped.position.x.floor() as i32,
@@ -674,9 +675,8 @@ mod sweep_tests {
         });
     }
 
-    /// A panicking part inside the item batch: the staged fire contains it, the
-    /// lent level goes back, and the lifted row the batch holds returns to the
-    /// level's list (arismoko/horizon#2194's and arismoko/horizon#2213's carrier discipline).
+    /// A panicking part inside the item batch: the staged fire contains it and the
+    /// lent level goes back (arismoko/horizon#2194's and arismoko/horizon#2213's carrier discipline).
     #[test]
     #[ignore = "daily"]
     fn a_panicking_part_leaves_the_item_batch_restored() {
@@ -688,22 +688,16 @@ mod sweep_tests {
         mod_platform::testing::with_mods(mods, || {
             crate::game::native_entity_refs::tests::with_game(|game| {
                 let _ = horizon_client::block_contact::HOOKS.set(super::BLOCK_CONTACT_HOOKS);
-                let item = item_at_blocks(game);
-                game.dropped.push(item);
-                let rows = game.dropped.len();
-                let mut items = game.dropped.lift();
-                let before = items[0].velocity.x;
+                let mut item = item_at_blocks(game);
+                let before = item.velocity.x;
                 horizon_client::block_contact::in_level(Some("minecraft:overworld"), || {
-                    game.sweep_item_inside(&mut items[0]);
+                    game.sweep_item_inside(&mut item);
                 });
-                game.put_back_dropped(items);
                 assert_eq!(
                     part.contacts.lock().unwrap().len(),
                     2,
                     "both contacts reached the part; each panic was contained"
                 );
-                assert_eq!(game.dropped.len(), rows, "the lifted row returned");
-                let item = game.dropped.first().unwrap();
                 assert!(
                     (item.velocity.x - before).abs() < 1e-9,
                     "the panicking callback's staged writes never applied"

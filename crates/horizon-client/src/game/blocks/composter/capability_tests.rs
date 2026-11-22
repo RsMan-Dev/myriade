@@ -59,7 +59,7 @@ fn assert_quiet(game: &Game<'_>, heard: &Mutex<Vec<String>>) {
         "tentative state was published"
     );
     assert!(
-        game.dropped.is_empty(),
+        game.ecs.item_ids().is_empty(),
         "a container extraction spawned bone meal"
     );
 }
@@ -299,7 +299,7 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 assert_eq!(game.composter_level(POS), Some(0));
                 assert_eq!(heard.lock().unwrap().as_slice(), ["minecraft:block_change"]);
                 assert!(game.audio.capture.as_ref().unwrap().is_empty());
-                assert!(game.dropped.is_empty());
+                assert!(game.ecs.item_ids().is_empty());
 
                 // A real bulk consumer offers all 64, not a pre-trimmed single item.
                 // It must preserve the literal sequence above across its nested partial

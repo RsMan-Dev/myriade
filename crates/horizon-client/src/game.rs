@@ -867,7 +867,6 @@ struct Game<'a> {
     was_fall_flying: bool,
     /// Remote guardian eye targets reused between ticks.
     guardian_look_scratch: Vec<(usize, [f64; 3])>,
-    dropped: horizon_client::join_seq::JoinList<ItemEntity>,
     next_entity: u32,
     /// What the native mods made of the effect swirls of the ECS entities, by network id, kept while one listens (`ecs_state`).
     ecs_effect_particles: HashMap<u32, horizon_client::effects::ModifiedEffectParticles>,
@@ -1139,10 +1138,6 @@ struct Game<'a> {
     mod_container_viewers: HashMap<(&'static str, (i32, i32, i32)), u32>,
     /// Where item entities are, while the block entities tick (hoppers).
     item_columns: Option<machines::ItemColumns>,
-    /// The item columns for one pass of the players' pickups
-    /// (`tick_guests`), rebuilt after any write to the items (a pickup, a
-    /// command, an explosion): see `item_columns`.
-    pickup_columns: Option<machines::StampedItemColumns>,
     /// Where the mobs are, while the block entities tick (potent sulfur gas).
     pass_mobs: Option<potent_sulfur::PassMobs>,
     /// Block-entity positions retained between ticks for client effects.
@@ -1794,19 +1789,6 @@ impl Game<'_> {
         player.burn_from_stepping_immune = burn_immune;
         player.fluids.fast_lava = fast_lava;
     }
-    /// Joins an item only after drop hooks have seen its constructor's motion.
-    fn add_item_entity_prepared(
-        &mut self,
-        stack: ItemStack,
-        position: [f64; 3],
-        velocity: Option<[f64; 3]>,
-        pickup_delay: u32,
-        random: Option<spill::ItemRandom>,
-    ) -> [f64; 3] {
-        let velocity = self.push_item_entity(stack, position, velocity, pickup_delay, random);
-        self.join_item_entity(self.next_entity, position);
-        velocity
-    }
     /// The block entity at `pos` saved with its id and position
     /// (`saveWithFullMetadata`), or the saved one Horizon keeps as loaded:
     /// what a broken block's loot sees as `LootContextParams.BLOCK_ENTITY`.
@@ -1943,15 +1925,6 @@ impl Game<'_> {
         if let Err(payload) = result {
             std::panic::resume_unwind(payload);
         }
-    }
-    /// The item entities `tick_dropped_items` took out, back in the level,
-    /// before those its hooks spawned meanwhile (`addFreshEntity` appends).
-    /// They keep their join numbers; the spawned ones got theirs on joining.
-    fn put_back_dropped(&mut self, items: horizon_client::join_seq::JoinList<ItemEntity>) {
-        self.dropped.restore(
-            items,
-            horizon_client::join_seq::RestoreOrder::SurvivorsFirst,
-        );
     }
     /// `Entity.doWaterSplashEffect` for a dropped item: the server plays
     /// `entity.generic.splash` (`Entity.playSound`), which the players hear.
@@ -3965,7 +3938,6 @@ impl Game<'_> {
     pub(super) fn clear_entities(&mut self) {
         self.clear_pending_mob_actions();
         self.remote_entities.clear();
-        self.dropped.clear();
         self.creatures.projectiles.clear();
         self.boats.clear();
         self.carts.clear();
@@ -5408,7 +5380,6 @@ impl<'a> Game<'a> {
             riding_cart_sounds: None,
             was_fall_flying: false,
             guardian_look_scratch: Vec::new(),
-            dropped: Default::default(),
             next_entity: 0,
             ecs_effect_particles: HashMap::new(),
             ticked_entities_through: u32::MAX,
@@ -5549,7 +5520,6 @@ impl<'a> Game<'a> {
             contents_changing: Vec::new(),
             mod_container_viewers: HashMap::new(),
             item_columns: None,
-            pickup_columns: None,
             pass_mobs: None,
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),

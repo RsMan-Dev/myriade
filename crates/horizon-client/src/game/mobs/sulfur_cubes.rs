@@ -211,25 +211,25 @@ impl Game<'_> {
                 .inflate(horizon_core::geometry::Vec3::new(8.0, 8.0, 8.0));
             let pos = m.position;
             let best = self
-                .dropped
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| {
+                .ecs
+                .item_views()
+                .into_iter()
+                .filter(|e| {
                     e.pickup_delay == 0
                         && reach.contains(e.position)
                         && sulfur_cube::swallowable(m, &e.stack.item)
                 })
-                .map(|(j, e)| (j, e.position.distance_squared(pos)))
+                .map(|e| (e.id, e.position.distance_squared(pos)))
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             let Some((j, _)) = best else {
                 self.remote_entities[i].extra.point = None;
                 continue;
             };
+            let Some(e) = self.ecs.item(j) else { continue };
             // Mob.aiStep: items within the box grown by (1, 0, 1).
             let touch = m
                 .bounds()
                 .inflate(horizon_core::geometry::Vec3::new(1.0, 0.0, 1.0));
-            let e = &self.dropped[j];
             let close = touch.contains(e.position);
             self.remote_entities[i].extra.point = Some([e.position.x, e.position.y, e.position.z]);
             if !griefing || !close {
@@ -240,15 +240,18 @@ impl Game<'_> {
                 .is_some_and(|uuid| Some(uuid) == self.level.player_uuid);
             let mut swallowed = e.stack.clone();
             swallowed.count = 1;
-            let (taken_item, id) = (e.clone(), self.remote_entities[i].id);
+            let (count, at) = (e.stack.count as i32, [e.position.x, e.position.y, e.position.z]);
+            let id = self.remote_entities[i].id;
             self.add_pickup(
-                super::pickups::Taken::Item(Box::new(taken_item)),
+                super::pickups::Taken::Ecs { id: j, count, at, kind: "item" },
                 super::pickups::Collector::Mob(id),
             );
-            let e = &mut self.dropped[j];
-            e.stack.count -= 1;
-            if e.stack.count == 0 {
-                self.remove_dropped(j);
+            let mut rest = e.stack.clone();
+            rest.count -= 1;
+            if rest.count == 0 {
+                self.ecs_remove_item(j);
+            } else {
+                self.ecs.set_item_stack(j, rest);
             }
             let m = &mut self.remote_entities[i];
             m.extra.set_body_stack(Some(swallowed.clone()));

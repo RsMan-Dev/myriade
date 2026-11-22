@@ -505,12 +505,12 @@ mod hook_mutation_regressions {
                 game.hurt_boat(boat, 5.0, false);
                 assert_eq!(*destroyed.lock().unwrap(), 0);
                 assert!(
-                    game.dropped.is_empty(),
+                    game.ecs.item_ids().is_empty(),
                     "discard must not create the vehicle item"
                 );
                 game.native_removals_flush();
                 assert_eq!(*destroyed.lock().unwrap(), 0);
-                assert!(game.dropped.is_empty());
+                assert!(game.ecs.item_ids().is_empty());
                 assert!(game.entity(boat).is_none());
             });
         });

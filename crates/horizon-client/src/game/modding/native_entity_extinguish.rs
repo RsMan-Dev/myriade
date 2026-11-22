@@ -61,16 +61,13 @@ impl Game<'_> {
                 true
             }
             Some(Target::Item(id)) => {
-                let Some(index) = self.dropped.iter().position(|item| item.id == id) else {
+                let Some(item) = self.ecs.item(id) else {
                     return false;
                 };
-                let immune = self
-                    .stack_can_be_hurt_by(&self.dropped[index].stack, "minecraft:in_fire")
-                    == Some(false);
-                let item = &mut self.dropped[index];
+                let immune = self.stack_can_be_hurt_by(&item.stack, "minecraft:in_fire") == Some(false);
                 if item.fire_ticks > 0 && !immune {
                     let at = [item.position.x, item.position.y, item.position.z];
-                    let pitch = extinguish_pitch(&mut item.random);
+                    let pitch = extinguish_pitch(&mut cosmetic_random());
                     self.audio.play_on(
                         SoundSource::Ambient.index(),
                         "minecraft:entity.generic.extinguish_fire",
@@ -79,8 +76,7 @@ impl Game<'_> {
                         pitch,
                     );
                 }
-                item.fire_ticks = item.fire_ticks.min(0);
-                true
+                self.ecs_put(id, "Fire", Tag::Short(item.fire_ticks.min(0) as i16))
             }
             _ => false,
         }

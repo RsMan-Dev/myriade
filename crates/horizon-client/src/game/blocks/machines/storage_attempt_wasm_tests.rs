@@ -125,7 +125,7 @@ fn run() {
             let traces = Arc::new(Mutex::new(Vec::new()));
             game.transactions.trace = Some(traces.clone());
             let failures = game.wasm_dispatch_failures.get();
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             for tick in 1..=2 {
                 game.world.game_time = tick;
                 game.tick_hopper((8, 64, 8));
@@ -155,7 +155,7 @@ fn run() {
                     "aborted guest writes restore native backing storage"
                 );
                 assert_eq!(game.hopper_cooldown((8, 64, 8)), 0);
-                assert_eq!(game.dropped.len(), dropped);
+                assert_eq!(game.ecs.item_ids().len(), dropped);
                 assert!(game.transactions.is_empty());
                 assert_eq!(
                     game.wasm_dispatch_failures.get(),

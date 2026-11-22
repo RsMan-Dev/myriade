@@ -146,7 +146,7 @@ fn a_creative_blast_leaves_no_cushion_item() {
     ] {
         game.creative = creative;
         game.cushions.clear();
-        game.dropped.clear();
+        game.ecs_clear_items();
         assert!(game.place_cushion(&top_hit(), &named_stack()));
         // `Explosion.getIndirectSourceEntity` of a player's TNT is the player.
         game.combat = Default::default();
@@ -168,14 +168,14 @@ fn a_creative_blast_leaves_no_cushion_item() {
         game.lan_acting = None;
         assert!(game.cushions.is_empty(), "the blast breaks the cushion");
         assert_eq!(
-            game.dropped.len(),
+            game.ecs.item_ids().len(),
             dropped,
             "creative={creative} owner_player={owner_player} guest={guest:?}: \
              the blast's cause decides the drop"
         );
         if dropped == 1 {
             assert_eq!(
-                game.dropped[0].stack.custom_name().as_deref(),
+                game.ecs.item_views()[0].stack.custom_name().as_deref(),
                 Some("Seat"),
                 "a blast that drops the cushion drops it named"
             );
@@ -199,7 +199,7 @@ fn a_cushion_that_loses_its_support_is_discarded_silently() {
         vec![("minecraft:entity_die", AT, Some(Who::Player))],
         "a player's break kills the cushion"
     );
-    assert!(game.dropped.is_empty(), "a creative breaker gets no item");
+    assert!(game.ecs.item_ids().is_empty(), "a creative breaker gets no item");
 
     assert!(game.place_cushion(&top_hit(), &named_stack()));
     assert!(game.run_command("setblock 4 199 4 air strict"));
@@ -209,6 +209,6 @@ fn a_cushion_that_loses_its_support_is_discarded_silently() {
     game.tick_cushions();
     assert!(game.cushions.is_empty(), "the cushion is gone");
     assert_eq!(events(), [], "a discarded cushion posts no game event");
-    assert_eq!(game.dropped.len(), 1, "it still drops its item");
-    assert_eq!(game.dropped[0].stack.custom_name().as_deref(), Some("Seat"));
+    assert_eq!(game.ecs.item_ids().len(), 1, "it still drops its item");
+    assert_eq!(game.ecs.item_views()[0].stack.custom_name().as_deref(), Some("Seat"));
 }

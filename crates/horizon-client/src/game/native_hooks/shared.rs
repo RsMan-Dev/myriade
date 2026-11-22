@@ -1239,9 +1239,9 @@ impl Game<'_> {
         {
             return Vec::new();
         }
-        self.dropped
+        self.ecs.item_views()
             .iter()
-            .filter(|e| e.stack.count > 0 && box_meets(&e.bounds(), min, max))
+            .filter(|e| e.stack.count > 0 && self.ecs.bounds(e.id).is_some_and(|b| box_meets(&b, min, max)))
             .map(|e| NativeItemEntity {
                 id: e.id,
                 position: [e.position.x, e.position.y, e.position.z],
@@ -3629,8 +3629,8 @@ mod item_fall_on_tests {
                 let item = game
                     .level_spawn_item(level, 1.5, 70.0, 1.5, stack, 10)
                     .unwrap();
-                if let Some(i) = game.dropped.iter_mut().find(|i| i.id == item.id()) {
-                    i.velocity = horizon_core::geometry::Vec3::ZERO;
+                if let Some(e) = game.ecs.entity_of(item.id()) {
+                    game.ecs.set_velocity(e, horizon_core::geometry::Vec3::ZERO);
                 }
                 // The part's write destroys the stone after the batch; it is put back at once,
                 // so the item rests on it again and must not be heard landing twice.

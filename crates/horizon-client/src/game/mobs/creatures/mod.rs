@@ -2332,10 +2332,9 @@ impl Game<'_> {
                     pickup_delay,
                 } => {
                     // `thrownItem.setThrower(the mob)`.
-                    self.spawn_item(stack, at, motion, pickup_delay);
-                    let thrower = self.mob_uuid(mob);
-                    if let Some(thrown) = self.just_spawned_item() {
-                        thrown.thrower = Some(thrower);
+                    if let Some(id) = self.spawn_item(stack, at, motion, pickup_delay) {
+                        let thrower = self.mob_uuid(mob);
+                        self.ecs.set_item_thrower(id, Some(thrower));
                     }
                 }
                 MobEvent::DropStack { mob, stack, at } => {
@@ -4456,7 +4455,7 @@ impl Game<'_> {
                         as f64
                         * 0.1;
                 }
-                self.spawn_item_own(
+                let dropped = self.spawn_item_own_id(
                     ItemStack {
                         count: 1,
                         ..stack.clone()
@@ -4464,10 +4463,8 @@ impl Game<'_> {
                     [feet[0], feet[1] + 1.0, feet[2]],
                     if wool { 10 } else { 0 },
                 );
-                if let Some(e) = self.just_spawned_item() {
-                    e.velocity = e
-                        .velocity
-                        .add_vector(Vec3::new(spread[0], spread[1], spread[2]));
+                if let Some(id) = dropped {
+                    self.ecs.add_item_velocity(id, Vec3::new(spread[0], spread[1], spread[2]));
                 }
             }
         }

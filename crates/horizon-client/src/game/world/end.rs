@@ -1180,7 +1180,7 @@ impl Game<'_> {
         let ticking = self.entity_ticking_area();
         let ticks = |at: Vec3| ticking(at.x.floor() as i32, at.z.floor() as i32);
         let items: Vec<(u32, Vec3, f32, f32)> = self
-            .dropped
+            .ecs.item_views()
             .iter()
             .filter(|e| ticks(e.position))
             .map(|e| (e.id, e.position, 0.25, 0.25))
@@ -1311,7 +1311,7 @@ impl Game<'_> {
         let ticking = self.entity_ticking_area();
         let ticks = |at: Vec3| ticking(at.x.floor() as i32, at.z.floor() as i32);
         let mut ids: Vec<(u32, bool, bool)> = self
-            .dropped
+            .ecs.item_views()
             .iter()
             .map(|e| (e.id, true, ticks(e.position)))
             .chain(
@@ -1660,14 +1660,11 @@ mod tests {
                 [2.5, 100.0, 2.5],
                 0,
             );
-            let id = game.dropped.last().unwrap().id;
+            let id = game.ecs.item_ids().last().copied().unwrap();
             let target = Vec3::new(12.5, 100.0, 12.5);
             let motion = Vec3::new(0.117, 0.25, -0.05);
-            game.dropped
-                .iter_mut()
-                .find(|d| d.id == id)
-                .unwrap()
-                .velocity = motion;
+            let e = game.ecs.entity_of(id).unwrap();
+            game.ecs.set_velocity(e, motion);
             let arrival = GatewayArrival {
                 traveller: Arriving::Live(id),
                 job: GatewayJob::Known {
@@ -1679,7 +1676,7 @@ mod tests {
             assert!(game.arrive_through_gateway(arrival).is_none());
             // Entity.teleportSameDimension with the gateway's Relative.DELTA: the
             // entity is at the exit and its motion is kept.
-            let item = game.dropped.iter().find(|d| d.id == id).unwrap();
+            let item = game.ecs.item(id).unwrap();
             let (at, to) = (item.position, target);
             for (a, t) in [(at.x, to.x), (at.y, to.y), (at.z, to.z)] {
                 assert!((a - t).abs() < 1e-3, "{at:?}");

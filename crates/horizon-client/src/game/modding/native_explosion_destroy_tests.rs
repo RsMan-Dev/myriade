@@ -165,7 +165,7 @@ fn set(game: &mut Game<'_>, pos: [i32; 3], block: &str) {
 
 /// How many of `item` lie dropped.
 fn dropped(game: &Game<'_>, item: &str) -> u32 {
-    game.dropped
+    game.ecs.item_views()
         .iter()
         .filter(|e| &*e.stack.item == item)
         .map(|e| e.stack.count)
@@ -185,7 +185,7 @@ fn a_thousand_stone_blocks_turn_to_air_with_drops_decayed_by_the_rule() {
     each_target(|game, via, _| {
         for decay in [true, false] {
             assert!(game.run_command("fill 0 70 0 9 79 9 minecraft:stone"));
-            game.dropped.clear();
+            game.ecs_clear_items();
             assert!(game.session.rules.set(
                 "block_explosion_drop_decay",
                 horizon_client::gamerules::Value::Bool(decay),
@@ -319,7 +319,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
         // after the shuffle, but its constructor motion uses its own random.
         assert_eq!(game.world.random.next_int(), -1_105_573_998, "{via:?}");
         let drops: Vec<_> = game
-            .dropped
+            .ecs.item_views()
             .iter()
             .map(|e| (e.stack.item.to_string(), e.stack.count, e.position))
             .collect();
@@ -344,7 +344,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
             set(game, p, "cobblestone");
         }
         game.world.random.set_seed(7);
-        let before = game.dropped.len();
+        let before = game.ecs.item_ids().len();
         destroy(
             game,
             via,
@@ -352,7 +352,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
             blast(ExplosionInteraction::Block),
             Ok(2),
         );
-        assert_eq!(game.dropped.len(), before, "{via:?}: no new item entity");
+        assert_eq!(game.ecs.item_ids().len(), before, "{via:?}: no new item entity");
         assert_eq!(
             game.world.random.next_int(),
             -1_105_573_998,

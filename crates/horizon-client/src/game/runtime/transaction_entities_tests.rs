@@ -461,7 +461,7 @@ fn a_traveller_arriving_inside_an_aborted_action_stays() {
         );
         game.enter_level(Dim::Overworld).unwrap();
         let diamonds = |game: &Game<'_>| {
-            (game.dropped.iter())
+            (game.ecs.item_views().iter())
                 .filter(|d| &*d.stack.item == "minecraft:diamond")
                 .count()
         };
@@ -540,9 +540,9 @@ fn exhausted_ids_refuse_every_mod_spawn() {
             game.entity_spawn_at_location(f.mob, stack, 0.0).is_some()
         }),
         ("drop_at", |game, _| {
-            let before = game.dropped.len();
+            let before = game.ecs.item_ids().len();
             game.drop_at([1, 70, 1], ItemStack::new("minecraft:stone", 1));
-            game.dropped.len() > before
+            game.ecs.item_ids().len() > before
         }),
         ("level_spawn_mob", |game, f| {
             let reason = mod_api::SpawnReason::Command;
@@ -894,14 +894,14 @@ fn a_block_break_at_the_commit_never_announces_a_mob_the_transaction_removed() {
         game.world.set(at[0], at[1], at[2], poppy).unwrap();
         let level = game.level(game.dim.id()).unwrap();
         let water = mod_api::__private::fluid_key("minecraft:water").unwrap();
-        let items = game.dropped.len();
+        let items = game.ecs.item_ids().len();
         let seal = game.transaction_open();
         let pig = summon(game, "minecraft:pig", "{}").unwrap();
         assert!(game.entity_discard(game.entity(pig).unwrap()));
         assert!(game.level_place_fluid(level, at, water, None, false, seal.transaction()));
-        assert_eq!(game.dropped.len(), items, "the drop waits for the commit");
+        assert_eq!(game.ecs.item_ids().len(), items, "the drop waits for the commit");
         game.transaction_close(&seal, true);
-        assert_eq!(game.dropped.len(), items + 1, "the broken poppy dropped");
+        assert_eq!(game.ecs.item_ids().len(), items + 1, "the broken poppy dropped");
         let told = heard();
         assert!(
             !told.joined.contains(&pig),

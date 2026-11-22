@@ -406,14 +406,14 @@ mod tests {
             // A body to throw from: `with_game` makes none.
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap());
             let stone = ItemStack::new("minecraft:stone", 3);
-            let before = game.dropped.len();
+            let before = game.ecs.item_ids().len();
             let id = game.drop_stack_from_eyes(stone.clone(), true).unwrap();
-            assert_eq!(game.dropped.len(), before + 1);
-            let thrown = game.dropped.last().unwrap();
+            assert_eq!(game.ecs.item_ids().len(), before + 1);
+            let thrown = game.ecs.item_views().pop().unwrap();
             assert_eq!((thrown.id, &thrown.stack), (id, &stone));
             assert!(thrown.thrower.is_some(), "the drop key names the thrower");
             game.drop_stack_from_eyes(stone.clone(), false).unwrap();
-            assert!(game.dropped.last().unwrap().thrower.is_none());
+            assert!(game.ecs.item_views().pop().unwrap().thrower.is_none());
             assert_eq!(
                 game.drop_stack_from_eyes(ItemStack::new("minecraft:stone", 0), true),
                 None,

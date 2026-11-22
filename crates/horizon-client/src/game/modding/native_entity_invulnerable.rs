@@ -667,8 +667,8 @@ mod tests {
             };
             game.spawn_item(stack(), [0.5, 64.0, 0.5], [0.0; 3], 10);
             game.spawn_item(stack(), [100000.5, 64.0, 0.5], [0.0; 3], 10);
-            let near = game.entity(game.dropped[0].id).unwrap();
-            let far = game.entity(game.dropped[1].id).unwrap();
+            let near = game.entity(game.ecs.item_ids()[0]).unwrap();
+            let far = game.entity(game.ecs.item_ids()[1]).unwrap();
             assert!(game.entity_set_invulnerable_time(near, 5));
             assert!(game.entity_set_invulnerable_time(far, 5));
             game.tick_items();

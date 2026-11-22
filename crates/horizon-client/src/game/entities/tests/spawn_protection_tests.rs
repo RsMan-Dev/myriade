@@ -212,7 +212,7 @@ fn a_guest_cannot_knock_a_decoration_off_inside_spawn_protection() {
     assert_eq!(game.paintings.len(), 1, "the painting stays on the wall");
     assert_eq!(game.item_frames.len(), 1, "the frame stays on the wall");
     assert_eq!(game.armor_stands.len(), 1, "the stand stays put");
-    assert!(game.dropped.is_empty(), "nothing was knocked off");
+    assert!(game.ecs.item_ids().is_empty(), "nothing was knocked off");
 
     // `spawn-protection=0`: the same punches knock all three off.
     game.lan.as_mut().unwrap().hub.spawn_protection = 0;

@@ -91,7 +91,7 @@ fn lifecycle(heal: bool) {
                         Some(ItemStack::new("minecraft:diamond", 3))
                     );
                     assert_eq!(guest.carried, Some(ItemStack::new("minecraft:diamond", 2)));
-                    assert!(game.dropped.is_empty());
+                    assert!(game.ecs.item_ids().is_empty());
                 }
                 assert_eq!(seen.lock().unwrap().ticks, 20);
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];

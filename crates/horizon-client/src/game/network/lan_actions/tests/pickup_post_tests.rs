@@ -139,8 +139,8 @@ fn apples(room: u32) -> Option<ItemStack> {
 }
 
 fn clear_ground(game: &mut Game<'_>) {
-    while !game.dropped.is_empty() {
-        game.remove_dropped(0);
+    for id in game.ecs.item_ids() {
+        game.ecs_remove_item(id);
     }
 }
 
@@ -168,9 +168,7 @@ fn spawn(game: &mut Game<'_>, at: [f64; 3], case: &Case) -> u32 {
 }
 
 fn ground(game: &Game<'_>, id: u32) -> Option<u32> {
-    game.dropped
-        .iter()
-        .find(|item| item.id == id)
+    game.ecs.item(id)
         .map(|item| item.stack.count)
 }
 
@@ -179,7 +177,7 @@ fn with_probe(probe: &Probe, test: impl FnOnce()) {
     with_mods(mods, test);
 }
 
-/// The host's player picks up through the lifted pass.
+/// The host's player picks up through the ECS pass.
 fn host_case(game: &mut Game<'_>, probe: &Probe, case: &Case) -> Outcome {
     clear_ground(game);
     game.inventory

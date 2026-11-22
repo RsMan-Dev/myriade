@@ -117,10 +117,10 @@ fn loot_stack_edits_leave_custom_drop_age_attached() {
                 api_expected,
                 "LivingDrops sees complete records after table edits"
             );
-            let spawned: Vec<_> = game
-                .dropped
+            let views = game.ecs.item_views();
+            let spawned: Vec<_> = views
                 .iter()
-                .map(|drop| (&*drop.stack.item, drop.age))
+                .map(|drop| (&*drop.stack.item, drop.age as i32))
                 .collect();
             assert_eq!(
                 spawned, expected,

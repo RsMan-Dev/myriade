@@ -1490,7 +1490,7 @@ mod tests {
                     Some(horizon_client::containers::BlockEntity::Jukebox(j)) if j.record().is_none()
                 ));
                 assert!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .any(|item| &*item.stack.item == "minecraft:music_disc_13")
                 );
@@ -1814,7 +1814,7 @@ mod tests {
                 game.creative = true;
                 game.break_block([2, 64, 0]).unwrap();
                 assert!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .any(|item| &*item.stack.item == "minecraft:beehive")
                 );

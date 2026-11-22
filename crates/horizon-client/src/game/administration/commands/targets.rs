@@ -29,9 +29,7 @@ impl Game<'_> {
                 .find(|m| m.id == id)
                 .map(|m| [m.position.x, m.position.y, m.position.z]),
             Target::Item(id) => self
-                .dropped
-                .iter()
-                .find(|i| i.id == id)
+                .ecs.item(id)
                 .map(|i| [i.position.x, i.position.y, i.position.z]),
             Target::Orb(id) => self.ecs.orb(id).map(|o| [o.position.x, o.position.y, o.position.z]),
             Target::Projectile(id) => self.ecs_view(id).map(|v| v.position),

@@ -268,7 +268,7 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
             )
             .unwrap();
             game.lan_assign_ids();
-            let item = game.entity(game.dropped[0].id).unwrap();
+            let item = game.entity(game.ecs.item_ids()[0]).unwrap();
             assert!(game.entity_teleport_to_level(
                 item,
                 "minecraft:the_nether",
@@ -280,7 +280,7 @@ fn an_entity_moved_into_another_level_is_told_once_at_its_next_crossing() {
                 "the change of level is not told"
             );
             game.enter_level(Nether).unwrap();
-            let moved = game.dropped[0].id;
+            let moved = game.ecs.item_ids()[0];
             game.teleport_to(Target::Item(moved), [24.5, 80.0, 8.5], None, true);
             assert_eq!(
                 calls.lock().unwrap().as_slice(),

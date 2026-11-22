@@ -544,11 +544,11 @@ impl Game<'_> {
                         &horizon_client::scoreboard::tag_to_json(c),
                     );
                 }
-                let stack = self.dropped.iter().find(|i| i.id == id).map(|i| &i.stack);
-                match stack.and_then(|s| s.item_name()) {
+                let stack = self.ecs.item(id).map(|i| i.stack);
+                match stack.as_ref().and_then(|s| s.item_name()) {
                     Some(name) => Text::literal(name),
                     None => {
-                        let item = stack.map(|s| s.item.to_string()).unwrap_or_default();
+                        let item = stack.as_ref().map(|s| s.item.to_string()).unwrap_or_default();
                         Text::literal(self.pack.names.display_item(&item))
                     }
                 }
@@ -1588,7 +1588,7 @@ impl Game<'_> {
                         });
                 }
             }
-            Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) if self.ecs.is_active() => {
+            Target::Mob(id) | Target::Projectile(id) | Target::Orb(id) | Target::Item(id) if self.ecs.is_active() => {
                 // Entity.teleport, as the ECS's mob: the same stopRiding, then the place, the motion and the turn.
                 self.dismount_mob(id);
                 if let Some(e) = self.ecs.entity_of(id) {
@@ -1630,19 +1630,12 @@ impl Game<'_> {
                     }
                 }
             }
-            Target::Item(id) => {
-                if let Some(i) = self.dropped.iter_mut().find(|i| i.id == id) {
-                    i.position = v;
-                    i.previous = v;
-                    if let Some(r) = rotation {
-                        Entity::set_rotation(i, r);
-                    }
-                }
-            }
             // A projectile is an ECS entity: its place is written by the ECS teleport above.
             Target::Projectile(_) => {}
             // An orb is an ECS entity as well: its place is written by the ECS teleport above.
             Target::Orb(_) => {}
+            // An item is one too: its place is written by the ECS teleport above.
+            Target::Item(_) => {}
             Target::Stand(id) => {
                 if let Some(a) = self.armor_stands.iter_mut().find(|a| a.id == id) {
                     a.position = v;
@@ -2119,7 +2112,7 @@ impl Game<'_> {
             context.source_uuid = Some(self.uuid_for(id));
         }
         if let Target::Item(id) = t {
-            context.dampens = self.dropped.iter().find(|i| i.id == id).is_some_and(|i| {
+            context.dampens = self.ecs.item(id).is_some_and(|i| {
                 self.res
                     .items()
                     .item_in_tag("minecraft:dampens_vibrations", &i.stack.item)
@@ -2142,9 +2135,7 @@ impl Game<'_> {
                 self.ecs_with(|ecs, mw| ecs.kill(mw, id));
             }
             Target::Item(id) => {
-                if let Some(i) = self.dropped.iter().position(|i| i.id == id) {
-                    self.remove_dropped(i);
-                }
+                self.ecs_remove_item(id);
             }
             Target::Projectile(id) => self.remove_projectile(id),
             Target::Stand(id) => self.armor_stands.retain(|a| a.id != id),
@@ -5496,9 +5487,6 @@ mod global_selector_order_tests {
                         .find(|m| m.id == id)
                         .unwrap()
                         .join_seq(),
-                    Target::Item(id) => {
-                        game.dropped.iter().find(|m| m.id == id).unwrap().join_seq()
-                    }
                     _ => panic!("actual admitted family"),
                 };
                 assert!(

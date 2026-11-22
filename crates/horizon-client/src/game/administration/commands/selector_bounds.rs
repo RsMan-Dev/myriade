@@ -33,7 +33,7 @@ impl Game<'_> {
                 .resident_dragon_part(id)
                 .map(|(d, i)| d.part_geometry(i).1),
             Target::Mob(id) | Target::Orb(id) => self.ecs.bounds(id),
-            Target::Item(id) => self.dropped.iter().find(|e| e.id == id).map(Entity::bounds),
+            Target::Item(id) => self.ecs.bounds(id),
             Target::Projectile(id) => self.ecs.entity_of(id).and_then(|e| self.ecs.bounds_of(e)),
             Target::Stand(id) => self
                 .armor_stands

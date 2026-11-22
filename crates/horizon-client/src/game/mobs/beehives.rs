@@ -500,17 +500,17 @@ mod honey_overflow_tests {
             game.selected = 0;
             let bottles = ItemStack::new("minecraft:glass_bottle", 2);
             game.inventory[0] = Some(bottles.clone());
-            game.dropped.clear();
+            game.ecs_clear_items();
 
             assert!(game.use_beehive([8, 64, 10], Some(&bottles)).unwrap());
             let eye = game.eye_position().unwrap();
             let honey: Vec<_> = game
-                .dropped
-                .iter()
+                .ecs.item_views()
+                .into_iter()
                 .filter(|e| &*e.stack.item == "minecraft:honey_bottle")
                 .collect();
             assert_eq!(honey.len(), 1);
-            let e = honey[0];
+            let e = honey[0].clone();
             assert!((e.position.y - (eye[1] - f64::from(0.3f32))).abs() < 1e-9);
             assert!(e.velocity.z > 0.2, "thrown ahead: {:?}", e.velocity);
             assert_eq!(e.thrower, None);

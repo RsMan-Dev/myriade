@@ -198,7 +198,7 @@ fn cancelled_player(heal: bool) {
             assert_eq!(guest.death_time, 0);
         }
         assert_eq!(seen.lock().unwrap().deaths.len(), 1);
-        assert!(game.dropped.is_empty());
+        assert!(game.ecs.item_ids().is_empty());
     });
 }
 
@@ -261,7 +261,7 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                     1,
                     "abort restored the cancelled attempt"
                 );
-                assert!(game.dropped.is_empty());
+                assert!(game.ecs.item_ids().is_empty());
                 assert!(living.set_health(game, 5.0));
                 let guest = &game.lan.as_ref().unwrap().hub.guests[0];
                 assert_eq!(
@@ -290,7 +290,7 @@ fn later_cancelled_player_revival_is_transactional_and_a_second_kill_drops_inven
                 assert!(!guest.body_present());
                 assert!(guest.carried.is_none());
                 assert_eq!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .filter(|drop| &*drop.stack.item == "minecraft:diamond")
                         .map(|drop| drop.stack.count)

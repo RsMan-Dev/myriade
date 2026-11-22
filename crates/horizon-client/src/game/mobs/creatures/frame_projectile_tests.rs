@@ -80,7 +80,7 @@ fn shoot(game: &mut Game<'_>, z: f64) -> u32 {
 }
 
 fn dropped(game: &Game<'_>, item: &str) -> usize {
-    game.dropped
+    game.ecs.item_views()
         .iter()
         .filter(|d| &*d.stack.item == item)
         .count()

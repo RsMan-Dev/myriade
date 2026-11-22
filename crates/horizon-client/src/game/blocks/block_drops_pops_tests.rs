@@ -38,7 +38,7 @@ fn hit(pos: [i32; 3]) -> Hit {
 /// Clicks the block with `stack` in the main hand: the block's own use, then
 /// the item's (`BoneMealItem.useOn`). True when something was used.
 fn use_block(game: &mut Game<'_>, pos: [i32; 3], stack: Option<ItemStack>) -> bool {
-    game.dropped.clear();
+    game.ecs_clear_items();
     let hit = hit(pos);
     game.forced_hit = Some(hit);
     *game.held_mut() = stack;
@@ -108,7 +108,7 @@ fn block_drops_off_stops_the_pop_of_bone_meal_and_harvests() {
         let before = game.world.random.clone();
         assert!(use_block(&mut game, off, stack(meal)), "{block} was used");
         assert!(
-            game.dropped.is_empty(),
+            game.ecs.item_ids().is_empty(),
             "{block} drops nothing with block_drops off"
         );
         if meal {
@@ -134,8 +134,8 @@ fn block_drops_off_stops_the_pop_of_bone_meal_and_harvests() {
     let (block, item, _, meal, _, on) = CASES[0];
     place(&mut game, on, block);
     assert!(use_block(&mut game, on, stack(meal)));
-    assert_eq!(game.dropped.len(), 1, "the rule on pops {item} again");
-    assert_eq!(&*game.dropped[0].stack.item, item);
+    assert_eq!(game.ecs.item_ids().len(), 1, "the rule on pops {item} again");
+    assert_eq!(&*game.ecs.item_views()[0].stack.item, item);
 }
 
 #[test]
@@ -152,14 +152,14 @@ fn block_drops_on_keeps_the_pop() {
         place(&mut game, on, block);
         let mut expected = game.world.random.clone();
         assert!(use_block(&mut game, on, stack(meal)), "{block} was used");
-        assert_eq!(game.dropped.len(), drops, "{block} pops its stacks");
-        for dropped in &game.dropped {
+        assert_eq!(game.ecs.item_ids().len(), drops, "{block} pops its stacks");
+        for dropped in game.ecs.item_views() {
             assert_eq!(&*dropped.stack.item, item);
         }
         if meal {
             // `Block.popResource`'s own offsets from the level random.
             let at = super::spill::pop_position(&mut expected, on);
-            let p = game.dropped[0].position;
+            let p = game.ecs.item_views()[0].position;
             assert_eq!([p.x, p.y, p.z], at, "{block} pops where vanilla pops it");
         }
     }

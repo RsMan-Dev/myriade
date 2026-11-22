@@ -546,13 +546,13 @@ fn block_drops_reads_the_chest_a_players_break_removed_and_the_handle_goes_stale
                 (chest[0], chest[1], chest[2]),
                 mod_api::Tag::String("Loot Chest".into()),
             );
-            game.dropped.clear();
+            game.ecs_clear_items();
             assert!(game.player_destroy_block(player, chest, false));
             assert_eq!(block(game, chest), "minecraft:air");
             // The listener read the name the removal clears from the level and put it on the
             // chest item the break dropped.
             let named = game
-                .dropped
+                .ecs.item_views()
                 .iter()
                 .filter(|item| &*item.stack.item == "minecraft:chest")
                 .map(|item| {

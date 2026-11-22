@@ -153,7 +153,7 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                 });
             };
             let torches = |game: &super::Game<'_>| {
-                game.dropped
+                game.ecs.item_views()
                     .iter()
                     .filter(|d| &*d.stack.item == "minecraft:torch")
                     .count()

@@ -693,9 +693,7 @@ impl Game<'_> {
         state: Option<BlockStateId>,
     ) -> Context {
         let dampens = self
-            .dropped
-            .iter()
-            .find(|item| item.id == id)
+            .ecs.item(id)
             .is_some_and(|item| {
                 world_items!(self)
                     .item_tags
@@ -1949,14 +1947,14 @@ impl Game<'_> {
         self.tick_player_sculk_events();
         self.tick_mob_sculk_events();
         if !self.sculk.falling_items.is_empty() {
-            let present: HashSet<u32> = self.dropped.iter().map(|item| item.id).collect();
+            let present: HashSet<u32> = self.ecs.item_views().iter().map(|item| item.id).collect();
             self.sculk.falling_items.retain(|id| present.contains(id));
         }
         // Dropped items are entities too: Entity.applyEffectsFromBlocks, from
         // ItemEntity.tick, so only for the items in entity-ticking chunks.
         let ticking = self.entity_ticking_area();
         let items: Vec<[f64; 3]> = self
-            .dropped
+            .ecs.item_views()
             .iter()
             .filter(|i| {
                 i.on_ground && ticking(i.position.x.floor() as i32, i.position.z.floor() as i32)
@@ -2579,7 +2577,7 @@ mod tests {
                 [0.0; 3],
                 0,
             );
-            let id = game.dropped[0].id;
+            let id = game.ecs.item_ids()[0];
             let entity = game.entity(id).unwrap();
             assert!(game.entity_game_event(entity, "minecraft:step"));
             assert!(
@@ -2590,7 +2588,8 @@ mod tests {
                     .current
                     .is_none()
             );
-            game.dropped[0].stack = ItemStack::new("minecraft:stone", 1);
+            let id = game.ecs.item_ids()[0];
+        game.ecs.set_item_stack(id, ItemStack::new("minecraft:stone", 1));
             assert!(game.entity_game_event(entity, "minecraft:step"));
             let (info, _) = game
                 .sculk_entity((1, 64, 1))

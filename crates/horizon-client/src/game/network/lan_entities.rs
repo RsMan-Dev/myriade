@@ -647,9 +647,6 @@ impl Game<'_> {
             m.needs_sync = false;
             m.sync_position = false;
         }
-        for d in &mut self.dropped {
-            d.needs_sync = false;
-        }
     }
 
     /// Gives the entities Horizon keeps without an id one (`Entity.id`, from

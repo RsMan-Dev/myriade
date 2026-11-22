@@ -79,19 +79,19 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
         .data_mut()
         .set_other("fixture:opaque", Some(horizon_core::nbt::Tag::Long(99)));
     let spawn = |game: &mut Game<'_>, count| {
-        game.dropped.clear();
+        game.ecs_clear_items();
         let mut stack = input.clone();
         stack.count = count;
         game.spawn_item(stack, [landing[0], 64.1, landing[2]], [0.0, -0.3, 0.0], 20);
         game.ticked_entities_through = game.next_entity;
-        game.dropped[0].clone()
+        game.ecs.item_views()[0].clone()
     };
     let mut vanilla = None;
     with_game(|game| {
         prepare(game);
         let before = spawn(game, 13);
         game.tick_items();
-        let item = game.dropped[0].clone();
+        let item = game.ecs.item_views()[0].clone();
         assert_eq!(item.id, before.id);
         assert_eq!(item.position, Vec3::new(landing[0], landing[1], landing[2]));
         assert_eq!(item.velocity, Vec3::ZERO);
@@ -111,9 +111,8 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
             prepare(game);
             let old = spawn(game, 13);
             game.tick_items();
-            let item = &game.dropped[0];
+            let item = game.ecs.item_views()[0].clone();
             assert_eq!(item.id, old.id);
-            assert_eq!(item.join_seq(), old.join_seq());
             assert_eq!(item.position, vanilla.position);
             assert_eq!(item.velocity, vanilla.velocity);
             let mut expected = input.clone();
@@ -127,7 +126,7 @@ fn the_active_stack_survives_a_partial_contact_and_consumption_removes_the_entit
             for count in [1, 2] {
                 spawn(game, count);
                 game.tick_items();
-                assert!(game.dropped.is_empty(), "consumed stack of {count}");
+                assert!(game.ecs.item_ids().is_empty(), "consumed stack of {count}");
             }
         });
     });

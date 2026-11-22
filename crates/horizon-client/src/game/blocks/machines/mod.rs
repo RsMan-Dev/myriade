@@ -654,22 +654,21 @@ impl ItemColumns {
     /// Whether an item's box may reach into column (x, z).
     fn may_reach(
         &mut self,
-        items: &[horizon_client::entities::ItemEntity],
+        items: &[(u32, horizon_core::geometry::Aabb)],
         x: i32,
         z: i32,
     ) -> bool {
         if items.is_empty() {
             return false;
         }
-        let (len, last) = (items.len(), items.last().map(|i| i.id));
+        let (len, last) = (items.len(), items.last().map(|i| i.0));
         let stale = self
             .seen
             .is_none_or(|(seen_len, seen_last)| len > seen_len || last != seen_last);
         self.seen = Some((len, last));
         if stale {
             self.cells.clear();
-            for item in items {
-                let b = item.bounds();
+            for &(_, b) in items {
                 let (lo, hi) = (b.min_position(), b.max_position());
                 for cx in lo.x.floor() as i32..=hi.x.floor() as i32 {
                     for cz in lo.z.floor() as i32..=hi.z.floor() as i32 {
@@ -683,39 +682,11 @@ impl ItemColumns {
     /// Whether an item's box may reach into any column of x0..=x1, z0..=z1.
     pub(super) fn may_reach_area(
         &mut self,
-        items: &[horizon_client::entities::ItemEntity],
+        items: &[(u32, horizon_core::geometry::Aabb)],
         (x0, x1): (i32, i32),
         (z0, z1): (i32, i32),
     ) -> bool {
         (x0..=x1).any(|x| (z0..=z1).any(|z| self.may_reach(items, x, z)))
-    }
-}
-
-/// [`ItemColumns`] for a pass in which items can move (a command, an
-/// explosion's push), kept with the item list's
-/// [`ListStamp`](horizon_client::join_seq::ListStamp): after any write the
-/// first question scans as before (`true`), and the second with nothing
-/// written in between builds the columns. A pass that writes the items
-/// between questions costs no more than the scans did.
-#[derive(Default)]
-pub(super) struct StampedItemColumns {
-    stamp: Option<horizon_client::join_seq::ListStamp>,
-    columns: ItemColumns,
-}
-impl StampedItemColumns {
-    /// [`ItemColumns::may_reach_area`] for the items as they are now.
-    pub(super) fn may_reach_area(
-        &mut self,
-        items: &horizon_client::join_seq::JoinList<horizon_client::entities::ItemEntity>,
-        xs: (i32, i32),
-        zs: (i32, i32),
-    ) -> bool {
-        if self.stamp != Some(items.stamp()) {
-            self.stamp = Some(items.stamp());
-            self.columns = ItemColumns::default();
-            return true;
-        }
-        self.columns.may_reach_area(items, xs, zs)
     }
 }
 
@@ -1206,18 +1177,15 @@ impl Game<'_> {
     /// its suck area runs `tryMoveItems` with that item as the pickup, in the
     /// entity phase, before the hopper's own tick counts its cooldown down.
     pub(super) fn hoppers_catch_items(&mut self) {
-        let mut i = 0;
-        while i < self.dropped.len() {
-            let item = &self.dropped[i];
+        for id in self.ecs.item_ids() {
+            let Some(item) = self.ecs.item(id) else { continue };
             // `ItemEntity.tick` moves 1 of 4 ticks while resting;
-            // `checkInsideBlocks` only follows a move.
-            let moved = item.position != item.previous
-                || item.ticks.wrapping_add(item.id).is_multiple_of(4);
+            // `checkInsideBlocks` only follows a move (a moving item has a velocity).
+            let moved = item.velocity != Vec3::ZERO || item.ticks.wrapping_add(item.id).is_multiple_of(4);
             if !moved || item.stack.count == 0 {
-                i += 1;
                 continue;
             }
-            let b = item.bounds();
+            let Some(b) = self.ecs.bounds(id) else { continue };
             let (lo, hi) = (b.min_position(), b.max_position());
             let mut found = None;
             'blocks: for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
@@ -1245,19 +1213,13 @@ impl Game<'_> {
                     }
                 }
             }
-            let Some(pos) = found else {
-                i += 1;
-                continue;
-            };
-            if self.hopper_take_item(pos, i) {
-                continue; // the item left the list; `i` is the next one
-            }
-            i += 1;
+            let Some(pos) = found else { continue };
+            self.hopper_take_item(pos, id);
         }
     }
     /// `tryMoveItems(…, () -> addItem(hopper, itemEntity))`; true when the
     /// item entity was taken whole.
-    fn hopper_take_item(&mut self, pos: Pos, i: usize) -> bool {
+    fn hopper_take_item(&mut self, pos: Pos, id: u32) -> bool {
         if self.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) {
             return false;
         }
@@ -1277,7 +1239,8 @@ impl Game<'_> {
         }
         let mut taken = false;
         if !self.hopper_is_stacked(&view) {
-            let stack = self.dropped[i].stack.clone();
+            let Some(item) = self.ecs.item(id) else { return false };
+            let stack = item.stack;
             let allowed = self.with_level(|_, level, _| {
                 level.allow_hopper_pickup_item(
                     BlockPos::new(pos.0, pos.1, pos.2),
@@ -1291,11 +1254,13 @@ impl Game<'_> {
             {
                 None if !allowed => {}
                 None => {
-                    self.remove_dropped(i);
+                    self.ecs_remove_item(id);
                     taken = true;
                     changed = true;
                 }
-                Some(rest) => self.dropped[i].stack = rest,
+                Some(rest) => {
+                    self.ecs.set_item_stack(id, rest);
+                }
             }
         }
         if changed {
@@ -1579,7 +1544,7 @@ impl Game<'_> {
         if blocked {
             return false;
         }
-        if self.dropped.is_empty() {
+        if self.ecs.item_ids().is_empty() {
             return false;
         }
         // Hopper.SUCK_AABB: the hopper bowl and the block above.
@@ -1596,7 +1561,7 @@ impl Game<'_> {
             ],
         );
         if let Some(columns) = self.item_columns.as_mut()
-            && !columns.may_reach(&self.dropped, pos.0, pos.2)
+            && !columns.may_reach(&self.ecs.item_boxes(), pos.0, pos.2)
         {
             return false;
         }
@@ -1878,9 +1843,8 @@ impl Game<'_> {
         min: [f64; 3],
         max: [f64; 3],
     ) -> bool {
-        let mut i = 0;
-        while i < self.dropped.len() {
-            let b = self.dropped[i].bounds();
+        for id in self.ecs.item_ids() {
+            let Some(b) = self.ecs.bounds(id) else { continue };
             let (lo, hi) = (b.min_position(), b.max_position());
             let inside = lo.x < max[0]
                 && hi.x > min[0]
@@ -1888,30 +1852,32 @@ impl Game<'_> {
                 && hi.y > min[1]
                 && lo.z < max[2]
                 && hi.z > min[2];
-            if inside {
-                let stack = self.dropped[i].stack.clone();
-                let allowed = hopper_pos.is_none_or(|pos| {
-                    self.with_level(|_, level, _| {
-                        level.allow_hopper_pickup_item(
-                            BlockPos::new(pos.0, pos.1, pos.2),
-                            &stack.item,
-                            stack.count,
-                        )
-                    })
-                });
-                if !allowed {
-                    i += 1;
-                    continue;
+            let Some(item) = self.ecs.item(id) else { continue };
+            if !inside {
+                continue;
+            }
+            let stack = item.stack;
+            let allowed = hopper_pos.is_none_or(|pos| {
+                self.with_level(|_, level, _| {
+                    level.allow_hopper_pickup_item(
+                        BlockPos::new(pos.0, pos.1, pos.2),
+                        &stack.item,
+                        stack.count,
+                    )
+                })
+            });
+            if !allowed {
+                continue;
+            }
+            match self.add_item(None, hopper, stack, None) {
+                None => {
+                    self.ecs_remove_item(id);
+                    return true;
                 }
-                match self.add_item(None, hopper, stack, None) {
-                    None => {
-                        self.remove_dropped(i);
-                        return true;
-                    }
-                    Some(rest) => self.dropped[i].stack = rest,
+                Some(rest) => {
+                    self.ecs.set_item_stack(id, rest);
                 }
             }
-            i += 1;
         }
         false
     }
@@ -2089,48 +2055,22 @@ mod brewing_fuel_transfer_tests {
 mod item_column_tests {
     use super::ItemColumns;
     use horizon_client::{entities::ItemEntity, items::ItemStack};
-    use horizon_core::geometry::Vec3;
+    use horizon_core::geometry::{Aabb, Vec3};
 
-    fn item(id: u32, x: f64, y: f64, z: f64) -> ItemEntity {
+    fn item(id: u32, x: f64, y: f64, z: f64) -> (u32, Aabb) {
+        let h = ItemEntity::WIDTH / 2.0;
         let at = Vec3::new(x, y, z);
-        ItemEntity {
-            attachment_lifetime: Default::default(),
-            fall_distance: 0.0,
-            random: horizon_core::random::EntityRandom::own(
-                horizon_core::random::LegacyRandom::new(0),
-            ),
-            rotation: [0.0, 0.0],
-            join: Default::default(),
-            no_gravity: false,
-            health: 5,
-            fire_ticks: 0,
-            id,
-            stack: ItemStack::new("minecraft:stone", 1),
-            thrower: None,
-            target: None,
-            position: at,
-            previous: at,
-            velocity: Vec3::ZERO,
-            on_ground: true,
-            vertical_collision: false,
-            horizontal_collision: false,
-            age: 0,
-            pickup_delay: 0,
-            bob_offset: 0.0,
-            ticks: 0,
-            needs_sync: false,
-            stuck: Vec3::ZERO,
-            was_touching_water: false,
-        }
+        let min = Vec3::new(at.x - h, at.y, at.z - h);
+        (id, Aabb::new(min, Vec3::new(at.x + h, at.y + ItemEntity::WIDTH, at.z + h)))
     }
     /// `hopper_suck`'s test: some item box meets the hopper's SUCK_AABB.
-    fn scan(items: &[ItemEntity], (x, y, z): (i32, i32, i32)) -> bool {
+    fn scan(items: &[(u32, Aabb)], (x, y, z): (i32, i32, i32)) -> bool {
         let (min, max) = (
             Vec3::new(f64::from(x), f64::from(y) + 11.0 / 16.0, f64::from(z)),
             Vec3::new(f64::from(x) + 1.0, f64::from(y) + 2.0, f64::from(z) + 1.0),
         );
         items.iter().any(|i| {
-            let b = i.bounds();
+            let b = i.1;
             let (lo, hi) = (b.min_position(), b.max_position());
             lo.x < max.x
                 && hi.x > min.x
@@ -2141,41 +2081,21 @@ mod item_column_tests {
         })
     }
 
-    /// An item moved in place (a `/tp`, an explosion's push) keeps the list's
-    /// length and last id; the stamped columns still see where it went.
-    #[test]
-    fn a_moved_item_is_seen_where_it_went() {
-        let mut items = horizon_client::join_seq::JoinList::<_, true>::from_iter([
-            item(1, 0.5, 64.0, 0.5),
-            item(2, 40.5, 64.0, 40.5),
-        ]);
-        let mut columns = super::StampedItemColumns::default();
-        let far = ((100, 100), (100, 100));
-        // The first question for a list scans; the second builds the columns.
-        assert!(columns.may_reach_area(&items, far.0, far.1));
-        assert!(!columns.may_reach_area(&items, far.0, far.1));
-        items.update(0, |item| {
-            item.position = horizon_core::geometry::Vec3::new(100.5, 64.0, 100.5)
-        });
-        assert!(columns.may_reach_area(&items, far.0, far.1));
-        assert!(columns.may_reach_area(&items, far.0, far.1));
-        assert!(!columns.may_reach_area(&items, (0, 0), (0, 0)));
-    }
-
     #[test]
     fn no_player_with_an_item_in_reach_is_skipped() {
         // guest_pickups' horizontal test, on every item.
-        let touches = |items: &[ItemEntity], p: [f64; 3]| {
-            items
-                .iter()
-                .any(|d| (d.position.x - p[0]).abs() < 1.5 && (d.position.z - p[2]).abs() < 1.5)
+        let touches = |items: &[(u32, Aabb)], p: [f64; 3]| {
+            items.iter().any(|(_, b)| {
+                let (cx, cz) = ((b.min_position().x + b.max_position().x) / 2.0, (b.min_position().z + b.max_position().z) / 2.0);
+                (cx - p[0]).abs() < 1.5 && (cz - p[2]).abs() < 1.5
+            })
         };
         let mut seed = 0x0bad_5eed_u64;
         let mut next = |range: f64| {
             seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
             (seed >> 11) as f64 / (1u64 << 53) as f64 * range
         };
-        let mut items: Vec<ItemEntity> = Vec::new();
+        let mut items: Vec<(u32, Aabb)> = Vec::new();
         let mut columns = ItemColumns::default();
         let (mut skipped, mut found) = (0, 0);
         for round in 0..4000u32 {
@@ -2216,7 +2136,7 @@ mod item_column_tests {
             seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
             (seed >> 11) as f64 / (1u64 << 53) as f64 * range
         };
-        let mut items: Vec<ItemEntity> = Vec::new();
+        let mut items: Vec<(u32, Aabb)> = Vec::new();
         let mut columns = ItemColumns::default();
         let mut next_id = 0;
         let mut skipped = 0;
@@ -2478,7 +2398,7 @@ mod part_front_tests {
                 c.items[3] = Some(stack("minecraft:oak_planks", 1));
                 c.items[6] = Some(stack("minecraft:oak_planks", 1));
             }
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             game.dispense_from(BlockPos::new(2, 64, 8), crafter)
                 .unwrap();
             let held = match game.world.block_entities.get(&(2, 64, 8)) {
@@ -2491,7 +2411,7 @@ mod part_front_tests {
                 _ => panic!("no crafter"),
             };
             assert_eq!(
-                (held, game.dropped.len() - dropped),
+                (held, game.ecs.item_ids().len() - dropped),
                 (vec![("minecraft:stick".into(), 4)], 0),
                 "a pipe routing output back into the grid must conserve four crafted sticks"
             );
@@ -2537,7 +2457,7 @@ mod part_front_tests {
             {
                 items[0] = Some(stack("minecraft:stick", 2));
             }
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             game.dispense_from(BlockPos::new(2, 64, 8), dropper)
                 .unwrap();
             let held = match game.world.block_entities.get(&(2, 64, 8)) {
@@ -2547,7 +2467,7 @@ mod part_front_tests {
                 _ => panic!("no dropper"),
             };
             assert_eq!(
-                (held, game.dropped.len() - dropped),
+                (held, game.ecs.item_ids().len() - dropped),
                 (2, 0),
                 "a pipe routing back into the source must conserve its items"
             );
@@ -2645,10 +2565,10 @@ mod part_front_tests {
                     c.items[0] = Some(stack("minecraft:oak_planks", 1));
                     c.items[3] = Some(stack("minecraft:oak_planks", 1));
                 }
-                let items = game.dropped.len();
+                let items = game.ecs.item_ids().len();
                 game.dispense_from(BlockPos::new(0, 64, z), crafter)
                     .unwrap();
-                let spawned = game.dropped.len() - items;
+                let spawned = game.ecs.item_ids().len() - items;
                 assert_eq!(
                     (chest_items(game, z), spawned),
                     if taken { (4, 0) } else { (0, 1) },

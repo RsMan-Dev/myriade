@@ -3,17 +3,13 @@
 //! adds one for every `ClientboundTakeItemEntityPacket`), drawn with the render
 //! state it had when it was taken (`extractEntity(from, 1.0F)`).
 use super::Game;
-use horizon_client::{
-    entities::ItemEntity,
-    projectiles::Projectile,
-};
+use horizon_client::projectiles::Projectile;
 
 /// `ItemPickupParticle.LIFE_TIME`.
 const LIFE_TIME: u32 = 3;
 
 /// The taken entity, as it was when taken.
 pub(in crate::game) enum Taken {
-    Item(Box<ItemEntity>),
     Arrow(Box<Projectile>),
     Trident(Box<super::trident::ThrownTrident>),
     /// An ECS item or orb taken (`kind` "item" or "orb"): its network id, its count and its position, read before it left the level.
@@ -23,7 +19,6 @@ impl Taken {
     /// The render state's position: the entity's at partial tick 1.
     fn position(&self) -> [f64; 3] {
         let p = match self {
-            Taken::Item(i) => i.position,
             Taken::Arrow(a) => a.position,
             Taken::Trident(t) => t.position,
             Taken::Ecs { at, .. } => return *at,
@@ -33,7 +28,6 @@ impl Taken {
     /// `ClientboundTakeItemEntityPacket`'s taken entity.
     fn entity_id(&self) -> u32 {
         match self {
-            Taken::Item(i) => i.id,
             Taken::Arrow(a) => a.id,
             Taken::Trident(t) => t.id,
             Taken::Ecs { id, .. } => *id,
@@ -42,7 +36,6 @@ impl Taken {
     /// The packet's amount: the stack's size, or one of the others.
     fn amount(&self) -> i32 {
         match self {
-            Taken::Item(i) => i.stack.count as i32,
             Taken::Ecs { count, .. } => *count,
             Taken::Arrow(_) | Taken::Trident(_) => 1,
         }
@@ -145,7 +138,6 @@ impl Game<'_> {
         target: [f64; 3],
     ) {
         let kind = match taken {
-            Taken::Item(_) => "item",
             Taken::Arrow(_) => "arrow",
             Taken::Trident(_) => "trident",
             Taken::Ecs { kind, .. } => kind,

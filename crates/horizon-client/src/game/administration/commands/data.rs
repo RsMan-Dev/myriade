@@ -167,14 +167,7 @@ impl Game<'_> {
                 tag
             }
             Target::Item(id) => {
-                let uuid = self.uuid_for(id);
-                let e = self.dropped.iter().find(|e| e.id == id)?;
-                let mut tag = entity_nbt::item_entity_to_nbt_with_items(
-                    e,
-                    uuid,
-                    self.persist.raw.get(&id),
-                    self.items(),
-                );
+                let mut tag = Tag::Compound(self.ecs_mob_tree(id)?);
                 self.save_portal_cooldown(id, &mut tag);
                 tag
             }
@@ -515,15 +508,6 @@ impl Game<'_> {
                     self.persist.force_meta(id, 8);
                 }
             }
-            Target::Item(id) => {
-                let mut new = entity_nbt::item_entity_from_nbt(&tag, id, 0.0).ok_or_else(stale)?;
-                if let Some(slot) = self.dropped.iter_mut().find(|e| e.id == id) {
-                    new.join = slot.join;
-                    new.bob_offset = slot.bob_offset;
-                    new.random = slot.random.clone();
-                    horizon_client::join_seq::store_back(slot, new);
-                }
-            }
             Target::Fangs(id) => {
                 let owner = self.loaded_fangs_owner(&tag);
                 let at = entity_nbt::position(&tag).ok_or_else(stale)?;
@@ -573,7 +557,7 @@ impl Game<'_> {
                     horizon_client::join_seq::store_back(&mut self.item_frames[i], new);
                 }
             }
-            Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
+            Target::Item(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) | Target::Trident(id) | Target::Rocket(id) | Target::Falling(id) | Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
                 set_key(&mut tag, "UUID", Tag::IntArray(uuid.to_vec()));
                 let Tag::Compound(patch) = &tag else {
@@ -1219,7 +1203,7 @@ impl Game<'_> {
         let id = before + 1;
         if self.remote_entities.iter().any(|m| m.id == id) {
             Some(Target::Mob(id))
-        } else if self.dropped.iter().any(|e| e.id == id) {
+        } else if self.ecs.item(id).is_some() {
             Some(Target::Item(id))
         } else if self.armor_stands.iter().any(|a| a.id == id) {
             Some(Target::Stand(id))

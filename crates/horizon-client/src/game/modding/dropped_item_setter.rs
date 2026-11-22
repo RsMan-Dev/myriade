@@ -23,13 +23,13 @@ impl Game<'_> {
                 .stage_tick_item(id, (stack.count != 0).then_some(stack))
                 .unwrap_or(false);
         }
-        let Some(i) = self.dropped.iter().position(|e| e.id == id) else {
+        if self.ecs.item(id).is_none() {
             return false;
-        };
+        }
         if stack.count == 0 {
-            self.remove_dropped(i);
+            self.ecs_remove_item(id);
         } else {
-            self.dropped[i].stack = stack;
+            self.ecs.set_item_stack(id, stack);
         }
         true
     }

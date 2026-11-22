@@ -5,9 +5,7 @@ impl Game<'_> {
         }
         if let ItemPlace::ItemEntity { id } = place {
             return self
-                .dropped
-                .iter()
-                .find(|e| e.id == *id)
+                .ecs.item(*id)
                 .map(|e| e.stack.clone());
         }
         if let ItemPlace::EntitySlot { entity, slot } = place {

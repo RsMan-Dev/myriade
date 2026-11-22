@@ -146,7 +146,7 @@ fn count(game: &Game<'_>, pos: (i32, i32, i32), item: &str) -> u32 {
     })
 }
 fn dropped(game: &Game<'_>, item: &str) -> u32 {
-    game.dropped
+    game.ecs.item_views()
         .iter()
         .filter(|d| &*d.stack.item == item)
         .map(|d| d.stack.count)
@@ -241,7 +241,7 @@ fn explosion_unpacks_before_contents_drop() {
         explode(g);
         consumed(g, POS);
         assert_eq!(dropped(g, "minecraft:diamond"), 1);
-        g.dropped.clear();
+        g.ecs_clear_items();
         explode(g);
         assert_eq!(dropped(g, "minecraft:diamond"), 0);
     });

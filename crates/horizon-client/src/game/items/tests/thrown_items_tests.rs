@@ -48,7 +48,7 @@ fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
     game.inventory[game.selected] = Some(ItemStack::new("minecraft:stone", 4));
     let level = game.world.random.state();
     game.drop_held(false);
-    let thrown = game.dropped.last().expect("the drop key threw the stack");
+    let thrown = game.ecs.item_views().pop().expect("the drop key threw the stack");
     let velocity = thrown.velocity;
     assert!(
         (velocity.z - 0.3).abs() <= 0.02,
@@ -63,7 +63,7 @@ fn a_thrown_item_takes_the_throwers_random_not_the_levels() {
     );
     // The next throw scatters differently: the thrower's stream is live.
     game.drop_held(false);
-    assert_ne!(game.dropped.last().unwrap().velocity, velocity);
+    assert_ne!(game.ecs.item_views().pop().unwrap().velocity, velocity);
     assert_eq!(game.world.random.state(), level);
 }
 
@@ -85,7 +85,7 @@ fn a_death_scatter_takes_the_throwers_random_not_the_levels() {
             recently_hit: false,
         },
     );
-    let thrown = game.dropped.first().expect("the stack was thrown");
+    let thrown = game.ecs.item_views().into_iter().next().expect("the stack was thrown");
     assert_eq!(thrown.velocity.y, f64::from(0.2f32), "a scatter rises 0.2");
     assert!(thrown.velocity.x.abs() <= 0.5 && thrown.velocity.z.abs() <= 0.5);
     assert_eq!(
@@ -110,7 +110,7 @@ fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
     );
     let level = game.world.random.state();
     game.tick_items();
-    assert!(game.dropped.is_empty(), "the item was picked up");
+    assert!(game.ecs.item_ids().is_empty(), "the item was picked up");
     let (volume, pitch) = sound(&mut game, "minecraft:entity.item.pickup");
     assert_eq!(volume, 0.2);
     // `(nextFloat - nextFloat) * 1.4 + 2`.
@@ -156,7 +156,7 @@ fn a_burning_items_sound_is_not_drawn_from_the_levels_random() {
     );
     // `Entity.lavaHurt` sounds on the tenth tick of a contact that leaves the
     // item alive (`should_playLavaHurtSound`), so the item is about to be 10.
-    game.dropped[0].ticks = 9;
+    game.ecs.set_item_ticks(game.ecs.item_ids()[0], 9);
     let level = game.world.random.state();
     game.tick_items();
     let (volume, pitch) = sound(&mut game, "minecraft:entity.generic.burn");

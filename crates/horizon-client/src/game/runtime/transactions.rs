@@ -1007,14 +1007,12 @@ impl Game<'_> {
                     g.drop_plain(stack);
                 });
             }
-            After::Spawn(at, stack) => self.spawn_item(stack, at, [0.0; 3], 10),
+            After::Spawn(at, stack) => {
+                self.spawn_item(stack, at, [0.0; 3], 10);
+            }
             After::Emptied(id) => {
-                let emptied = self
-                    .dropped
-                    .iter()
-                    .position(|e| e.id == id && e.stack.count == 0);
-                if let Some(i) = emptied {
-                    self.remove_dropped(i);
+                if self.ecs.item(id).is_some_and(|it| it.stack.count == 0) {
+                    self.ecs_remove_item(id);
                 }
             }
             After::Equip {
@@ -1212,9 +1210,7 @@ impl Game<'_> {
             }
         }
         for (id, kept) in level.item_entities {
-            if let Some(e) = self.dropped.iter_mut().find(|e| e.id == id) {
-                e.stack = kept;
-            }
+            self.ecs.set_item_stack(id, kept);
         }
         if let Some(host) = self.lan.as_mut() {
             host.hub.guests.update_all(|g| {

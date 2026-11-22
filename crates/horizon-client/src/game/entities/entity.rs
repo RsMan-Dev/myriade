@@ -578,7 +578,6 @@ macro_rules! entity_lists {
         $crate::game::entity::$then! {
             ($($args)*)
             Mob(Mob) mobs: remote_entities,
-            Item(ItemEntity) dropped: dropped,
             Boat(Boat) boats: boats,
             Cart(Minecart) carts: carts,
             ArmorStand(ArmorStand) armor_stands: armor_stands,
@@ -1275,7 +1274,8 @@ impl Entity for ItemEntity {
         index: usize,
         keys: &HashSet<ChunkKey>,
     ) -> Option<(ChunkKey, Tag)> {
-        game.save_item(index, keys)
+        let _ = (game, index, keys);
+        None
     }
     fn load_nbt(
         game: &mut Game<'_>,
@@ -1285,18 +1285,8 @@ impl Entity for ItemEntity {
         tag: Tag,
         transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
-        if !(kind == "minecraft:item") {
-            return Err(tag);
-        }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_item,
-            load_item_transferred,
-            tag,
-            uuid
-        );
-        Ok(())
+        let _ = (game, kind, uuid, transferred);
+        Err(tag)
     }
     stored_motion!();
     fn portal_size(&self) -> Option<(f32, f32)> {

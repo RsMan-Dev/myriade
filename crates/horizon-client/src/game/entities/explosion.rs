@@ -1029,7 +1029,6 @@ impl Game<'_> {
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
             spared: exploding.filter(|_| self.combat.explosion_source_named),
         };
-        let mut destroyed_contents = Vec::new();
         macro_rules! blocked_damage {
             ($id:expr, $kind:expr) => {{
                 let source = horizon_client::health::HurtSource {
@@ -1088,7 +1087,6 @@ impl Game<'_> {
             } else {
                 None
             };
-            let mut destroyed = false;
             if let Some(Hit {
                 dist,
                 exposure,
@@ -1174,43 +1172,6 @@ impl Game<'_> {
                             self.resolve_player_responsible(victim, source);
                         }
                     }
-                    // `ItemEntity.hurtServer`: the damage comes off `Health`
-                    // (5 to start) in f32 and the item is destroyed at zero, so
-                    // a survivor keeps the health the blast left it. Stack damage
-                    // resistance is resolved against this blast's damage type. A
-                    // blast with a source entity under `mobGriefing` off never
-                    // reaches here (`items_ignore`).
-                    EntityHandle::Item(i) => {
-                        let id = self.dropped[i].id as i32;
-                        let blocked = blocked_damage!(id, "minecraft:item");
-                        let Some(EntityHandle::Item(i)) =
-                            self.refresh_entity_handle(entity, handle)
-                        else {
-                            continue;
-                        };
-                        let can_hurt = self
-                            .stack_can_be_hurt_by(&self.dropped[i].stack, damage_type)
-                            .unwrap_or(true);
-                        let item = &mut self.dropped[i];
-                        if !blocked && can_hurt {
-                            item.health = (item.health as f32 - amount) as i32;
-                            destroyed = item.health <= 0;
-                            // `ItemEntity.hurtServer`: ENTITY_DAMAGE before it is destroyed.
-                            let at = item.position;
-                            self.item_damage_event(at, self.explosion_kill_credit());
-                            if destroyed {
-                                // Health was already reduced above. Run the shared
-                                // onDestroyed path without applying damage twice.
-                                destroyed_contents.extend(
-                                    self.dropped[i]
-                                        .hurt(0)
-                                        .unwrap_or_default()
-                                        .into_iter()
-                                        .map(|stack| (stack, at)),
-                                );
-                            }
-                        }
-                    }
                     // `VehicleEntity.hurtServer`: damage * 10, broken past 40.
                     EntityHandle::Boat(i) => {
                         let kind = self.boats[i].entity_type();
@@ -1226,14 +1187,6 @@ impl Game<'_> {
                     // `hurtServer` does nothing to the rest.
                     _ => {}
                 }
-                if destroyed {
-                    match self.refresh_entity_handle(entity, handle) {
-                        Some(EntityHandle::Item(i)) => {
-                            self.dropped.remove(i);
-                        }
-                        _ => {}
-                    }
-                }
                 let k = f64::from(knockback);
                 let mut velocity = [push.x * k, push.y * k, push.z * k];
                 self.native_explosion_knockback(
@@ -1248,7 +1201,6 @@ impl Game<'_> {
                     continue;
                 };
                 match handle {
-                    EntityHandle::Item(_) if destroyed => {}
                     EntityHandle::Boat(i) => {
                         self.boats.update(i, |boat| boat.push_from_explosion(push))
                     }
@@ -1256,9 +1208,6 @@ impl Game<'_> {
                 }
             }
         }
-        // The original target walk is finished: released contents cannot be
-        // hurt or pushed by the explosion that destroyed their container.
-        self.spawn_destroyed_contents(destroyed_contents);
         self.native_leaves_flush();
         // Frames, paintings, cushions and armour stands last: vanilla lists
         // the entities in reach before hurting any, so the items they drop
@@ -1986,12 +1935,13 @@ impl Game<'_> {
             serde_json::from_str(&std::fs::read_to_string(directory.join("inputs.json"))?)?;
         let mut output = Vec::new();
         for case in cases {
-            self.dropped.clear();
+            for id in self.ecs.item_ids() {
+                self.ecs_remove_item(id);
+            }
             let stack = horizon_client::item_data::parse_stack(&case.stack)?
                 .ok_or("empty fixture stack")?;
-            self.spawn_item(stack, [0.0, 100.0, 0.0], [0.0; 3], 0);
-            self.dropped[0].health = case.health;
-            let original = self.dropped[0].id;
+            let original = self.spawn_item(stack, [0.0, 100.0, 0.0], [0.0; 3], 0).ok_or("no item level")?;
+            self.ecs.set_item_health(original, case.health as f32);
             if case.sibling {
                 self.spawn_item(
                     ItemStack::new("minecraft:dirt", 1),
@@ -2002,24 +1952,18 @@ impl Game<'_> {
             }
             let mut steps = Vec::new();
             for distance in case.distances {
-                for item in &mut self.dropped {
-                    item.position = Vec3::new(distance, 100.0, 0.0);
+                for id in self.ecs.item_ids() {
+                    self.ecs.set_item_position(id, Vec3::new(distance, 100.0, 0.0));
                 }
-                self.explosion_hurt_entities(
-                    [0.0, 100.0, 0.0],
-                    1.0,
-                    "minecraft:explosion",
-                    BlockInteraction::Destroy,
-                    &[],
-                );
-                let mut remaining: Vec<_> = self
-                    .dropped
+                self.explode_ecs([0.0, 100.0, 0.0], 1.0, false, None);
+                let views = self.ecs.item_views();
+                let mut remaining: Vec<_> = views
                     .iter()
-                    .map(|item| (item.stack.item.to_string(), item.stack.count, item.health))
+                    .map(|item| (item.stack.item.to_string(), item.stack.count, item.health as i32))
                     .collect();
                 remaining.sort();
                 steps.push(serde_json::json!(remaining));
-                if !self.dropped.iter().any(|item| item.id == original) {
+                if !views.iter().any(|item| item.id == original) {
                     break;
                 }
             }
@@ -2219,6 +2163,7 @@ mod tests {
             .expect("set HORIZON_EXPLOSION_ITEMS_FIXTURE to the fixture directory");
         crate::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
+            game.ecs = game.test_ecs_level();
             game.world.chunks.insert(
                 (0, 0),
                 std::sync::Arc::new(horizon_client::chunk::Chunk::empty(0, 0)),
@@ -2581,7 +2526,7 @@ mod explosion_part_tests;
 
 #[cfg(test)]
 mod shulker_lock_drop_tests {
-    use super::super::game_tests::tests::server_game;
+    use crate::game::ecs::test_support::active_server_game;
     use super::*;
     use horizon_client::{containers::BlockEntity, save};
     use horizon_core::nbt::Tag;
@@ -2590,7 +2535,7 @@ mod shulker_lock_drop_tests {
     #[ignore = "daily"]
     fn destruction_captures_the_external_shulker_lock_before_removal() {
         let mut resources = None;
-        let mut game = server_game(&mut resources);
+        let mut game = active_server_game(&mut resources);
         game.build_registries();
         game.set_allow_commands(true);
         game.block_ticks
@@ -2663,7 +2608,7 @@ mod shulker_lock_drop_tests {
                     Some(&Tag::String("Box".into()))
                 );
             }
-            let start = game.dropped.len();
+            let before = game.ecs.item_ids();
             match route {
                 "command" => {
                     assert!(game.run_command(&format!("setblock {x} 200 {z} air destroy")))
@@ -2690,9 +2635,11 @@ mod shulker_lock_drop_tests {
                 "actual external source was removed"
             );
             let item_id = format!("minecraft:{kind}");
-            let drops: Vec<_> = game.dropped[start..]
-                .iter()
-                .filter(|d| *d.stack.item == item_id)
+            let drops: Vec<_> = game
+                .ecs
+                .item_views()
+                .into_iter()
+                .filter(|d| !before.contains(&d.id) && *d.stack.item == item_id)
                 .collect();
             assert_eq!(drops.len(), 1, "actual one-item drop: {kind}/{route}");
             let stack = &drops[0].stack;

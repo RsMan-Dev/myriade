@@ -29,10 +29,10 @@ impl Game<'_> {
         v: [f64; 3],
         thrower: Option<[i32; 4]>,
     ) -> Option<u32> {
-        self.push_item_entity(thrown, at, Some(v), 40, None);
-        let id = self.next_entity;
-        if let Some(item) = self.dropped.last_mut() {
-            item.thrower = thrower;
+        let (id, _) = self.spawn_prepared_item(thrown, at, Some(v), 40, None);
+        let id = id?;
+        if let (Some(e), Some(who)) = (self.ecs.entity_of(id), thrower) {
+            self.ecs.set_thrower(e, who);
         }
         if mod_api::__private::listened(mod_api::HookId::ItemToss)
             && let Some(item) = self.native_item_handle(id)
@@ -44,8 +44,8 @@ impl Game<'_> {
             self.native_lifecycle.held_joins.pop();
             if canceled {
                 // A canceled toss never enters the world; what was thrown is gone.
-                if let Some(at) = self.dropped.iter().rposition(|d| d.id == id) {
-                    self.remove_dropped(at);
+                if let Some(e) = self.ecs.entity_of(id) {
+                    self.ecs.despawn(e);
                 }
                 self.forget_entity(id);
                 // What the listeners spawned waited behind the toss.
@@ -53,8 +53,7 @@ impl Game<'_> {
                 return None;
             }
         }
-        self.join_item_entity(id, at);
-        self.dropped.iter().rev().any(|d| d.id == id).then_some(id)
+        Some(id)
     }
 }
 
@@ -103,15 +102,15 @@ mod item_toss_tests {
                     .unwrap(),
                 );
                 let eye = [0.5, 65.0, 0.5];
-                let before = game.dropped.len();
+                let before = game.ecs.item_ids().len();
                 let stone = ItemStack::new("minecraft:stone", 1);
                 assert!(game.throw_from_eyes(stone, eye, false, true).is_none());
                 assert_eq!(*heard.lock().unwrap(), 1);
-                assert_eq!(game.dropped.len(), before, "a canceled toss leaves no item");
+                assert_eq!(game.ecs.item_ids().len(), before, "a canceled toss leaves no item");
                 let dirt = ItemStack::new("minecraft:dirt", 1);
                 let id = game.throw_from_eyes(dirt, eye, false, true).unwrap();
                 assert_eq!(*heard.lock().unwrap(), 2);
-                let thrown = game.dropped.iter().find(|d| d.id == id).unwrap();
+                let thrown = game.ecs.item(id).unwrap();
                 assert_eq!(thrown.pickup_delay, 0, "the listener's change stays");
                 let dirt = ItemStack::new("minecraft:dirt", 1);
                 assert!(game.throw_from_eyes(dirt, eye, true, false).is_some());
@@ -222,13 +221,13 @@ mod item_toss_tests {
                 assert!(!joins.contains(&tossed), "the canceled toss never joins");
                 assert!(joins.contains(&spawned), "the listener's item joins");
                 assert!(!probe.leaves.lock().unwrap().contains(&tossed));
-                assert!(game.dropped.iter().all(|d| d.id != tossed));
+                assert!(game.ecs.item_views().iter().all(|d| d.id != tossed));
                 if veto_join {
                     assert_eq!(*probe.order.lock().unwrap(), ["join"]);
-                    assert!(game.dropped.iter().all(|d| d.id != spawned));
+                    assert!(game.ecs.item_views().iter().all(|d| d.id != spawned));
                 } else {
                     assert_eq!(*probe.order.lock().unwrap(), ["join", "spawn"]);
-                    assert!(game.dropped.iter().any(|d| d.id == spawned));
+                    assert!(game.ecs.item_views().iter().any(|d| d.id == spawned));
                 }
             });
         });

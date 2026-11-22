@@ -50,18 +50,18 @@ fn a_cactus_hurts_an_item_a_point_a_tick_and_posts_entity_damage_for_each_hit() 
     // heard at the item's own position, with no source entity (a cactus is
     // not one: `damageSources().cactus()` names none).
     game.tick_items();
-    let item = &game.dropped[0];
+    let item = game.ecs.item_views()[0].clone();
     let at = [item.position.x, item.position.y, item.position.z];
     assert_eq!(
-        item.health, 4,
+        item.health, 4.0,
         "CactusBlock.entityInside takes a point a tick"
     );
     assert_eq!(take_events(), vec![("minecraft:entity_damage", at, None)]);
     // The hit that kills it is heard too, before the item leaves the level.
-    game.dropped[0].health = 1;
+    game.ecs.set_item_health(game.ecs.item_ids()[0], 1 as f32);
     capture();
     game.tick_items();
-    assert!(game.dropped.is_empty(), "1 health: the cactus kills it");
+    assert!(game.ecs.item_ids().is_empty(), "1 health: the cactus kills it");
     let events = take_events();
     assert_eq!(events.len(), 1, "{events:?}");
     let (event, pos, source) = events[0];
@@ -103,13 +103,13 @@ fn a_burning_item_that_dies_in_a_cactus_is_heard_once_where_its_tick_started() {
     );
     // 20 burning ticks: `Entity.baseTick` hurts this tick, and the point of
     // health left goes with it before the cactus gets its own hit in.
-    game.dropped[0].health = 1;
-    game.dropped[0].fire_ticks = 20;
-    let start = game.dropped[0].position;
+    game.ecs.set_item_health(game.ecs.item_ids()[0], 1 as f32);
+    game.ecs.set_on_fire(game.ecs.item_ids()[0], 20);
+    let start = game.ecs.item_views()[0].position;
     game.ticked_entities_through = u32::MAX;
     capture();
     game.tick_items();
-    assert!(game.dropped.is_empty(), "the burning hit destroys it");
+    assert!(game.ecs.item_ids().is_empty(), "the burning hit destroys it");
     assert_eq!(
         take_events(),
         vec![("minecraft:entity_damage", [start.x, start.y, start.z], None)]
@@ -138,11 +138,11 @@ fn an_item_expiring_in_a_cactus_is_hurt_before_it_despawns() {
         [0.0, 0.0, 0.0],
         0,
     );
-    game.dropped[0].age = 5999;
+    game.ecs.set_item_age(game.ecs.item_ids()[0], 5999);
     game.ticked_entities_through = u32::MAX;
     capture();
     game.tick_items();
-    assert!(game.dropped.is_empty(), "age 6000 discards it");
+    assert!(game.ecs.item_ids().is_empty(), "age 6000 discards it");
     let events = take_events();
     assert_eq!(events.len(), 1, "{events:?}");
     assert_eq!(events[0].0, "minecraft:entity_damage");

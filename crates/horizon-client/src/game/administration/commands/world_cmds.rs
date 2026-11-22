@@ -2043,7 +2043,7 @@ mod vehicle_damage_command_tests {
                 assert!(game.run_command(&format!("damage {uuid} 4 minecraft:generic")));
                 assert!(!game.ecs_has(id));
                 assert_eq!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .filter(|d| d.stack.item.as_ref() == format!("minecraft:{kind}")
                             && d.stack.count == 1)

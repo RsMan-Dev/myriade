@@ -123,11 +123,7 @@ impl Game<'_> {
         // Found by its id: the hooks the spawn runs may add entities after it.
         let id = self.next_entity + 1;
         self.spawn_at_location(Vec3::new(x, y, z), f64::from(y_offset), stack);
-        self.dropped
-            .iter()
-            .rev()
-            .any(|d| d.id == id)
-            .then(|| EntityRef::new(entity.epoch(), id))
+        self.ecs.item(id).is_some().then(|| EntityRef::new(entity.epoch(), id))
     }
     /// A mob leaves the level: its effects act first when it was killed.
     fn remove_mob_now(&mut self, id: u32, killed: bool) {
@@ -287,11 +283,11 @@ mod tests {
             game.carts.push(cart);
             let entity = game.entity(600).unwrap();
             assert!(game.entity_remove(entity, RemovalReason::Killed));
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
             game.native_removals_flush();
             assert!(game.carts.is_empty());
             let mut totals = std::collections::BTreeMap::new();
-            for item in game.dropped.iter() {
+            for item in game.ecs.item_views().into_iter() {
                 *totals.entry(item.stack.item.to_string()).or_insert(0) += item.stack.count;
             }
             assert_eq!(
@@ -301,9 +297,9 @@ mod tests {
                     ("minecraft:sand".to_owned(), 7),
                 ])
             );
-            let count = game.dropped.len();
+            let count = game.ecs.item_ids().len();
             game.native_removals_flush();
-            assert_eq!(game.dropped.len(), count);
+            assert_eq!(game.ecs.item_ids().len(), count);
         });
     }
 
@@ -484,13 +480,13 @@ mod tests {
                 )
                 .unwrap()
                 .unwrap();
-            let dropped = game.dropped.iter().find(|d| d.id == item.id()).unwrap();
+            let dropped = game.ecs.item_views().into_iter().find(|d| d.id == item.id()).unwrap();
             assert_eq!(&*dropped.stack.item, "minecraft:carrot");
             assert_eq!(dropped.stack.count, 2);
             assert_eq!(dropped.position, Vec3::new(3.5, 70.5, -2.5));
             assert_eq!(dropped.pickup_delay, 10);
             // Invalid engine values are refused before an API value can exist.
-            let before = game.dropped.len();
+            let before = game.ecs.item_ids().len();
             assert_eq!(
                 ItemStack::new("minecraft:carrot", 0).try_into_api(),
                 Err(StackReadError::Empty)
@@ -508,7 +504,7 @@ mod tests {
                 ),
                 Ok(None)
             );
-            assert_eq!(game.dropped.len(), before);
+            assert_eq!(game.ecs.item_ids().len(), before);
         });
     }
 
@@ -566,7 +562,7 @@ mod tests {
                     )
                     .unwrap()
                     .unwrap();
-                let dropped = game.dropped.iter().find(|d| d.id == item.id()).unwrap();
+                let dropped = game.ecs.item(item.id()).unwrap();
                 assert_eq!(dropped.position, expected);
                 assert_eq!(dropped.stack.count, 2);
                 assert_eq!(dropped.pickup_delay, 10);

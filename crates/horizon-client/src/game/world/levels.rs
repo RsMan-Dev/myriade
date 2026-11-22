@@ -15,7 +15,7 @@
 use super::commands::Target;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
-    Dim, Game, ItemEntity, Mob, boats, commands,
+    Dim, Game, Mob, boats, commands,
     creaking::CreakingState, dragon, fireworks, lightning, machines,
     ominous_item_spawner, persist, raids::Raiding, sculk::SculkState, tnt, trident,
 };
@@ -86,7 +86,7 @@ macro_rules! entity_count_view {
     ($level:expr, $knots:expr) => {
         crate::game::levels::EntityCountView {
             fixed: [
-                ("minecraft:item", $level.dropped.len()),
+                ("minecraft:item", $level.ecs.item_ids().len()),
                 ("minecraft:experience_orb", $level.ecs.species_count("minecraft:experience_orb")),
                 ("minecraft:boat", $level.boats.len()),
                 ("minecraft:falling_block", $level.ecs.species_count("minecraft:falling_block")),
@@ -161,7 +161,6 @@ pub(super) struct Parked {
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     knots: horizon_client::join_seq::JoinList<super::leads::Knot>,
-    dropped: horizon_client::join_seq::JoinList<ItemEntity>,
     persist: persist::EntityMemory,
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     lid_openers: HashMap<(i32, i32, i32), i32>,
@@ -623,7 +622,6 @@ impl Levels {
         let l = self.parked.get(&dim)?;
         Some(
             l.remote_entities.iter().filter(|m| !m.removed).count()
-                + l.dropped.len()
                 + l.ecs.entity_count()
                 + l.boats.len()
                 + l.ecs.species_count("minecraft:falling_block")
@@ -666,7 +664,7 @@ impl Levels {
     pub(super) fn parked_entity_counts(&self, dim: Dim) -> Option<[usize; 4]> {
         self.parked.get(&dim).map(|l| {
             [
-                l.dropped.len(),
+                l.ecs.species_count("minecraft:item"),
                 l.ecs.species_count("minecraft:experience_orb"),
                 0,
                 l.boats.len(),
@@ -751,7 +749,6 @@ impl Game<'_> {
             remote_entities: Default::default(),
             knot_ids: HashMap::new(),
             knots: Default::default(),
-            dropped: Default::default(),
             persist: Default::default(),
             lectern_pulses: Vec::new(),
             lid_openers: HashMap::new(),
@@ -893,7 +890,6 @@ impl Game<'_> {
         swap(&mut self.ecs, &mut p.ecs);
         swap(&mut self.knot_ids, &mut p.knot_ids);
         swap(&mut self.resident_entities.knots, &mut p.knots);
-        swap(&mut self.dropped, &mut p.dropped);
         swap(&mut self.persist, &mut p.persist);
         swap(&mut self.lectern_pulses, &mut p.lectern_pulses);
         swap(&mut self.lid_openers, &mut p.lid_openers);
@@ -2195,19 +2191,6 @@ mod tests {
 mod request_save_tests {
     use super::{Dim, Levels};
 
-    #[test]
-    #[ignore = "daily"]
-    fn requested_save_waits_without_consuming_the_queue_while_lifted() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.levels.request_save(Dim::Overworld);
-            let pass = game.dropped.lift();
-            game.run_requested_saves();
-            assert_eq!(game.levels.requested_saves, [Dim::Overworld]);
-            drop(pass);
-            game.run_requested_saves();
-            assert!(game.levels.requested_saves.is_empty());
-        });
-    }
 
     /// A level asked for twice is queued once, and clearing the levels drops the queue.
     #[test]

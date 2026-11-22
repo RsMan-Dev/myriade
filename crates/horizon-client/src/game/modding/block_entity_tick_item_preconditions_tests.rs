@@ -49,8 +49,8 @@ fn finalization_never_retargets_stale_items_or_replaced_placeholders() {
                     0,
                 );
             }
-            let first = game.dropped[0].id;
-            let second = game.dropped[1].id;
+            let first = game.ecs.item_ids()[0];
+            let second = game.ecs.item_ids()[1];
             assert_eq!(
                 game.stage_tick_item(first, Some(ItemStack::new("minecraft:stone", 2))),
                 Some(true)
@@ -64,16 +64,13 @@ fn finalization_never_retargets_stale_items_or_replaced_placeholders() {
             )];
             let case = std::env::var("ROW4_PRECONDITION_CASE").unwrap();
             match case.as_str() {
-                "stack" => game.dropped[1].stack.count = 4,
-                "join" => {
-                    let mut entity = game.dropped.remove(1);
-                    entity.join = Default::default();
-                    game.dropped.push(entity);
-                }
+                "stack" => game.ecs.item_views()[1].stack.count = 4,
                 "other_level" => {
-                    let entity = game.dropped.remove(1);
+                    let item = game.ecs.item_views()[1].clone();
+                    game.ecs_remove_item(item.id);
                     assert!(game.enter_command_level(super::Dim::Nether).is_some());
-                    game.dropped.push(entity);
+                    let p = item.position;
+                    game.spawn_item(item.stack.clone(), [p.x, p.y, p.z], [0.0; 3], 0);
                     assert!(game.enter_command_level(super::Dim::Overworld).is_some());
                 }
                 "replacement" | "empty_replacement" => {
@@ -107,9 +104,7 @@ fn finalization_never_retargets_stale_items_or_replaced_placeholders() {
             assert!(game.block_entity_tick_key.is_none());
             assert!(game.transactions.is_empty());
             assert_eq!(
-                game.dropped
-                    .iter()
-                    .find(|e| e.id == first)
+                game.ecs.item(first)
                     .unwrap()
                     .stack
                     .count,
@@ -117,9 +112,7 @@ fn finalization_never_retargets_stale_items_or_replaced_placeholders() {
             );
             if case != "other_level" {
                 assert_eq!(
-                    game.dropped
-                        .iter()
-                        .find(|e| e.id == second)
+                    game.ecs.item(second)
                         .unwrap()
                         .stack
                         .count,
@@ -141,9 +134,7 @@ fn finalization_never_retargets_stale_items_or_replaced_placeholders() {
             if case == "other_level" {
                 assert!(game.enter_command_level(super::Dim::Nether).is_some());
                 assert_eq!(
-                    game.dropped
-                        .iter()
-                        .find(|e| e.id == second)
+                    game.ecs.item(second)
                         .unwrap()
                         .stack
                         .count,

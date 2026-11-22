@@ -354,7 +354,6 @@ impl Game<'_> {
         if s.trace_events {
             self.creatures.projectiles.clear();
         }
-        self.dropped.clear();
         self.level_events.clear();
         self.session.rules = Default::default();
         for (rule, value) in [
@@ -510,7 +509,7 @@ impl Game<'_> {
         self.audio.capture = Some(Vec::new());
         let mut known: HashSet<u32> = self.remote_entities.iter().map(|m| m.id).chain(sources.iter().copied()).collect();
         let mut seeded: HashSet<u32> = HashSet::new();
-        let mut known_items = self.dropped.len();
+        let mut known_items = 0u32;
         let mut known_orbs = 0u32;
         let mut last: HashMap<[i32; 3], String> = HashMap::new();
         let mut region_last: HashMap<[i32; 3], String> = HashMap::new();
@@ -604,17 +603,17 @@ impl Game<'_> {
                 }
                 lines.push(line);
             }
-            for i in known_items..self.dropped.len() {
-                let d = &self.dropped[i];
-                names.insert(u32::MAX - i as u32, format!("n{}", names.len()));
+            // Item ids only grow: the items past the last seen id are new.
+            for item in self.ecs.item_views().iter().filter(|i| i.id > known_items) {
+                names.insert(u32::MAX - item.id, format!("n{}", names.len()));
                 lines.push(format!(
                     "new minecraft:item {},{},{}",
-                    self::d(d.position.x),
-                    self::d(d.position.y),
-                    self::d(d.position.z)
+                    self::d(item.position.x),
+                    self::d(item.position.y),
+                    self::d(item.position.z)
                 ));
             }
-            known_items = self.dropped.len();
+            known_items = self.ecs.item_ids().into_iter().max().unwrap_or(known_items).max(known_items);
             // Where an orb flies comes from its own random: its value only.
             // Orb ids only grow: the orbs past the last seen id are new.
             let orbs = self.ecs.orb_views();

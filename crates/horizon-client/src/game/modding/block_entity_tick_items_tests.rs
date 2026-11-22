@@ -254,8 +254,8 @@ fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
                         0,
                     );
                 }
-                FIRST.store(game.dropped[0].id, Ordering::Relaxed);
-                SECOND.store(game.dropped[1].id, Ordering::Relaxed);
+                FIRST.store(game.ecs.item_ids()[0], Ordering::Relaxed);
+                SECOND.store(game.ecs.item_ids()[1], Ordering::Relaxed);
                 let before = match game.world.block_entities.get(&pos).unwrap() {
                     BlockEntity::Mod(entity) => entity.revision(),
                     _ => unreachable!(),
@@ -289,7 +289,7 @@ fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
                     _ => &[2],
                 };
                 assert_eq!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .map(|e| e.stack.count)
                         .collect::<Vec<_>>(),
@@ -355,7 +355,7 @@ fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
                     game.tick_mod_block_entity(pos);
                 }
                 assert_eq!(
-                    game.dropped
+                    game.ecs.item_views()
                         .iter()
                         .map(|e| e.stack.count)
                         .collect::<Vec<_>>(),
@@ -371,7 +371,7 @@ fn native_tick_publishes_or_rejects_item_proposals_with_writeback() {
                         Ok(true)
                     );
                     assert_eq!(
-                        game.dropped
+                        game.ecs.item_views()
                             .iter()
                             .find(|e| e.id == first.id())
                             .unwrap()

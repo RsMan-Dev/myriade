@@ -103,13 +103,14 @@ impl Game<'_> {
                 keep
             });
         }
-        self.dropped.retain(|e| {
-            let keep = !gone(e.position);
-            if !keep {
-                removed.push(e.id);
+        for item in self.ecs.item_views() {
+            if gone(item.position) {
+                removed.push(item.id);
+                if let Some(e) = self.ecs.entity_of(item.id) {
+                    self.ecs.despawn(e);
+                }
             }
-            keep
-        });
+        }
         // Unloaded with their chunk: PersistentEntitySectionManager.stopTracking.
         self.native_leaves_flush();
         self.persist

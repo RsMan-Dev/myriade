@@ -62,8 +62,13 @@ impl Game<'_> {
             }
         }
         // EntityType.ITEM and EXPERIENCE_ORB.
-        self.dropped
-            .retain(|i| !intersects(standing(at(i.position), 0.25, 0.25), bounds));
+        for item in self.ecs.item_views() {
+            if intersects(standing(at(item.position), 0.25, 0.25), bounds) {
+                if let Some(e) = self.ecs.entity_of(item.id) {
+                    self.ecs.despawn(e);
+                }
+            }
+        }
         for orb in self.ecs.orb_views() {
             if intersects(standing(at(orb.position), 0.5, 0.5), bounds) {
                 if let Some(e) = self.ecs.entity_of(orb.id) {

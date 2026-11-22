@@ -235,7 +235,7 @@ impl Game<'_> {
             return stack.count - rest.count;
         }
         if let ItemPlace::ItemEntity { id } = place {
-            let Some(e) = self.dropped.iter().find(|e| e.id == *id) else {
+            let Some(e) = self.ecs.item(*id) else {
                 return 0;
             };
             let at = [e.position.x, e.position.y, e.position.z];
@@ -365,7 +365,7 @@ impl Game<'_> {
             return took;
         }
         if let ItemPlace::ItemEntity { id } = place {
-            let Some(e) = self.dropped.iter().find(|e| e.id == *id) else {
+            let Some(e) = self.ecs.item(*id) else {
                 return 0;
             };
             let took = taken(Some(&e.stack));
@@ -586,7 +586,7 @@ pub(super) mod tests {
             player.inventory[3] = Some(ItemStack::new("minecraft:paper", 16));
             game.lan.as_mut().unwrap().hub.guests.push(player);
             let host_before = game.inventory.clone();
-            let dropped_before = game.dropped.len();
+            let dropped_before = game.ecs.item_ids().len();
             let inventory =
                 |game: &super::Game<'_>| game.lan.as_ref().unwrap().hub.guests[0].inventory.clone();
             let mut expected = inventory(game);
@@ -604,7 +604,7 @@ pub(super) mod tests {
                 }))
             });
             assert_eq!(result, Ok(true));
-            assert_eq!(game.dropped.len(), dropped_before);
+            assert_eq!(game.ecs.item_ids().len(), dropped_before);
             assert_eq!(
                 inventory(game),
                 expected,
@@ -643,7 +643,7 @@ pub(super) mod tests {
                 Ok(false)
             );
             assert_eq!(inventory(game), expected);
-            assert_eq!(game.dropped.len(), dropped_before);
+            assert_eq!(game.ecs.item_ids().len(), dropped_before);
         });
     }
 

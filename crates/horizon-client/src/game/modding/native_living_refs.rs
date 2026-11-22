@@ -1273,10 +1273,9 @@ impl Game<'_> {
             (v, [m.position.x, m.eye_y() - f64::from(0.3f32), m.position.z])
         };
         let thrower = thrown_from_hand.then(|| self.uuid_for(id));
-        self.spawn_item(stack, at, v, 40);
-        let item = self.just_spawned_item()?;
-        item.thrower = thrower;
-        Some(item.id)
+        let id = self.spawn_item(stack, at, v, 40)?;
+        self.ecs.set_item_thrower(id, thrower);
+        Some(id)
     }
 }
 
@@ -2309,7 +2308,7 @@ mod tests {
                 Some("minecraft:item")
             );
             let wolf_uuid = game.uuid_for(id);
-            let thrown = game.dropped.last().unwrap();
+            let thrown = game.ecs.item_views().pop().unwrap();
             let eye = game.remote_entities.iter().find(|m| m.id == id).unwrap().eye_y();
             assert_eq!(thrown.position.y, eye - f64::from(0.3f32));
             assert_eq!((thrown.pickup_delay, thrown.thrower), (40, Some(wolf_uuid)));
@@ -2320,8 +2319,8 @@ mod tests {
             assert!(!game.living_swing(wolf, Hand::Main, true));
             let scattered = game.living_drop(wolf, bone, true, false).unwrap();
             assert_ne!(scattered, item);
-            assert_eq!(game.dropped.last().unwrap().velocity.y, f64::from(0.2f32));
-            assert_eq!(game.dropped.last().unwrap().thrower, None);
+            assert_eq!(game.ecs.item_views().pop().unwrap().velocity.y, f64::from(0.2f32));
+            assert_eq!(game.ecs.item_views().pop().unwrap().thrower, None);
 
             game.armor_stands
                 .push(ArmorStand::new(90, Vec3::new(0.5, 64.0, 0.5), 0.0));
@@ -2354,7 +2353,7 @@ mod tests {
             game.inventory[game.selected] = Some(item.clone());
             let player_random = game.player.as_ref().unwrap().random.clone();
             let (_, seeds) = horizon_client::random_source::record_seeds(|| game.drop_held(true));
-            let key_velocity = game.dropped.last().unwrap().velocity;
+            let key_velocity = game.ecs.item_views().pop().unwrap().velocity;
             *game.world.random = horizon_core::random::LegacyRandom::new(12345);
             crate::game::native_entity_refs::tests::bind_local_player(game, 42, 123);
             let player = game.living(game.entity(42).unwrap()).unwrap();
@@ -2367,9 +2366,7 @@ mod tests {
                 "both drop routes allocate the same random streams"
             );
             let mod_velocity = game
-                .dropped
-                .iter()
-                .find(|entity| entity.id == id)
+                .ecs.item(id)
                 .unwrap()
                 .velocity;
             assert_eq!(key_velocity, mod_velocity);
@@ -2428,7 +2425,7 @@ mod tests {
                         ]
                     };
                     let level = game.world.random.state();
-                    let before = game.dropped.len();
+                    let before = game.ecs.item_ids().len();
                     let id = game.native_player_drop(
                         ItemStack::new("minecraft:apple", 1),
                         randomly,
@@ -2442,9 +2439,9 @@ mod tests {
                     assert_eq!(game.world.random.state(), level, "no level random draws");
                     if cancelled {
                         assert!(id.is_none());
-                        assert_eq!(game.dropped.len(), before);
+                        assert_eq!(game.ecs.item_ids().len(), before);
                     } else {
-                        let drop = game.dropped.iter().find(|d| Some(d.id) == id).unwrap();
+                        let drop = game.ecs.item_views().into_iter().find(|d| Some(d.id) == id).unwrap();
                         assert_eq!(
                             [drop.velocity.x, drop.velocity.y, drop.velocity.z],
                             velocity
@@ -2472,7 +2469,7 @@ mod tests {
                     .is_none()
             );
             assert_eq!(game.swings_started, before);
-            assert!(game.dropped.is_empty());
+            assert!(game.ecs.item_ids().is_empty());
         });
     }
 

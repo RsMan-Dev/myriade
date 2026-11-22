@@ -42,9 +42,8 @@ fn prepare(game: &mut Game<'_>) {
 
 fn drop_stack(game: &mut Game<'_>, input: &str, position: [f64; 3]) -> u32 {
     game.spawn_item(stack(input), position, [0.0; 3], 100);
-    let item = game.dropped.last_mut().unwrap();
-    item.no_gravity = true;
-    let id = item.id;
+    let id = *game.ecs.item_ids().last().unwrap();
+    game.ecs.set_no_gravity(id, true);
     game.ticked_entities_through = game.next_entity;
     id
 }
@@ -120,13 +119,13 @@ fn removed_netherite_resistance_dies_on_the_second_lava_hurt() {
         prepare(game);
         lava(game);
         let id = drop_stack(game, "netherite_sword[!damage_resistant]", [4.5, 64.0, 4.5]);
-        assert_eq!(game.dropped[0].health, 5);
+        assert_eq!(game.ecs.item_views()[0].health, 5.0);
         game.tick_items();
-        assert_eq!(game.dropped[0].id, id);
-        assert_eq!(game.dropped[0].health, 1);
-        assert_eq!(game.dropped[0].age, 1);
+        assert_eq!(game.ecs.item_ids()[0], id);
+        assert_eq!(game.ecs.item_views()[0].health, 1.0);
+        assert_eq!(game.ecs.item_views()[0].age, 1);
         game.tick_items();
-        assert!(game.dropped.iter().all(|item| item.id != id));
+        assert!(game.ecs.item_views().iter().all(|item| item.id != id));
     });
 }
 
@@ -143,10 +142,10 @@ fn environmental_tag_stone_keeps_five_health_for_forty_lava_ticks() {
         );
         for _ in 0..40 {
             game.tick_items();
-            assert_eq!(game.dropped[0].id, id);
-            assert_eq!(game.dropped[0].health, 5);
+            assert_eq!(game.ecs.item_ids()[0], id);
+            assert_eq!(game.ecs.item_views()[0].health, 5.0);
         }
-        assert_eq!(game.dropped[0].age, 40);
+        assert_eq!(game.ecs.item_views()[0].age, 40);
     });
 }
 
@@ -199,22 +198,22 @@ fn a_mod_items_default_cactus_resistance_keeps_five_health_for_ten_ticks() {
         game.world.set(4, 64, 4, cactus).unwrap();
         drop_stack(game, "minecraft:stone", [5.08, 64.0, 4.5]);
         game.tick_items();
-        assert_eq!(game.dropped[0].health, 4, "the tick really touches cactus");
-        game.dropped.clear();
+        assert_eq!(game.ecs.item_views()[0].health, 4.0, "the tick really touches cactus");
+        game.ecs_clear_items();
         let id = drop_stack(game, "fixture:cactus_item", [5.08, 64.0, 4.5]);
         assert!(
-            game.dropped[0].stack.data().is_none(),
+            game.ecs.item_views()[0].stack.data().is_none(),
             "resistance comes from defaults"
         );
         for _ in 0..10 {
             // Keep the item touching the cactus block while outside its inset collision box.
-            game.dropped[0].position = Vec3::new(5.08, 64.0, 4.5);
-            game.dropped[0].velocity = Vec3::ZERO;
+            game.ecs.set_item_position(game.ecs.item_ids()[0], Vec3::new(5.08, 64.0, 4.5));
+            { let e = game.ecs.entity_of(game.ecs.item_ids()[0]).unwrap(); game.ecs.set_velocity(e, Vec3::ZERO); }
             game.tick_items();
-            assert_eq!(game.dropped[0].id, id);
-            assert_eq!(game.dropped[0].health, 5);
+            assert_eq!(game.ecs.item_ids()[0], id);
+            assert_eq!(game.ecs.item_views()[0].health, 5.0);
         }
-        assert_eq!(game.dropped[0].age, 10);
+        assert_eq!(game.ecs.item_views()[0].age, 10);
     });
 }
 
@@ -240,13 +239,13 @@ fn damage_command_uses_effective_item_resistance() {
                 5,
             ),
         ] {
-            game.dropped.clear();
+            game.ecs_clear_items();
             drop_stack(game, input, [4.5, 64.0, 4.5]);
             let command = format!("damage @e[type=minecraft:item,limit=1] 4 minecraft:{damage}");
             let success = game.as_console(|game| game.run_command(&command));
             assert_eq!(success, expected_health == 1, "{input}: {command}");
             assert_eq!(
-                game.dropped[0].health, expected_health,
+                game.ecs.item_views()[0].health, expected_health as f32,
                 "{input}: {command}"
             );
         }

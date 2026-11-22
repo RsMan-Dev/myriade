@@ -62,29 +62,6 @@ impl Game<'_> {
             .chain(self.persist.off_level.values().filter_map(OffLevel::as_mob))
     }
 
-    pub(in crate::game) fn load_item_transferred(
-        &mut self,
-        tag: Tag,
-        uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
-    ) {
-        self.next_entity += 1;
-        // `ItemEntity(EntityType, Level)` first: its own random draws UUID, bobOffs and yaw.
-        let mut own = horizon_core::random::EntityRandom::own(random_source::entity());
-        let fresh = horizon_client::save::insecure_uuid(&mut own);
-        let bob = own.next_float() * std::f32::consts::PI * 2.0;
-        own.next_float();
-        if let Some(mut e) = entity_nbt::item_entity_from_nbt(&tag, self.next_entity, bob) {
-            e.random = own;
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(e.id, state);
-            }
-            self.remember(e.id, Some(uuid.unwrap_or(fresh)), tag);
-            self.bind_saved_entity_attachments(e.id, &mut e.attachment_lifetime);
-            self.dropped.push(e);
-        }
-    }
-
     /// Loads the saved projectile `tag` in the ECS level and gives it its id, which keeps its portal cooldown, its transferred state
     /// and its uuid; None when the level refuses the saved form.
     fn load_projectile_ecs(

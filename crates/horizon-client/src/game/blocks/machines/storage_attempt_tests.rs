@@ -1259,7 +1259,7 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
                     ),
                 ]),
             );
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             game.dispense_from(BlockPos::new(8, 64, 8), state).unwrap();
             let saved = spill::saved_entity(&game.world, pot).unwrap();
             assert_eq!(
@@ -1269,7 +1269,7 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
                 64
             );
             assert_eq!(count(game, HOPPER, 0), 1);
-            assert_eq!(game.dropped.len(), dropped);
+            assert_eq!(game.ecs.item_ids().len(), dropped);
             assert!(
                 trace(&probe).is_empty(),
                 "the pot's provider was never asked"
@@ -1280,7 +1280,7 @@ fn dropper_routes_saved_pot_directly_even_with_a_storage_provider() {
                 1,
                 "a full pot refuses on its direct path"
             );
-            assert_eq!(game.dropped.len(), dropped);
+            assert_eq!(game.ecs.item_ids().len(), dropped);
             assert!(trace(&probe).is_empty());
         },
     );

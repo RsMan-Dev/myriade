@@ -63,7 +63,7 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
                 .insert(key, BlockEntity::Chest(slots.clone()));
             game.container = Some(key);
         }
-        let old_len = game.dropped.len();
+        let old_len = game.ecs.item_ids().len();
         let actor = format!("00000033-0000-0000-0000-{:012x}", index + 1);
         assert!(
             game.run_command(&format!("kill {actor}")),
@@ -73,7 +73,7 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
         assert!(!game.carts.iter().any(|c| c.id == id));
         assert!(!game.world.block_entities.contains_key(&key));
         assert_ne!(game.container, Some(key));
-        let dropped = &game.dropped[old_len..];
+        let dropped = game.ecs.item_views()[old_len..].to_vec();
         let expected: Vec<_> = slots.into_iter().flatten().collect();
         if dropped.len() != expected.len()
             || expected

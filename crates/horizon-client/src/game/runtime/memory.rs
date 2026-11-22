@@ -480,7 +480,7 @@ impl Game<'_> {
         level(
             &self.remote_entities,
             [
-                self.dropped.len(),
+                self.ecs.item_ids().len(),
                 self.ecs.species_count("minecraft:experience_orb"),
                 self.carts.len(),
                 self.boats.len(),

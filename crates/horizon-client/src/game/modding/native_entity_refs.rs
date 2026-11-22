@@ -1391,9 +1391,9 @@ pub(super) mod tests {
                     1.0 / hardness / divisor,
                     "{block}"
                 );
-                game.dropped.clear();
+                game.ecs_clear_items();
                 game.break_block(pos).unwrap();
-                let dropped = game.dropped.iter().any(|item| &*item.stack.item == drop);
+                let dropped = game.ecs.item_views().iter().any(|item| &*item.stack.item == drop);
                 assert_eq!(dropped, harvest, "{block}: drops {drop}");
             }
             std::fs::remove_dir_all(scratch).unwrap();
@@ -2108,7 +2108,7 @@ pub(super) mod tests {
             );
             game.sulfur_cube_pickups();
             assert_eq!(game.remote_entities[0].equipment_stacks()[6], Some(held));
-            assert_eq!(game.dropped[0].stack.count, 2);
+            assert_eq!(game.ecs.item_views()[0].stack.count, 2);
         });
     }
 
@@ -2137,7 +2137,7 @@ pub(super) mod tests {
                     game.interact_happy_ghast(index, "minecraft:shears")
                 };
                 assert!(used);
-                assert!(game.dropped.iter().any(|drop| drop.stack == stack));
+                assert!(game.ecs.item_views().iter().any(|drop| drop.stack == stack));
                 assert!(game.remote_entities[index].extra.body_id().is_none());
             }
         });

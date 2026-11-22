@@ -34,7 +34,7 @@ fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
             .default_state("minecraft:stone")
             .unwrap();
         let before = game.world.block(0, 64, 0);
-        let drops = game.dropped.len();
+        let drops = game.ecs.item_ids().len();
         let menu = Menu::new(tests::state());
         let root = game.transaction_open();
         let mut host = GameHost { game, identity };
@@ -57,9 +57,9 @@ fn cancel_action_undoes_real_game_listener_block_and_deferred_drop() {
         );
         assert_eq!(menu.read(Clone::clone), tests::state());
         assert_eq!(host.game.world.block(0, 64, 0), before);
-        assert_eq!(host.game.dropped.len(), drops);
+        assert_eq!(host.game.ecs.item_ids().len(), drops);
         host.game.transaction_close(&root, true);
-        assert_eq!(host.game.dropped.len(), drops);
+        assert_eq!(host.game.ecs.item_ids().len(), drops);
         assert!(host.game.transactions.is_empty());
     });
 }
@@ -134,7 +134,7 @@ fn outer_real_game_abort_undoes_applied_menu_block_cost_rng_and_drops() {
             .default_state("minecraft:stone")
             .unwrap();
         let before = game.world.block(0, 64, 0);
-        let drops = game.dropped.len();
+        let drops = game.ecs.item_ids().len();
         let menu = Menu::new(tests::state());
         let root = game.transaction_open();
         let mut host = GameHost { game, identity };
@@ -160,11 +160,11 @@ fn outer_real_game_abort_undoes_applied_menu_block_cost_rng_and_drops() {
             Ok(Outcome::Applied)
         );
         assert_eq!(menu.read(|s| (s.cost, s.rng)), (2, 102));
-        assert_eq!(host.game.dropped.len(), drops);
+        assert_eq!(host.game.ecs.item_ids().len(), drops);
         host.game.transaction_close(&root, false);
         assert_eq!(menu.read(Clone::clone), tests::state());
         assert_eq!(host.game.world.block(0, 64, 0), before);
-        assert_eq!(host.game.dropped.len(), drops);
+        assert_eq!(host.game.ecs.item_ids().len(), drops);
         assert!(host.game.transactions.is_empty());
     });
 }
@@ -205,7 +205,7 @@ fn only_root_commit_publishes_real_listener_and_plan_drops_in_order() {
     with_game(|game| {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
-        let initial = game.dropped.len();
+        let initial = game.ecs.item_ids().len();
         let root = game.transaction_open();
         let mut host = GameHost { game, identity };
         assert_eq!(
@@ -231,17 +231,17 @@ fn only_root_commit_publishes_real_listener_and_plan_drops_in_order() {
                         ItemStack::new("minecraft:dirt", 2),
                     ));
                     host.game.transaction_close(&child, true);
-                    assert_eq!(host.game.dropped.len(), initial);
+                    assert_eq!(host.game.ecs.item_ids().len(), initial);
                     Reply::Allow
                 }
             ),
             Ok(Outcome::Applied)
         );
-        assert_eq!(host.game.dropped.len(), initial);
+        assert_eq!(host.game.ecs.item_ids().len(), initial);
         host.game.transaction_close(&root, true);
         let stacks: Vec<_> = host
             .game
-            .dropped
+            .ecs.item_views()
             .iter()
             .skip(initial)
             .map(|item| item.stack.clone())
@@ -268,7 +268,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
     with_game(|game| {
         let identity = identity(game);
         let menu = Menu::new(tests::state());
-        let drops = game.dropped.len();
+        let drops = game.ecs.item_ids().len();
         assert!(Game::admit_entity_save().is_ok());
         let root = game.transaction_open();
         let mut host = GameHost { game, identity };
@@ -291,7 +291,7 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
         assert_eq!(host.game.transactions.len(), 1);
         assert_eq!(menu.read(Clone::clone), tests::state());
         host.game.transaction_close(&root, true);
-        assert_eq!(host.game.dropped.len(), drops);
+        assert_eq!(host.game.ecs.item_ids().len(), drops);
         assert!(host.game.transactions.is_empty());
     });
 }

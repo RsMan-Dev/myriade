@@ -248,27 +248,27 @@ fn give_write_aborts() {
         // An empty destination exercises rollback of a successful insertion, not only
         // suppression of the overflow drop from a completely full inventory.
         assert_eq!(player.inventory_slots(game), Some(Vec::new()));
-        let drops = game.dropped.len();
+        let drops = game.ecs.item_ids().len();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.give_stack(host, new.clone()).unwrap();
             assert_eq!(player.inventory_slots(host), Some(vec![(0, new.clone())]));
             Err(())
         });
         assert_eq!(player.inventory_slots(game), Some(Vec::new()));
-        assert_eq!(game.dropped.len(), drops);
+        assert_eq!(game.ecs.item_ids().len(), drops);
         for slot in 0..36 {
             player
                 .set_inventory_slot(game, slot, Some(old.clone()))
                 .unwrap();
         }
         let before = player.inventory_slots(game);
-        let drops = game.dropped.len();
+        let drops = game.ecs.item_ids().len();
         let _: Result<(), ()> = game.transaction(|host, _| {
             player.give_stack(host, new).unwrap();
             Err(())
         });
         assert_eq!(player.inventory_slots(game), before);
-        assert_eq!(game.dropped.len(), drops);
+        assert_eq!(game.ecs.item_ids().len(), drops);
     });
 }
 

@@ -1426,12 +1426,12 @@ mod tests {
             let host: &mut dyn mod_api::Host = game;
             HOARD.set(host, holder, 5).unwrap();
             let asked = HOARD_ASKED.load(Ordering::Relaxed);
-            let dropped = game.dropped.len();
+            let dropped = game.ecs.item_ids().len();
             game.tick_mod_block_entity(key);
             assert_eq!(game.world.block(pos.x, pos.y, pos.z), granite);
             assert_eq!(HOARD_ASKED.load(Ordering::Relaxed), asked);
             assert!(game.world.block_entities.attachments(key).is_none());
-            let out: Vec<_> = game.dropped[dropped..]
+            let out: Vec<_> = game.ecs.item_views()[dropped..]
                 .iter()
                 .map(|d| (d.stack.item.to_string(), d.stack.count))
                 .collect();
@@ -1564,13 +1564,14 @@ mod crafter_drop_name_tests {
                         ))
                     );
                 }
-                let start = game.dropped.len();
+                let start = game.ecs.item_ids().len();
                 assert!(game.run_command(&format!("setblock {x} 200 {z} air destroy")));
                 game.flush_spill();
                 assert!(game.res.facts().is_air(game.world.block(x, 200, z)));
                 assert!(!game.world.block_entities.contains_key(&key));
                 assert!(!game.world.block_names.contains_key(&key));
-                let emitted = &game.dropped[start..];
+                let all = game.ecs.item_views();
+                let emitted = &all[start..];
                 let matching: Vec<_> = emitted
                     .iter()
                     .filter(|d| *d.stack.item == item_id)
