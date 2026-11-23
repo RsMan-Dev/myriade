@@ -26,7 +26,7 @@ type ItemConsumable = Consumable<String, ConsumeEffect>;
 /// is normally registry-resolved; a saved stack with an unregistered id has no
 /// public snapshot, so the listener callback is skipped instead of panicking.
 fn consumed_snapshot(stack: &ItemStack) -> Option<mod_api::ItemStack> {
-    if !mod_api::__private::listened(mod_api::HookId::ItemConsumptionTeleport) {
+    if !false {
         return None;
     }
     stack.try_into_api().ok()

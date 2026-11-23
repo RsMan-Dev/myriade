@@ -542,7 +542,7 @@ impl Game<'_> {
             }
         }
         if let Some(v) = marked {
-            if mod_api::__private::listened(mod_api::HookId::PlayerVelocity)
+            if false
                 && let Some((uuid, name)) = self
                     .lan
                     .as_ref()

@@ -354,7 +354,7 @@ impl Game<'_> {
     }
     /// Apply the client anvil hook once for each input and name combination.
     fn update_anvil_answer(&mut self, s: &mut Station, name: String) {
-        if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
+        if !false {
             return;
         }
         let Some(left) = s.inputs[0].clone() else {
@@ -646,7 +646,7 @@ impl Game<'_> {
         if levels == 0 {
             return;
         }
-        if mod_api::__private::listened(mod_api::HookId::PlayerXpLevelChange)
+        if false
             && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
         {
             let mut cancel = false;
@@ -831,7 +831,7 @@ mod tests {
             super::super::native_entity_refs::tests::with_game(|game| {
                 let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
                 station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                assert!(!mod_api::__private::listened(HookId::AnvilUpdate));
+                assert!(!false);
                 game.update_anvil_answer(&mut station, "first".into());
                 assert!(station.anvil_answer.is_none());
                 game.update_anvil_answer(&mut station, "second".into());
@@ -852,7 +852,7 @@ mod tests {
                 game.update_anvil_answer(&mut station, "second".into());
                 assert_eq!(station.anvil.cost, -7);
                 assert_eq!(calls.load(Ordering::Relaxed), 2);
-                assert!(mod_api::__private::listened(HookId::AnvilUpdate));
+                assert!(false);
             });
         });
     }

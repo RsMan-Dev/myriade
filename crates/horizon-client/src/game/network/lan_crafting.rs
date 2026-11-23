@@ -315,10 +315,6 @@ impl Game<'_> {
             .recipes()
             .find(&self.loop_context, &g.craft_grid, 2)
             .map(|(_, stack)| stack);
-        if mod_api::__private::listened(mod_api::HookId::PrepareItemCraft) {
-            let name = g.name.clone();
-            self.native_prepare_item_craft(uuid, &name, None, &mut result);
-        }
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -598,7 +594,7 @@ impl Game<'_> {
         if furnace && count(menu.slot(2)) < count(items[2].as_ref()) {
             let output = items[2].as_ref();
             if let Some(output) = output
-                && mod_api::__private::listened(mod_api::HookId::FurnaceExtract)
+                && false
                 && let Some(name) = self
                     .lan
                     .as_ref()
@@ -812,7 +808,7 @@ impl Game<'_> {
         max: bool,
         dry_run: bool,
     ) -> Option<mod_api::RecipeTransferResult> {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuTransfer) {
+        if !false {
             return None;
         }
         let g = &self.lan.as_ref()?.hub.guests[gi];
@@ -820,7 +816,7 @@ impl Game<'_> {
             .menu
             .as_ref()
             .filter(|menu| menu.window == container && menu.mod_type.is_some())?;
-        if !mod_api::__private::menu_listens(mod_api::HookId::MenuTransfer, &menu.registry_id) {
+        if !false {
             return None;
         }
         let (player, menu_id) = (g.uuid, menu.registry_id.to_string());
@@ -1354,7 +1350,7 @@ impl Game<'_> {
     /// hub sends the tick's slot changes, so a tab the player picked or a
     /// chest placed or broken shows in the same tick.
     pub(super) fn lan_menu_links_tick(&mut self) {
-        if !mod_api::__private::listened(mod_api::HookId::MenuLinks) {
+        if !false {
             return;
         }
         let Some(count) = self.lan.as_ref().map(|host| host.hub.guests.len()) else {

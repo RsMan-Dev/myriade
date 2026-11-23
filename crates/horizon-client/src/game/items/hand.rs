@@ -203,9 +203,6 @@ impl Game<'_> {
     ) {
         let player = self.own_entity_id() as u32;
         self.native_can_harvest_block(player, pos, state, harvest);
-        if mod_api::__private::listened(mod_api::HookId::PlayerHarvestCheck) {
-            self.native_player_harvest_check(player, pos, state.0, harvest);
-        }
     }
     /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`, whose
     /// end asks the mods' `native_player_break_speed`. Every dig's progress comes from
@@ -239,16 +236,6 @@ impl Game<'_> {
         };
         let mut speed = horizon_items::mining::destroy_speed(tool_speed, &player);
         let mut canceled = false;
-        if mod_api::__private::listened(mod_api::HookId::PlayerBreakSpeed) {
-            self.native_player_break_speed(
-                self.own_entity_id() as u32,
-                pos,
-                state.0,
-                speed,
-                &mut speed,
-                &mut canceled,
-            );
-        }
         if canceled {
             return 0.0;
         }

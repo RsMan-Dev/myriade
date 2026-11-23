@@ -32,7 +32,7 @@ impl Game<'_> {
         unlit: horizon_world::registry::BlockStateId,
     ) -> Option<horizon_world::registry::BlockStateId> {
         let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if !mod_api::__private::listened(mod_api::HookId::BlockToolModification)
+        if !false
             && !crate::game::api_values::block_state::block_listens(
                 mod_api::HookId::ToolModifiedState,
                 block,

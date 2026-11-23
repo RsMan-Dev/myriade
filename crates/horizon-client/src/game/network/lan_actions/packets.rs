@@ -322,11 +322,6 @@ impl Game<'_> {
                     let Some(host) = self.lan.as_ref() else {
                         return;
                     };
-                    if mod_api::__private::listened(mod_api::HookId::BlockDamageAbort) {
-                        let guest = &host.hub.guests[gi];
-                        let (uuid, name) = (guest.uuid, guest.name.clone());
-                        self.native_block_damage_abort(uuid, &name, a.pos);
-                    }
                 }
                 4 | 5 => {
                     if !spectator {
@@ -352,7 +347,7 @@ impl Game<'_> {
                             return;
                         };
                         let g = &host.hub.guests[gi];
-                        let heard = mod_api::__private::listened(mod_api::HookId::PlayerSwapHands)
+                        let heard = false
                             .then(|| (g.offhand.clone(), g.inventory[g.selected].clone()));
                         (g.uuid, g.name.clone(), heard)
                     };
@@ -420,14 +415,6 @@ impl Game<'_> {
                             None => g.using = None,
                         }
                     });
-                    if mod_api::__private::listened(mod_api::HookId::PlayerSwapWithEquipmentSlot) {
-                        let Some(host) = self.lan.as_ref() else {
-                            return;
-                        };
-                        let guest = &host.hub.guests[gi];
-                        let (uuid, name) = (guest.uuid, guest.name.clone());
-                        self.native_player_swap_with_equipment_slot(uuid, &name, "offhand");
-                    }
                 }
                 // STAB: `PiercingWeapon.attack` of a left click with a spear.
                 8 if !spectator => self.guest_jab(conn),
@@ -725,14 +712,6 @@ impl Game<'_> {
                     };
                     host.hub
                         .select_bundle_item(conn, slot, p.index, &mut self.world);
-                    if mod_api::__private::listened(mod_api::HookId::PlayerBundleItemSelect) {
-                        let Some(host) = self.lan.as_ref() else {
-                            return;
-                        };
-                        let guest = &host.hub.guests[gi];
-                        let (uuid, name) = (guest.uuid, guest.name.clone());
-                        self.native_player_bundle_item_select(uuid, &name, p.slot, p.index);
-                    }
                 }
             }
             S::ContainerClick(p) => {

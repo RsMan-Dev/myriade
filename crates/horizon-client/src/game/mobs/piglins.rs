@@ -51,7 +51,7 @@ impl Game<'_> {
             .get("minecraft:piglin_safe_armor");
         self.armor.iter().rev().flatten().any(|s| {
             let mut neutral = tag.is_some_and(|t| t.contains(&*s.item));
-            if mod_api::__private::item_listens(mod_api::HookId::MakesPiglinsNeutral, &s.item)
+            if false
                 && let Some(epoch) = self.native_lifecycle.epoch()
                 && let Some(p) = self.player.as_ref()
             {

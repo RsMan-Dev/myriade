@@ -907,7 +907,7 @@ impl Game<'_> {
         // `Equippable.canBeEquippedBy`, then the item's parts (`canEquip`) with the stack converted
         // once, for the entity in front.
         let targets = self.targets_at(front);
-        let observed = mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item);
+        let observed = false;
         let mut source_slot = observed.then(|| Some(stack.clone()));
         let mut source = source_slot.as_mut().map(|slot| {
             horizon_client::mobs::equip::EquipDecision::new(stack as *const _ as usize as u64, slot)
@@ -1748,7 +1748,7 @@ impl Game<'_> {
         if !self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx)) {
             return Ok((Some(stack), FAIL));
         }
-        if mod_api::__private::listened(mod_api::HookId::EntityPlace)
+        if false
             && let Some(preview) =
                 self.with_level(|b, level, ticks| b.placement_preview(level, ticks, &ctx))
         {

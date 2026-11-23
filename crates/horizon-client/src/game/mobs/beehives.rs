@@ -105,39 +105,6 @@ impl Game<'_> {
         let is_brain = self.ecs.has_brain(id);
         let mut chosen = target;
         let mut redirected = false;
-        if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
-            let Some(epoch) = self.native_lifecycle.epoch() else {
-                return false;
-            };
-            let mob = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, id));
-            let original = match target {
-                None => None,
-                Some(Who::Mob(target)) => Some(mod_api::LivingRef::new(mod_api::EntityRef::new(
-                    epoch, target,
-                ))),
-                Some(Who::Player) => {
-                    let Some(target) = self
-                        .player_entity_id_by_connection(player)
-                        .and_then(|id| u32::try_from(id).ok())
-                    else {
-                        return false;
-                    };
-                    Some(mod_api::LivingRef::new(mod_api::EntityRef::new(
-                        epoch, target,
-                    )))
-                }
-            };
-            let Some(result) = self.native_mob_target_event(mob, original, is_brain) else {
-                return false;
-            };
-            if result != original {
-                let Some(bound) = self.native_mob_bind_target(id, result) else {
-                    return false;
-                };
-                chosen = bound;
-                redirected = true;
-            }
-        }
         if !redirected
             && chosen == Some(Who::Player)
             && let Some(host) = self.lan.as_mut()

@@ -541,7 +541,7 @@ impl Game<'_> {
             };
             let state = piston.shape_state();
             // The `entity_move` gate of each pushed creature, only while a mod listens: without one the push costs nothing more.
-            let listened = mod_api::__private::listened(mod_api::HookId::EntityMove);
+            let listened = false;
             let context = listened.then(|| self.loop_context.clone());
             let mut next = self.next_entity;
             self.ecs_with(|ecs, mw| {

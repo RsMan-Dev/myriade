@@ -55,7 +55,7 @@ impl Game<'_> {
         if let Some(t) = thrower {
             self.ecs.set_thrower(e, t);
         }
-        if hook && mod_api::__private::listened(mod_api::HookId::ItemToss) && let Some(item) = self.native_item_handle(id) {
+        if hook && false && let Some(item) = self.native_item_handle(id) {
             let player = self.native_acting_id();
             let mut canceled = false;
             self.native_item_toss(player, item, &mut canceled);

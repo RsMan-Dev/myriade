@@ -15,7 +15,7 @@ thread_local! {
 
 /// Routing reads the precomputed key only: no event value is converted here.
 pub fn block_listens(hook: mod_api::HookId, state: BlockStateId) -> bool {
-    mod_api::__private::has_scoped_hook(hook)
+    false
         && INDEX.with_borrow(|index| {
             index
                 .as_ref()

@@ -58,20 +58,20 @@ impl Game<'_> {
         }
         // An item's end of life is held for the host only when a mod hears it (`ecs_item_expiring`); else P removes it itself.
         ecs.set_item_expiry_hooked(
-            mod_api::__private::listened(mod_api::HookId::ItemExpire) || mod_api::__private::listened(mod_api::HookId::ItemDespawn),
+            false || false,
         );
         // A conversion is held for the host only when a mod hears it (`ecs_conversion_asked`).
         ecs.set_conversion_watched(
-            mod_api::__private::listened(mod_api::HookId::LivingConversionPre) || mod_api::__private::listened(mod_api::HookId::LivingConversionPost),
+            false || false,
         );
         // A new target is held for the host only when a mod hears `living_change_target` (`ecs_target_asked`); else the brain takes it.
-        ecs.set_target_watched(mod_api::__private::listened(mod_api::HookId::LivingChangeTarget));
+        ecs.set_target_watched(false);
         // A death is held for the host only when a mod hears it (`ecs_death_event`); else P removes the entity itself.
-        ecs.set_death_vetoable(mod_api::__private::listened(mod_api::HookId::LivingDeathPost));
+        ecs.set_death_vetoable(false);
         // A lethal hit on a holder of a totem waits for the host only while a mod hears `living_use_totem` (`ecs_totem_asked`).
-        ecs.set_totem_watched(mod_api::__private::listened(mod_api::HookId::LivingUseTotem));
+        ecs.set_totem_watched(false);
         // `HitDealt` is emitted only while a mod hears `hurt_enemy` (`ecs_hit_dealt`).
-        ecs.set_hit_watched(mod_api::__private::listened(mod_api::HookId::HurtEnemy));
+        ecs.set_hit_watched(false);
         // Movement game events are posted only while a sculk block is loaded or a mod hears game events; the movement sounds always play.
         ecs.set_move_events(self.vibration_heard());
         // `SpecialDates.isHalloween`: P reads it at a spawn; the level is told only when the calendar date changes.
@@ -93,7 +93,7 @@ impl Game<'_> {
         let spawn_host = spawn_hooks.as_ref().map(|h| h as &dyn horizon_ecs_proto::spawn_mod_host::SpawnModHost);
         // The mods' `living_visibility` answers are lent for this step, and only while a mod listens to it.
         let visibility = LivingVisibilityAnswers(g);
-        ecs.lend_living_visibility(mod_api::__private::listened(mod_api::HookId::LivingVisibility).then_some(&visibility as &dyn horizon_ecs_proto::targeting::LivingVisibilityHost));
+        ecs.lend_living_visibility(false.then_some(&visibility as &dyn horizon_ecs_proto::targeting::LivingVisibilityHost));
         let evs = ecs.step_with(&g.mob_world_base(&[]), &host, spawn_host);
         let mut mob = Vec::new();
         let kept = match ecs.world() {

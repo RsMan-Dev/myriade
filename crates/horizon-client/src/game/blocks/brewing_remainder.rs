@@ -19,10 +19,7 @@ impl Game<'_> {
                 .as_ref()
                 .filter(|s| {
                     b.fuel <= 0
-                        && mod_api::__private::item_listens(
-                            mod_api::HookId::CraftingRemainder,
-                            &s.item,
-                        )
+                        && false
                         && horizon_client::brewing::brewing_fuel(world_items!(self), s).is_some()
                 })
                 .map(|s| self.crafting_remainder(s)),

@@ -606,10 +606,10 @@ impl Game<'_> {
         };
         let mut drops = Vec::new();
         let (lit, burning, smelted, smelting, fueled) = {
-            let needs_part = mod_api::__private::has_part_hook(mod_api::HookId::CraftingRemainder)
+            let needs_part = false
                 && matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Furnace(f))
                     if f.lit_remaining <= 1 && f.items[1].as_ref().is_some_and(|s|
-                        mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &s.item)));
+                        false));
             let lit = if needs_part {
                 let Some(BlockEntity::Furnace(original)) = self.world.block_entities.get(&pos)
                 else {

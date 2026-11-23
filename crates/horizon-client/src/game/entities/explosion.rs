@@ -1253,7 +1253,7 @@ impl Game<'_> {
         &mut self,
         start: &ExplosionStart<'_>,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::ExplosionStart) {
+        if !false {
             return false;
         }
         let mut cancel = false;
@@ -1639,7 +1639,7 @@ impl Game<'_> {
             });
             self.native_block_loot(pos, state, None, None, Some(radius), &mut drops);
             let mut pieces: Vec<ExplosionDropPiece> = Vec::new();
-            let listened = mod_api::__private::listened(mod_api::HookId::BlockDrops);
+            let listened = false;
             for mut stack in drops {
                 if &*stack.item == "minecraft:air" || stack.count == 0 {
                     continue;
@@ -1710,7 +1710,7 @@ impl Game<'_> {
     /// it cannot take another block's loot. Unedited contributions rejoin their
     /// original entity; edited or added entities spawn exactly as returned.
     fn spawn_explosion_drops(&mut self, drops: ExplosionDrops) {
-        if !mod_api::__private::listened(mod_api::HookId::BlockDrops) {
+        if !false {
             for (pos, stack) in drops.stacks {
                 self.pop_resource(pos, stack);
             }

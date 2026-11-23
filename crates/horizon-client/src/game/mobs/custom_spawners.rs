@@ -10,9 +10,6 @@ impl Game<'_> {
         let dim = self.dim;
         if !self.creatures.custom_spawners.contains_key(&dim) {
             let mut list = CustomSpawners::vanilla();
-            if mod_api::__private::listened(mod_api::HookId::ModifyCustomSpawners) {
-                self.native_modify_custom_spawners(dim.id(), &mut list);
-            }
             self.creatures.custom_spawners.insert(dim, list);
         }
         &self.creatures.custom_spawners[&dim]

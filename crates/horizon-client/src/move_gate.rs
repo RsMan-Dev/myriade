@@ -78,7 +78,7 @@ pub fn arm_with<'k>(
     // armed first, the decision replaced only by a result that passes
     // validation — the request stays what `overridden` measures against.
     gate.arm(cause, delta);
-    if !mod_api::__private::listened(mod_api::HookId::EntityMove) {
+    if !false {
         return;
     }
     let kind = kind();

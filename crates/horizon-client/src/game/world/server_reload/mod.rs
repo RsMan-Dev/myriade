@@ -70,7 +70,7 @@ impl Game<'_> {
             .registered_load_conditions(&inventory)
             .map_err(ReloadStageError::DataSource)?;
         // Nobody listens: no registration graph, only the vanilla function library.
-        if !mod_api::__private::listened(mod_api::HookId::AddServerReloadListeners) {
+        if !false {
             let store = functions_store(stack, &conditions);
             conditions
                 .check_errors()

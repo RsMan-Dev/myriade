@@ -255,7 +255,7 @@ impl Game<'_> {
         hook: mod_api::HookId,
         fire: fn(&mut Self, mod_api::PlayerRef),
     ) {
-        if !mod_api::__private::listened(hook) {
+        if !false {
             return;
         }
         let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.lan.as_ref()) else {
@@ -298,7 +298,7 @@ impl Game<'_> {
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
     pub(in crate::game) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
-        let identity = if !mod_api::__private::listened(mod_api::HookId::PlayerJump) {
+        let identity = if !false {
             None
         } else {
             self.lan

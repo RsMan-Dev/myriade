@@ -490,7 +490,7 @@ impl Game<'_> {
             // the one `living_death` heard, so a death it cancelled returns
             // above and is never told here.
             if let Some((damage_type, attacker)) = &blow
-                && mod_api::__private::listened(mod_api::HookId::LivingDeathPost)
+                && false
             {
                 self.native_living_death_post(id as u32, damage_type, *attacker);
             }

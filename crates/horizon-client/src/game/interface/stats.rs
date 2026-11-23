@@ -135,7 +135,7 @@ impl Game<'_> {
             return;
         }
         // No mod, no name copied: the per-tick counters come through here.
-        let acting = if !mod_api::__private::listened(mod_api::HookId::PlayerStatAward) {
+        let acting = if !false {
             None
         } else {
             self.lan_acting_uuid.zip(self.lan_acting_name.clone())

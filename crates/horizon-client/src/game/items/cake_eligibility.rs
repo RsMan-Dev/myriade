@@ -8,7 +8,7 @@ impl Game<'_> {
         &mut self,
         mut use_block: impl FnMut(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        if !mod_api::__private::listened(mod_api::HookId::CanEat) {
+        if !false {
             return self.with_level(use_block);
         }
         let (result, requested) = self.with_level(|b, level, ticks| {

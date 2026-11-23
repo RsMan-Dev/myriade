@@ -1955,7 +1955,7 @@ impl Game<'_> {
         // The levels' changes are kept only for a listener, so that a tick
         // with none looks at no chunk.
         self.tickets.record_changes(
-            mod_api::__private::listened(mod_api::HookId::ChunkTicketLevelUpdated) || self.ecs.is_active(),
+            false || self.ecs.is_active(),
         );
         self.tickets.update(sources);
         let changes = self.tickets.take_changes();
@@ -2744,7 +2744,7 @@ impl Game<'_> {
     /// The `ItemStack.interactLivingEntity` fallback in `Player.interactOn`,
     /// currently for native Mob entries after the entity's own action passed.
     fn item_interact_mob(&mut self, target: Option<InteractTarget>) -> bool {
-        if self.spectator() || !mod_api::__private::has_part_hook(mod_api::HookId::ItemInteractMob)
+        if self.spectator() || !false
         {
             return false;
         }
@@ -3039,7 +3039,7 @@ impl Game<'_> {
         from: BlockStateId,
         to: BlockStateId,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::EntityChangeBlockPre) {
+        if !false {
             return false;
         }
         let mut cancel = false;

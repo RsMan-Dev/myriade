@@ -37,7 +37,7 @@ impl Game<'_> {
             epoch: None,
             admissions: Default::default(),
         };
-        if !mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item) {
+        if !false {
             return empty(false);
         }
         let address = stack as *const _ as usize;
@@ -280,7 +280,7 @@ impl CanEquip for MenuEquip<'_, '_> {
         // Keep stale observed inputs on the refusal path even if their replacement
         // item has no listeners; fresh unsubscribed inputs still use the data path.
         self.stale_source(stack)
-            || mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item)
+            || false
     }
     fn can_equip(
         &self,
@@ -293,7 +293,7 @@ impl CanEquip for MenuEquip<'_, '_> {
         if self.stale_source(stack) {
             return false;
         }
-        if !mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item) {
+        if !false {
             return data;
         }
         let Some(stamp) = horizon_client::mobs::equip::source_stamp(stack) else {

@@ -58,7 +58,7 @@ impl LevelAccess for GameLevel<'_> {
         self.block_state_change(pos, old, new, false);
     }
     fn neighbor_notify(&self, pos: BlockPos, skipped: Option<Direction>) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::NeighborNotify) {
+        if !false {
             return false;
         }
         let mut cancel = false;
@@ -162,7 +162,7 @@ impl LevelAccess for GameLevel<'_> {
         pos: BlockPos,
         feature: Option<&'a str>,
     ) -> Option<std::borrow::Cow<'a, str>> {
-        if !mod_api::__private::listened(mod_api::HookId::BlockGrowFeature) {
+        if !false {
             return feature.map(std::borrow::Cow::Borrowed);
         }
         let mut feature = feature.map(str::to_owned);
@@ -171,7 +171,7 @@ impl LevelAccess for GameLevel<'_> {
         feature.filter(|_| !cancel).map(std::borrow::Cow::Owned)
     }
     fn crop_grow_pre(&mut self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::CropGrowPre) {
+        if !false {
             return vanilla;
         }
         let mut result = mod_api::TriState::Default;
@@ -179,10 +179,6 @@ impl LevelAccess for GameLevel<'_> {
         result.or(vanilla)
     }
     fn crop_grow_post(&mut self, pos: BlockPos, original: BlockStateId) {
-        if mod_api::__private::listened(mod_api::HookId::CropGrowPost) {
-            let state = self.block_state(pos);
-            self.native_crop_grow_post(self.dimension, pos, original, state);
-        }
     }
     fn allow_block_burn(&self, pos: BlockPos) -> bool {
         self.block_burn_allowed(pos)
@@ -238,7 +234,7 @@ impl LevelAccess for GameLevel<'_> {
         note: &mut i32,
     ) -> bool {
         use mod_api::NoteInstrument;
-        if !mod_api::__private::listened(mod_api::HookId::NoteBlockPlay) {
+        if !false {
             return true;
         }
         let mut played_instrument = NoteInstrument::ALL[usize::from(*instrument)];
@@ -272,16 +268,6 @@ impl LevelAccess for GameLevel<'_> {
         shape: &horizon_world::level::PortalShape,
     ) -> bool {
         let mut cancel = false;
-        if mod_api::__private::listened(mod_api::HookId::PortalSpawn) {
-            let b = shape.bottom_left;
-            let shape = mod_api::PortalShape::from(mod_api::__private::built::PortalShape {
-                x_axis: shape.x_axis,
-                bottom_left: [b.x, b.y, b.z],
-                width: shape.width,
-                height: shape.height,
-            });
-            self.native_portal_spawn(self.dimension, pos, state, shape, &mut cancel);
-        }
         !cancel
     }
     fn allow_bell_ring(&self, pos: BlockPos) -> bool {
@@ -353,7 +339,7 @@ impl LevelAccess for GameLevel<'_> {
         self.part_can_stick_to(state, other, vanilla)
     }
     fn has_weak_power_hook(&self) -> bool {
-        mod_api::__private::has_scoped_hook(mod_api::HookId::ShouldCheckWeakPower)
+        false
     }
     fn adjust_should_check_weak_power(
         &self,
@@ -397,7 +383,7 @@ impl LevelAccess for GameLevel<'_> {
         self.part_rail_valid_shape(state, shape, vanilla)
     }
     fn has_redstone_wire_connection_hook(&self) -> bool {
-        mod_api::__private::has_scoped_hook(mod_api::HookId::ShouldRedstoneWireConnectTo)
+        false
     }
     fn adjust_should_redstone_wire_connect_to(
         &self,
@@ -426,8 +412,8 @@ impl LevelAccess for GameLevel<'_> {
         self.removal_replacement(pos, state, moved_by_piston, vanilla)
     }
     fn has_connection_hook(&self) -> bool {
-        mod_api::__private::has_scoped_hook(mod_api::HookId::ConnectsTo)
-            || mod_api::__private::has_scoped_hook(mod_api::HookId::CanBeConnectedTo)
+        false
+            || false
     }
     fn adjust_can_be_connected_to(
         &self,
@@ -572,7 +558,7 @@ impl LevelAccess for GameLevel<'_> {
         self.native_can_sustain_plant(self.dimension, state, ground, ground_pos, sustains);
     }
     fn asks_is_fertile(&self) -> bool {
-        mod_api::__private::has_scoped_hook(mod_api::HookId::IsFertile)
+        false
     }
     fn before_is_fertile(&self, state: BlockStateId, pos: BlockPos, fertile: &mut bool) {
         self.native_is_fertile(self.dimension, state, pos, fertile);

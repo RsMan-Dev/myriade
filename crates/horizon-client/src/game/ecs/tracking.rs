@@ -28,9 +28,6 @@ impl Game<'_> {
         if attributes {
             state.attributes = self.ecs_attributes(e, &state.kind);
         }
-        if mod_api::__private::listened(mod_api::HookId::EffectParticleModification) {
-            self.ecs_effect_mods(id, &mut state.meta);
-        }
         Some(state)
     }
 

@@ -259,7 +259,7 @@ impl LevelHost for &Game<'_> {
         at: [i32; 3],
         vanilla: bool,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::MobSpawnPlacementCheck) {
+        if !false {
             return vanilla;
         }
         let mut result = SpawnCheck::Default;
@@ -297,7 +297,7 @@ impl LevelHost for &Game<'_> {
         pending: spawn_place::Pending,
     ) -> SpawnCheck {
         let mut result = SpawnCheck::Default;
-        if !mod_api::__private::listened(mod_api::HookId::MobSpawnPositionCheck) {
+        if !false {
             return result;
         }
         // An earlier check's mob that no spawn took is not this one.

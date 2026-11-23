@@ -64,7 +64,7 @@ impl Game<'_> {
     /// The entity `/loot ... kill` names, with a mod to ask: `EnchantedEntityLootEvent`
     /// needs a `LivingEntity`, and a table of any other entity is not asked about.
     fn listened_kill_target(&self, target: Target) -> Option<LivingRef> {
-        if !mod_api::__private::listened(mod_api::HookId::EnchantedEntityLoot) {
+        if !false {
             return None;
         }
         let (Target::Mob(_) | Target::Stand(_) | Target::Dragon(_) | Target::Guest(_)) = target

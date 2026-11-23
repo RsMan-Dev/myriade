@@ -1651,7 +1651,7 @@ impl Game<'_> {
             let y = self.spread_spawn_y(p, max_y);
             let mut to = [p[0].floor() + 0.5, f64::from(y), p[1].floor() + 0.5];
             let mut skip = false;
-            if mod_api::__private::listened(mod_api::HookId::SpreadPlayersTeleport)
+            if false
                 && let (Some(entity), Some(from)) =
                     (self.network_entity_id(t), self.target_position(t))
             {

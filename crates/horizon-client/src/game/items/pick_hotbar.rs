@@ -14,7 +14,7 @@ impl Game<'_> {
     ) -> bool {
         // With no such part, no player id is made and each hotbar stack costs nothing more.
         let player =
-            mod_api::__private::has_part_hook(mod_api::HookId::IsNotReplaceableByPickAction)
+            false
                 .then(|| self.native_acting_id());
         let picked = horizon_client::pick_item::plan(
             &self.inventory[..36],
@@ -39,7 +39,7 @@ impl Game<'_> {
     fn pick_keeps(&self, player: Option<u128>, held: &ItemStack, slot: usize) -> bool {
         let mut not_replaceable = horizon_client::pick_item::vanilla_not_replaceable(held);
         let listens = |item: &str| {
-            mod_api::__private::item_listens(mod_api::HookId::IsNotReplaceableByPickAction, item)
+            false
         };
         if let Some(player) = player
             && listens(&held.item)

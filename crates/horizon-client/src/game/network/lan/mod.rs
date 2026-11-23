@@ -111,9 +111,7 @@ impl Game<'_> {
         if std::mem::replace(&mut play.left_game, true) {
             return;
         }
-        let award = if mod_api::__private::listened(mod_api::HookId::PlayerStatAward) {
-            self.edited_stat_award(player, name, "minecraft:custom", "minecraft:leave_game", 1)
-        } else {
+        let award = {
             play.stats.custom("leave_game", 1);
             return;
         };
@@ -812,9 +810,6 @@ impl Game<'_> {
     /// Only the entities whose id is above `after` (0: all of them).
     pub(super) fn lan_entities(&mut self, out: &mut States, drain_minecart_steps: bool, after: u32) {
         out.clear();
-        if mod_api::__private::listened(mod_api::HookId::EffectParticleModification) {
-            self.lan_effect_particles();
-        }
         self.lan_object_states(out, drain_minecart_steps, after);
     }
 
@@ -994,7 +989,7 @@ impl Game<'_> {
                     let mut cancel = false;
                     let mut replies = Vec::new();
                     let mut engine_replies = Vec::new();
-                    if mod_api::__private::listened(mod_api::HookId::ServerChat)
+                    if false
                         && let Ok(mut api_text) = text.try_into_api()
                     {
                         self.native_server_chat(mod_api::__private::ServerChatCall {
@@ -1215,7 +1210,7 @@ impl Game<'_> {
                     self.lan_flight_toggled(conn, flying);
                 }
                 HostEvent::Sneak { conn, sneaking } => {
-                    if !mod_api::__private::listened(mod_api::HookId::PlayerToggleSneak) {
+                    if !false {
                         continue;
                     }
                     if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
@@ -1231,7 +1226,7 @@ impl Game<'_> {
                     name,
                     reason,
                 } => {
-                    if !mod_api::__private::listened(mod_api::HookId::PlayerKicked) {
+                    if !false {
                         continue;
                     }
                     // The same poll can have removed the guest (their `Left`): the mods hear the
@@ -1264,7 +1259,7 @@ impl Game<'_> {
                 ),
                 HostEvent::Pong { conn, id } => self.announce_player_pong(conn, id),
                 HostEvent::Input { conn, flags } => {
-                    if !mod_api::__private::listened(mod_api::HookId::PlayerInput) {
+                    if !false {
                         continue;
                     }
                     if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
@@ -2159,7 +2154,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        if !mod_api::__private::listened(mod_api::HookId::EntityPoseChange) {
+        if !false {
             host.poses.clear();
             return;
         }

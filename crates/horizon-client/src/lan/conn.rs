@@ -1322,16 +1322,6 @@ fn serve_login(
     let mut admitted = Admission::new(shared.as_ref(), uuid);
     // The mods may change the profile the login success carries, before it is sent: a skin mod
     // replaces the `textures` property here. A list past the profile limits keeps the login's own.
-    if mod_api::__private::listened(mod_api::HookId::PlayerLoginProfile) {
-        let mut changed = api_profile_properties(&properties);
-        native_player_login_profile(uuid, &name, &mut changed);
-        match login_profile_properties(changed) {
-            Some(changed) => properties = changed,
-            None => log::warn!(
-                "Horizon: a mod's login profile for {name} is past the profile limits; keeping the login's own"
-            ),
-        }
-    }
     // A player a proxy said would arrive (`player-expect`) uses the expectation up
     // here, as the login starts: one that ran out while the player was still in
     // configuration (a resource pack prompt) would otherwise make it an ordinary

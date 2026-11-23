@@ -135,9 +135,6 @@ impl Game<'_> {
         if wait {
             self.save.flush()?;
         }
-        if mod_api::__private::listened(mod_api::HookId::LevelSave) {
-            self.native_level_save(self.dim.id());
-        }
         Ok(())
     }
 }

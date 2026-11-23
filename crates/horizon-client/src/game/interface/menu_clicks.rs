@@ -38,7 +38,7 @@ impl Game<'_> {
         };
         let count = if button == 0 {
             1
-        } else if false {
+        } else if  false {
             let max = world_items!(self)
                 .get(&old.item)
                 .map_or(64, |i| i.max_stack);
@@ -191,12 +191,7 @@ impl Game<'_> {
         let smithing_open = station_kind == Some(stations::Kind::Smithing);
         let enchanting_open = station_kind == Some(stations::Kind::Enchanting);
         let beacon_open = station_kind == Some(stations::Kind::Beacon);
-        let (kind, game_of): (Kind, Vec<Option<usize>>) = if false {
-            // ItemPickerMenu: the display slots (clicked by the screen), then the hotbar.
-            let mut v = vec![None; 45];
-            v.extend((0..9).map(Some));
-            (Kind::ItemPicker, v)
-        } else if merchant_open {
+        let (kind, game_of): (Kind, Vec<Option<usize>>) = if merchant_open {
             // MerchantMenu: two payment slots, the result, then the inventory.
             let mut v: Vec<Option<usize>> = vec![
                 Some(stations::INPUT),

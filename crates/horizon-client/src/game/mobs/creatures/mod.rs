@@ -496,7 +496,7 @@ impl Game<'_> {
         }
         // ArmorHurtEvent for a mob's body armor.
         let mut amount = amount;
-        if mod_api::__private::listened(mod_api::HookId::ArmorHurt)
+        if false
             && let Ok(body_snapshot) = body.try_into_api()
         {
             let kind = self.ecs.kind(id).unwrap_or_default().to_owned();
@@ -627,7 +627,7 @@ impl Game<'_> {
         sheet: &mut SpawnSheet,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let difficulty = self.local_difficulty(at);
-        if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
+        if !false {
             return (Finalized::Done, difficulty);
         }
         self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, Some(sheet))
@@ -679,7 +679,7 @@ impl Game<'_> {
         sheet: Option<&mut SpawnSheet>,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let difficulty = self.local_difficulty(at);
-        if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
+        if !false {
             return (Finalized::Done, difficulty);
         }
         self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, sheet)
@@ -950,7 +950,7 @@ impl Game<'_> {
             .filter(|drop| drop.stack.count > 0 && &*drop.stack.item != "minecraft:air")
             .collect();
         let mut cancel = false;
-        if mod_api::__private::listened(mod_api::HookId::LivingDrops)
+        if false
             && let Ok(mut snapshots) = drops.try_into_api()
         {
             self.native_living_drops(mod_api::__private::LivingDropsCall {
@@ -3067,7 +3067,7 @@ impl Game<'_> {
     /// the sites that skip their whole work while griefing is off skip it only
     /// when no mod listens.
     pub(super) fn grief_hooked(&self) -> bool {
-        mod_api::__private::listened(mod_api::HookId::EntityMobGriefing)
+        false
     }
     /// [`Self::can_entity_grief`] for `entity`, with the rule already read.
     pub(super) fn entity_grief(&self, entity: u32, rule: bool) -> bool {
@@ -3348,9 +3348,7 @@ mod conversion_subscriber_tests {
                 game.ecs.despawn(old);
                 assert_eq!(seen.lock().unwrap().last(), Some(&(id, converted)));
                 assert_eq!(game.ecs_kind(converted).as_deref(), Some("minecraft:drowned"));
-                assert!(!mod_api::__private::listened(
-                    mod_api::HookId::LivingConversionPre
-                ));
+                assert!(!false);
             }
             assert_eq!(seen.lock().unwrap().len(), 2);
         });

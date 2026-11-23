@@ -43,7 +43,7 @@ impl Game<'_> {
         found: Respawn,
         missing: Option<RespawnConfig>,
     ) -> Option<RespawnDecision> {
-        if !mod_api::__private::listened(mod_api::HookId::PlayerRespawnPosition) {
+        if !false {
             return None;
         }
         let uuid = self

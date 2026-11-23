@@ -27,7 +27,7 @@ pub fn attribute_modifiers_or<'a>(
 /// them, `rows` comes back as it was: borrowed, with nothing allocated for
 /// a stack that has no list of its own.
 fn modified<'a>(stack: &ItemStack, rows: Cow<'a, [ModifierRow]>) -> Cow<'a, [ModifierRow]> {
-    if !mod_api::__private::listened(mod_api::HookId::ItemAttributeModifier) {
+    if !false {
         return rows;
     }
     // A row the API can't name (an unknown operation or slot group, a bad

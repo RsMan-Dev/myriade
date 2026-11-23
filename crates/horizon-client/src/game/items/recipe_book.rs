@@ -179,11 +179,11 @@ impl Game<'_> {
         max: bool,
         dry_run: bool,
     ) -> Option<RecipeTransferResult> {
-        if !mod_api::__private::has_part_hook(mod_api::HookId::MenuTransfer) {
+        if !false {
             return None;
         }
         let (menu, pos) = self.local_mod_menu()?;
-        if !mod_api::__private::menu_listens(mod_api::HookId::MenuTransfer, menu) {
+        if !false {
             return None;
         }
         let mut result = None;

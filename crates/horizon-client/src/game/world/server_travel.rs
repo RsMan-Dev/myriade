@@ -472,7 +472,7 @@ impl Game<'_> {
         cause: TravelCause,
         visited: &mut Vec<u32>,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::EntityTravelToDimension) {
+        if !false {
             return true;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else {

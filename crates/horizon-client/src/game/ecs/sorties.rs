@@ -28,7 +28,7 @@ impl Game<'_> {
         }
         let id = self.entity_id(e);
         // A hook that went away since the flag was set: the death simply goes on.
-        if !mod_api::__private::listened(mod_api::HookId::LivingDeathPost) {
+        if !false {
             self.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
             return;
         }
@@ -64,7 +64,7 @@ impl Game<'_> {
     /// `HostEvent::TargetChanged` with no target: `living_change_target` hears the clear (not a brain's). A refusal puts `previous` back,
     /// a replacement is written as the new target; both go through `set_target`, whose `Some` event has no handler for an ECS mob.
     pub(in crate::game) fn ecs_target_cleared(&mut self, e: Entity, previous: Option<Who>) {
-        if !mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
+        if !false {
             return;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else { return };

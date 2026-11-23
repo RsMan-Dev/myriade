@@ -150,7 +150,7 @@ impl Game<'_> {
             .collect();
         // ItemFishedEvent may change the catch, rod damage, or cancel rewards.
         if let Some(player) = self.lan_acting_uuid
-            && mod_api::__private::listened(mod_api::HookId::ItemFished)
+            && false
         {
             let fished = mod_api::ItemFished::from(mod_api::__private::built::ItemFished { hook: hook_id, position: at });
             let mut cancel = false;

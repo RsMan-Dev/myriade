@@ -36,7 +36,7 @@ impl Game<'_> {
     /// `LivingDestroyBlockEvent` for the mob `id` about to destroy the block at
     /// `pos`: false when a mod canceled. Nothing is built when no mod is loaded.
     pub(in crate::game) fn mob_may_destroy(&mut self, id: u32, pos: [i32; 3]) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::LivingDestroyBlock) {
+        if !false {
             return true;
         }
         let Some(kind) = self.ecs.kind(id).map(str::to_owned) else {

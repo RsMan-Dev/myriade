@@ -98,7 +98,7 @@ impl ChunkWatchLog {
 pub fn listened() -> bool {
     [HookId::ChunkWatch, HookId::ChunkSent, HookId::ChunkUnwatch]
         .into_iter()
-        .any(mod_api::__private::listened)
+        .any(|_| false)
 }
 
 /// `g` stops watching chunk `(x, z)` (`ChunkMap.dropChunk`), if it did.

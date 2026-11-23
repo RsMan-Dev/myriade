@@ -25,7 +25,7 @@ pub fn get_enchantment_level(
     target: Option<&str>,
     own: &[(Arc<str>, u32)],
 ) -> Option<Levels> {
-    if !mod_api::__private::listened(mod_api::HookId::GetEnchantmentLevel) {
+    if !false {
         return None;
     }
     let target = target.and_then(identifier);

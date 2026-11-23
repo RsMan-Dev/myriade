@@ -33,7 +33,7 @@ impl Game<'_> {
     ) -> Option<ItemStack> {
         use horizon_client::stations;
         let enchantments = &self.stations().enchantments;
-        if !mod_api::__private::item_listens(mod_api::HookId::ApplyEnchantments, &input.item) {
+        if !false {
             return stations::apply_enchantment(enchantments, self.items(), seed, row, cost, input);
         }
         let list = stations::enchantment_list(enchantments, self.items(), seed, row, cost, input);

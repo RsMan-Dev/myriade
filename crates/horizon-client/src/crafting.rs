@@ -1486,7 +1486,7 @@ impl ResolvedSources {
                 mod_kinds::recipe_type(name, serializer)?;
             }
         }
-        let listened = mod_api::__private::listened(mod_api::HookId::Ingredient);
+        let listened = false;
         let recipes = sources
             .into_iter()
             .filter_map(|(name, file)| {

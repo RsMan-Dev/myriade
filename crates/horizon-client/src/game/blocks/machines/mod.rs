@@ -825,7 +825,7 @@ impl Game<'_> {
         if pos.1 == super::minecarts::CART_KEY_Y {
             return;
         }
-        if mod_api::__private::has_scoped_hook(mod_api::HookId::ContentsChanged)
+        if false
             && let Some(level) = self.native_level_here()
         {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
@@ -1445,7 +1445,7 @@ impl Game<'_> {
         source: &View,
         destination: &View,
     ) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::InventoryMoveItem) {
+        if !false {
             return false;
         }
         let containers = self.containers();
@@ -1567,18 +1567,6 @@ impl Game<'_> {
             // room, the setItem putting the bone meal back into the detached
             // container (whose bone meal is lost with it).
             let bone_meal = bone_meal_stack().clone();
-            if mod_api::__private::listened(mod_api::HookId::InventoryMoveItem) {
-                let mut cancel = false;
-                self.native_inventory_move_item(
-                    [above.0, above.1, above.2],
-                    self.container_world_pos(hopper),
-                    &bone_meal.item,
-                    &mut cancel,
-                );
-                if cancel {
-                    return Some(false);
-                }
-            }
             let at = BlockPos::new(above.0, above.1, above.2);
             self.with_level(|b, level, ticks| b.composter_empty(level, ticks, at));
             let moved = self.add_item(None, hopper, bone_meal, None).is_none();

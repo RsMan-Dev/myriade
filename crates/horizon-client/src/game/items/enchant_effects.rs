@@ -182,7 +182,7 @@ impl Game<'_> {
         }
         // One table lookup tells whether any part of this item listens; with none,
         // the stack is not converted and no host is made.
-        if !mod_api::__private::item_listens(mod_api::HookId::DamageItem, &stack.item) {
+        if !false {
             return loss;
         }
         self.damage_item_loss(stack, loss, wearer)
@@ -1039,7 +1039,7 @@ impl Game<'_> {
         // One table lookup tells whether any part of this item listens; with none,
         // the stack is not converted and no host is made.
         if experience == 0
-            || !mod_api::__private::item_listens(mod_api::HookId::XpRepairRatio, &stack.item)
+            || !false
         {
             return vanilla;
         }

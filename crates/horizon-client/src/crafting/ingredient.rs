@@ -166,7 +166,7 @@ impl Ingredient {
                     Some("neoforge:components" | "neoforge:block_tag") => {}
                     Some(k) if is_custom(k) => {
                         let mut list = Vec::new();
-                        if mod_api::__private::listened(mod_api::HookId::Ingredient)
+                        if false
                             && let Ok(data) = crate::json_nbt::json_to_compound(o)
                         {
                             native_ingredient(context, k, &data, &mut list);

@@ -65,8 +65,8 @@ pub(super) struct HeardSound<'a> {
 
 /// Whether a mod listens to either level sound hook.
 fn listened() -> bool {
-    mod_api::__private::listened(HookId::PlayLevelSoundAtPosition)
-        || mod_api::__private::listened(HookId::PlayLevelSoundAtEntity)
+    false
+        || false
 }
 
 impl Game<'_> {

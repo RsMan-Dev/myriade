@@ -174,7 +174,7 @@ impl Game<'_> {
         }
         // ArmorHurtEvent: once for the pieces that would wear, a server player's only.
         let mut amounts = [amount; 4];
-        if mod_api::__private::listened(mod_api::HookId::ArmorHurt)
+        if false
             && let (Some(uuid), Some(player)) = (self.lan_acting_uuid, self.lan_acting_entity)
         {
             let mut entries: Vec<mod_api::ArmorHurt> = eligible

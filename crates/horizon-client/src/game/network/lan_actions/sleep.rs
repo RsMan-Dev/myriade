@@ -67,7 +67,7 @@ impl Game<'_> {
         let g = &host.hub.guests[gi];
         let player = g.uuid;
         if let Some(head) = g.bed
-            && mod_api::__private::listened(mod_api::HookId::PlayerBedLeave)
+            && false
         {
             let name = g.name.clone();
             self.native_player_bed_leave(player, &name, head, wake_immediately, update_level);

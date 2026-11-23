@@ -171,13 +171,6 @@ impl Game<'_> {
             (mining.per_tick * (host.hub.ticks - play.dig_start + 1) as f32 * 10.0) as i32;
         if progress != play.last_progress && progress >= 0 {
             play.last_progress = progress;
-            if mod_api::__private::listened(mod_api::HookId::BlockBreakProgressUpdate) {
-                let Some(guest) = host.hub.guest(conn) else {
-                    return;
-                };
-                let (uuid, name) = (guest.uuid, guest.name.clone());
-                self.native_block_break_progress_update(uuid, &name, pos, progress);
-            }
             self.guest_crack_progress(conn, pos, progress);
         }
     }

@@ -52,7 +52,7 @@ impl horizon_client::mobs::MobHooks for Game<'_> {
         answer
     }
     fn enderman_anger_suppressed(&self, enderman: u32, player: &PlayerView) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::EndermanAnger) {
+        if !false {
             return false;
         }
         let Some(epoch) = self.native_lifecycle.epoch() else {

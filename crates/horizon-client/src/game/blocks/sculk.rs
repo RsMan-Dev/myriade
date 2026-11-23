@@ -364,7 +364,7 @@ impl Game<'_> {
     }
     /// Whether a vibration may be heard: a sculk block is indexed or a mod hears the game events.
     pub(crate) fn vibration_heard(&self) -> bool {
-        !self.sculk.index.set.is_empty() || mod_api::__private::listened(mod_api::HookId::VanillaGameEvent)
+        !self.sculk.index.set.is_empty() || false
     }
 
     // ---- setup and the block entity index ----
@@ -694,23 +694,7 @@ impl Game<'_> {
         pos: [f64; 3],
         mut make_ctx: impl FnMut(&mut Self) -> Context,
     ) {
-        let ctx = if mod_api::__private::listened(mod_api::HookId::VanillaGameEvent) {
-            let ctx = make_ctx(self);
-            let cause = event_cause(ctx.source, self.lan_acting_entity);
-            let mut cancel = false;
-            self.native_vanilla_game_event(
-                self.dim.id(),
-                event,
-                pos,
-                cause,
-                ctx.affected_state,
-                &mut cancel,
-            );
-            if cancel {
-                return;
-            }
-            Some(ctx)
-        } else {
+        let ctx = {
             None
         };
         if !self.sculk.tables.built {

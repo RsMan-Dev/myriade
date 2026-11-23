@@ -792,7 +792,7 @@ impl GameLevel<'_> {
             mut experience,
             mut canceled,
         } = dropped;
-        if mod_api::__private::listened(mod_api::HookId::BlockDrops)
+        if false
             && let Ok(mut snapshots) = items.try_into_api()
         {
             let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
@@ -1126,11 +1126,6 @@ impl Game<'_> {
         entity: Option<u32>,
         roll: BlockLootRoll<'_>,
     ) -> Vec<ItemStack> {
-        if mod_api::__private::listened(mod_api::HookId::EnchantedBlockLoot) {
-            let at = BlockPos::new(pos[0], pos[1], pos[2]);
-            let entity = self.loot_entity_ref(entity);
-            return self.with_level(|_, level, _| level.roll_block_loot(at, state, entity, roll));
-        }
         world_items!(self).block_drops(
             self.pack.assets.registry,
             state,

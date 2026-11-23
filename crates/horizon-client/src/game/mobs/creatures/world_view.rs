@@ -80,7 +80,7 @@ impl Game<'_> {
                 mod_api::HookId::LivingChangeTarget,
             ]
             .into_iter()
-            .any(mod_api::__private::listened)
+            .any(|_| false)
                 || [
                     mod_api::HookId::CanEntityDestroy,
                     mod_api::HookId::BlockPathType,
@@ -90,11 +90,11 @@ impl Game<'_> {
                 .any(mod_api::__private::has_scoped_hook))
             .then_some(self as &dyn horizon_client::mobs::MobHooks),
             asks_animal_tame: true
-                && mod_api::__private::listened(mod_api::HookId::AnimalTame),
+                && false,
             asks_living_destroy_block: true
-                && mod_api::__private::listened(mod_api::HookId::LivingDestroyBlock),
+                && false,
             asks_baby_spawn: true
-                && mod_api::__private::listened(mod_api::HookId::BabyEntitySpawn),
+                && false,
             // A warden's away suspects are UUIDs: on the server side, where the
             // entity UUIDs live, they resolve back to the mobs that are here.
             who_lookup: {

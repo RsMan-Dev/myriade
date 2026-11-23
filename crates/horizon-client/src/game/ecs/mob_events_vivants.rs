@@ -34,37 +34,6 @@ impl Game<'_> {
             self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, None));
             return;
         }
-        if mod_api::__private::listened(mod_api::HookId::LivingChangeTarget) {
-            let Some(epoch) = self.native_lifecycle.epoch() else { return };
-            let target_id = match target {
-                Who::Mob(t) => Some(t),
-                // The id P holds in the target; the connection only when the target has not reached P yet.
-                Who::Player => self.ecs.ai_target_player(mob).or_else(|| self.player_entity_id_by_connection(player).and_then(|id| u32::try_from(id).ok())),
-            };
-            let Some(target_id) = target_id else { return };
-            let living = |id| mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, id));
-            let original = Some(living(target_id));
-            let me = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, mob));
-            match self.native_mob_target_event(me, original, self.ecs.has_brain(mob)) {
-                // Cancelled: the event does not carry the previous target, so the creature is left without one.
-                None => {
-                    self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, None));
-                    return;
-                }
-                Some(new) if new != original => {
-                    let who = new.and_then(|n| {
-                        let id = n.entity().id();
-                        match self.ecs.entity_of(id) {
-                            Some(e) => Some(PWho::Entity(e)),
-                            None => self.with_player(id, |_| ()).map(|_| PWho::Player(id)),
-                        }
-                    });
-                    self.ecs_with(|ecs, mw| ecs.set_target(mw, mob, who));
-                    return;
-                }
-                Some(_) => {}
-            }
-        }
         if let (Who::Player, Some(host)) = (target, self.lan.as_mut()) {
             match player {
                 Some(conn) => host.mob_players.insert(mob, conn),

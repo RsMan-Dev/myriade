@@ -117,7 +117,7 @@ impl Game<'_> {
             Some(i) => self.stack_in(i).cloned(),
             None => self.creative.then(|| ItemStack::new(ARROW, 1)),
         };
-        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
+        if !false {
             return vanilla.map(|stack| Ammo { stack, slot });
         }
         let mut projectile = vanilla.clone();
@@ -137,7 +137,7 @@ impl Game<'_> {
     /// `AbstractSkeleton.performRangedAttack`'s `getProjectile`: the arrow
     /// `mob` shot becomes the replaced ammunition's (`ProjectileUtil.getMobArrow`).
     pub(super) fn mob_bow_ammo(&mut self, mob: u32, weapon: &ItemStack, arrow: &mut Projectile) {
-        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
+        if !false {
             return;
         }
         let Some(kind) = self.ecs_mob_kind(mob) else {

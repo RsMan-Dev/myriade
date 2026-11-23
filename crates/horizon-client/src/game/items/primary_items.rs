@@ -15,27 +15,6 @@ impl Game<'_> {
     /// answers are retired and selection is vanilla's.
     pub(in crate::game) fn resolve_primary_items(&self) {
         let mut answers = horizon_items::primary_items::PrimaryAnswers::new();
-        if mod_api::__private::has_part_hook(mod_api::HookId::IsPrimaryItemFor) {
-            let enchantments = &self.stations().enchantments;
-            let items = self.items();
-            for item in items.items.keys() {
-                if !mod_api::__private::item_listens(mod_api::HookId::IsPrimaryItemFor, item) {
-                    continue;
-                }
-                let stack = ItemStack::new(item, 1);
-                for enchantment in &enchantments.list {
-                    let vanilla = enchantments.is_primary(items, enchantment, item);
-                    let mut primary = vanilla;
-                    self.native_is_primary_item_for(&stack, &enchantment.id, &mut primary);
-                    if primary != vanilla {
-                        answers
-                            .entry(item.clone())
-                            .or_default()
-                            .insert(enchantment.id.clone(), primary);
-                    }
-                }
-            }
-        }
         for table in self.primary_answer_tables() {
             table.install(answers.clone());
         }

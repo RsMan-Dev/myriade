@@ -25,9 +25,6 @@ impl Game<'_> {
         vanilla: bool,
     ) -> bool {
         let mut can_perform = vanilla;
-        if mod_api::__private::item_listens(mod_api::HookId::CanPerformAction, &stack.item) {
-            self.native_can_perform_action(stack, ability, &mut can_perform);
-        }
         can_perform
     }
 

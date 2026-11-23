@@ -33,7 +33,7 @@ impl Game<'_> {
     }
     /// `animal_tame_cancelled` for the ECS entity `id`, whose taming roll by `tamer` succeeded: true when a mod cancels it.
     pub(in crate::game) fn ecs_animal_tame_cancelled(&mut self, id: u32, tamer: u128, tamer_entity_id: i32) -> bool {
-        if !mod_api::__private::listened(mod_api::HookId::AnimalTame) {
+        if !false {
             return false;
         }
         let Some(kind) = self.ecs_kind(id) else {

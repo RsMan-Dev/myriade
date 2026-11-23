@@ -754,7 +754,7 @@ impl Game<'_> {
         criterion: &str,
         progress_type: ProgressType,
     ) {
-        if !mod_api::__private::listened(mod_api::HookId::PlayerAdvancementProgress) {
+        if !false {
             return;
         }
         if let (Some(uuid), Some(entity_id), Some(name)) = (
@@ -816,32 +816,6 @@ impl Game<'_> {
                     continue;
                 };
                 fresh.push(grant.clone());
-                if mod_api::__private::listened(mod_api::HookId::PlayerAdvancementProgress) {
-                    let definition = task
-                        .sync
-                        .advancements
-                        .definition(&grant.advancement)
-                        .expect("granted advancement");
-                    let progress = self
-                        .with_advancement_hub(|hub, owners| {
-                            hub.advancement_task_progress(&task, owners, |progress| {
-                                progress_snapshot(definition, progress)
-                            })
-                        })
-                        .flatten()
-                        .expect("granted task's progress");
-                    self.native_player_advancement_progress(
-                        mod_api::__private::PlayerAdvancementProgressCall {
-                            player: task.player,
-                            player_entity_id: task.entity_id,
-                            name: &task.name,
-                            advancement: &grant.advancement,
-                            criterion: &grant.criterion,
-                            progress_type: ProgressType::Grant,
-                            progress: &progress,
-                        },
-                    );
-                }
                 let definition = task
                     .sync
                     .advancements
@@ -1111,7 +1085,7 @@ impl Game<'_> {
         // (`native_player_inventory_changed`, API 579).
         if true
             && !self.no_player_here()
-            && mod_api::__private::listened(mod_api::HookId::PlayerInventoryChanged)
+            && false
         {
             let stacks = inventory_slots(&self.inventory, &self.armor, &self.offhand);
             let player = self.native_acting_id();
