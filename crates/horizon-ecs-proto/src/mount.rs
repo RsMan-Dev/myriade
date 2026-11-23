@@ -239,7 +239,9 @@ fn get_off(w: &mut World, mount: Entity, who: Who) {
     let at = w.get::<Pos>(mount).map(|p| p.0);
     match (who, at) {
         (Who::Entity(r), at) => {
-            w.entity_mut(r).remove::<Riding>();
+            // A rider removed from the level in the same tick (killed, despawned) has nothing to get off from.
+            let Ok(mut rider) = w.get_entity_mut(r) else { return };
+            rider.remove::<Riding>();
             if let (Some(at), Some(mut p)) = (at, w.get_mut::<Pos>(r)) {
                 p.0 = Vec3::new(at.x + 1.0, at.y, at.z);
                 w.entity_mut(r).insert(Moving);
