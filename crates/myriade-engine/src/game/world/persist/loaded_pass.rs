@@ -10,6 +10,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             for (cx, cz, _) in fresh {
                 self.ecs_with(|ecs, mw| ecs.chunk_hazards(mw, cx, cz));
+                self.ecs_chunk_loaded([cx, cz], true);
             }
         }
         let loaded = std::mem::take(&mut self.world.loaded_entities);

@@ -38,6 +38,8 @@ pub static DEF: Def = Def {
     // `Panda.mobInteract`: the food held up to a baby or to an adult the breed refused (hand_feed.rs).
     rules: &[crate::rules::RuleEntry::new(&crate::leash::NEVER, &()), crate::rules::RuleEntry::new(&crate::hand_feed::HAND_FEED, &crate::hand_feed::FeedParams::PANDA)],
     draws: Some(&DRAWS),
+    spawn: Some(crate::spawning::SpawnDef { place: crate::spawning::Place::Anywhere, ..crate::spawning::SpawnDef::ANIMAL }),
+    despawn: Some(crate::despawn::DespawnDef::KEPT),
     ..Def::EMPTY
 };
 

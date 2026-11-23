@@ -51,6 +51,7 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_unload_chunk(&mut self, cx: i32, cz: i32, disk: Vec<Compound>) -> Vec<Compound> {
         let saved = self.ecs_save_chunk(cx, cz, disk);
         self.ecs_with(|ecs, mw| ecs.chunk_unloaded(mw, cx, cz));
+        self.ecs_chunk_loaded([cx, cz], false);
         saved
     }
 

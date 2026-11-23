@@ -28,7 +28,8 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_chunk_loaded(&mut self, chunk: [i32; 2], on: bool) {
         let starts = if on { self.ecs_chunk_starts(chunk) } else { Vec::new() };
         self.ecs.set_chunk_structures(chunk, starts);
-        self.ecs.set_chunk_spawnable(chunk[0], chunk[1], on && self.block_ticking_at(chunk[0] * 16, chunk[1] * 16));
+        // Its entities load in the same pass (`spawn_loaded_entities`), so only the ticket levels decide.
+        self.ecs.set_chunk_spawnable(chunk[0], chunk[1], on && self.tickets.levels().block_ticking_at(chunk[0] * 16, chunk[1] * 16));
     }
 
     /// The ticket levels changed by `changes` (one update's): a loaded chunk among them takes or leaves creatures (`block_ticking_at`).

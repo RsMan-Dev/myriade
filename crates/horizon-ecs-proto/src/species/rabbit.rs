@@ -72,5 +72,7 @@ pub static DEF: Def = Def {
         Entry::new(&look_at_player::MODULE, 11, &look_at_player::Params { range: 10.0, ..look_at_player::Params::DEFAULT }),
     ],
     locomotion: &[(Medium::Ground, Entry::new(&hop::MODULE, 0, &hop::Params::RABBIT))],
+    spawn: Some(crate::spawning::SpawnDef { rule: crate::spawning::Rule::Bright { on: "minecraft:rabbits_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
+    despawn: Some(crate::despawn::DespawnDef::KEPT),
     ..Def::EMPTY
 };

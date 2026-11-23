@@ -180,8 +180,9 @@ impl EcsLevel {
     }
     /// `spawn_chunk_packs`: the creature packs of a generated chunk, from the world's spawn tables; `random` is the region's. Nothing when inert.
     pub fn spawn_chunk_packs(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32, random: &mut impl horizon_core::random::RandomSource) {
-        if let Some(w) = self.world_mut() {
-            horizon_ecs_proto::spawn_generation::spawn_chunk_packs(w, mw, cx, cz, random);
+        // The level is lent for the call: a pack's species equip their goals from it (a wolf's targets).
+        if let Some(host) = self.inner.as_mut() {
+            host.lent(mw, |w| horizon_ecs_proto::spawn_generation::spawn_chunk_packs(w, mw, cx, cz, random));
         }
     }
     pub fn despawn(&mut self, e: Entity) {

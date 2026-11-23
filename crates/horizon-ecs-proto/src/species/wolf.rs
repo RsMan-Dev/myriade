@@ -79,5 +79,7 @@ pub static DEF: Def = Def {
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
     body_wear: true,
+    spawn: Some(crate::spawning::SpawnDef { cluster: 8, rule: crate::spawning::Rule::Bright { on: "minecraft:wolves_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
+    despawn: Some(crate::despawn::DespawnDef::KEPT),
     ..Def::EMPTY
 };

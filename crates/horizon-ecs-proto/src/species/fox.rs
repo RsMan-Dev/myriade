@@ -117,6 +117,7 @@ pub static DEF: Def = Def {
     caps: Some(&[Cap::Transform, Cap::Solid, Cap::Body, Cap::Living, Cap::Goals, Cap::Head, Cap::Targets, Cap::Locomotion, Cap::IgnoresBerryBush]),
     brain: crate::brain::BrainDef::EMPTY,
     locomotion: &[],
-    spawn: None,
+    spawn: Some(crate::spawning::SpawnDef { place: crate::spawning::Place::Anywhere, rule: crate::spawning::Rule::Bright { on: "minecraft:foxes_spawnable_on" }, ..crate::spawning::SpawnDef::ANIMAL }),
+    despawn: Some(crate::despawn::DespawnDef::KEPT),
     ..Def::EMPTY
 };
