@@ -627,6 +627,7 @@ pub static TABLE: &[&Module] = &[
     // lot V4
     &warden_look_target::MODULE,
     &warden_drop_invalid_target::MODULE,
+    &shake_off_water::MODULE,
 ];
 pub mod act_phase;
 pub mod admire;
