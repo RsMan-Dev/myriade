@@ -201,8 +201,9 @@ pub(crate) fn do_move(level: &Level, pos: &mut Pos, vel: &mut Vel, c: &mut Conta
     let vertical = wanted.y != moved.y;
     let below = vertical && wanted.y < 0.0;
     c.on_ground = below;
-    if !c.on_ground && moved.y < 0.0 {
-        c.fall_distance -= moved.y;
+    // `Entity.checkFallDamage`: the downward move of the landing tick counts too (the distance is added before the ground test), as a float.
+    if moved.y < 0.0 {
+        c.fall_distance -= f64::from(moved.y as f32);
     }
     if c.on_ground {
         if c.fall_distance > 0.0 {
