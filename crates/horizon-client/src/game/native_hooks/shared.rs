@@ -1310,10 +1310,6 @@ impl Game<'_> {
     }
 }
 
-/// A mob's kind as the hook points name it (`minecraft:zombie`).
-pub(super) fn mob_kind(mob: &horizon_client::mobs::Mob) -> String {
-    crate::game::native_namespaced_id::namespaced(&mob.kind.id)
-}
 
 /// The level behaviour's answer, or `None` to try `useWithoutItem`.
 /// `ServerPlayerGameMode.useItemOn` lets both FAIL and PASS go to the item.
@@ -1598,17 +1594,6 @@ impl Game<'_> {
         if mod_api::__private::listened(mod_api::HookId::GameRuleChanged) {
             self.native_game_rule_changed(name, value, actor);
         }
-    }
-    /// `MobSplitEvent` for the dying cube mob `m`, which made `count`
-    /// children: how many to spawn.
-    pub(super) fn mob_split_count(&mut self, m: &horizon_client::mobs::Mob, count: u32) -> u32 {
-        if !mod_api::__private::listened(mod_api::HookId::MobSplit) {
-            return count;
-        }
-        let (size, kind) = (m.extra.size, mob_kind(m));
-        let (mut count, mut cancel) = (count, false);
-        self.native_mob_split(m.id, &kind, size, size / 2, &mut count, &mut cancel);
-        if cancel { 0 } else { count.min(64) }
     }
     /// The acting player as the hook points name one: the guest whose turn
     /// it is, else the host.

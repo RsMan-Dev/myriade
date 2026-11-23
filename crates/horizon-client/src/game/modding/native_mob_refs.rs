@@ -1,6 +1,6 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
-use horizon_client::mobs::{self, Mob, Species, Who};
+use horizon_client::mobs::{self, Species, Who};
 use horizon_ecs_proto::targeting::Who as PWho;
 use mod_api::{EntityRef, LivingRef, MobRef};
 
@@ -102,55 +102,6 @@ enum MobFlag {
 }
 
 impl Game<'_> {
-    /// `Mob.asValidTarget` and the modeled `canAttack` overrides: the game's
-    /// own state as the target's facts, through the one rule set
-    /// [`Mob::valid_target`] (arismoko/horizon#1175) a goal tick's view shares.
-    pub(super) fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
-        if mob.species() == Species::Warden {
-            return self.native_warden_valid_target(mob, target);
-        }
-        match target {
-            Target::Mob(id) => {
-                let Some(species) = self.creature_species(id) else {
-                    return false;
-                };
-                mob.valid_target(
-                    &self.mob_world_base(&[]),
-                    &mobs::goals::TargetFacts::Mob {
-                        id,
-                        species,
-                        alive: self.ecs.alive(id),
-                        invulnerable: self.ecs_flag(id, "Invulnerable").unwrap_or(false),
-                        baby: self.ecs.age(id).is_some_and(|age| age < 0),
-                    },
-                )
-            }
-            Target::Player | Target::Guest(_) => {
-                let Some(PlayerFacts {
-                    mode,
-                    alive,
-                    invulnerable,
-                    uuid,
-                }) = self.native_player_facts(target)
-                else {
-                    return false;
-                };
-                mob.valid_target(
-                    &self.mob_world_base(&[]),
-                    &mobs::goals::TargetFacts::Player {
-                        alive,
-                        invulnerable,
-                        // The game modes a target cannot be attacked in:
-                        // creative (1) and spectator (3).
-                        creative: mode == 1,
-                        spectator: mode == 3,
-                        uuid,
-                    },
-                )
-            }
-            _ => false,
-        }
-    }
     /// `native_mob_valid_target` for the ECS mob `mob`: a target that is alive and not allied with it, or a player
     /// or guest outside the game modes that cannot be attacked (creative, spectator).
     pub(super) fn native_ecs_valid_target(&self, mob: u32, target: Target) -> bool {
@@ -166,59 +117,6 @@ impl Game<'_> {
             }
             _ => false,
         }
-    }
-    /// `Warden.canTargetEntity`, which overrides the usual `Mob.canAttack`.
-    fn native_warden_valid_target(&self, mob: &Mob, target: Target) -> bool {
-        use horizon_core::geometry::Axis;
-        let (bounds, team) = match target {
-            Target::Mob(id) => {
-                if !self.ecs.alive(id)
-                    || self.ecs_flag(id, "Invulnerable") == Some(true)
-                    || self.ecs.kind(id) == Some("minecraft:warden")
-                {
-                    return false;
-                }
-                let Some(bounds) = self.ecs.bounds(id) else {
-                    return false;
-                };
-                (bounds, self.mob_team(id))
-            }
-            Target::Guest(conn) => {
-                let Some(g) = self.command_guest(conn) else {
-                    return false;
-                };
-                if g.dimension != self.dim.id()
-                    || g.dead
-                    || g.health <= 0.0
-                    || matches!(g.game_mode, 1 | 3)
-                    || g.motion.as_ref().is_some_and(|p| p.invulnerable)
-                {
-                    return false;
-                }
-                (g.bounds(), self.score.board.players_team(&g.name))
-            }
-            Target::Player => {
-                let Some(player) = &self.player else {
-                    return false;
-                };
-                if matches!(self.mode_id(), 1 | 3)
-                    || player.health.dead_or_dying()
-                    || player.invulnerable
-                {
-                    return false;
-                }
-                (player.bounds(), self.player_team())
-            }
-            _ => return false,
-        };
-        let border = self.border.geometry();
-        !horizon_client::scoreboard::teams_allied(self.mob_team(mob.id), team)
-            && border.is_within_bounds(bounds.min(Axis::X), bounds.min(Axis::Z), 0.0)
-            && border.is_within_bounds(
-                bounds.max(Axis::X) - f64::from(1.0e-5_f32),
-                bounds.max(Axis::Z) - f64::from(1.0e-5_f32),
-                0.0,
-            )
     }
 
     /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor

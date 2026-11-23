@@ -889,9 +889,6 @@ pub fn visual_clip<W: DynamicCollisionWorld>(
     result.ok()
 }
 
-#[cfg(test)]
-#[path = "end_ambient_light_tests.rs"]
-mod end_ambient_light_tests;
 
 /// Runs `f` with an empty overworld (`others` its mobs) and the mob types,
 /// both from the extracted vanilla data; false, without running it, when

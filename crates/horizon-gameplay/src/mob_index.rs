@@ -12,7 +12,6 @@
 //! answer is always the linear search's.
 
 use horizon_client::fast_hash::FxHashMap;
-use horizon_client::mobs::Mob;
 
 #[derive(Default)]
 pub struct MobIndex {
@@ -20,11 +19,6 @@ pub struct MobIndex {
 }
 
 impl MobIndex {
-    /// The position of the mob with this id in `mobs`, as
-    /// `mobs.iter().position(|m| m.id == id)`.
-    pub fn find(&mut self, mobs: &[Mob], id: u32) -> Option<usize> {
-        self.position(mobs, |m| m.id, id)
-    }
 
     fn position<T>(&mut self, items: &[T], id_of: impl Fn(&T) -> u32, id: u32) -> Option<usize> {
         if let Some(&i) = self.slots.get(&id)
@@ -40,21 +34,7 @@ impl MobIndex {
         Some(i)
     }
 
-    /// The mob with this id, as `mobs.iter_mut().find(|m| m.id == id)`.
-    pub fn get_mut<'a>(
-        &mut self,
-        mobs: &'a mut horizon_client::join_seq::JoinList<Mob>,
-        id: u32,
-    ) -> Option<&'a mut Mob> {
-        let i = self.find(mobs, id)?;
-        Some(&mut mobs[i])
-    }
 
-    /// The mob with this id, as `mobs.iter().find(|m| m.id == id)`.
-    pub fn get<'a>(&mut self, mobs: &'a [Mob], id: u32) -> Option<&'a Mob> {
-        let i = self.find(mobs, id)?;
-        Some(&mobs[i])
-    }
 }
 
 #[cfg(test)]

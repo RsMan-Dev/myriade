@@ -131,7 +131,7 @@ use horizon_client::{
     furnace::FurnaceCooking,
     items::{ItemStack, Items},
     light::LightTables,
-    mobs::{Mob, MobType, MobTypes},
+    mobs::{MobType, MobTypes},
     motion::{MotionResources, PlayerMotion},
     save::{Level, Persistent, SaveDir},
     sprint::Keys,

@@ -69,35 +69,4 @@ pub(crate) fn intern_full_id(id: &str) -> &'static str {
     id
 }
 
-pub fn ambient(m: &mut super::Mob, w: &super::MobWorld, events: &mut Vec<super::MobEvent>) {
-    match m.kind.sound_overrides.ambient {
-        Selection::Inherit => super::ai::play_ambient(m, w, events),
-        Selection::Id(id) => m.voice(id, events),
-        Selection::Mute => {}
-    }
-}
-pub fn voices(m: &super::Mob) -> [&'static str; 3] {
-    let inherited = super::ai::inherited_voice_sounds(m);
-    let slots = &m.kind.sound_overrides;
-    [
-        slots.ambient.select(inherited[0]),
-        slots.hurt.select(inherited[1]),
-        slots.death.select(inherited[2]),
-    ]
-}
-pub fn step(
-    m: &super::Mob,
-    w: &super::MobWorld,
-    pos: [i32; 3],
-    state: horizon_world::registry::BlockStateId,
-) -> Option<(Cow<'static, str>, f32, f32)> {
-    match m.kind.sound_overrides.step {
-        Selection::Inherit => super::ai::inherited_step_sound(m, w, pos, state),
-        Selection::Id(id) => Some((Cow::Borrowed(id), 0.15, 1.0)),
-        Selection::Mute => None,
-    }
-}
 
-#[cfg(test)]
-#[path = "entity_sounds_tests.rs"]
-mod tests;

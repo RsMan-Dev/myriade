@@ -1688,6 +1688,3 @@ impl WaterSplashWorld for Ticker<'_, '_, '_, '_> {
     }
 }
 
-#[cfg(test)]
-#[path = "arrows_client_tests.rs"]
-mod client_tests;

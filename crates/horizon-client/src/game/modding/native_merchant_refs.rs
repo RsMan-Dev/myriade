@@ -66,14 +66,6 @@ impl Game<'_> {
         read(&offers, self.ecs.trade_xp(id).unwrap_or(0), level)
     }
 
-    /// The same read for a mob an AI tick lends out: it is read by its id.
-    pub(super) fn merchant_read_lent<T>(
-        &self,
-        mob: &horizon_client::mobs::Mob,
-        read: impl FnOnce(&[MerchantOffer], i32, i32) -> T,
-    ) -> T {
-        self.merchant_read(mob.id, read)
-    }
 
     /// Changes the offers, experience and level of the merchant `id`: on a
     /// guest's open trading screen if there is one (and resent to them), else on

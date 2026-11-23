@@ -20,7 +20,7 @@ use horizon_client::{
     health::{Attack, HealthEvent, HurtSource},
     items::{ItemStack, Items},
     mobs::{
-        Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
+        Damage, DamageKind, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
         ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         spawning,
@@ -204,9 +204,6 @@ pub(super) struct Creatures {
     pub lan_sounds: Vec<NativeSound>,
     /// Particles from a guest's turn, waiting for it to end.
     pub lan_particles: Vec<super::lan_particles::QueuedParticle>,
-}
-pub(super) fn seen(m: &Mob, player: Option<[i32; 4]>, items: &Items) -> Seen {
-    m.seen(player, items)
 }
 /// Whether a mob a packet named may take the click: `mob_hit` skips a mob in
 /// its death animation, the one the player rides (it shares the player's root
@@ -821,21 +818,6 @@ impl Game<'_> {
         }
     }
 
-    /// The damage source a mob died to (`die`'s), its direct entity included when the mob
-    /// recorded one ([`Mob::last_direct`]).
-    fn last_blow(&self, m: &Mob) -> Option<horizon_client::advancements::DamageView> {
-        let (d, _) = m.last_damage?;
-        let mut view = self.damage_view(d);
-        if let Some(kind) = m.last_direct {
-            view.direct = Some(horizon_client::advancements::EntityView {
-                kind: kind.into(),
-                position: d.from.unwrap_or_default(),
-                ..Default::default()
-            });
-            view.is_direct = false;
-        }
-        Some(view)
-    }
     /// A mob's damage source as advancement predicates see it: its type, the
     /// causing entity, and the projectile when one dealt it.
     pub(in crate::game) fn damage_view(

@@ -1,7 +1,7 @@
 //! Model animation: ports of each vanilla `EntityModel.setupAnim` family
 //! (quadrupeds, humanoids, creepers, spiders, chickens...) applied to a map of
 //! part poses before the model is drawn.
-use super::{Mob, Part, keyframes::AnimationState, living::wrap};
+use super::{Part, keyframes::AnimationState, living::wrap};
 use crate::fast_hash::{FxHashMap, FxHashSet};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::use_animation::UseAnimation;
@@ -282,55 +282,6 @@ pub struct State {
     pub baby: bool,
     pub partial: f32,
 }
-/// `LivingEntityRenderer.isEntityUpsideDown`: named Dinnerbone or Grumm.
-pub fn upside_down(m: &Mob) -> bool {
-    matches!(m.custom_name.as_deref(), Some("Dinnerbone" | "Grumm"))
-}
-/// `WalkAnimationState.position(partial)`: babies' legs move 3 times as far.
-pub fn walk_position(m: &Mob, alpha: f32) -> f32 {
-    (m.limb_position - m.limb_speed * (1.0 - alpha)) * if m.is_baby() { 3.0 } else { 1.0 }
-}
-/// `LivingEntityRenderer.extractRenderState`'s `bodyRot` (`solveBodyRot`):
-/// the rider of a living vehicle is drawn from the vehicle's body and its own
-/// head, any other mob from its own body.
-pub fn body_rot(m: &Mob, alpha: f32) -> f32 {
-    match m.extra.vehicle_body.filter(|v| m.extra.mount == Some(v.0)) {
-        Some((_, before, now)) => {
-            let head = m.previous_head_yaw + wrap(m.head_yaw - m.previous_head_yaw) * alpha;
-            super::riders::solve_body_rot(head, before + wrap(now - before) * alpha)
-        }
-        None => m.previous_body_yaw + wrap(m.body_yaw - m.previous_body_yaw) * alpha,
-    }
-}
-pub fn state(m: &Mob, alpha: f32) -> State {
-    let body = body_rot(m, alpha);
-    let head = m.previous_head_yaw + wrap(m.head_yaw - m.previous_head_yaw) * alpha;
-    let mut swing = m.anim.attack_anim - m.anim.attack_anim_o;
-    if swing < 0.0 {
-        swing += 1.0;
-    }
-    let swing = m.anim.attack_anim_o + swing * alpha;
-    // LivingEntityRenderer.extractRenderState: riding motion is not walking.
-    let walking = m.alive() && !m.extra.passenger;
-    State {
-        pos: if walking {
-            walk_position(m, alpha)
-        } else {
-            0.0
-        },
-        speed: if walking {
-            (m.previous_limb_speed + (m.limb_speed - m.previous_limb_speed) * alpha).min(1.0)
-        } else {
-            0.0
-        },
-        age: m.age as f32 + alpha,
-        y_rot: wrap(head - body),
-        x_rot: m.previous_head_pitch + (m.head_pitch - m.previous_head_pitch) * alpha,
-        swing,
-        baby: m.is_baby(),
-        partial: alpha,
-    }
-}
 fn head(p: &mut Poses, s: &State) {
     p.xrot("head", s.x_rot.to_radians());
     p.yrot("head", s.y_rot.to_radians());
@@ -351,115 +302,8 @@ fn bob(p: &mut Poses, n: &str, age: f32, scale: f32) {
     q[3] += scale * ((age * 0.067).msin() * 0.05);
 }
 pub use horizon_core::arm_pose::ArmPose;
-/// Whether this renderer extracts humanoid arm poses.
-pub fn extracts_humanoid(m: &Mob) -> bool {
-    matches!(
-        m.kind.anim,
-        Anim::Zombie
-            | Anim::Drowned
-            | Anim::ZombieVillager
-            | Anim::ZombifiedPiglin
-            | Anim::Skeleton
-            | Anim::Piglin
-            | Anim::Humanoid { .. }
-    )
-}
 
-/// Select the main/off-hand poses without dispatching hooks or allocating.
-/// `declared` contains item declarations or the gameplay hook's replacements.
-pub fn humanoid_arm_poses(m: &Mob, declared: [Option<ArmPose>; 2], swing: f32) -> [ArmPose; 2] {
-    let player = matches!(m.kind.anim, Anim::Humanoid { zombie_arms: false });
-    if !player {
-        let default = if m.kind.anim == Anim::Skeleton
-            && m.extra.main_hand_id() == Some("minecraft:bow")
-            && m.ai.aggressive
-        {
-            ArmPose::Bow
-        } else if m.kind.anim == Anim::Drowned
-            && m.ai.aggressive
-            && m.extra.main_hand_id() == Some("minecraft:trident")
-        {
-            ArmPose::ThrowTrident
-        } else if m.kind.anim != Anim::Skeleton
-            && m.extra
-                .main_hand_id()
-                .and_then(crate::spear::Kinetic::of)
-                .is_some()
-        {
-            ArmPose::Spear
-        } else {
-            ArmPose::Empty
-        };
-        let main = m.extra.main_hand_id().and(declared[0]).unwrap_or(default);
-        let off = if main.affects_offhand() {
-            ArmPose::Empty
-        } else {
-            m.extra
-                .off_hand_id()
-                .and(declared[1])
-                .unwrap_or(ArmPose::Empty)
-        };
-        return [main, off];
-    }
-    let using_main = m.extra.using_item > 0 && !m.extra.using_off_hand;
-    let using_off = m.extra.using_item > 0 && m.extra.using_off_hand;
-    // AvatarRenderer.getArmPose: an arm holding a spear (at rest too).
-    let spear_in = |hand: Option<&str>| hand.and_then(crate::spear::Kinetic::of);
-    let (main_spear, off_spear) = (
-        spear_in(m.extra.main_hand_id()),
-        spear_in(m.extra.off_hand_id()),
-    );
-    // AvatarRenderer.getArmPose: a loaded crossbow is held up, an item in
-    // use poses its arm by its use animation, a spear is held out.
-    let hand_pose = |held: Option<&str>, declared: Option<ArmPose>, using: bool, spear: bool| match (
-        held, declared,
-    ) {
-        (None, _) => ArmPose::Empty,
-        // A mod item's `arm_pose` replaces what the item would do.
-        (Some(_), Some(declared)) => declared,
-        (Some("minecraft:crossbow"), None) if m.extra.charged && swing == 0.0 => {
-            ArmPose::CrossbowHold
-        }
-        (Some(_), None) => match using.then_some(m.extra.use_animation) {
-            Some(UseAnimation::Block) => ArmPose::Block,
-            Some(UseAnimation::Bow) => ArmPose::Bow,
-            Some(UseAnimation::Trident) => ArmPose::ThrowTrident,
-            Some(UseAnimation::Crossbow) => ArmPose::CrossbowCharge,
-            Some(UseAnimation::Spyglass) => ArmPose::Spyglass,
-            Some(UseAnimation::TootHorn) => ArmPose::TootHorn,
-            Some(UseAnimation::Brush) => ArmPose::Brush,
-            Some(UseAnimation::Spear) => ArmPose::Spear,
-            _ if spear => ArmPose::Spear,
-            _ => ArmPose::Item,
-        },
-    };
-    let pose = hand_pose(
-        m.extra.main_hand_id(),
-        declared[0],
-        using_main,
-        main_spear.is_some(),
-    );
-    let off = if !pose.affects_offhand() {
-        hand_pose(
-            m.extra.off_hand_id(),
-            declared[1],
-            using_off,
-            off_spear.is_some(),
-        )
-    } else {
-        ArmPose::Empty
-    };
-    [pose, off]
-}
 
-/// HumanoidModel.setupAnim with empty hands (endermen).
-/// Passes `isPassenger` so a seated enderman keeps the humanoid riding pose
-/// (vanilla EndermanModel.setupAnim calls super first, then halves/clamps xRot).
-pub fn humanoid_pub(p: &mut Poses, s: &State, m: &Mob) {
-    let mut h = Hum::new(ArmPose::Empty, ArmPose::Empty);
-    h.passenger = m.extra.passenger;
-    humanoid(p, s, &h);
-}
 /// `AnimationUtils.swingWeaponDown`: the main arm swings down, the other
 /// one hangs and bobs.
 pub(super) fn swing_weapon_down(p: &mut Poses, swing: f32, age: f32, left_main: bool) {
@@ -534,20 +378,6 @@ impl Hum {
             spear: [None; 2],
             spear_ticks: [0.0; 2],
         }
-    }
-}
-/// Kinetic data belongs to the physical arm holding the item, including a mob's off hand.
-pub(super) fn humanoid_spears(m: &Mob, h: &mut Hum, partial: f32) {
-    let main_side = usize::from(m.main_arm_left());
-    h.spear[main_side] = m.extra.main_hand_id().and_then(crate::spear::Kinetic::of);
-    h.spear[1 - main_side] = m.extra.off_hand_id().and_then(crate::spear::Kinetic::of);
-    if m.extra.using_item > 0 {
-        let using_side = if m.extra.using_off_hand {
-            1 - main_side
-        } else {
-            main_side
-        };
-        h.spear_ticks[using_side] = m.extra.using_item as f32 + partial;
     }
 }
 
@@ -878,20 +708,6 @@ fn swim(p: &mut Poses, pos: f32, h: &Hum) {
 /// the hook's own types (`horizon_hooks::players`), kept here under their old path.
 pub use horizon_hooks::players::{BODY_PARTS, BodyPose};
 
-/// Apply the mob's model animation to `p` (at rest), then the pose laid over it, if any.
-pub fn setup(
-    m: &Mob,
-    s: &State,
-    p: &mut Poses,
-    w_anims: &HashMap<String, super::keyframes::Animation>,
-) {
-    let Some(over) = &m.emote else {
-        return vanilla_setup(m, s, p, w_anims);
-    };
-    let rest = BODY_PARTS.map(|b| p.has(b).then(|| *p.get(b)));
-    vanilla_setup(m, s, p, w_anims);
-    body_pose(&**over, s.age, rest, p);
-}
 
 /// Poses the parts `rest` names (those the model has; at rest) as `over` has them at `age`.
 fn body_pose(over: &dyn BodyPose, age: f32, rest: [Option<[f32; 9]>; 6], p: &mut Poses) {
@@ -913,230 +729,6 @@ fn body_pose(over: &dyn BodyPose, age: f32, rest: [Option<[f32; 9]>; 6], p: &mut
     }
 }
 
-fn vanilla_setup(
-    m: &Mob,
-    s: &State,
-    p: &mut Poses,
-    w_anims: &HashMap<String, super::keyframes::Animation>,
-) {
-    if super::body_anim::anim(m, s, p, w_anims) {
-        return;
-    }
-    match m.kind.anim {
-        Anim::Camel => super::camel::anim(m, s, p, w_anims),
-        Anim::Breeze => super::breeze::anim(m, s, p, w_anims),
-        Anim::Sniffer => super::sniffer::anim(m, s, p, w_anims),
-        Anim::CopperGolem => super::copper_golem::anim(m, s, p, w_anims),
-        Anim::HappyGhast => super::happy_ghast::anim(m, s, p),
-        Anim::Nautilus => super::nautilus::anim(m, s, p, w_anims),
-        // body_anim::llama runs first.
-        Anim::Llama => quadruped(p, s),
-        Anim::Warden => super::warden::anim(m, s, p, w_anims),
-        Anim::Allay => super::allay::anim(m, s, p),
-        Anim::Creaking => super::creaking::anim(m, s, p, w_anims),
-        Anim::Squid | Anim::Fish | Anim::Pufferfish | Anim::Dolphin => {
-            super::aquatic::anim(m, s, p)
-        }
-        Anim::Quadruped | Anim::PolarBear | Anim::Panda | Anim::Goat => quadruped(p, s),
-        Anim::Sheep => {
-            quadruped(p, s);
-            // SheepModel: lower the head while eating grass.
-            let t = m.extra.anim_ticks;
-            let partial = s.partial;
-            let pos_scale = if t <= 0 {
-                0.0
-            } else if (4..=36).contains(&t) {
-                1.0
-            } else if t < 4 {
-                (t as f32 - partial) / 4.0
-            } else {
-                -((t - 40) as f32 - partial) / 4.0
-            };
-            let angle = if t > 4 && t <= 36 {
-                let f = ((t - 4) as f32 - partial) / 32.0;
-                PI / 5.0 + 0.219_911_49 * (f * 28.7).msin()
-            } else if t > 0 {
-                PI / 5.0
-            } else {
-                s.x_rot.to_radians()
-            };
-            let age_scale = if s.baby { 0.5 } else { 1.0 };
-            p.get("head")[1] += pos_scale * 9.0 * age_scale;
-            p.xrot("head", angle);
-        }
-        Anim::Chicken => {
-            let flap = m.anim.flap_o + (m.anim.flap - m.anim.flap_o) * s.partial;
-            let flap_speed =
-                m.anim.flap_speed_o + (m.anim.flap_speed - m.anim.flap_speed_o) * s.partial;
-            let angle = (flap.msin() + 1.0) * flap_speed;
-            p.xrot("right_leg", (s.pos * 0.6662).mcos() * 1.4 * s.speed);
-            p.xrot("left_leg", (s.pos * 0.6662 + PI).mcos() * 1.4 * s.speed);
-            p.zrot("right_wing", angle);
-            p.zrot("left_wing", -angle);
-            if !s.baby {
-                head(p, s);
-            }
-        }
-        Anim::Zombie
-        | Anim::Drowned
-        | Anim::ZombieVillager
-        | Anim::ZombifiedPiglin
-        | Anim::Humanoid { zombie_arms: true } => {
-            let [main, off] = humanoid_arm_poses(m, m.extra.held_arm_pose, s.swing);
-            let mut h = if m.main_arm_left() {
-                Hum::new(off, main)
-            } else {
-                Hum::new(main, off)
-            };
-            h.left_main = m.main_arm_left();
-            humanoid_spears(m, &mut h, s.partial);
-            h.charge = (m.extra.ints[5].max(1) as f32, m.extra.using_item as f32);
-            h.zombie = Some(m.ai.aggressive);
-            h.holding = m.extra.main_hand_id().is_some();
-            h.crouching = m.extra.crouching;
-            h.passenger = m.extra.passenger;
-            humanoid(p, s, &h);
-            if m.kind.anim == Anim::Drowned {
-                drowned_swim(p, s, m.extra.swim.amount(s.partial));
-            }
-            if m.kind.anim == Anim::ZombifiedPiglin {
-                super::piglin::ears(p, s);
-            }
-        }
-        Anim::Skeleton | Anim::Humanoid { zombie_arms: false } => {
-            let bow = m.extra.main_hand_id() == Some("minecraft:bow");
-            let player = matches!(m.kind.anim, Anim::Humanoid { .. });
-            let [pose, off] = humanoid_arm_poses(m, m.extra.held_arm_pose, s.swing);
-            let mut h = if m.main_arm_left() {
-                Hum::new(off, pose)
-            } else {
-                Hum::new(pose, off)
-            };
-            h.charge = (m.extra.ints[5] as f32, m.extra.using_item as f32);
-            h.fall_flying = m.extra.fall_flying;
-            if h.fall_flying {
-                let v = m.velocity;
-                h.fly_speed_scale =
-                    (((v.x * v.x + v.y * v.y + v.z * v.z) as f32 / 0.2).powi(3)).max(1.0);
-            }
-            h.crouching = m.extra.crouching;
-            h.passenger = m.extra.passenger;
-            h.swim = m.extra.swim.amount(s.partial);
-            h.using_item = m.extra.using_item > 0;
-            h.swing_right_arm = m.extra.swing_right_arm;
-            h.stab = m.extra.swing_stab;
-            h.left_main = m.main_arm_left();
-            humanoid_spears(m, &mut h, s.partial);
-            humanoid(p, s, &h);
-            if player {
-                player_model_visibility(p, m.extra.hidden_model_parts, m.extra.spectator);
-            }
-            if m.ai.aggressive && !bow {
-                // SkeletonModel melee pose.
-                let sw = s.swing;
-                let s2 = (sw * PI).msin();
-                let s1 = ((1.0 - (1.0 - sw) * (1.0 - sw)) * PI).msin();
-                p.zrot("right_arm", 0.0);
-                p.zrot("left_arm", 0.0);
-                p.yrot("right_arm", -(0.1 - s2 * 0.6));
-                p.yrot("left_arm", 0.1 - s2 * 0.6);
-                p.xrot("right_arm", -PI / 2.0 - (s2 * 1.2 - s1 * 0.4));
-                p.xrot("left_arm", -PI / 2.0 - (s2 * 1.2 - s1 * 0.4));
-                bob(p, "right_arm", s.age, 1.0);
-                bob(p, "left_arm", s.age, -1.0);
-            }
-            // BoggedModel.setupAnim: the mushrooms on the head come off once sheared.
-            if m.species() == super::Species::Bogged {
-                p.visible("mushrooms", !m.extra.sheared);
-            }
-        }
-        Anim::Witch => super::witch::anim(m, s, p),
-        Anim::Villager => super::villager::anim(m, s, p),
-        Anim::Wolf => super::tame::anim(m, s, p),
-        Anim::IronGolem => super::golem::iron_anim(m, s, p),
-        Anim::Illager => super::illager::anim(m, s, p),
-        Anim::Piglin => super::piglin::piglin_anim(m, s, p),
-        Anim::Phantom => super::phantom::anim(m, s, p),
-        Anim::Guardian => super::guardian::anim(m, s, p),
-        Anim::Vex => super::vex::anim(m, s, p),
-        Anim::Wither => super::wither::anim(m, s, p),
-        Anim::Ravager => super::ravager::anim(m, s, p),
-        Anim::Shulker => super::shulker::anim(m, s, p),
-        Anim::Horse => {
-            super::equine::anim(m, s, p);
-            // DonkeyModel: the chests show once fitted.
-            if !m.extra.chested {
-                for part in ["left_chest", "right_chest"] {
-                    p.visible(part, false);
-                }
-            }
-            // EquineSaddleModel.setupAnim: the reins show only while ridden
-            // (`isRidden` is `Entity.isVehicle`: a player or a mob rides it).
-            for part in ["left_saddle_line", "right_saddle_line"] {
-                p.visible(part, m.rider.is_some() || m.extra.rider.is_some());
-            }
-        }
-        Anim::Hoglin => super::piglin::hoglin_anim(m, s, p),
-        Anim::Blaze => super::nether::blaze_anim(s, p),
-        Anim::Ghast => super::nether::ghast_anim(s, p),
-        Anim::Feline => super::tame::cat_anim(m, s, p),
-        Anim::Enderman => super::enderman::anim(m, s, p),
-        Anim::Slime | Anim::MagmaCube => super::cube::anim(m, s, p),
-        Anim::Creeper => {
-            head(p, s);
-            // CreeperModel binds its fields to the opposite-side parts, so the
-            // left formulas drive the right parts and the reverse.
-            p.xrot("left_hind_leg", (s.pos * 0.6662).mcos() * 1.4 * s.speed);
-            p.xrot(
-                "right_hind_leg",
-                (s.pos * 0.6662 + PI).mcos() * 1.4 * s.speed,
-            );
-            p.xrot(
-                "left_front_leg",
-                (s.pos * 0.6662 + PI).mcos() * 1.4 * s.speed,
-            );
-            p.xrot("right_front_leg", (s.pos * 0.6662).mcos() * 1.4 * s.speed);
-        }
-        Anim::Spider => {
-            head(p, s);
-            let pos = s.pos * 0.6662;
-            let sp = s.speed;
-            let swing = |o: f32| -((pos * 2.0 + o).mcos() * 0.4) * sp;
-            let step = |o: f32| ((pos + o).msin() * 0.4).abs() * sp;
-            let legs = [
-                ("right_hind_leg", "left_hind_leg", 0.0f32, 0.0f32),
-                ("right_middle_hind_leg", "left_middle_hind_leg", PI, PI),
-                (
-                    "right_middle_front_leg",
-                    "left_middle_front_leg",
-                    PI / 2.0,
-                    PI / 2.0,
-                ),
-                (
-                    "right_front_leg",
-                    "left_front_leg",
-                    PI * 3.0 / 2.0,
-                    PI * 3.0 / 2.0,
-                ),
-            ];
-            for (right, left, so, to) in legs {
-                let (sw, st) = (swing(so), step(to));
-                p.get(right)[4] += sw;
-                p.get(left)[4] -= sw;
-                p.get(right)[5] += st;
-                p.get(left)[5] -= st;
-            }
-        }
-        _ => {
-            if p.has("head") {
-                head(p, s);
-            }
-            if p.has("right_hind_leg") {
-                quadruped(p, s);
-            }
-        }
-    }
-}
 
 /// `PlayerModel.setupAnim`'s visibility: a spectator shows only its head (`showBody`), and the
 /// skin layers the player hid (`PlayerModelPart`, bit set = hidden) are off.
@@ -1360,72 +952,6 @@ mod flight_pose_tests {
         assert_ne!(p.get("left_arm")[3], 0.0);
     }
 
-    /// EndermanModel.setupAnim (#4565): humanoid_pub forwards isPassenger so the
-    /// riding leg y/z survive; only xRot is halved and clamped to ±0.4 after.
-    #[test]
-    fn a_seated_enderman_keeps_the_riding_leg_twist() {
-        use super::super::enderman;
-        use super::super::{Mob, Species};
-        use horizon_core::geometry::Vec3;
-        use std::sync::Arc;
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::Enderman;
-        let mut seated = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        seated.extra.passenger = true;
-        let state = State {
-            pos: 0.0,
-            speed: 0.0,
-            age: 0.0,
-            y_rot: 0.0,
-            x_rot: 0.0,
-            swing: 0.0,
-            baby: false,
-            partial: 0.0,
-        };
-        let mut poses = Poses {
-            map: [
-                "head",
-                "hat",
-                "body",
-                "right_arm",
-                "left_arm",
-                "right_leg",
-                "left_leg",
-            ]
-            .into_iter()
-            .map(|n| (key(n), [0.0; 9]))
-            .collect(),
-            dummy: [0.0; 9],
-            skipped: Default::default(),
-            hidden: Default::default(),
-            version: 0,
-        };
-        enderman::anim(&seated, &state, &mut poses);
-        let right = *poses.get("right_leg");
-        let left = *poses.get("left_leg");
-        assert!((right[3] - (-0.4)).abs() < 1e-5, "right xRot {}", right[3]);
-        assert!((left[3] - (-0.4)).abs() < 1e-5, "left xRot {}", left[3]);
-        assert!(
-            (right[4] - PI / 10.0).abs() < 1e-5,
-            "right yRot {}",
-            right[4]
-        );
-        assert!(
-            (left[4] - (-PI / 10.0)).abs() < 1e-5,
-            "left yRot {}",
-            left[4]
-        );
-        assert!(
-            (right[5] - 0.078_539_82).abs() < 1e-5,
-            "right zRot {}",
-            right[5]
-        );
-        assert!(
-            (left[5] - (-0.078_539_82)).abs() < 1e-5,
-            "left zRot {}",
-            left[5]
-        );
-    }
 
     #[test]
     fn flight_slows_limbs_and_sets_the_head_pose() {
@@ -1571,13 +1097,6 @@ mod flight_pose_tests {
         assert_eq!(walk_position(&m, 0.5), 5.25);
     }
 
-    /// A player: a humanoid model with a shield in its main hand.
-    fn player() -> Mob {
-        let mut kind = crate::mobs::sensor_scan_tests::kind();
-        let k = Arc::make_mut(&mut kind);
-        k.anim = Anim::Humanoid { zombie_arms: false };
-        Mob::new(1, kind, Vec3::ZERO, 0.0)
-    }
 
     #[test]
     fn a_raised_shield_holds_the_arm_across_the_body() {

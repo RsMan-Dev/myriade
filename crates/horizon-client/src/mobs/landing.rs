@@ -4,7 +4,7 @@
 //! LOGS: none; the block writes and sounds go out as MobEvents.
 //! READS-BY: mobs::living::Mob::fall_on_block.
 //! ENDS-WHEN: the landing registry covers a mob's whole fall and this adapter is merged into crate::landing.
-use super::{DamageKind, Mob, MobEvent, MobWorld};
+use super::{DamageKind, MobEvent, MobWorld};
 use crate::collisions::SceneCollisions;
 use crate::health::DamageLevel;
 use horizon_core::{
@@ -22,9 +22,7 @@ use horizon_world::{
 };
 
 /// A mob mid-landing: the block under it is at `pos`, the fall was `distance`.
-pub(super) struct MobLanding<'a, 'w, 'l> {
-    pub mob: &'a mut Mob,
-    pub w: &'a MobWorld<'w>,
+pub(super) struct MobLanding<'a, 'w, 'l> {    pub w: &'a MobWorld<'w>,
     pub level: &'a mut DamageLevel<'l>,
     pub events: &'a mut Vec<MobEvent>,
     pub pos: [i32; 3],

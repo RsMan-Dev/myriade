@@ -5,57 +5,11 @@
 //! return `None` for a stale handle or on a client.
 use super::{Game, commands::Target, mounts::steering_item};
 use horizon_client::{
-    mobs::{Mob, Species, equine, happy_ghast, leash::Holder, nautilus},
+    mobs::{Species, equine, happy_ghast, leash::Holder, nautilus},
 };
 use mod_api::{EntityRef, LeashHolder, LivingRef};
 
 impl Game<'_> {
-    /// The dismount search with a vehicle or passenger lent out of the mob list.
-    pub(super) fn scoped_mob_dismount_location(
-        &self,
-        vehicle: Option<&Mob>,
-        vehicle_id: u32,
-        rider: Option<&Mob>,
-        passenger: EntityRef,
-    ) -> Option<[f64; 3]> {
-        let at = if let Some(rider) = rider {
-            if self.is_boat_id(vehicle_id) {
-                self.boat_dismount_target(vehicle_id, f64::from(rider.width()), rider.yaw)
-            } else if let Some(mount) = vehicle {
-                Some(
-                    self.horse_dismount_mobs(mount, rider)
-                        .unwrap_or_else(|| super::mounts::on_top(mount)),
-                )
-            } else {
-                self.cart_dismount_mob(vehicle_id, rider)
-            }
-        } else if let Some(mount) = vehicle {
-            match self.native_entity_target(passenger)? {
-                Target::Player => {
-                    Some(self.player_dismount_from_lent_mob(mount, self.yaw, self.player.as_ref()?))
-                }
-                Target::Guest(conn) => {
-                    let guest = self.command_guest(conn)?;
-                    Some(self.player_dismount_from_lent_mob(
-                        mount,
-                        guest.yaw,
-                        guest.motion.as_deref()?,
-                    ))
-                }
-                _ => None,
-            }
-        } else {
-            let vehicle = self.entity(vehicle_id)?;
-            return self.entity_dismount_location(vehicle, LivingRef::new(passenger));
-        };
-        if let Some(at) = at {
-            return Some([at.x, at.y, at.z]);
-        }
-        let vehicle = self.entity(vehicle_id)?;
-        let [x, _, z] = self.entity_position(vehicle)?;
-        let [_, [_, top, _]] = self.entity_bounding_box(vehicle)?;
-        Some([x, top, z])
-    }
 
     /// The id of the entity `t` rides, if it rides one.
     fn native_vehicle_id(&self, t: Target) -> Option<u32> {
@@ -190,21 +144,6 @@ impl Game<'_> {
             main.map(|s| s.item.as_ref()),
             offhand.map(|s| s.item.as_ref()),
         )
-    }
-    /// The overrides of `getControllingPassenger` on `mob`: whether the player `rider`, its
-    /// first passenger, steers it.
-    pub(super) fn native_player_controls(&self, mob: &Mob, rider: Target) -> bool {
-        let species = mob.species();
-        match species {
-            Species::Pig | Species::Strider => {
-                mob.extra.saddled() && self.native_player_steers(species, rider)
-            }
-            Species::HappyGhast => {
-                happy_ghast::wearing_harness(mob) && !happy_ghast::on_still_timeout(mob)
-            }
-            s if equine::is_equine(s) || nautilus::is_nautilus(s) => mob.extra.saddled(),
-            _ => false,
-        }
     }
     /// `native_player_controls` for the ECS mob `id`: the saddle is the mount's saddle slot.
     /// A happy ghast's harness and its still timeout have no ECS reader yet (RESTE-SANS-ECS: never steered).

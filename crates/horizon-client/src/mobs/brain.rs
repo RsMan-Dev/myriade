@@ -3,7 +3,7 @@
 //! `MoveToTargetSink`, and the melee cooldown of the behaviour Horizon runs as a
 //! goal (`melee_attack`).
 use super::{
-    Mob, MobWorld, Who,
+    MobWorld, Who,
     goals::{Cx, MeleeAttack},
 };
 use horizon_core::{
@@ -63,26 +63,6 @@ impl Timed {
         now > self.end
     }
 }
-/// `NearestLivingEntitySensor`'s scan: the living entities (the player
-/// among them) whose boxes meet the follow range around `m`, nearest first.
-pub fn living_near(m: &Mob, w: &MobWorld) -> Vec<Who> {
-    let r = m.attrs.follow_range;
-    let area = m.bounds().inflate(Vec3::new(r, r, r));
-    let mut found: Vec<(Who, f64)> = Vec::new();
-    for o in w.others_near(area) {
-        if o.id != m.id && o.alive && o.bounds.intersects(area) {
-            found.push((Who::Mob(o.id), m.distance_sqr(o.position)));
-        }
-    }
-    if let Some(p) = w.selected_player()
-        && p.alive
-        && p.bounds.intersects(area)
-    {
-        found.push((Who::Player, m.distance_sqr(p.position)));
-    }
-    found.sort_by(|a, b| a.1.total_cmp(&b.1));
-    found.into_iter().map(|(w, _)| w).collect()
-}
 /// The brain's `MeleeAttack.create(cooldown)` for a mob whose cooldown never
 /// varies, as the goal that stands in for that behaviour has to run it:
 /// `MeleeAttack` arms `ATTACK_COOLING_DOWN` with the cooldown and
@@ -97,13 +77,6 @@ pub fn melee_attack(cooldown: i32) -> MeleeAttack {
 pub fn melee_attack_by_age(adult: i32, baby: i32) -> MeleeAttack {
     MeleeAttack::new(1.0, true).intervals(adult + 1, baby + 1)
 }
-/// A random duration in `min..=max` (`Behavior`'s end time).
-pub fn duration(m: &mut Mob, min: i32, max: i32) -> i32 {
-    if max <= min {
-        return min;
-    }
-    min + m.random.next_int_bound(max - min + 1).unwrap_or(0)
-}
 /// `WalkTarget`: where to go, how fast and how close counts as there.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct WalkTarget {
@@ -114,18 +87,6 @@ pub struct WalkTarget {
 impl WalkTarget {
     pub fn new(pos: [i32; 3], speed: f64, close: i32) -> Self {
         Self { pos, speed, close }
-    }
-    /// `MoveToTargetSink.reachedTarget`: Manhattan distance of blocks.
-    pub fn reached(&self, m: &Mob) -> bool {
-        let here = [
-            m.position.x.floor() as i32,
-            m.position.y.floor() as i32,
-            m.position.z.floor() as i32,
-        ];
-        let d = (self.pos[0] - here[0]).abs()
-            + (self.pos[1] - here[1]).abs()
-            + (self.pos[2] - here[2]).abs();
-        d <= self.close
     }
 }
 /// `MoveToTargetSink(min, max)`: walks to the walk target and gives up on it
@@ -147,123 +108,11 @@ impl Sink {
     pub fn running(&self) -> bool {
         self.until.is_some()
     }
-    /// `stop`: forget the walk target and the path.
-    pub fn stop(&mut self, m: &mut Mob, walk: &mut Option<WalkTarget>) {
-        if self.until.take().is_some() {
-            m.nav_stop();
-        }
-        *walk = None;
-    }
-    /// One tick of `checkExtraStartConditions`, `canStillUse`, `tick` and
-    /// `stop` for the walk target.
-    pub fn tick(&mut self, m: &mut Mob, cx: &mut Cx, walk: &mut Option<WalkTarget>) {
-        let now = m.age as i32;
-        if let Some(until) = self.until {
-            let still = !m.ai.nav.is_done() && walk.is_some_and(|w| !w.reached(m));
-            if now > until || !still {
-                self.stop(m, walk);
-            }
-            return;
-        }
-        let Some(target) = *walk else { return };
-        if target.reached(m) {
-            *walk = None;
-            return;
-        }
-        let at = [
-            f64::from(target.pos[0]) + 0.5,
-            f64::from(target.pos[1]),
-            f64::from(target.pos[2]) + 0.5,
-        ];
-        let mut moving = m.nav_move_to(cx.w, at, target.speed);
-        if !moving {
-            // A partial step toward it (`DefaultRandomPos.getPosTowards`).
-            moving = m
-                .default_random_pos_towards(cx.w, 10, 7, at, std::f64::consts::FRAC_PI_2)
-                .is_some_and(|p| m.nav_move_to(cx.w, p, target.speed));
-        }
-        if moving {
-            self.until = Some(now + duration(m, self.min, self.max));
-        } else {
-            *walk = None;
-        }
-    }
 }
 use horizon_core::nbt::{Compound, Tag};
 
-/// `finalizeSpawn`'s memories (`m.extra.memories`) as `Brain.Packed` writes
-/// them: a `Unit` empty compound, a boolean, an integer, or a global position
-/// for `home`, with the remaining TTL when it is finite.
-pub fn put_brain(map: &mut Compound, m: &Mob, dimension: &str) {
-    if m.extra.memories.is_empty() {
-        return;
-    }
-    let mut memories = match map.get(&"Brain".into()).and_then(|b| b.get("memories")) {
-        Some(Tag::Compound(c)) => c.clone(),
-        _ => Compound::new(),
-    };
-    for &(name, value, ttl) in &m.extra.memories {
-        let value = match name {
-            "hunted_recently" => Tag::Byte(value as i8),
-            // `Unit` memories save an empty compound.
-            "is_pregnant" => Tag::Compound(Compound::new()),
-            "home" => match m.extra.home {
-                Some(p) => Tag::compound([
-                    ("dimension", Tag::String(dimension.into())),
-                    ("pos", Tag::IntArray(p.to_vec())),
-                ]),
-                None => continue,
-            },
-            _ => Tag::Int(value as i32),
-        };
-        let mut memory = vec![("value", value)];
-        if ttl != i64::MAX {
-            memory.push(("ttl", Tag::Long(ttl)));
-        }
-        memories.insert(
-            format!("minecraft:{name}").as_str().into(),
-            Tag::compound(memory),
-        );
-    }
-    map.insert(
-        "Brain".into(),
-        Tag::compound([("memories", Tag::Compound(memories))]),
-    );
-}
 
-/// `Frog`'s brain memory `IS_PREGNANT`, which `Brain.Packed` writes beside the
-/// other memories and `mob_from_nbt` reads back into the frog's memories. The
-/// memory is a `Unit`: its value is an empty compound, with no TTL.
-pub fn write_frog(m: &Mob, map: &mut Compound) {
-    let brain = map
-        .entry("Brain".into())
-        .or_insert_with(|| Tag::Compound(Compound::new()));
-    if !matches!(brain, Tag::Compound(_)) {
-        *brain = Tag::Compound(Compound::new());
-    }
-    let Tag::Compound(brain) = brain else { return };
-    let memories = brain
-        .entry("memories".into())
-        .or_insert_with(|| Tag::Compound(Compound::new()));
-    if !matches!(memories, Tag::Compound(_)) {
-        *memories = Tag::Compound(Compound::new());
-    }
-    let Tag::Compound(memories) = memories else {
-        return;
-    };
-    if super::frog::is_pregnant(m) {
-        memories.insert(
-            "minecraft:is_pregnant".into(),
-            Tag::compound([("value", Tag::Compound(Compound::new()))]),
-        );
-    } else {
-        memories.remove(&"minecraft:is_pregnant".into());
-    }
-}
 
-#[cfg(test)]
-#[path = "melee_cooldown_tests.rs"]
-mod melee_cooldown_tests;
 
 #[cfg(test)]
 mod tests {

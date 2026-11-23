@@ -14,7 +14,7 @@ use bevy_ecs::{
 };
 #[allow(unused_imports)]
 use horizon_client_lib::mobs::{
-    Mob, MobWorld,
+    MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
@@ -174,69 +174,6 @@ pub fn build_level_neutral(half: i32, patches: bool) -> Level {
     build_level_neutral_with(half, level_builder(half, patches))
 }
 
-/// The row of every species the prototype knows, by id.
-fn species_rows(types: &'static horizon_client_lib::mobs::MobTypes) -> Vec<Species> {
-    // Every species the prototype knows, by id: the same table for the whole process.
-    let names: Vec<&'static str> = crate::species::names();
-    let mut table: Vec<Species> = Vec::new();
-    for (i, name) in names.into_iter().enumerate() {
-        // An entity that is not a `Mob` (a display, a TNT, a projectile) has no `MobType`: its row is a stand-in (the cow's), never read.
-        let kind = Arc::new(types.types.get(name).unwrap_or(&types.types[crate::species::lists::STAND_IN]).clone());
-        let is_creature = types.types.contains_key(name);
-        let mob = Mob::new(1, kind.clone(), Vec3::new(0.5, 1.0, 0.5), 0.0);
-        let screaming = crate::species::registry().by_name(name).unwrap().screaming;
-        let lost_horn = crate::species::registry().by_name(name).unwrap().lost_horn;
-        table.push(Species {
-            id: i as u8,
-            malus: mob.ai.malus,
-            can_float: mob.ai.nav.can_float,
-            can_open_doors: mob.ai.nav.can_open_doors,
-            can_pass_doors: mob.ai.nav.can_pass_doors,
-            can_walk_over_fences: mob.ai.nav.can_walk_over_fences,
-            follow_range: mob.attrs.follow_range as f32,
-            max_health: mob.health,
-            water_slowdown: kind.water_slowdown,
-            lava_walker: kind.flags.lava_walker,
-            water_efficiency: kind.water_efficiency as f32,
-            eye_height: kind.eye_height,
-            sound_source: crate::species::registry().by_name(name).unwrap().sound_source,
-            name,
-            saved: crate::species::registry().by_name(name).unwrap().saved,
-            width: kind.width as f32,
-            height: kind.height as f32,
-            step_height: kind.step_height as f32,
-            gravity: crate::species::registry().by_name(name).unwrap().gravity.then_some(kind.gravity),
-            speed: mob.attrs.speed,
-            flying_speed: horizon_client_lib::mobs::finalize::value(&mob, horizon_client_lib::mobs::finalize::Attr::FlyingSpeed),
-            air_speed: kind.air_speed,
-            omnidirectional: kind.flags.omnidirectional,
-            baby: ((kind.width * kind.baby_scale) as f32, (kind.height * kind.baby_scale) as f32),
-            goals: crate::species::config(name),
-            rules: crate::species::registry().by_name(name).unwrap().rules,
-            knockback_resistance: mob.attrs.knockback_resistance,
-            attack_knockback: mob.attrs.attack_knockback,
-            armor: (kind.armor as f32, kind.armor_toughness as f32),
-            attack_damage: mob.attrs.attack_damage,
-            walk: walk_value_of(&mob, &kind),
-            caps: crate::species::registry().by_name(name).unwrap().caps,
-            brain: crate::species::registry().by_name(name).unwrap().brain,
-            modes: crate::species::registry().by_name(name).unwrap().modes,
-            tags: if is_creature { crate::cow::species::tags_of(&mob, &kind) | if screaming.is_some() { crate::cow::species::tag::SCREAMER } else { 0 } } else { 0 },
-            max_air: if is_creature { mob.max_air_supply() } else { 300 },
-            persistent: is_creature && mob.persistent,
-            screaming,
-            lost_horn,
-            max_scale: crate::species::registry().by_name(name).unwrap().max_scale,
-            load_attrs: crate::species::registry().by_name(name).unwrap().load_attrs,
-            llama_strength: crate::species::registry().by_name(name).unwrap().llama_strength,
-            random_max_health: crate::species::registry().by_name(name).unwrap().random_max_health,
-            horse_gen: crate::species::registry().by_name(name).unwrap().horse_gen,
-            body_wear: crate::species::registry().by_name(name).unwrap().body_wear,
-            not_in_peaceful: crate::species::registry().by_name(name).unwrap().not_in_peaceful,
-        });
-    }
-    table
-}
 
 /// The level of a host world (`bridge/host.rs`): the mob world it is given (read only, lent for one call), no blocks of its own
 /// (`blocks` is null: `block_changes` reports the change as a `HostEvent::SetBlock`), a spatial index of `half` blocks each way.

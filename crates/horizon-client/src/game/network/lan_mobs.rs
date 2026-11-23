@@ -4,7 +4,7 @@
 //! guest it targets until it lets go. What it then does to `Who::Player`
 //! (hits, pushes, fire, its projectiles) runs with that guest swapped in.
 use super::Game;
-use horizon_client::mobs::{Mob, MobEvent, PlayerView, Who};
+use horizon_client::mobs::{MobEvent, PlayerView, Who};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::packets::play::{self, Clientbound as C};
 

@@ -26,13 +26,7 @@ pub struct Stroll {
     /// `RandomStrollGoal.forceTrigger`: the next `canUse` skips the interval's
     /// draw (see `Goal::trigger`).
     pub force: bool,
-    wanted: [f64; 3],
-    /// A subclass's `getPosition` in place of the default pick
-    /// (`GolemRandomStrollInVillageGoal`, `MoveBackToVillageGoal`).
-    position: Option<fn(&mut Mob, &mut Cx) -> Option<[f64; 3]>>,
-    /// A subclass's own `canUse` test, run before the interval's draw.
-    gate: Option<fn(&Mob, &MobWorld) -> bool>,
-    label: Option<&'static str>,
+    wanted: [f64; 3],label: Option<&'static str>,
 }
 impl Stroll {
     /// `RandomStrollGoal.<init>` (interval 120, checks the no-action time).
@@ -53,16 +47,6 @@ impl Stroll {
             gate: None,
             label: None,
         }
-    }
-    /// The stroll's spot comes from `f` (an overridden `getPosition`).
-    pub fn position(mut self, f: fn(&mut Mob, &mut Cx) -> Option<[f64; 3]>) -> Self {
-        self.position = Some(f);
-        self
-    }
-    /// The stroll may only start while `f` holds (an overridden `canUse`).
-    pub fn gate(mut self, f: fn(&Mob, &MobWorld) -> bool) -> Self {
-        self.gate = Some(f);
-        self
     }
     /// The goal's class name, for debugging.
     pub fn named(mut self, label: &'static str) -> Self {
@@ -136,79 +120,5 @@ impl Goal for Stroll {
     /// `RandomStrollGoal.trigger`.
     fn trigger(&mut self) {
         self.force = true;
-    }
-    /// RandomStrollGoal.canUse.
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if crate::mobs::riders::mob_controlled(m, cx.w) {
-            return false;
-        }
-        if self.gate.is_some_and(|gate| !gate(m, cx.w)) {
-            return false;
-        }
-        if !self.force {
-            if self.check_no_action && m.ai.no_action_time >= 100 {
-                return false;
-            }
-            if m.random.next_int_bound(reduced(self.interval)).unwrap_or(1) != 0 {
-                return false;
-            }
-        }
-        let pos = match self.water_avoiding {
-            _ if self.position.is_some() => self.position.and_then(|pick| pick(m, cx)),
-            Some(_) if self.parrot => crate::mobs::parrot::wander_pos(m, cx.w),
-            Some(prob) => {
-                if m.fluids.in_water {
-                    m.land_random_pos(cx.w, 15, 7)
-                        .or_else(|| m.default_random_pos(cx.w, 10, 7))
-                } else if m.random.next_float() >= prob {
-                    m.land_random_pos(cx.w, 10, 7)
-                } else {
-                    m.default_random_pos(cx.w, 10, 7)
-                }
-            }
-            None if self.swim => {
-                let mut p = m.default_random_pos(cx.w, 10, 7);
-                let mut count = 0;
-                while let Some(q) = p {
-                    let s = cx.w.world.block(
-                        q[0].floor() as i32,
-                        q[1].floor() as i32,
-                        q[2].floor() as i32,
-                    );
-                    if cx
-                        .w
-                        .data
-                        .pathfindable(s, crate::mobs::data::PathComputationType::Water)
-                        || count >= 10
-                    {
-                        break;
-                    }
-                    count += 1;
-                    p = m.default_random_pos(cx.w, 10, 7);
-                }
-                p
-            }
-            None if self.flying => m.flying_stroll_pos(cx.w),
-            None if self.fly => {
-                let view = m.view_vector();
-                m.air_and_water_random_pos(cx.w, 10, 7, -2, view[0], view[2])
-            }
-            None => m.default_random_pos(cx.w, 10, 7),
-        };
-        let Some(p) = pos else { return false };
-        self.wanted = p;
-        // `RandomStrollGoal.canUse` clears the trigger once it has a spot.
-        self.force = false;
-        true
-    }
-    /// RandomStrollGoal.canContinueToUse.
-    fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        !m.ai.nav.is_done() && !crate::mobs::riders::mob_controlled(m, cx.w)
-    }
-    fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
-        m.nav_move_to(cx.w, self.wanted, self.speed);
-    }
-    fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        m.nav_stop();
     }
 }

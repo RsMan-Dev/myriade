@@ -7,7 +7,7 @@ use horizon_client::{
     items::{ItemStack, Items},
     join_seq::JoinList,
     mobs::{
-        Mob, MobWorld,
+        MobWorld,
         equip::{Facts, Slot},
     },
     stations::StationData,
@@ -16,9 +16,7 @@ use horizon_client::{
 use horizon_core::geometry::Vec3;
 
 /// The level's data as mob code reads it: borrows only, nothing computed.
-pub struct MobParts<'a> {
-    pub mobs: &'a mut JoinList<Mob>,
-    pub dropped: &'a mut JoinList<ItemEntity>,
+pub struct MobParts<'a> {    pub dropped: &'a mut JoinList<ItemEntity>,
     /// The last entity id handed out; the next entity takes this plus one (`ItemAreas` keys its cache on it).
     pub next_entity: u32,
     /// The mobs that ticked this tick.
@@ -35,8 +33,6 @@ pub trait MobLevel {
     /// first question to the last check before the equip.
     type Equip;
     fn parts(&mut self) -> MobParts<'_>;
-    /// The mobs, shared: for reads beside [`MobLevel::mob_world`].
-    fn mobs(&self) -> &[Mob];
     /// The item entities, shared: for reads beside [`MobLevel::mob_world`].
     fn dropped(&self) -> &[ItemEntity];
     /// The level as mob rules read it (collisions, line of sight).
@@ -101,7 +97,4 @@ pub trait MobLevel {
     /// that equip took. `Some(taken)` reports a completed equip, with `taken` at most the stack's
     /// count; `None` means nothing was equipped.
     fn equip_item_if_possible(&mut self, index: usize, stack: &ItemStack) -> Option<u32>;
-    /// The numbers `Mob.compareArmor` and `compareWeapons` read off `stack` in `slot` for
-    /// the mob `m`.
-    fn stack_facts(&self, m: &Mob, stack: &ItemStack, slot: Slot) -> Facts;
 }

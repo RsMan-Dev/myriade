@@ -3,7 +3,7 @@
 //! and what `Parrot.aiStep` adds: imitating the mobs around it
 //! (`imitateNearbyMobs`, the ambient sound of `getAmbient`) and dancing near
 //! a playing jukebox.
-use super::{Mob, MobEvent, MobWorld, Species, control::MoveKind, nav::NavKind, path::PathType};
+use super::{MobEvent, MobWorld, Species, control::MoveKind, nav::NavKind, path::PathType};
 use horizon_core::{
     geometry::Vec3,
     random::{LevelRandom, RandomSource},
@@ -77,62 +77,7 @@ fn pitch(random: &mut impl RandomSource) -> f32 {
     (random.next_float() - random.next_float()) * 0.2 + 1.0
 }
 
-/// The start of `Parrot.aiStep`: a jukebox that is gone or farther than
-/// 3.46 blocks stops the dance, and one tick in 400 the parrot imitates a
-/// mob nearby.
-pub fn ai_step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level_random: &mut LevelRandom,
-    events: &mut Vec<MobEvent>,
-) {
-    if let Some(at) = m.extra.party_jukebox {
-        let d = |i: usize, v: f64| f64::from(at[i]) + 0.5 - v;
-        let (x, y, z) = (d(0, m.position.x), d(1, m.position.y), d(2, m.position.z));
-        let jukebox = &*w.facts.get(w.world.block(at[0], at[1], at[2])).name == "minecraft:jukebox";
-        if x * x + y * y + z * z >= 3.46 * 3.46 || !jukebox {
-            m.extra.party_jukebox = None;
-        }
-    }
-    if level_random.next_int_bound(400).unwrap_or(1) == 0 {
-        imitate_nearby_mobs(m, w, level_random, events);
-    }
-}
 
-/// `Parrot.imitateNearbyMobs`: half the time, a random imitable mob within 20
-/// blocks is heard through the parrot's own mouth.
-fn imitate_nearby_mobs(
-    m: &Mob,
-    w: &MobWorld,
-    random: &mut LevelRandom,
-    events: &mut Vec<MobEvent>,
-) {
-    if !m.alive() || m.silent || random.next_int_bound(2).unwrap_or(1) != 0 {
-        return;
-    }
-    let area = m.bounds().inflate(Vec3::new(20.0, 20.0, 20.0));
-    let maps = w.mob_maps;
-    let imitable = |id: &str| maps.parrot_imitation(id).is_some();
-    let mobs: Vec<_> = w
-        .others
-        .iter()
-        .filter(|s| s.alive && imitable(&s.kind.id) && s.bounds.intersects(area))
-        .collect();
-    if mobs.is_empty() {
-        return;
-    }
-    let mob = mobs[random.next_int_bound(mobs.len() as i32).unwrap_or(0) as usize];
-    if mob.silent {
-        return;
-    }
-    if let Some(sound) = maps
-        .parrot_imitation(&mob.kind.id)
-        .filter(|s| !s.is_empty())
-    {
-        let at = [m.position.x, m.position.y, m.position.z];
-        events.push(MobEvent::Sound(sound, at, 0.7, pitch(random)));
-    }
-}
 
 /// The sound a parrot on a player's shoulder makes (`ServerPlayer.
 /// playShoulderEntityAmbientSound` after its one-in-200 draw): the voice of a
@@ -171,14 +116,6 @@ pub fn shoulder_sound(
     Some((sound, 1.0, pitch(random))).filter(|s| !s.0.is_empty())
 }
 
-/// `Parrot.getAmbient`: now and then (outside peaceful) the voice of a random
-/// imitable mob instead of the parrot's own.
-pub fn ambient(m: &mut Mob, w: &MobWorld) -> &'static str {
-    if w.difficulty.effective > 0.0 && m.random.next_int_bound(1000).unwrap_or(1) == 0 {
-        return random_imitation(w.mob_maps, &mut m.random);
-    }
-    "entity.parrot.ambient"
-}
 
 /// `getAmbient`'s rare draw: a random imitable mob's sound, from vanilla's
 /// table or the pack's map (the parrot's own sound when the map is empty).
@@ -198,108 +135,11 @@ fn random_imitation(
     }
 }
 
-/// `Parrot(EntityType, Level)` with `createNavigation` and `registerGoals`:
-/// a `FlyingMoveControl(10, false)` that lets gravity back on when it has
-/// nowhere to go, and a `FlyingPathNavigation` that floats and opens no doors.
-pub fn register(m: &mut Mob) {
-    m.ai.mov.kind = MoveKind::Flying {
-        max_turn: 10.0,
-        hovers: false,
-    };
-    m.ai.nav.kind = NavKind::Flying;
-    m.ai.nav.can_open_doors = false;
-    m.ai.nav.can_float = true;
-    m.set_malus(PathType::FireInNeighbor, -1.0);
-    m.set_malus(PathType::Fire, -1.0);
-    m.set_malus(PathType::Cocoa, -1.0);
-    super::tame::register_parrot(m);
-}
 
-/// The wings of `Parrot.calculateFlapping`: `flapSpeed` rises in the air and
-/// falls on the ground or a shoulder, `flapping` restarts at 1 in the air and
-/// decays, and `flap` turns by it. A client runs it for the parrots it only
-/// displays.
-pub fn flap(m: &mut Mob) {
-    let grounded = m.on_ground || m.extra.mount.is_some();
-    let a = &mut m.anim;
-    a.flap_o = a.flap;
-    a.flap_speed_o = a.flap_speed;
-    a.flap_speed = (a.flap_speed + if grounded { -1.0 } else { 4.0 } * 0.3).clamp(0.0, 1.0);
-    if !m.on_ground && a.flapping < 1.0 {
-        a.flapping = 1.0;
-    }
-    a.flapping *= 0.9;
-    a.flap += a.flapping * 2.0;
-}
 
-/// `Parrot.calculateFlapping`, after the rest of `aiStep`: the wings, and a
-/// parrot falling through the air glides down at 0.6 of the speed.
-pub fn calculate_flapping(m: &mut Mob) {
-    flap(m);
-    if !m.on_ground && m.velocity.y < 0.0 {
-        m.velocity.y *= 0.6;
-    }
-}
 
-/// `Parrot.isFlapping` and `Parrot.onFlap`: a wing beat each half
-/// `flapSpeed` flown. The caller emits the movement game event on a flap.
-pub fn process_flapping(m: &mut Mob, events: &mut Vec<MobEvent>) -> bool {
-    if m.ai.steps.fly_dist > m.ai.steps.next_flap {
-        if !m.silent {
-            let at = [m.position.x, m.position.y, m.position.z];
-            events.push(MobEvent::Sound("entity.parrot.fly", at, 0.15, 1.0));
-        }
-        m.ai.steps.next_flap = m.ai.steps.fly_dist + m.anim.flap_speed / 2.0;
-        true
-    } else {
-        false
-    }
-}
 
-/// `Parrot.ParrotWanderGoal.getPosition`: out of water onto land; otherwise
-/// (all but one time in a thousand) the top of a tree nearby; failing both,
-/// `WaterAvoidingRandomFlyingGoal.getPosition`.
-pub fn wander_pos(m: &mut Mob, w: &MobWorld) -> Option<[f64; 3]> {
-    let mut pos = None;
-    if m.fluids.in_water {
-        pos = m.land_random_pos(w, 15, 15);
-    }
-    // WaterAvoidingRandomStrollGoal.probability.
-    if m.random.next_float() >= 0.001 {
-        pos = tree_pos(m, w);
-    }
-    pos.or_else(|| m.flying_stroll_pos(w))
-}
 
-/// `Parrot.ParrotWanderGoal.getTreePos`: within 3 blocks across and 6 up or
-/// down (x fastest, then y, then z, as `BlockPos.betweenClosed` walks), the
-/// first empty block with an empty one above over leaves or a log.
-fn tree_pos(m: &Mob, w: &MobWorld) -> Option<[f64; 3]> {
-    let (x, y, z) = (m.position.x, m.position.y, m.position.z);
-    let at = [x.floor() as i32, y.floor() as i32, z.floor() as i32];
-    let air = |p: [i32; 3]| {
-        matches!(
-            w.block_name(p[0], p[1], p[2]),
-            "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
-        )
-    };
-    for bz in (z - 3.0).floor() as i32..=(z + 3.0).floor() as i32 {
-        for by in (y - 6.0).floor() as i32..=(y + 6.0).floor() as i32 {
-            for bx in (x - 3.0).floor() as i32..=(x + 3.0).floor() as i32 {
-                let p = [bx, by, bz];
-                if p == at {
-                    continue;
-                }
-                let below = w.block_name(bx, by - 1, bz);
-                let tree = below.ends_with("_leaves") || w.has_tag("minecraft:logs", below);
-                if tree && air(p) && air([bx, by + 1, bz]) {
-                    return Some([f64::from(bx) + 0.5, f64::from(by), f64::from(bz) + 0.5]);
-                }
-            }
-        }
-    }
-    None
-}
 
 #[cfg(test)]
 mod tests {
@@ -308,13 +148,6 @@ mod tests {
     use horizon_core::random::LegacyRandom;
     use std::sync::Arc;
 
-    fn parrot() -> Mob {
-        let mut k = (*kind()).clone();
-        k.id = "minecraft:parrot".into();
-        k.species = Species::Parrot;
-        k.flags.omnidirectional = true;
-        Mob::new(1, Arc::new(k), Vec3::ZERO, 0.0)
-    }
 
     /// `Parrot()`: `FlyingMoveControl(this, 10, false)`, the path maluses,
     /// and `createNavigation`'s `FlyingPathNavigation` (no doors, floats).
@@ -337,34 +170,6 @@ mod tests {
         assert!(m.ai.goals.has("ParrotWander"));
     }
 
-    /// `Parrot.canBeABaby` is `false`, so a negative `Age` — a `/summon` with
-    /// `Age:-24000`, a save that carried one — leaves a parrot an adult:
-    /// `isBaby()` is `canBeABaby() && getAge() < 0`, and `getVoicePitch` is
-    /// `getPitch(random)`, the plain 1.0 ± 0.2 that an adult gets anyway. A
-    /// chicken with the same age is the control.
-    #[test]
-    fn a_parrot_with_a_negative_age_keeps_the_plain_voice_pitch() {
-        let mut parrot = parrot();
-        parrot.extra.age = -24_000;
-        assert!(!parrot.is_baby());
-        let mut voice = parrot.clone();
-        let pitches: Vec<f32> = (0..64).map(|_| voice.voice_pitch()).collect();
-        assert!(
-            pitches.iter().all(|p| (0.8..=1.2).contains(p)),
-            "{pitches:?}"
-        );
-        // It is not a constant: the two draws move it around 1.0.
-        assert!(pitches.iter().any(|&p| p != pitches[0]));
-        assert!((pitches.iter().sum::<f32>() / pitches.len() as f32 - 1.0).abs() < 0.1);
-
-        let mut k = (*kind()).clone();
-        k.id = "minecraft:chicken".into();
-        k.species = Species::Chicken;
-        let mut chicken = Mob::new(1, Arc::new(k), Vec3::ZERO, 0.0);
-        chicken.extra.age = -24_000;
-        let raised: Vec<f32> = (0..64).map(|_| chicken.voice_pitch()).collect();
-        assert!(raised.iter().all(|p| (1.3..=1.7).contains(p)), "{raised:?}");
-    }
 
     /// `Parrot.calculateFlapping`: in the air the wings beat and a fall is
     /// slowed to 0.6; on the ground or a shoulder they fold.

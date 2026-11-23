@@ -1,7 +1,6 @@
 //! The nameplate attributes carried by armor stands and mobs.
 use super::ArmorStand;
 use crate::items::ItemStack;
-use crate::mobs::Mob;
 
 /// The two synced attributes that control name tags and below-name lines.
 /// `None` means the server has not sent a sync for that attribute yet.
@@ -27,50 +26,6 @@ impl NameplateDistances {
     }
 }
 
-impl Mob {
-    /// Stores both distances, from a model's own live attributes.
-    pub fn set_nameplate(&mut self, distances: NameplateDistances) {
-        let attributes = self.extra.attributes.get_or_insert_with(Default::default);
-        attributes.name_tag_distance = distances.name_tag;
-        attributes.below_name_distance = distances.below_name;
-    }
-
-    /// Stores `NAME_TAG_DISTANCE` from a server attribute update.
-    pub fn set_name_tag_distance(&mut self, value: f64) {
-        self.extra
-            .attributes
-            .get_or_insert_with(Default::default)
-            .name_tag_distance = Some(value);
-    }
-
-    /// Stores `BELOW_NAME_DISTANCE` from a server attribute update.
-    pub fn set_below_name_distance(&mut self, value: f64) {
-        self.extra
-            .attributes
-            .get_or_insert_with(Default::default)
-            .below_name_distance = Some(value);
-    }
-
-    /// `LivingEntity.getAttributeValue(Attributes.NAME_TAG_DISTANCE)`.
-    pub fn name_tag_distance(&self) -> f64 {
-        name_tag_distance_of(
-            self.extra
-                .attributes
-                .as_ref()
-                .and_then(|attributes| attributes.name_tag_distance),
-        )
-    }
-
-    /// `LivingEntity.getAttributeValue(Attributes.BELOW_NAME_DISTANCE)`.
-    pub fn below_name_distance(&self) -> f64 {
-        below_name_distance_of(
-            self.extra
-                .attributes
-                .as_ref()
-                .and_then(|attributes| attributes.below_name_distance),
-        )
-    }
-}
 
 impl ArmorStand {
     /// `NameTagItem.interactLivingEntity`: a custom name handles the use;

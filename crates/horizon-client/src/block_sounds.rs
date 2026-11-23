@@ -1,7 +1,7 @@
 //! A block state's sound type as its parts answer (`IBlockExtension.getSoundType`): what the game
 //! reads to play a block's step, fall, place or break sound, or a sniffer's dig.
 use crate::blocks::{BlockFacts, Sounds};
-use crate::mobs::{Mob, MobWorld};
+use crate::mobs::{MobWorld};
 use horizon_core::position::BlockPos;
 use horizon_world::{native_load_context::LoopContext, registry::BlockStateId};
 use mod_api::{BlockSoundCause, BlockSoundType};
@@ -54,17 +54,4 @@ pub fn sound_type(
 }
 
 impl MobWorld<'_> {
-    /// The sound type of `state` at `pos` that the mob `m` steps or lands on (`cause`), as the
-    /// block's parts answer.
-    // TODO(phase 1 Mob): pas d'équivalent ECS
-    pub(crate) fn block_sound_type(
-        &self,
-        m: &Mob,
-        [x, y, z]: [i32; 3],
-        state: BlockStateId,
-        cause: BlockSoundCause,
-    ) -> BlockSoundType {
-        let (pos, entity) = (BlockPos::new(x, y, z), Some((m.id, m.kind.id.as_str())));
-        sound_type(self.loop_context, self.facts, pos, state, entity, cause)
-    }
 }

@@ -373,7 +373,6 @@ mod cart_push_tests {
 #[cfg(test)]
 mod hook_mutation_regressions {
     use super::*;
-    use horizon_client::mobs::Mob;
     use std::sync::{Arc, Mutex};
 
     struct MutateRider {

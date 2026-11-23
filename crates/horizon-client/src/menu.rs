@@ -3475,8 +3475,6 @@ pub(crate) mod tests {
         });
     }
 
-    #[path = "remainder_tests.rs"]
-    mod remainder;
 
     /// A test `Env` with no vanilla data: the anvil's and grindstone's own
     /// results don't matter where the mods answer.
@@ -5099,8 +5097,6 @@ pub(crate) mod tests {
         }
         assert_eq!(seen, [potion.clone(), potion]);
     }
-    #[path = "../dfa_tests.rs"]
-    mod dfa;
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@
 //! species' spawn predicate (`checkAnimalSpawnRules`, `checkMonsterSpawnRules`,
 //! water animals, bats...), and `finalizeSpawn` (variants, colours, babies,
 //! equipment).
-use super::{Mob, MobWorld, Species, farm::Climate};
+use super::{MobWorld, Species, farm::Climate};
 
 /// Biome facts finalizeSpawn and the spawn rules read.
 #[derive(Clone, Copy, Debug, Default)]
@@ -133,16 +133,6 @@ impl LocalDifficulty {
         mod_api::Difficulty::from(*self).special_multiplier()
     }
 }
-/// `Mob.populateDefaultEquipmentSlots`: sometimes a set of armour, from the
-/// head down, of one random material.
-/// A baby from `Animal.spawnChildFromBreeding`: `getBreedOffspring` creates
-/// it without `finalizeSpawn`, so it never ran `Mob.finalizeSpawn`. Undoes
-/// that part of finalizeSpawn: no `random_spawn_bonus`, right-handed.
-pub fn bred_offspring(m: &mut Mob) {
-    use super::finalize::{Attr, remove_modifier};
-    remove_modifier(m, Attr::FollowRange, "minecraft:random_spawn_bonus");
-    m.extra.left_handed = false;
-}
 /// VillagerType.byBiome
 pub fn villager_type(b: &BiomeFacts) -> u8 {
     if b.desert {
@@ -161,9 +151,6 @@ pub fn villager_type(b: &BiomeFacts) -> u8 {
         0
     }
 }
-#[cfg(test)]
-#[path = "spawn_group_variant_tests.rs"]
-mod spawn_group_variant_tests;
 #[cfg(test)]
 pub(in crate::mobs) mod tests {
     use super::*;
@@ -213,9 +200,6 @@ pub(in crate::mobs) mod tests {
         fn halloween(&self) -> bool {
             false
         }
-        fn create(&mut self, _: &str, _: crate::mobs::spawn_rules::Reason) -> Option<Mob> {
-            None
-        }
         fn spawn_data(&self) -> crate::mobs::finalize::SpawnData<'_> {
             crate::mobs::finalize::SpawnData {
                 registries: &self.registries,
@@ -225,66 +209,7 @@ pub(in crate::mobs) mod tests {
             }
         }
     }
-    pub(in crate::mobs) fn run_finalize(m: &mut Mob, difficulty: LocalDifficulty) {
-        run_finalize_in(m, difficulty, None);
-    }
-    /// [`run_finalize`] for a member of a pack: `group` is the `SpawnGroupData` the previous
-    /// member returned (`None` for the first), and the result is what this one returns.
-    pub(in crate::mobs) fn run_finalize_in(
-        m: &mut Mob,
-        difficulty: LocalDifficulty,
-        group: Option<crate::mobs::finalize::Group>,
-    ) -> Option<crate::mobs::finalize::Group> {
-        static LEVEL: std::sync::OnceLock<std::sync::Mutex<Level>> = std::sync::OnceLock::new();
-        let mut level = LEVEL
-            .get_or_init(|| {
-                let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../.local/horizon-client")
-                    .join(horizon_core::VANILLA_VERSION);
-                let defaults = horizon_world::item_defaults::read(&root).unwrap();
-                std::sync::Mutex::new(Level {
-                    registries: crate::mobs::finalize::SpawnRegistries::load(&root),
-                    enchantments: crate::enchant::Enchantments::load(&root, &defaults).unwrap(),
-                    items: crate::items::Items::tags_only(
-                        &root,
-                        &horizon_world::loot::PackOverlay::NONE,
-                        &defaults,
-                    )
-                    .unwrap(),
-                })
-            })
-            .lock()
-            .unwrap();
-        let mut random = m.random.clone();
-        let mut cx = crate::mobs::finalize::Ctx {
-            level: &mut *level,
-            random: &mut random,
-            difficulty,
-            created: Vec::new(),
-            jockey_rider: None,
-        };
-        cx.finalize(m, crate::mobs::spawn_rules::Reason::Natural, group)
-    }
 
-    fn spawn(types: &crate::mobs::MobTypes, kind: &str, id: u32) -> Mob {
-        spawn_with(types, kind, id, &LocalDifficulty::new(3, 0, 0, 1.0))
-    }
-    fn spawn_with(
-        types: &crate::mobs::MobTypes,
-        kind: &str,
-        id: u32,
-        difficulty: &LocalDifficulty,
-    ) -> Mob {
-        let kind = std::sync::Arc::new(types.types.get(kind).unwrap().clone());
-        let mut m = Mob::new(
-            id,
-            kind,
-            horizon_core::geometry::Vec3::new(0.5, 64.0, 0.5),
-            0.0,
-        );
-        run_finalize(&mut m, *difficulty);
-        m
-    }
     /// The four effects `Spider.SpiderEffectsGroupData.setRandomEffect` picks.
     const SPIDER_EFFECTS: [&str; 4] = [
         "minecraft:speed",
@@ -392,26 +317,6 @@ pub(in crate::mobs) mod tests {
             Attr::FollowRange,
             "minecraft:random_spawn_bonus"
         ));
-    }
-    /// #11651: unfinalized spawns (EntityType.create) skip finalizeSpawn's rolls.
-    #[test]
-    fn unfinalized_spawns_skip_finalize_rolls() {
-        let Some(types) = types() else { return };
-        let kind = std::sync::Arc::new(types.types.get("minecraft:zombie").unwrap().clone());
-        let m = Mob::new(
-            1,
-            kind,
-            horizon_core::geometry::Vec3::new(0.5, 64.0, 0.5),
-            0.0,
-        );
-        assert!(!has_modifier(
-            &m,
-            Attr::FollowRange,
-            "minecraft:random_spawn_bonus"
-        ));
-        assert!(!m.extra.left_handed);
-        assert!(m.equipment_stacks()[5].is_none());
-        assert!(m.equipment_stacks()[0].is_none());
     }
     /// `Zombie` / `AbstractSkeleton` halloween garb: 25% of empty heads, never
     /// on other mobs, and not when it is not Halloween.

@@ -5,7 +5,7 @@ use horizon_client::{
     mobs::ai::SwingAnimation,
     items::ItemStack,
     mobs::{
-        Mob, Species,
+        Species,
         equip::{self, Slot},
         finalize::{
             OFFHAND, SLOT_NAMES, item_stack, set_drop_chance, set_item_stack,
@@ -32,11 +32,6 @@ pub fn item_blocks_attacks<L: PiglinLevel + ?Sized>(l: &L, item: &str) -> bool {
         .get(item)
         .is_some_and(|i| i.blocks_attacks.is_some())
 }
-/// `PiglinAi.isLovedItem` or a preferred weapon (`Piglin.canReplaceCurrentItem`).
-pub fn piglin_wanted<L: PiglinLevel + ?Sized>(l: &L, m: &Mob, item: &str) -> bool {
-    l.piglin_loved(item)
-        || !m.is_baby() && l.item_in_tag("minecraft:piglin_preferred_weapons", item)
-}
 /// The `SLOT_NAMES` index `getEquipmentSlotForItem` picks: the
 /// `equippable` slot (armour, a shield's off hand), else the main hand.
 pub fn piglin_slot<L: PiglinLevel + ?Sized>(l: &L, item: &str) -> usize {
@@ -48,80 +43,8 @@ pub fn piglin_slot<L: PiglinLevel + ?Sized>(l: &L, item: &str) -> usize {
         .unwrap_or("mainhand");
     SLOT_NAMES.iter().position(|n| *n == slot).unwrap_or(0)
 }
-/// `Piglin.canReplaceCurrentItem`: an empty slot takes anything, a
-/// `PREVENT_ARMOR_CHANGE` piece stays, a wanted item replaces an unwanted
-/// one and never the other way round; when both or neither are wanted,
-/// `Mob.canReplaceCurrentItem` compares armour or weapons.
-pub fn piglin_can_replace<L: PiglinLevel + ?Sized>(
-    l: &L,
-    m: &Mob,
-    stack: &ItemStack,
-    slot: usize,
-) -> bool {
-    let Some(current) = item_stack(m, slot) else {
-        return true;
-    };
-    let new_wanted = l.piglin_wanted(m, &stack.item);
-    let current_wanted = l.piglin_wanted(m, &current.item);
-    let slot = [
-        Slot::MainHand,
-        Slot::OffHand,
-        Slot::Feet,
-        Slot::Legs,
-        Slot::Chest,
-        Slot::Head,
-    ]
-    .get(slot)
-    .copied()
-    .unwrap_or(Slot::MainHand);
-    let new = l.stack_facts(m, stack, slot);
-    let worn = l.stack_facts(m, &current, slot);
-    // `getPreferredWeaponType` is the preferred-weapons tag for adults.
-    let preferred = (!m.is_baby()).then(|| {
-        (
-            l.item_in_tag("minecraft:piglin_preferred_weapons", &stack.item),
-            l.item_in_tag("minecraft:piglin_preferred_weapons", &current.item),
-        )
-    });
-    piglin_replace(new_wanted, current_wanted, &new, &worn, slot, preferred)
-}
-/// `SimpleContainer.canAddItem` on the piglin's eight slots.
-pub fn piglin_can_add<L: PiglinLevel + ?Sized>(l: &L, m: &Mob, stack: &ItemStack) -> bool {
-    m.extra.inventory.len() < 8
-        || m.extra
-            .inventory
-            .iter()
-            .any(|s| s.same_item_same_components(stack) && s.count < l.piglin_max_stack(&s.item))
-}
 pub fn piglin_max_stack<L: PiglinLevel + ?Sized>(l: &L, item: &str) -> u32 {
     l.world_items().get(item).map_or(64, |i| i.max_stack)
-}
-/// `PiglinAi.wantsToPickup`: babies ignore their own item tag, but can
-/// pick up currency and other loved items just like adults.
-pub fn piglin_wants<L: PiglinLevel + ?Sized>(l: &L, m: &Mob, stack: &ItemStack) -> bool {
-    let item = &*stack.item;
-    if m.is_baby() && l.item_in_tag("minecraft:ignored_by_piglin_babies", item)
-        || l.item_in_tag("minecraft:piglin_repellents", item)
-    {
-        return false;
-    }
-    if m.extra.piglin.admire_disabled > 0 && m.ai.target.is_some() {
-        return false;
-    }
-    let holds_loved = m.extra.off_hand_id().is_some_and(|o| l.piglin_loved(o));
-    if l.piglin_currency(stack) {
-        return !holds_loved;
-    }
-    let space = l.piglin_can_add(m, stack);
-    if item == "minecraft:gold_nugget" {
-        space
-    } else if l.item_in_tag("minecraft:piglin_food", item) {
-        !has_eaten_recently(m) && space
-    } else if l.piglin_loved(item) {
-        !holds_loved && space
-    } else {
-        l.piglin_can_replace(m, stack, l.piglin_slot(item))
-    }
 }
 /// `Mob.equipItemIfPossible` for a piglin: put it in its slot when that
 /// slot takes it (an armour piece that cannot replace what is worn goes

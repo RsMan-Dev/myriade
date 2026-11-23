@@ -14,7 +14,7 @@ use bevy_ecs::{
 };
 #[allow(unused_imports)]
 use horizon_client_lib::mobs::{
-    Mob, MobWorld,
+    MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };

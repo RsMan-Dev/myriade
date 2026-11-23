@@ -16,12 +16,6 @@ use horizon_core::{
 
 mod deflection;
 
-/// A new projectile entity's own random: vanilla seeds every entity's random
-/// unpredictably, and a projectile's spread (and an arrow's base damage) come
-/// from it, never from the shooter's random.
-pub fn own_random(_shooter: &crate::mobs::Mob) -> horizon_core::random::EntityRandom {
-    horizon_core::random::EntityRandom::own(crate::random_source::entity())
-}
 
 /// A projectile's `Entity.random`. Two projectiles are equal whatever their
 /// randoms, as with `ArrowState`: the state is not part of what they are.

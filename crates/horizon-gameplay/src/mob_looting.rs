@@ -8,7 +8,7 @@ use crate::{item_areas::ItemAreas, mob_level::MobLevel};
 use horizon_client::{
     items::{ItemStack, Items},
     mobs::{
-        Mob, Species,
+        Species,
         equip::{self, Facts, ItemTags, Slot},
         finalize::{self, set_drop_chance, set_item_stack, stored_drop_chance},
     },
@@ -22,8 +22,6 @@ use horizon_core::{geometry::Vec3, random::RandomSource};
 pub trait LootingLevel: MobLevel {
     /// `Mob.canReplaceCurrentItem` ([`can_replace`]).
     fn can_replace(&self, index: usize, stack: &ItemStack, slot: Slot) -> bool;
-    /// `Mob.getApproximateAttributeWith` ([`attributes`]).
-    fn attributes(&self, m: &Mob, stack: &ItemStack, slot: Slot) -> (f64, f64, f64);
 }
 
 /// `Mob.aiStep`'s looting block, once per mob per tick.
@@ -190,45 +188,4 @@ pub fn can_replace<L: MobLevel + ?Sized>(
     equip::can_replace_current_item(&new, Some(&worn), slot, preferred)
 }
 
-/// The numbers `Mob.compareArmor` and `compareWeapons` read off `stack`
-/// in `slot` for the mob `m`.
-pub fn stack_facts<L: LootingLevel + ?Sized>(
-    l: &L,
-    stations: &StationData,
-    m: &Mob,
-    stack: &ItemStack,
-    slot: Slot,
-) -> Facts {
-    let (armor, toughness, attack) = l.attributes(m, stack, slot);
-    Facts {
-        armor,
-        armor_toughness: toughness,
-        attack_damage: attack,
-        enchantments: stack.enchantments().len(),
-        damage: stack.damage as i32,
-        custom_name: stack.custom_name().is_some(),
-        prevents_armor_change: stations.enchantments.prevents_armor_change(stack),
-    }
-}
 
-/// `Mob.getApproximateAttributeWith` for `stack` in `slot`: each
-/// attribute starts from the mob's own value. (armour, toughness, damage)
-pub fn attributes(items: &Items, m: &Mob, stack: &ItemStack, slot: Slot) -> (f64, f64, f64) {
-    let modifiers = horizon_client::item_attributes::attribute_modifiers(stack, items);
-    let modifiers = &*modifiers;
-    (
-        equip::attribute_with(modifiers, "minecraft:armor", f64::from(m.kind.armor), slot),
-        equip::attribute_with(
-            modifiers,
-            "minecraft:armor_toughness",
-            f64::from(m.kind.armor_toughness),
-            slot,
-        ),
-        equip::attribute_with(
-            modifiers,
-            "minecraft:attack_damage",
-            f64::from(m.attrs.attack_damage),
-            slot,
-        ),
-    )
-}

@@ -7,15 +7,5 @@
 //! held so a resume does not count the pause. The path, move target, target,
 //! goals and memories are left as they are. Vanilla never pauses: an
 //! unpaused mob pays this one boolean check.
-use super::{Mob, MobWorld};
+use super::{MobWorld};
 
-/// Whether a mod paused `m`'s AI step, holding its vertical input and
-/// navigation clock for the paused tick when it did.
-pub(super) fn hold(m: &mut Mob, w: &MobWorld) -> bool {
-    if !m.ai.ai_paused {
-        return false;
-    }
-    m.ai.yya = 0.0;
-    m.ai.nav.hold_timeout_clock(w.game_time);
-    true
-}

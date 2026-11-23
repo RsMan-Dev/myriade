@@ -88,14 +88,6 @@ trait DigestParts {
     }
 }
 
-impl DigestParts for horizon_client::mobs::Mob {
-    fn health_bits(&self) -> Option<u64> {
-        Some(u64::from(self.health.to_bits()))
-    }
-    fn own_random(&self) -> Option<&LegacyRandom> {
-        Some(&self.random)
-    }
-}
 impl DigestParts for horizon_client::entities::ItemEntity {
     fn health_bits(&self) -> Option<u64> {
         Some(self.health as u64)

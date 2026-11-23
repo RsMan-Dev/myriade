@@ -7,7 +7,7 @@ use crate::{
     entity_nbt,
     items::Items,
     mobs::{
-        Mob, MobType, MobTypes,
+        MobType, MobTypes,
         finalize::{self, Ctx, FinalizeLevel, Group, SpawnRegistries},
         spawn_rules::Reason,
         spawning::{LocalDifficulty, MOON_BRIGHTNESS},
@@ -164,15 +164,6 @@ impl FinalizeLevel for Level<'_> {
     fn halloween(&self) -> bool {
         finalize::is_halloween()
     }
-    // TODO(phase 1 Mob): pipeline finalize typé Mob, à brancher sur EcsLevel::spawn_finalized
-    fn create(&mut self, kind: &str, _: Reason) -> Option<Mob> {
-        if self.difficulty == 0 && !finalize::allowed_in_peaceful(kind) {
-            return None;
-        }
-        let t = self.data.types.get(kind)?.clone();
-        self.next_id += 1;
-        Some(Mob::new(self.next_id, t, Vec3::ZERO, 0.0))
-    }
     fn spawn_data(&self) -> finalize::SpawnData<'_> {
         finalize::SpawnData {
             registries: &self.data.registries,
@@ -183,60 +174,7 @@ impl FinalizeLevel for Level<'_> {
     }
 }
 
-fn run<R: RandomSource>(
-    level: &mut Level<'_>,
-    random: &mut R,
-    difficulty: LocalDifficulty,
-    m: &mut Mob,
-    reason: Reason,
-    group: &mut Option<Group>,
-) -> Vec<Mob> {
-    let mut cx = Ctx {
-        level,
-        random,
-        difficulty,
-        created: Vec::new(),
-        jockey_rider: None,
-    };
-    *group = cx.finalize(m, reason, group.take());
-    if let Some(rider) = cx.jockey_rider {
-        debug_assert_eq!(rider.id, m.id);
-        *m = rider;
-    }
-    cx.created
-}
 
-/// The saved compound of mob `i` with the mobs riding it under `Passengers`.
-fn tree(mobs: &[(Mob, Option<Tag>)], i: usize, dimension: &str) -> Compound {
-    let (m, raw) = &mobs[i];
-    // No block registry here: a carried block stays as the template had it.
-    let saved = entity_nbt::mob_to_nbt(m, [0; 4], raw.as_ref(), None, |_| None);
-    let Tag::Compound(mut c) = saved else {
-        return Compound::new();
-    };
-    c.remove(&"UUID".into());
-    // Keys in vanilla's templates that no entity reads: the chunk keeps the
-    // entity as its save writes it (ProtoChunk.addEntity), without them.
-    for key in [
-        "CatType",
-        "OwnerUUID",
-        "Riches",
-        "Willing",
-        "food_level",
-        "lastRestock",
-    ] {
-        c.remove(&key.into());
-    }
-    crate::mobs::brain::put_brain(&mut c, m, dimension);
-    let riders: Vec<Tag> = (0..mobs.len())
-        .filter(|&j| mobs[j].0.extra.mount == Some(m.id))
-        .map(|j| Tag::Compound(tree(mobs, j, dimension)))
-        .collect();
-    if !riders.is_empty() {
-        c.insert("Passengers".into(), Tag::List(riders));
-    }
-    c
-}
 
 impl StructureMobs for StructureMobFinalizer {
     fn finalize(
@@ -295,68 +233,6 @@ impl StructureMobFinalizer {
         let _ = fill_behind(&self.data, "Structure mobs", move || {
             load(&root, item_data.defaults())
         });
-    }
-    /// A mob chunk generation spawns (`spawnOriginalMobs`): a new one of
-    /// `kind` finalized as a structure mob is, as the chunk saves it; `group`
-    /// carries a pack's group data from one member to the next.
-    pub fn spawn_generated(
-        &self,
-        kind: &str,
-        position: Vec3,
-        yaw: f32,
-        biome: &str,
-        random: &mut dyn PieceRandom,
-        group: &mut Option<Group>,
-    ) -> Option<Compound> {
-        let data = self.data()?;
-        let m = Mob::new(1, data.types.get(kind)?.clone(), position, yaw);
-        let reason = Reason::ChunkGeneration;
-        self.finish(data, m, None, biome, &[], random, reason, group)
-    }
-    #[allow(clippy::too_many_arguments)]
-    fn finish(
-        &self,
-        data: &Data,
-        mut m: Mob,
-        raw: Option<Tag>,
-        biome: &str,
-        structures: &[String],
-        random: &mut dyn PieceRandom,
-        reason: Reason,
-        group: &mut Option<Group>,
-    ) -> Option<Compound> {
-        let base = self.difficulty.load(Ordering::Relaxed);
-        let day_time = self.day_time.load(Ordering::Relaxed);
-        // Release the publication lock before any finalize body runs.
-        let mob_maps = Arc::clone(&self.mob_maps.read().unwrap());
-        let mut level = Level {
-            data,
-            mob_maps: &mob_maps,
-            biome,
-            structures,
-            difficulty: base,
-            day_time,
-            next_id: 1,
-        };
-        let moon = MOON_BRIGHTNESS[level.moon_phase([0; 3])];
-        // WorldGenRegion.getCurrentDifficultyAt: no inhabited time.
-        let difficulty = LocalDifficulty::new(base, day_time, 0, moon);
-        let any = random.as_any();
-        let created = if let Some(r) = any.downcast_mut::<LegacyRandom>() {
-            run(&mut level, r, difficulty, &mut m, reason, group)
-        } else if let Some(r) = any.downcast_mut::<XoroshiroRandom>() {
-            run(&mut level, r, difficulty, &mut m, reason, group)
-        } else {
-            log::error!("Horizon: unknown region random, structure mobs are finalized when loaded");
-            return None;
-        };
-        let mut mobs = vec![(m, raw)];
-        mobs.extend(created.into_iter().map(|c| (c, None)));
-        let root = mobs
-            .iter()
-            .position(|(m, _)| m.extra.mount.is_none())
-            .unwrap_or(0);
-        Some(tree(&mobs, root, &self.dimension))
     }
 }
 

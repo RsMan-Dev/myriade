@@ -11,7 +11,6 @@
 use super::Game;
 use super::commands::Target;
 use horizon_client::effects::{EffectInstance, PlayerEffects};
-use horizon_client::mobs::Mob;
 use horizon_items::items::ItemStack;
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
 
@@ -30,20 +29,6 @@ pub(super) fn active_effect(e: &EffectInstance) -> ActiveEffect {
     })
 }
 
-/// A mob's stored effect as the API's: ambient and particle flags remain in their own lists.
-pub(super) fn mob_effect(m: &Mob, e: &horizon_client::mobs::StoredEffect) -> ActiveEffect {
-    ActiveEffect::from(mod_api::__private::built::ActiveEffect {
-        id: mod_api::__private::effect_key_by_index(
-            e.registry_index.expect("active effect registry index"),
-        )
-        .expect("effects resolved at load"),
-        duration: e.duration,
-        amplifier: e.amplifier,
-        ambient: m.extra.ambient_effects.contains(&e.id),
-        visible: !m.extra.hidden_effects.contains(&e.id),
-        show_icon: e.show_icon,
-    })
-}
 
 impl Game<'_> {
     /// Apply one loaded consumable effect without consuming the item.

@@ -5,7 +5,7 @@
 //! renderer extracts, as plain structs so the differential harness can set
 //! them directly; `from_mob` adapters fill them from what a `Mob` tracks.
 use super::{
-    Mob, Species,
+    Species,
     anim::{Poses, State, quadruped},
     keyframes::{Animation, AnimationState},
 };
@@ -59,13 +59,6 @@ pub struct Goat {
     pub ramming_x_head_rot: f32,
 }
 impl Goat {
-    pub fn from_mob(m: &Mob) -> Self {
-        Self {
-            left_horn: !m.extra.lost_horns[0],
-            right_horn: !m.extra.lost_horns[1],
-            ramming_x_head_rot: super::goat::ramming_x_head_rot(m),
-        }
-    }
 }
 /// `GoatModel` / `BabyGoatModel.setupAnim`.
 pub fn goat(p: &mut Poses, s: &State, g: &Goat) {
@@ -953,104 +946,5 @@ pub fn fox(p: &mut Poses, s: &State, f: &Fox, a: &Animations) {
     }
 }
 
-// ---- adapters ---------------------------------------------------------------
-/// Dispatch for the species ported here; `false` when `m` is not one of them.
-pub fn anim(m: &Mob, s: &State, p: &mut Poses, a: &Animations) -> bool {
-    let st = &m.anim.states;
-    match m.species() {
-        Species::Goat => goat(p, s, &Goat::from_mob(m)),
-        Species::PolarBear => polar_bear(p, s, super::polar_bear::standing_scale(m, s.partial)),
-        Species::Panda => panda(p, s, &super::panda::pose(m, s.partial)),
-        Species::Llama | Species::TraderLlama => {
-            llama(p, s, m.extra.chested && !s.baby);
-        }
-        Species::Turtle => turtle(
-            p,
-            s,
-            &Turtle {
-                on_land: !m.fluids.in_water && m.on_ground,
-                laying_egg: m.extra.flag2,
-                has_egg: m.extra.flag,
-            },
-        ),
-        Species::Strider => strider(p, s, m.rider.is_some()),
-        Species::SnowGolem => snow_golem(p, s),
-        Species::Silverfish => silverfish(p, s),
-        Species::Endermite => endermite(p, s),
-        Species::Parrot => {
-            let flap = m.anim.flap_o + (m.anim.flap - m.anim.flap_o) * s.partial;
-            let speed = m.anim.flap_speed_o + (m.anim.flap_speed - m.anim.flap_speed_o) * s.partial;
-            // `Parrot.isFlying` is `!onGround`, in water too.
-            let pose = if m.extra.party_jukebox.is_some() {
-                ParrotPose::Party
-            } else if m.extra.sitting_pose {
-                ParrotPose::Sitting
-            } else if !m.on_ground {
-                ParrotPose::Flying
-            } else {
-                ParrotPose::Standing
-            };
-            parrot(p, s, pose, (flap.msin() + 1.0) * speed);
-        }
-        Species::Bee => bee(
-            p,
-            s,
-            &Bee {
-                has_stinger: !super::bee::has_stung(m),
-                on_ground: m.on_ground && m.velocity.length_squared() < 1.0e-7,
-                // The anger end time is cleared the tick after it passes.
-                angry: super::bee::get(m).is_some_and(|b| b.anger_end > 0),
-                // Bee.getRollAmount(partialTick).
-                roll_amount: super::bee::get(m)
-                    .map_or(0.0, |b| b.roll_o + (b.roll - b.roll_o) * s.partial),
-            },
-        ),
-        Species::Bat => bat(p, s, m.extra.flag, &st[0], &st[1], a),
-        Species::Armadillo => armadillo(
-            p,
-            s,
-            &Armadillo {
-                hiding_in_shell: super::armadillo::hiding_in_shell(m),
-                roll_out: st[0],
-                roll_up: st[1],
-                peek: st[2],
-            },
-            a,
-        ),
-        Species::Axolotl => axolotl(p, s, &Axolotl::from_mob(m, s.partial), a),
-        Species::Frog => frog(
-            p,
-            s,
-            &Frog {
-                swimming: m.fluids.in_water,
-                jump: st[0],
-                croak: st[1],
-                tongue: st[2],
-                swim_idle: st[3],
-            },
-            a,
-        ),
-        Species::Rabbit => rabbit(p, s, &st[0], &st[1], a),
-        Species::Fox => fox(p, s, &super::fox::pose(m, s.partial), a),
-        _ => return false,
-    }
-    true
-}
 impl Axolotl {
-    pub fn from_mob(m: &Mob, partial: f32) -> Self {
-        let x = &m.extra.axolotl;
-        Self {
-            playing_dead: x.factor(0, partial),
-            in_water: x.factor(1, partial),
-            on_ground: x.factor(2, partial),
-            moving: x.factor(3, partial),
-            // Native baby model deliberately reads walkAnimationState, not its underwater counterpart.
-            walk: x.states[0],
-            swim: x.states[1],
-            idle_on_ground: x.states[3],
-            idle_underwater: x.states[4],
-            idle_underwater_on_ground: x.states[5],
-            play_dead: x.states[6],
-        }
-    }
 }

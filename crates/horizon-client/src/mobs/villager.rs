@@ -2,7 +2,7 @@
 //! food, gossip and the raid state. Their AI is the brain in
 //! `villager_brain`.
 use super::{
-    Mob, MobEvent, MobWorld, Species,
+    MobEvent, MobWorld, Species,
     anim::{Poses, State},
 };
 use crate::items::{ItemStack, Items};
@@ -94,28 +94,7 @@ pub fn profession_index(name: &str) -> Option<u8> {
     profession_table().find(name)
 }
 
-pub fn register(m: &mut Mob) {
-    if m.extra.villager_level == 0 {
-        m.extra.villager_level = 1;
-    }
-    // Villager's constructor: its brain does everything, it has no goals.
-    m.ai.nav.can_open_doors = true;
-    m.ai.nav.can_float = true;
-    m.set_required_path_length(48.0);
-}
 
-/// `LivingEntity.addParticlesAroundSelf`: five particles about the body.
-pub fn particles_around(m: &mut Mob, kind: &'static str, events: &mut Vec<MobEvent>) {
-    let (w, h) = (f64::from(m.width()), f64::from(m.height()));
-    for _ in 0..5 {
-        let at = [
-            m.position.x + w * (2.0 * m.random.next_double() - 1.0),
-            m.position.y + h * m.random.next_double() + 1.0,
-            m.position.z + w * (2.0 * m.random.next_double() - 1.0),
-        ];
-        events.push(MobEvent::Particles { kind, at, count: 0 });
-    }
-}
 /// The `villager_activity` / `baby_villager_activity` timeline.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Activity {
@@ -124,9 +103,6 @@ pub enum Activity {
     Play,
     Meet,
     Rest,
-}
-pub fn activity(m: &Mob, day_time: i64) -> Activity {
-    activity_at(m.is_baby(), day_time)
 }
 pub fn activity_at(baby: bool, day_time: i64) -> Activity {
     let t = day_time.rem_euclid(24000);
@@ -145,101 +121,6 @@ pub fn activity_at(baby: bool, day_time: i64) -> Activity {
         }
     }
 }
-pub fn sleeping(m: &Mob) -> bool {
-    matches!(m.species(), Species::Villager | Species::WanderingTrader) && m.extra.ints[1] != 0
-}
-/// `LivingEntity.startSleeping`: lie in the bed (`setPosToBed`), whose
-/// head becomes `occupied`.
-pub fn start_sleeping(m: &mut Mob, p: [i32; 3], w: &MobWorld, events: &mut Vec<MobEvent>) -> bool {
-    if w.prop(p[0], p[1], p[2], "occupied") == Some("true") {
-        return false;
-    }
-    m.extra.ints[1] = bed_facing_code(w.prop(p[0], p[1], p[2], "facing"));
-    m.nav_stop();
-    let e = ext_mut(m);
-    e.last_slept = Some(w.game_time);
-    e.sleeping_pos = Some(p);
-    events.push(MobEvent::BedOccupied {
-        pos: p,
-        occupied: true,
-    });
-    m.velocity = horizon_core::geometry::Vec3::ZERO;
-    super::living::teleports::set_pos_with(
-        m,
-        crate::bed_geometry::pos_to_bed(p, 0.5625),
-        w.section_writer.clone(),
-    );
-    true
-}
-/// `LivingEntity.baseTick`: first-tick `setPosToBed` for a loaded sleeper.
-/// Reuse normal sleep positioning without its motion, memory or bed events.
-pub(super) fn refresh_sleeping_position(m: &mut Mob, w: &MobWorld) {
-    if let Some(position) = sleeping_pos(m).and_then(|p| w.sleeping_position(p)) {
-        super::living::teleports::set_pos_with(m, position, w.section_writer.clone());
-    }
-}
-/// `LivingEntity.stopSleeping`: the bed is no longer `occupied`, and the
-/// sleeper stands at `AbstractBedBlock.findStandUpPosition` for its yaw,
-/// else 0.1 above the block over the bed.
-pub fn stop_sleeping(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    m.extra.ints[1] = 0;
-    let bed = m
-        .extra
-        .villager
-        .as_deref_mut()
-        .and_then(|e| e.sleeping_pos.take());
-    let Some(p) = bed else { return };
-    if !w.block_name(p[0], p[1], p[2]).ends_with("_bed") {
-        return;
-    }
-    events.push(MobEvent::BedOccupied {
-        pos: p,
-        occupied: false,
-    });
-    let level = crate::stand_up::StandUpLevel {
-        world: w.world,
-        registry: w.registry,
-        facts: w.facts,
-        collision: w.collision,
-        block_tags: w.block_tags,
-        border: w.border,
-    };
-    let forward = crate::stand_up::bed_forward(w.prop(p[0], p[1], p[2], "facing"));
-    let stand = level
-        .bed_stand_up(crate::stand_up::StandUpType::VILLAGER, p, forward, m.yaw)
-        .unwrap_or_else(|| crate::stand_up::stand_up_fallback(p));
-    set_wake_pose(m, p, stand, w.section_writer.clone());
-}
-/// Rotation part of `LivingEntity.stopSleeping`, after choosing where to stand.
-fn set_wake_pose(
-    m: &mut Mob,
-    bed: [i32; 3],
-    stand: horizon_core::geometry::Vec3,
-    observer: Option<super::living::section_writes::Observer>,
-) {
-    use horizon_core::geometry::{Vec3, trig};
-    let d = Vec3::new(
-        f64::from(bed[0]) + 0.5,
-        f64::from(bed[1]),
-        f64::from(bed[2]) + 0.5,
-    )
-    .subtract(stand)
-    .normalize();
-    let mut yaw = (trig::atan2(d.z, d.x) * f64::from(trig::RAD_TO_DEG) - 90.0) % 360.0;
-    if yaw >= 180.0 {
-        yaw -= 360.0;
-    }
-    if yaw < -180.0 {
-        yaw += 360.0;
-    }
-    super::living::teleports::set_pos_with(m, stand, observer);
-    m.yaw = yaw as f32;
-    m.head_pitch = 0.0;
-}
-/// `LivingEntity.getSleepingPos`: the bed head a sleeper lies in.
-pub fn sleeping_pos(m: &Mob) -> Option<[i32; 3]> {
-    ext(m).and_then(|e| e.sleeping_pos).filter(|_| sleeping(m))
-}
 /// `LivingEntityRenderer.sleepDirectionToRotation` and the bed's direction
 /// (the body is shifted back from the pillow by the standing eye height).
 /// A bed's `facing` as `sleep_pose` keeps it in `ints[1]`.
@@ -250,79 +131,6 @@ pub fn bed_facing_code(facing: Option<&str>) -> i32 {
         Some("west") => 3,
         _ => 4,
     }
-}
-/// `LivingEntity.getBedOrientation`: the way the bed it sleeps in faces, as `sleep_pose` keeps it.
-pub fn bed_orientation(m: &Mob) -> Option<mod_api::Direction> {
-    Some(match m.extra.ints[1] {
-        1 => mod_api::Direction::North,
-        2 => mod_api::Direction::South,
-        3 => mod_api::Direction::West,
-        4 => mod_api::Direction::East,
-        _ => return None,
-    })
-}
-pub fn sleep_pose(m: &Mob) -> Option<(f32, [f32; 2])> {
-    Some(match m.extra.ints[1] {
-        1 => (270.0, [0.0, -1.0]),
-        2 => (90.0, [0.0, 1.0]),
-        3 => (0.0, [-1.0, 0.0]),
-        4 => (180.0, [1.0, 0.0]),
-        _ => return None,
-    })
-}
-/// `Villager.tick` after `super.tick()`, with or without AI: the unhappy
-/// counter counts down and the gossip decays once a day.
-pub fn tick(m: &mut Mob, now: i64) {
-    if m.extra.ints[0] > 0 {
-        m.extra.ints[0] -= 1;
-    }
-    ext_mut(m).maybe_decay(now);
-}
-/// A hurt sleeper wakes up (`LivingEntity.hurtServer`; the `checkBedExists`
-/// wake runs earlier in `LivingEntity.tick`, for AI-less mobs too), and lies
-/// the way its bed faces (`getBedOrientation`). The brain does the rest.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    if sleeping(m) {
-        let bed = sleeping_pos(m).filter(|p| w.block_name(p[0], p[1], p[2]).ends_with("_bed"));
-        if let Some(p) = bed {
-            m.extra.ints[1] = bed_facing_code(w.prop(p[0], p[1], p[2], "facing"));
-        }
-        if m.hurt_time > 0 {
-            stop_sleeping(m, w, events);
-            super::villager_brain::woken(m, w.game_time);
-        }
-    }
-}
-/// `Villager.setUnhappy`: shake the head for two seconds and say no.
-pub fn set_unhappy(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    m.extra.ints[0] = 40;
-    let sound = if m.species() == Species::WanderingTrader {
-        "entity.wandering_trader.no"
-    } else {
-        "entity.villager.no"
-    };
-    // Mob.makeSound: the sound volume and the voice pitch (babies ~1.5).
-    m.voice(sound, events);
-}
-/// `VillagerModel.setupAnim`.
-pub fn anim(m: &Mob, s: &State, p: &mut Poses) {
-    let awake = !sleeping(m);
-    p.yrot("head", if awake { s.y_rot.to_radians() } else { 0.0 });
-    p.xrot("head", if awake { s.x_rot.to_radians() } else { 0.0 });
-    if m.extra.ints[0] > 0 {
-        p.zrot("head", 0.3 * (0.45 * s.age).msin());
-        p.xrot("head", 0.4);
-    } else {
-        p.zrot("head", 0.0);
-    }
-    let leg = (s.pos * 0.6662).mcos() * 1.4 * s.speed * 0.5;
-    p.xrot("right_leg", leg);
-    p.xrot(
-        "left_leg",
-        (s.pos * 0.6662 + PI).mcos() * 1.4 * s.speed * 0.5,
-    );
-    p.yrot("right_leg", 0.0);
-    p.yrot("left_leg", 0.0);
 }
 
 // ---- Raids: the raid activities and the gift for a hero.
@@ -384,51 +192,6 @@ pub struct Ext {
     pub lobotomized: Option<bool>,
 }
 pub mod lobotomy;
-pub fn ext(m: &Mob) -> Option<&Ext> {
-    m.extra.villager.as_deref()
-}
-pub fn ext_mut(m: &mut Mob) -> &mut Ext {
-    m.extra.villager.get_or_insert_with(Box::default)
-}
-/// The raid where the villager stands (`RAID_NONE` ... `RAID_LOSS`).
-pub fn raid_status(m: &Mob) -> u8 {
-    ext(m).map_or(RAID_NONE, |e| e.raid)
-}
-/// `ServerLevel.getRaidAt(blockPosition)` is a raid.
-pub fn raid_nearby(m: &Mob) -> bool {
-    ext(m).is_some_and(|e| e.raid != RAID_NONE)
-}
-/// `ResetRaidStatus`: no raid, a stopped one or a lost one.
-pub fn raid_over_or_lost(m: &Mob) -> bool {
-    matches!(raid_status(m), RAID_NONE | RAID_LOSS)
-}
-/// `SetRaidStatus`: `Some(true)` while a wave is on
-/// (`hasFirstWaveSpawned && !isBetweenWaves`), `Some(false)` otherwise.
-pub fn raid_state(m: &Mob) -> Option<bool> {
-    let e = ext(m)?;
-    (e.raid != RAID_NONE).then_some(e.raid_wave)
-}
-/// `Villager.getVillagerXp`.
-pub fn xp(m: &Mob) -> i32 {
-    m.extra.trade.as_ref().map_or(0, |t| t.xp)
-}
-/// `Villager.setVillagerData(withProfession)`: a new profession forgets the
-/// offers (`offers = null`), so the next `getOffers` rolls the new
-/// profession's trades.
-/// An index outside the owning load is refused.
-pub fn set_profession(m: &mut Mob, table: &ResolvedProfessions, index: usize) -> bool {
-    let Some(state) = table.state(index) else {
-        return false;
-    };
-    if m.extra.profession != state {
-        m.extra.profession = state;
-        if let Some(trade) = m.extra.trade.as_mut() {
-            trade.offers.clear();
-            trade.unset = true;
-        }
-    }
-    true
-}
 
 /// `VillagerProfession.workSound`.
 pub fn work_sound(index: u8) -> Option<&'static str> {
@@ -475,23 +238,6 @@ pub fn ripe_crop(w: &MobWorld, p: [i32; 3]) -> bool {
         .is_some_and(|age| age >= max)
 }
 
-/// The gift loot table of a villager (`GiveGiftToHero.getLootTableToThrow`),
-/// from `neoforge:raid_hero_gifts` where a pack gives it.
-pub fn gift_table(m: &Mob, maps: &crate::neoforge_mob_maps::NeoForgeMobMaps) -> String {
-    if m.is_baby() {
-        return "minecraft:gameplay/hero_of_the_village/baby_gift".into();
-    }
-    let profession = profession(m.extra.profession.index().unwrap_or(0))
-        .id
-        .as_str();
-    maps.hero_gift(&m.extra.profession.id()).unwrap_or_else(|| {
-        let name = match profession {
-            "none" | "nitwit" => "unemployed",
-            other => other,
-        };
-        format!("minecraft:gameplay/hero_of_the_village/{name}_gift")
-    })
-}
 // ---- Gossip, food, breeding and golems.
 
 /// `VillagerFood` nutrition (`DataComponents.VILLAGER_FOOD`).
@@ -511,19 +257,6 @@ pub fn farmer_items() -> &'static [&'static str] {
         "minecraft:beetroot_seeds",
         "minecraft:bone_meal",
     ]
-}
-/// A villager's `requestedItems` by profession.
-pub fn requested_items<'a>(m: &Mob, table: &'a ResolvedProfessions) -> &'a [String] {
-    table
-        .state_index(&m.extra.profession)
-        .and_then(|i| table.entry(i))
-        .map_or(&[], |p| p.requested.as_slice())
-}
-pub fn is_farmer(m: &Mob) -> bool {
-    profession(m.extra.profession.index().unwrap_or(0))
-        .id
-        .as_str()
-        == "farmer"
 }
 /// `SimpleContainer(8)`: stacks the villager carries.
 const INVENTORY_SLOTS: usize = 8;
@@ -556,20 +289,6 @@ pub(crate) fn add_to_container(
     (stack.count > 0).then_some(stack)
 }
 
-/// `SimpleContainer.fromItemList`: clear, then `addItem` each saved stack
-/// at the type's limit for it; what does not fit is dropped.
-pub(crate) fn load_container(
-    m: &Mob,
-    items: &[horizon_core::nbt::Tag],
-    slots: usize,
-) -> Vec<ItemStack> {
-    let mut inventory = Vec::new();
-    for stack in items.iter().filter_map(crate::save::item_from_nbt) {
-        let max = m.kind.inventory_stack_limit(&stack);
-        let _ = add_to_container(&mut inventory, stack, max, slots);
-    }
-    inventory
-}
 
 impl Ext {
     /// `countFoodPointsInInventory`, by the food values of `items`.
@@ -747,30 +466,6 @@ impl Seen {
         self.food_points < 12
     }
 }
-/// What other villagers see of `m`, its food counted by `items`.
-pub fn seen(m: &Mob, items: &Items) -> Seen {
-    let e = ext(m);
-    let (interaction_target, path_nodes, golem_detected, last_slept) =
-        super::villager_brain::seen_memories(m);
-    Seen {
-        invisible: m.is_invisible(),
-        crouching: m.extra.crouching,
-        armor: [
-            horizon_items::equipment::FEET,
-            horizon_items::equipment::LEGS,
-            horizon_items::equipment::CHEST,
-            horizon_items::equipment::HEAD,
-        ]
-        .map(|slot| m.extra.slot_stack(slot).map(|s| s.item.clone())),
-        gossips: e.map(|e| e.gossips.clone()).unwrap_or_default(),
-        last_gossip_time: e.map_or(0, |e| e.last_gossip_time),
-        food_points: e.map_or(0, |e| e.food_in_inventory(items)),
-        interaction_target,
-        path_nodes,
-        last_slept: last_slept.or(e.and_then(|e| e.last_slept)),
-        golem_detected,
-    }
-}
 /// What `TradeWithVillager.tick` hands over: stacks tossed from the first
 /// villager's hand (`from`, its eye height) toward the second (`to`), and
 /// whether the gossip happened (`spawnGolemIfNeeded` follows).
@@ -782,101 +477,6 @@ pub struct Meeting {
     pub gossiped: bool,
     /// How many gossips `GossipContainer.transferFrom` picked up.
     pub new_gossip: usize,
-}
-/// `TradeWithVillager.tick` for villagers `a` and `b` (indices into `mobs`):
-/// `Villager.gossip` (at most once in 1200 ticks for both), then surplus
-/// food and wanted wares taken out of `a`'s inventory, by the food values
-/// and stack sizes of `items`.
-pub fn meet(
-    mobs: &mut crate::join_seq::JoinList<Mob>,
-    a: usize,
-    b: usize,
-    now: i64,
-    items: &Items,
-    table: &ResolvedProfessions,
-) -> Meeting {
-    let max_stack = |item: &str| items.get(item).map_or(64, |i| i.max_stack);
-    let ready = ext(&mobs[a]).is_none_or(|e| e.can_gossip(now))
-        && ext(&mobs[b]).is_none_or(|e| e.can_gossip(now));
-    let mut new_gossip = 0;
-    if ready {
-        let source = ext(&mobs[b]).map(|e| e.gossips.clone()).unwrap_or_default();
-        let me = &mut mobs[a];
-        let mut random = me.random.clone();
-        let e = ext_mut(me);
-        new_gossip = e.gossips.transfer_from(&source, &mut random, 10);
-        e.last_gossip_time = now;
-        me.random = random;
-        ext_mut(&mut mobs[b]).last_gossip_time = now;
-    }
-    // Surplus food goes to a hungry neighbour (farmers hand it to anyone).
-    let farmer = is_farmer(&mobs[a]);
-    let wants_more = ext(&mobs[b]).is_none_or(|e| e.wants_more_food(items));
-    let excess = ext(&mobs[a]).is_some_and(|e| e.has_excess_food(items));
-    let mut thrown = Vec::new();
-    if excess
-        && (farmer || wants_more)
-        && let Some(s) =
-            ext_mut(&mut mobs[a]).take_half_stack(|s| food_points(items, &s.item) > 0, max_stack)
-    {
-        thrown.push(s);
-    }
-    // A farmer's wheat.
-    if farmer
-        && ext(&mobs[a]).is_some_and(|e| e.count_item("minecraft:wheat") > 32)
-        && let Some(s) =
-            ext_mut(&mut mobs[a]).take_half_stack(|s| &*s.item == "minecraft:wheat", max_stack)
-    {
-        thrown.push(s);
-    }
-    // Wares the neighbour's profession asks for and ours does not.
-    let theirs = requested_items(&mobs[b], table);
-    let mine = requested_items(&mobs[a], table);
-    let wanted: Vec<&str> = theirs
-        .iter()
-        .map(String::as_str)
-        .filter(|i| !mine.iter().any(|item| item == *i))
-        .collect();
-    if !wanted.is_empty()
-        && let Some(s) =
-            ext_mut(&mut mobs[a]).take_half_stack(|s| wanted.contains(&&*s.item), max_stack)
-    {
-        thrown.push(s);
-    }
-    Meeting {
-        thrown,
-        from: mobs[a].position,
-        eye: mobs[a].eye_y(),
-        to: mobs[b].position,
-        gossiped: ready,
-        new_gossip,
-    }
-}
-/// `Villager.spawnGolemIfNeeded` up to the spawn: villager `i` wants a golem
-/// and so do at least `needed` of the villagers whose boxes meet its own grown
-/// by 10 blocks. Returns all of those villagers: once the golem stands, they
-/// remember it ([`super::villager_brain::golem_detected`]).
-pub fn golem_summoners(mobs: &[Mob], i: usize, now: i64, needed: usize) -> Option<Vec<usize>> {
-    if !ext(&mobs[i]).is_some_and(|e| e.wants_golem(now)) {
-        return None;
-    }
-    let area = mobs[i]
-        .bounds()
-        .inflate(horizon_core::geometry::Vec3::new(10.0, 10.0, 10.0));
-    let near: Vec<usize> = mobs
-        .iter()
-        .enumerate()
-        .filter(|(_, m)| {
-            m.species() == Species::Villager && !m.removed && m.bounds().intersects(area)
-        })
-        .map(|(j, _)| j)
-        .collect();
-    let wanting = near
-        .iter()
-        .filter(|&&j| ext(&mobs[j]).is_some_and(|e| e.wants_golem(now)))
-        .take(5)
-        .count();
-    (wanting >= needed).then_some(near)
 }
 /// `SpawnUtil.Strategy.LEGACY_IRON_GOLEM`'s refused floors.
 fn golem_floor_ok(name: &str) -> bool {
@@ -974,252 +574,10 @@ pub fn summon_golem<L: super::spawn_rules::SpawnLevel, R: RandomSource, T>(
     }
     None
 }
-/// `Mob.finalizeSpawn` for a summoned iron golem, from the level's random:
-/// the follow range spawn bonus and left-handedness.
-pub fn finalize_summoned_golem(m: &mut Mob, random: &mut impl RandomSource) {
-    super::finalize::mob_spawn(m, random);
-}
-/// `Villager.canBreed`: enough food (by the values of `items`), awake and an
-/// adult.
-pub fn can_breed(m: &Mob, items: &Items) -> bool {
-    m.species() == Species::Villager
-        && m.extra.age == 0
-        && !sleeping(m)
-        && ext(m).map_or(0, |e| e.food_level + e.food_in_inventory(items)) >= 12
-}
-/// [`can_breed`] by the registry of `w`: a world without item data counts no
-/// food, so its villagers never breed.
-pub fn can_breed_in(m: &Mob, w: &MobWorld) -> bool {
-    w.items.is_some_and(|items| can_breed(m, items))
-}
-/// [`Ext::eat_and_digest`] by the registry of `w`, for a parent of
-/// `VillagerMakeLove`: breeding needs that registry ([`can_breed_in`]).
-pub fn eat_and_digest_in(m: &mut Mob, w: &MobWorld) {
-    if let Some(items) = w.items {
-        ext_mut(m).eat_and_digest(items);
-    }
-}
 
-/// The saved fields (`FoodLevel`, `Gossips`, `LastGossipDecay`, `Inventory`,
-/// `LivingEntity`'s `sleeping_pos` and the sleep and golem memories).
-pub fn write_nbt(m: &Mob, map: &mut horizon_core::nbt::Compound) {
-    use horizon_core::nbt::Tag;
-    if let Some(p) = sleeping_pos(m) {
-        map.insert("sleeping_pos".into(), Tag::IntArray(p.to_vec()));
-    } else {
-        // LivingEntity.addAdditionalSaveData omits an absent modeled position.
-        map.remove(&"sleeping_pos".into());
-    }
-    let Some(e) = ext(m) else { return };
-    map.insert(
-        "FoodLevel".into(),
-        Tag::Byte(e.food_level.clamp(-128, 127) as i8),
-    );
-    map.insert("Gossips".into(), e.gossips.to_nbt());
-    map.insert("LastGossipDecay".into(), Tag::Long(e.last_gossip_decay));
-    map.insert(
-        "Inventory".into(),
-        Tag::List(e.inventory.iter().map(crate::save::item_to_nbt).collect()),
-    );
-}
-/// The memories of `Brain.memories` the villager keeps besides positions.
-pub fn write_memories(m: &Mob, memories: &mut Vec<(&'static str, horizon_core::nbt::Tag)>) {
-    use super::villager_brain::{Memories, NEVER, Slot};
-    use horizon_core::nbt::Tag;
-    fn push<T>(
-        out: &mut Vec<(&'static str, Tag)>,
-        key: &'static str,
-        slot: &Slot<T>,
-        encode: impl FnOnce(&T) -> Tag,
-    ) {
-        if let Some(value) = slot.get() {
-            let mut fields = vec![("value", encode(value))];
-            if slot.ttl() != NEVER {
-                fields.push(("ttl", Tag::Long(slot.ttl())));
-            }
-            out.push((key, Tag::compound(fields)));
-        }
-    }
-    let Some(e) = ext(m) else { return };
-    let fallback = Memories::default();
-    let mm = e
-        .brain
-        .as_ref()
-        .map(|b| &b.mem)
-        .or(e.saved_memories.as_deref())
-        .unwrap_or(&fallback);
-    // The three established position fields are written by entity_nbt; replace
-    // them only when the live brain has a value (and therefore a possible TTL).
-    for (key, slot) in [
-        ("minecraft:home", &mm.home),
-        ("minecraft:job_site", &mm.job_site),
-        ("minecraft:meeting_point", &mm.meeting_point),
-        ("minecraft:potential_job_site", &mm.potential_job_site),
-    ] {
-        if slot.present() {
-            memories.retain(|(k, _)| *k != key);
-            push(memories, key, slot, |p| {
-                Tag::compound([
-                    ("dimension", Tag::String("minecraft:overworld".into())),
-                    ("pos", Tag::IntArray(p.to_vec())),
-                ])
-            });
-        }
-    }
-    push(
-        memories,
-        "minecraft:golem_detected_recently",
-        &mm.golem_detected_recently,
-        |v| Tag::Byte(i8::from(*v)),
-    );
-    if mm.last_slept.present() {
-        push(memories, "minecraft:last_slept", &mm.last_slept, |v| {
-            Tag::Long(*v)
-        });
-    } else if e.brain.is_none()
-        && e.saved_memories.is_none()
-        && let Some(t) = e.last_slept
-    {
-        memories.push((
-            "minecraft:last_slept",
-            Tag::compound([("value", Tag::Long(t))]),
-        ));
-    }
-    push(memories, "minecraft:last_woken", &mm.last_woken, |v| {
-        Tag::Long(*v)
-    });
-}
 
-pub fn read_nbt(m: &mut Mob, tag: &horizon_core::nbt::Tag) {
-    use horizon_core::nbt::Tag;
-    fn int(t: Option<&Tag>) -> Option<i64> {
-        match t {
-            Some(Tag::Int(v)) => Some(i64::from(*v)),
-            Some(Tag::Byte(v)) => Some(i64::from(*v)),
-            Some(Tag::Short(v)) => Some(i64::from(*v)),
-            Some(Tag::Long(v)) => Some(*v),
-            _ => None,
-        }
-    }
-    let memories = tag.get("Brain").and_then(|b| b.get("memories"));
-    let mut saved = super::villager_brain::Memories::default();
-    fn read<T>(
-        memories: Option<&Tag>,
-        key: &str,
-        slot: &mut super::villager_brain::Slot<T>,
-        decode: impl FnOnce(&Tag) -> Option<T>,
-    ) {
-        if let Some(entry) = memories.and_then(|m| m.get(key))
-            && let Some(value) = entry.get("value").and_then(decode)
-        {
-            // `ExpirableValue.codec`: a lenient optional `Codec.LONG`.
-            match int(entry.get("ttl")) {
-                Some(ttl) => slot.set_ttl(value, ttl),
-                None => slot.set(value),
-            }
-        }
-    }
-    for (key, slot) in [
-        ("minecraft:home", &mut saved.home),
-        ("minecraft:job_site", &mut saved.job_site),
-        ("minecraft:meeting_point", &mut saved.meeting_point),
-        (
-            "minecraft:potential_job_site",
-            &mut saved.potential_job_site,
-        ),
-    ] {
-        read(memories, key, slot, |v| match v.get("pos") {
-            Some(Tag::IntArray(p)) if p.len() == 3 => Some([p[0], p[1], p[2]]),
-            _ => None,
-        });
-    }
-    read(
-        memories,
-        "minecraft:golem_detected_recently",
-        &mut saved.golem_detected_recently,
-        |v| int(Some(v)).map(|v| v != 0),
-    );
-    read(
-        memories,
-        "minecraft:last_slept",
-        &mut saved.last_slept,
-        |v| int(Some(v)),
-    );
-    read(
-        memories,
-        "minecraft:last_woken",
-        &mut saved.last_woken,
-        |v| int(Some(v)),
-    );
-    let e = ext_mut(m);
-    // `getByteOr("FoodLevel", 0)`: any number, narrowed to a byte.
-    e.food_level = i32::from(int(tag.get("FoodLevel")).unwrap_or(0) as i8);
-    e.gossips = tag
-        .get("Gossips")
-        .map(crate::gossip::Gossips::from_nbt)
-        .unwrap_or_default();
-    e.last_gossip_decay = int(tag.get("LastGossipDecay")).unwrap_or(0);
-    e.last_slept = saved.last_slept.value();
-    e.saved_memories = Some(Box::new(saved));
-    // LivingEntity.readAdditionalSaveData: asleep in the bed again (the
-    // pose; `ai_step` turns it the way the bed faces, or wakes it when the
-    // bed is gone, as `baseTick`'s first tick does).
-    e.sleeping_pos = match tag.get("sleeping_pos") {
-        Some(Tag::IntArray(a)) if a.len() == 3 => Some([a[0], a[1], a[2]]),
-        _ => None,
-    };
-    let asleep = e.sleeping_pos.is_some();
-    // InventoryCarrier.readInventoryFromTag -> SimpleContainer.fromItemList.
-    if let Some(Tag::List(items)) = tag.get("Inventory") {
-        let inventory = load_container(m, items, INVENTORY_SLOTS);
-        ext_mut(m).inventory = inventory;
-    }
-    if asleep {
-        m.extra.ints[1] = bed_facing_code(None);
-    }
-}
 
-/// The villager's brain tick. While the parallel mob tick is on it draws from a random of its own, so
-/// that no other mob's turn is waited for (`parallel::villagers_own_random`); the level's random otherwise.
-/// The seed comes from the mob's id and the game time, not from a draw, so the villager's entity random
-/// (movement, looks, sounds) keeps vanilla's sequence.
-pub fn tick_brain(
-    m: &mut Mob,
-    w: &MobWorld,
-    level_random: &mut crate::health::DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    tick_brain_with(
-        crate::parallel::villagers_own_random(),
-        m,
-        w,
-        level_random,
-        events,
-    );
-}
 
-fn tick_brain_with(
-    own_random: bool,
-    m: &mut Mob,
-    w: &MobWorld,
-    level_random: &mut crate::health::DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    if own_random {
-        // The parallel tick's stand-in for the level random, as `mob_turn_random` is for a mob's turn.
-        let mut own = horizon_core::random::LevelRandom::for_level(
-            horizon_core::random::LegacyRandom::new(brain_seed(m.id, w.game_time)),
-        );
-        super::villager_brain::tick(
-            m,
-            w,
-            &mut level_random.reborrow_with_random(&mut own),
-            events,
-        );
-    } else {
-        super::villager_brain::tick(m, w, level_random, events);
-    }
-}
 
 /// A seed for one villager's brain tick: a splitmix64 mix of the mob's id and the game time.
 fn brain_seed(id: u32, game_time: i64) -> i64 {
@@ -1367,17 +725,6 @@ mod tests {
         assert_eq!(vec.len(), 8);
     }
 
-    fn memory_fixture() -> Mob {
-        let mut m = villager();
-        super::super::villager_brain::init(&mut m, 0, 0, 1);
-        let mm = &mut ext_mut(&mut m).brain.as_mut().unwrap().mem;
-        mm.golem_detected_recently.set_ttl(true, 42);
-        mm.last_slept.set_ttl(101, 17);
-        mm.last_woken.set(202);
-        mm.last_worked_at_poi.set_ttl(303, 7);
-        mm.potential_job_site.set_ttl([4, 5, 6], 9);
-        m
-    }
 
     #[test]
     fn villager_memory_nbt_shape() {
@@ -1481,96 +828,7 @@ mod tests {
         assert!(!mm.golem_detected_recently.present());
     }
 
-    /// On its own random, a villager's brain tick leaves the level random alone and takes no draw
-    /// from the villager's entity random that the level random's tick would not take.
-    #[test]
-    #[ignore = "daily"]
-    fn own_random_brain_tick_keeps_the_entity_random_sequence() {
-        use horizon_core::geometry::Vec3;
-        use horizon_core::random::LegacyRandom;
-        use std::sync::Arc;
-        let ran = crate::mobs::world::with_test_world(&[], |w, types| {
-            let make = || {
-                Mob::new(
-                    1,
-                    Arc::new(types.types["minecraft:villager"].clone()),
-                    Vec3::new(0.5, 64.0, 0.5),
-                    0.0,
-                )
-            };
-            let (mut shared, mut own) = (make(), make());
-            let (mut level_shared, mut level_own) = (
-                crate::health::TestLevel::new(9),
-                crate::health::TestLevel::new(9),
-            );
-            tick_brain_with(
-                false,
-                &mut shared,
-                w,
-                &mut level_shared.level(),
-                &mut Vec::new(),
-            );
-            tick_brain_with(true, &mut own, w, &mut level_own.level(), &mut Vec::new());
-            assert_eq!(
-                level_own.random().next_long(),
-                LegacyRandom::new(9).next_long(),
-                "the level random is not drawn from"
-            );
-            assert_eq!(own.random.next_long(), shared.random.next_long());
-        });
-        assert!(ran, "vanilla data is missing");
-    }
 
-    fn villager() -> Mob {
-        use crate::mobs::{Anim, Brain, Flags, MobType, Part, Species};
-        use std::sync::Arc;
-        let kind = Arc::new(MobType {
-            shadow: None,
-            id: "minecraft:villager".into(),
-            species: Species::Villager,
-            width: 0.6,
-            height: 1.95,
-            eye_height: 1.62,
-            category: "misc".into(),
-            max_health: 20.0,
-            speed: 0.5,
-            flying_speed: 0.02,
-            attack_damage: 0.0,
-            attack_knockback: 0.0,
-            follow_range: 48.0,
-            step_height: 0.6,
-            armor: 0.0,
-            armor_toughness: 0.0,
-            knockback_resistance: 0.0,
-            jump_strength: 0.42,
-            attributes: Arc::default(),
-            item_stack_limits: Default::default(),
-            attribute_bounds: Default::default(),
-            gravity: 0.08,
-            safe_fall_distance: 3.0,
-            fall_damage_multiplier: 1.0,
-            water_efficiency: 0.0,
-            water_slowdown: 0.8,
-            air_speed: 0.02,
-            baby_scale: 0.5,
-            head_rot_speed: 10.0,
-            max_head_x_rot: 40.0,
-            max_head_y_rot: 75.0,
-            ambient_interval: 80,
-            flags: Flags::default(),
-            model: Arc::new(Part::parse("root", &serde_json::json!({}))),
-            layers: Default::default(),
-            texture: String::new(),
-            brain: Brain::Passive,
-            anim: Anim::Villager,
-            sounds: [""; 3],
-            sound_overrides: Default::default(),
-            food: Arc::default(),
-            tempt: Arc::default(),
-            passenger_attachments: Vec::new(),
-        });
-        Mob::new(1, kind, horizon_core::geometry::Vec3::ZERO, 0.0)
-    }
     #[test]
     fn waking_faces_the_bed_and_resets_pitch_without_moving_the_chosen_position() {
         let mut m = villager();

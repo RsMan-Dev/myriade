@@ -14,7 +14,7 @@ use horizon_client::{
     brewing,
     effects::{EffectAction, EffectInstance, OmenTick, PlayerEffects},
     items::ItemStack,
-    mobs::{Damage, DamageKind, Mob, NamedDamage, Who},
+    mobs::{Damage, DamageKind, NamedDamage, Who},
     particles::{ParticleOptions, ParticleType},
     projectiles::{Projectile, ProjectileKind},
     text::Text,
@@ -1680,48 +1680,6 @@ impl Game<'_> {
 
 /// A mob's content mod effects tick in its own tick (`ai::tick_effects`).
 impl horizon_client::mobs::ModEffectTicks for Game<'_> {
-    // TODO(phase 1 Mob): signature `mob: &mut Mob` du trait ModEffectTicks (crates/horizon-client/src/mobs), à passer sur l'ECS
-    fn tick_mod_effect(
-        &self,
-        level: &mut DamageLevel<'_>,
-        effect: usize,
-        mob: &mut Mob,
-        tick_count: i32,
-        amplifier: i32,
-    ) -> bool {
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return true;
-        };
-        let holder = LivingRef::new(EntityRef::new(epoch, mob.id));
-        let Some(effect) = mod_api::__private::effect_key_by_index(effect) else {
-            return true;
-        };
-        let (keep, changes) = self.mod_effect_tick(
-            effect,
-            Some(mob.id as i32),
-            tick_count,
-            amplifier,
-            holder,
-            mob.health,
-            mob.attrs.max_health,
-            None,
-        );
-        for change in changes {
-            match change {
-                EffectTickChange::Heal(amount) => mob.heal(&self.loop_context, amount),
-                // An unregistered damage type hurts nothing.
-                EffectTickChange::Hurt(source, amount) => {
-                    let registry = &self.motion.health.damage;
-                    if registry.id(&source).is_some() {
-                        let kind = Self::damage_kind(registry, &source);
-                        mob.damage(level, amount, Damage::of(kind));
-                    }
-                }
-                _ => {}
-            }
-        }
-        keep
-    }
     fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
         if let Some(living) = self.effect_living_ref(Some(mob as i32))
             && let Some(effect) = mod_api::__private::effect_key_by_index(effect)

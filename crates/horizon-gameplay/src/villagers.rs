@@ -5,7 +5,7 @@ use crate::{item_areas::ItemAreas, mob_level::MobLevel, villager_level::Villager
 use horizon_client::{
     gossip::{self, GossipType},
     items::{ItemStack, Items},
-    mobs::{Mob, Species, spawning, villager, villager_brain},
+    mobs::{Species, spawning, villager, villager_brain},
 };
 use horizon_core::{geometry::Vec3, position::BlockPos};
 
@@ -157,34 +157,6 @@ pub fn villager_golem_check<L: VillagerLevel + ?Sized>(l: &mut L, id: u32, neede
     }
 }
 
-/// `SpawnUtil.trySpawnMob(IRON_GOLEM, ...)`: a golem near `start`, with
-/// the ambient sound `trySpawnMob` plays.
-pub fn try_spawn_iron_golem<L: VillagerLevel + ?Sized>(l: &mut L, start: [i32; 3]) -> bool {
-    let Some(kind) = l.mob_type("minecraft:iron_golem") else {
-        return false;
-    };
-    let id = l.parts().next_entity + 1;
-    let mut random = l.parts().world.random.clone();
-    let golem = villager::summon_golem(&l.mob_world(), start, &mut random, |random, at, yaw| {
-        let mut m = Mob::new(id, kind.clone(), at, yaw);
-        villager::finalize_summoned_golem(&mut m, random);
-        m
-    });
-    l.parts().world.random = random;
-    let Some(golem) = golem else {
-        return false;
-    };
-    l.set_next_entity(id);
-    let sound = golem.kind.sounds[0];
-    if !sound.is_empty() {
-        let at = golem.center();
-        l.play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
-    }
-    l.parts().mobs.push(golem);
-    let joined = l.mobs().len() - 1;
-    l.mob_joined(joined, false);
-    true
-}
 
 /// `VillagerMakeLove.tryToGiveBirth`: both eat, a free bed within 48
 /// blocks is taken for the child, who is a baby villager of one of
@@ -435,36 +407,6 @@ pub fn villager_reputation_tick<L: VillagerLevel + ?Sized>(l: &mut L) {
     }
 }
 
-/// `Villager.tellWitnessesThatIWasMurdered`: the villagers that saw a
-/// player kill one remember it as a major wrong.
-/// `killer` is the guest connection that last hurt it (None: the host).
-pub fn villager_murdered<L: VillagerLevel + ?Sized>(
-    l: &mut L,
-    victim: &Mob,
-    by_player: bool,
-    killer: Option<u32>,
-) {
-    if victim.species() != Species::Villager || !by_player {
-        return;
-    }
-    let Some(uuid) = l.player_uuid_of(killer) else {
-        return;
-    };
-    let snapshot: Vec<_> = l.mobs().iter().map(|m| m.seen(None, l.items())).collect();
-    let witnesses =
-        villager_brain::murder_witnesses(&mut victim.clone(), &l.mob_world_seen(&snapshot));
-    for id in witnesses {
-        let p = l.parts();
-        let Some(m) = p.mobs.iter_mut().find(|m| m.id == id) else {
-            continue;
-        };
-        villager::ext_mut(m).gossips.add(
-            uuid,
-            GossipType::MajorNegative,
-            gossip::REPUTATION_CHANGE_PER_EVENT,
-        );
-    }
-}
 
 /// Retain the accepted trade's actual player until the eligible mob AI
 /// phase, including across menu close. XP and rewards stay in the session.

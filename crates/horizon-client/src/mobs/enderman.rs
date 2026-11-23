@@ -2,7 +2,7 @@
 //! when hit by projectiles or water, and towards a distant target), freezing
 //! while looked at, and picking up / placing `enderman_holdable` blocks.
 use super::{
-    Damage, Mob, MobEvent, MobWorld, Species, Who,
+    Damage, MobEvent, MobWorld, Species, Who,
     anim::{Poses, State},
     goals::{
         Cx, Float, Goal, HurtByTarget, JUMP, LookAtPlayer, MOVE, MeleeAttack, NearestTarget,
@@ -16,63 +16,6 @@ use horizon_core::{
 };
 use horizon_world::native_load_context::LoopContext;
 
-pub fn register(m: &mut Mob) {
-    let g = &mut m.ai.goals;
-    g.add(0, Float);
-    g.add(1, FreezeWhenLookedAt);
-    g.add(2, MeleeAttack::new(1.0, false));
-    let mut stroll = Stroll::avoiding_water(1.0);
-    stroll.water_avoiding = Some(0.0);
-    g.add(7, stroll);
-    g.add(8, LookAtPlayer::new(8.0));
-    g.add(8, RandomLookAround::default());
-    g.add(10, LeaveBlock);
-    g.add(11, TakeBlock);
-    m.ai.targets.add(
-        1,
-        LookForPlayer {
-            pending: false,
-            aggro: 0,
-            teleport: 0,
-        },
-    );
-    m.ai.targets.add(2, HurtByTarget::new());
-    m.ai.targets.add(
-        3,
-        NearestTarget::species(&[Species::Endermite], true).reach(),
-    );
-    m.set_malus(super::path::PathType::Water, -1.0);
-}
-/// Enderman.isBeingStaredBy: the player's look within a cone of 0.025 / distance
-/// of the eyes, with line of sight, and no head item in #minecraft:gaze_disguise_equipment. Last,
-/// a mod may keep the enderman calm (`EnderManAngerEvent`).
-pub fn stared_at(m: &Mob, w: &MobWorld) -> bool {
-    let Some(p) = w.selected_player() else {
-        return false;
-    };
-    if !p.alive || super::ai::wears_gaze_disguise(p.head.as_deref(), w) {
-        return false;
-    }
-    let look = p.look;
-    let dir = [
-        m.position.x - p.position.x,
-        m.eye_y() - p.eye[1],
-        m.position.z - p.position.z,
-    ];
-    let dist = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
-    if dist < 1.0e-6 {
-        return false;
-    }
-    let dot = (look[0] * dir[0] + look[1] * dir[1] + look[2] * dir[2]) / dist;
-    dot > 1.0 - 0.025 / dist
-        && w.line_of_sight(
-            Vec3::new(p.eye[0], p.eye[1], p.eye[2]),
-            Vec3::new(m.position.x, m.eye_y(), m.position.z),
-        )
-        && !w
-            .mob_hooks
-            .is_some_and(|hooks| hooks.enderman_anger_suppressed(m.id, p))
-}
 /// An enderman or a shulker is about to teleport on its own
 /// (`EntityTeleportEvent.EnderEntity`). A mod may move `target` or cancel.
 #[inline(never)]
@@ -86,288 +29,6 @@ pub fn native_ender_entity_teleport(
 ) {
     crate::native_level_hooks::ender_entity_teleport(context, entity, kind, from, target, cancel);
 }
-/// `Enderman.teleport(x, y, z)`: never while riding something, then
-/// `LivingEntity.randomTeleport(x, y, z, true, #enderman_does_not_teleport_to)`:
-/// the first `#entities_can_teleport_to` block below the spot is the ground,
-/// and the enderman lands at the spot's own height less the blocks it went
-/// down (`checkPositionAndTeleport`), unless the ground or a block in its new
-/// box is one it does not teleport to, the box collides or holds a liquid.
-pub fn teleport_to(
-    m: &mut Mob,
-    w: &MobWorld,
-    x: f64,
-    y: f64,
-    z: f64,
-    events: &mut Vec<MobEvent>,
-) -> bool {
-    if m.extra.passenger {
-        return false;
-    }
-    // EntityTeleportEvent.EnderEntity: `Enderman.teleport` hands `randomTeleport`
-    // the raw target, so the event sees every try, grounded or not.
-    let (mut x, mut y, mut z) = (x, y, z);
-    if crate::native_level_hooks::has_mods() {
-        let mut target = [x, y, z];
-        let mut cancel = false;
-        native_ender_entity_teleport(
-            w.loop_context,
-            m.id,
-            &m.kind.id,
-            [m.position.x, m.position.y, m.position.z],
-            &mut target,
-            &mut cancel,
-        );
-        if cancel {
-            return false;
-        }
-        if target.iter().all(|v| v.is_finite()) {
-            [x, y, z] = target;
-        }
-    }
-    let old = m.position;
-    let old_block = [
-        m.position.x.floor() as i32,
-        m.position.y.floor() as i32,
-        m.position.z.floor() as i32,
-    ];
-    if !super::living::random_teleport(
-        m,
-        w,
-        Vec3::new(x, y, z),
-        Some("minecraft:enderman_does_not_teleport_to"),
-        events,
-    ) {
-        return false;
-    }
-    let (x, ny, z) = (m.position.x, m.position.y, m.position.z);
-    // Enderman.teleport: GameEvent.TELEPORT where it was, silent or not.
-    events.push(MobEvent::GameEvent {
-        event: "minecraft:teleport",
-        at: [old.x, old.y, old.z],
-        source: m.id,
-        state: horizon_world::registry::BlockStateId(0),
-    });
-    if !m.silent {
-        // Level event 2018: the portal trail, from the old block to the new
-        // one, packed as `BlockUtil.clampedPackDifferenceInPosition` does.
-        let new_block = [x.floor() as i32, ny.floor() as i32, z.floor() as i32];
-        let packed = |k: usize| ((new_block[k] - old_block[k]).clamp(-127, 127) + 127) & 255;
-        events.push(MobEvent::LevelEvent {
-            id: 2018,
-            pos: old_block,
-            data: packed(0) << 16 | packed(1) << 8 | packed(2),
-        });
-        // Both sounds are at the new feet: `xo` was moved by snapTo, and
-        // Entity.playSound plays at the position.
-        let at = [m.position.x, m.position.y, m.position.z];
-        events.push(MobEvent::Sound("entity.enderman.teleport", at, 1.0, 1.0));
-        events.push(MobEvent::Sound("entity.enderman.teleport", at, 1.0, 1.0));
-    }
-    true
-}
-pub fn teleport_random(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) -> bool {
-    if !m.alive() {
-        return false;
-    }
-    let x = m.position.x + (m.random.next_double() - 0.5) * 64.0;
-    let y = m.position.y + f64::from(m.random.next_int_bound(64).unwrap_or(32) - 32);
-    let z = m.position.z + (m.random.next_double() - 0.5) * 64.0;
-    teleport_to(m, w, x, y, z, events)
-}
-fn teleport_towards(
-    m: &mut Mob,
-    w: &MobWorld,
-    at: Vec3,
-    eye_y: f64,
-    events: &mut Vec<MobEvent>,
-) -> bool {
-    let mut d = [
-        m.position.x - at.x,
-        m.position.y + f64::from(m.height()) * 0.5 - eye_y,
-        m.position.z - at.z,
-    ];
-    let len = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt().max(1.0e-9);
-    d = d.map(|c| c / len);
-    let x = m.position.x + (m.random.next_double() - 0.5) * 8.0 - d[0] * 16.0;
-    let y = m.position.y + f64::from(m.random.next_int_bound(16).unwrap_or(8) - 8) - d[1] * 16.0;
-    let z = m.position.z + (m.random.next_double() - 0.5) * 8.0 - d[2] * 16.0;
-    teleport_to(m, w, x, y, z, events)
-}
-/// `Enderman.SPEED_MODIFIER_ATTACKING` is held in the movement attribute map.
-pub fn attacking_speed(m: &Mob) -> f64 {
-    m.extra
-        .attributes
-        .as_ref()
-        .and_then(|attributes| {
-            attributes
-                .transient
-                .iter()
-                .chain(attributes.modifiers.iter())
-                .find(|modifier| {
-                    modifier.attr == super::finalize::Attr::MovementSpeed
-                        && modifier.id == "minecraft:attacking"
-                })
-        })
-        .map_or(0.0, |modifier| modifier.amount)
-}
-/// `Enderman.playStareSound`: the client throttles the local sound to one
-/// every 400 entity ticks, including a silent attempt.
-pub fn stare_sound(m: &mut Mob) -> Option<[f64; 3]> {
-    if m.extra
-        .last_stare_sound
-        .is_some_and(|last| m.age < last.saturating_add(400))
-    {
-        return None;
-    }
-    m.extra.last_stare_sound = Some(m.age);
-    (!m.silent).then(|| [m.position.x, m.eye_y(), m.position.z])
-}
-/// Enderman.customServerAiStep: in daylight, flee by teleporting. The End has a
-/// fixed time, so `Level.isBrightOutside` is never true there.
-pub fn custom_server_ai_step(m: &mut Mob, cx: &mut Cx) {
-    // The goals just ran: what `setTarget` did there.
-    set_target_effects(m, cx.events);
-    if cx.w.daylight && !cx.w.dimension_type.has_fixed_time && m.age as i32 >= m.extra.counter + 600
-    {
-        let br = super::hostile::mob_brightness(m, cx.w);
-        let (x, y, z) = (
-            m.position.x.floor() as i32,
-            m.position.y.floor() as i32,
-            m.position.z.floor() as i32,
-        );
-        if br > 0.5 && cx.w.can_see_sky(x, y, z) && m.random.next_float() * 30.0 < (br - 0.4) * 2.0
-        {
-            m.set_ai_target(cx.w, None);
-            teleport_random(m, cx.w, cx.events);
-        }
-    }
-    set_target_effects(m, cx.events);
-}
-/// `Enderman.setTarget`'s side effects, once the target differs from the
-/// last call's: a target stamps `targetChangeTime` (`extra.counter`, which the
-/// daylight flee reads) and sets `DATA_CREEPY` (`extra.flag`, the open mouth);
-/// none zeroes the time and clears `DATA_CREEPY` and `DATA_STARED_AT`
-/// (`extra.flag2`). A client runs `onSyncedDataUpdated` value by value in id
-/// order, so it sees `DATA_CREEPY` change while `DATA_STARED_AT` still holds:
-/// an anger a stare started plays the stare sound, and so does its end.
-fn set_target_effects(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    let creepy = m.ai.target.is_some();
-    if creepy == m.extra.flag {
-        return;
-    }
-    m.extra.flag = creepy;
-    if m.extra.flag2 {
-        play_stare_sound(m, events);
-    }
-    if creepy {
-        m.extra.counter = m.age as i32;
-    } else {
-        m.extra.counter = 0;
-        m.extra.flag2 = false;
-    }
-}
-/// `Enderman.playStareSound`: at most once in 400 ticks (`lastStareSound`,
-/// kept in `scratch[0]` as its tick + 1, 0 for never), stamped even when the
-/// enderman is silent, which plays nothing; at the eyes.
-fn play_stare_sound(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    let now = m.age as i32;
-    let last = m.extra.scratch[0];
-    if last != 0 && now < last - 1 + 400 {
-        return;
-    }
-    m.extra.scratch[0] = now + 1;
-    if !m.silent {
-        events.push(MobEvent::Sound(
-            "entity.enderman.stare",
-            [m.position.x, m.eye_y(), m.position.z],
-            2.5,
-            1.0,
-        ));
-    }
-}
-/// Whether a hit teleports the enderman away instead of hurting it: any
-/// projectile, unless it rides something (`!isPassenger()`).
-pub fn dodges(m: &Mob, source: &Damage) -> bool {
-    source.is_projectile() && !m.extra.passenger
-}
-/// Enderman.hurtServer: projectiles miss (teleport away), others may teleport.
-pub fn on_damage(m: &mut Mob, source: &Damage) -> bool {
-    if dodges(m, source) {
-        // repeatedlyTryToTeleport is applied by the next AI step.
-        m.extra.counter2 = 64;
-        return false;
-    }
-    true
-}
-pub fn after_hurt(m: &mut Mob, source: &Damage) {
-    // A thrown potion's hit (`indirect_magic` with the potion as the direct
-    // entity, `Mob::damage_by`) and a projectile it dodges leave
-    // `Enderman.hurtServer` before the random chance:
-    // `repeatedlyTryToTeleport` replaces it.
-    if !dodges(m, source) && source.kind != super::DamageKind::IndirectMagic {
-        teleport_chance(m, source);
-    }
-}
-/// `Enderman.hurtServer`'s `!(source.getEntity() instanceof LivingEntity) &&
-/// random.nextInt(10) != 0`: a teleport after the hurt.
-pub fn teleport_chance(m: &mut Mob, source: &Damage) {
-    if source.attacker.is_none() && m.random.next_int_bound(10).unwrap_or(0) != 0 {
-        m.extra.counter2 = 1;
-    }
-}
-/// Enderman.aiStep: never jumps; the teleports a hurt left run; then
-/// `updatePersistentAnger(level, true)`: holding a target names it and keeps
-/// 20 to 39 seconds of anger running, which outlast a lost target (a daylight
-/// teleport, a reload).
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    m.ai.jumping = false;
-    run_pending_teleports(m, w, events);
-    super::tame::update_persistent_anger(m, w);
-}
-/// `EndermanLookForPlayerGoal.isAngerInducing`: a player staring at it, or one
-/// it is angry at (`NeutralMob.isAngryAt`).
-fn anger_inducing(m: &Mob, w: &MobWorld) -> bool {
-    stared_at(m, w) || super::tame::angry_at_player(m, w)
-}
-/// The teleports `hurtServer` asked for (`teleport()`, or
-/// `repeatedlyTryToTeleport`: up to 64 tries).
-pub fn run_pending_teleports(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    if m.extra.counter2 > 0 {
-        let tries = m.extra.counter2;
-        m.extra.counter2 = 0;
-        // repeatedlyTryToTeleport (64 tries) returns before any draw while riding;
-        // a single `teleport()` still draws its target first.
-        let tries = if tries > 1 && m.extra.passenger {
-            0
-        } else {
-            tries
-        };
-        for _ in 0..tries {
-            if teleport_random(m, w, events) {
-                break;
-            }
-        }
-    }
-}
-/// EndermanModel.setupAnim: half-speed clamped limbs, held-block arms, creepy head.
-/// Humanoid riding pose runs first (`isPassenger`); only xRot is halved/clamped after.
-pub fn anim(m: &Mob, s: &State, p: &mut Poses) {
-    super::anim::humanoid_pub(p, s, m);
-    for part in ["right_arm", "left_arm", "right_leg", "left_leg"] {
-        let x = p.get(part)[3] * 0.5;
-        p.xrot(part, x.clamp(-0.4, 0.4));
-    }
-    if m.extra.carried.is_some() {
-        p.xrot("right_arm", -0.5);
-        p.xrot("left_arm", -0.5);
-        p.zrot("right_arm", 0.05);
-        p.zrot("left_arm", -0.05);
-    }
-    if m.extra.flag {
-        p.get("head")[1] -= 5.0;
-        p.get("hat")[1] += 5.0;
-    }
-}
 /// EndermanFreezeWhenLookedAt
 #[derive(Clone, Debug)]
 struct FreezeWhenLookedAt;
@@ -375,24 +36,6 @@ impl Goal for FreezeWhenLookedAt {
     goal_clone!();
     fn flags(&self) -> u8 {
         JUMP | MOVE
-    }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if m.ai.target != Some(Who::Player) {
-            return false;
-        }
-        let Some(p) = cx.w.selected_player() else {
-            return false;
-        };
-        m.distance_sqr(p.position) <= 256.0 && stared_at(m, cx.w)
-    }
-    fn start(&mut self, m: &mut Mob, _: &mut Cx) {
-        m.nav_stop();
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        if let Some(p) = cx.w.selected_player() {
-            let at = [p.position.x, p.eye[1], p.position.z];
-            m.look_at(at);
-        }
     }
 }
 /// EndermanLookForPlayerGoal: anger after being stared at for 5 ticks,
@@ -408,76 +51,6 @@ impl Goal for LookForPlayer {
     fn flags(&self) -> u8 {
         TARGET
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        let Some(p) = cx.w.selected_player() else {
-            return false;
-        };
-        self.pending = p.alive
-            && !p.creative
-            && !p.spectator
-            && m.distance_sqr(p.position) <= m.attrs.follow_range.powi(2)
-            && anger_inducing(m, cx.w)
-            // startAggroTargetConditions is forCombat(): in sight (a stare is).
-            && m.sees(cx.w, Who::Player);
-        self.pending
-    }
-    fn start(&mut self, m: &mut Mob, _: &mut Cx) {
-        self.aggro = reduced(5);
-        self.teleport = 0;
-        // `Enderman.setBeingStaredAt` syncs the stare; the target timer starts
-        // only when a target is assigned.
-        m.extra.flag2 = true;
-    }
-    fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.pending = false;
-        m.set_ai_target(cx.w, None);
-    }
-    fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        let Some(p) = cx.w.selected_player().cloned() else {
-            return false;
-        };
-        if self.pending {
-            if !anger_inducing(m, cx.w) {
-                return false;
-            }
-            m.turn_to(p.eye, 10.0, 10.0);
-            return true;
-        }
-        // continueAggroTargetConditions: forCombat().ignoreLineOfSight(),
-        // which has no range: the target is kept however far it goes.
-        p.alive && !p.creative && !p.spectator && m.ai.target == Some(Who::Player)
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(p) = cx.w.selected_player().cloned() else {
-            return;
-        };
-        if self.pending {
-            self.aggro -= 1;
-            if self.aggro <= 0 {
-                self.pending = false;
-                m.set_ai_target(cx.w, Some(Who::Player));
-            }
-        } else if m.ai.target == Some(Who::Player) && !m.extra.passenger {
-            if stared_at(m, cx.w) {
-                if m.distance_sqr(p.position) < 16.0 {
-                    teleport_random(m, cx.w, cx.events);
-                }
-                self.teleport = 0;
-            } else {
-                let far = m.distance_sqr(p.position) > 256.0;
-                let t = self.teleport;
-                if far {
-                    self.teleport += 1;
-                }
-                if far
-                    && t >= reduced(30)
-                    && teleport_towards(m, cx.w, p.position, p.eye[1], cx.events)
-                {
-                    self.teleport = 0;
-                }
-            }
-        }
-    }
 }
 /// EndermanTakeBlockGoal
 #[derive(Clone, Debug)]
@@ -487,51 +60,6 @@ impl Goal for TakeBlock {
     fn flags(&self) -> u8 {
         0
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        // EndermanTakeBlockGoal.canUse: needs mobGriefing, checked before the draw.
-        m.extra.carried.is_none()
-            && cx.w.can_grief(m.id)
-            && m.random.next_int_bound(reduced(20)).unwrap_or(1) == 0
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let x = (m.position.x - 2.0 + m.random.next_double() * 4.0).floor() as i32;
-        let y = (m.position.y + m.random.next_double() * 3.0).floor() as i32;
-        let z = (m.position.z - 2.0 + m.random.next_double() * 4.0).floor() as i32;
-        let state = cx.w.world.block(x, y, z);
-        let name = cx.w.facts.get(state).name.to_string();
-        if !cx.w.has_tag("minecraft:enderman_holdable", &name) {
-            return;
-        }
-        // Reachable: the OUTLINE clip from the mob's column, at the block's
-        // height, hits this block first; a miss reports the end's block, as
-        // does a clip that starts where it ends.
-        let from = Vec3::new(
-            m.position.x.floor() + 0.5,
-            f64::from(y) + 0.5,
-            m.position.z.floor() + 0.5,
-        );
-        let to = Vec3::new(f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5);
-        if cx
-            .w
-            .outline_hit(from, to)
-            .is_some_and(|hit| hit != [x, y, z])
-        {
-            return;
-        }
-        cx.events.push(MobEvent::TakeBlock {
-            mob: m.id,
-            pos: [x, y, z],
-            state,
-        });
-        // level.gameEvent(BLOCK_DESTROY, pos, Context.of(enderman, blockState)).
-        cx.events.push(MobEvent::GameEvent {
-            event: "minecraft:block_destroy",
-            at: [f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5],
-            source: m.id,
-            state,
-        });
-        m.extra.carried = Some(state);
-    }
 }
 /// EndermanLeaveBlockGoal
 #[derive(Clone, Debug)]
@@ -540,40 +68,6 @@ impl Goal for LeaveBlock {
     goal_clone!();
     fn flags(&self) -> u8 {
         0
-    }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        // EndermanLeaveBlockGoal.canUse: needs mobGriefing, checked before the draw.
-        m.extra.carried.is_some()
-            && cx.w.can_grief(m.id)
-            && m.random.next_int_bound(reduced(2000)).unwrap_or(1) == 0
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(carried) = m.extra.carried else {
-            return;
-        };
-        let x = (m.position.x - 1.0 + m.random.next_double() * 2.0).floor() as i32;
-        let y = (m.position.y + m.random.next_double() * 2.0).floor() as i32;
-        let z = (m.position.z - 1.0 + m.random.next_double() * 2.0).floor() as i32;
-        let area = Aabb::new(
-            Vec3::new(f64::from(x), f64::from(y), f64::from(z)),
-            Vec3::new(f64::from(x + 1), f64::from(y + 1), f64::from(z + 1)),
-        );
-        // Keep the per-mob occupancy view: later mobs have not moved yet.
-        // `getEntities(this.enderman, ..)` leaves the enderman out; the game
-        // adds the entities that are not mobs.
-        let occupants =
-            cx.w.others_near(area)
-                .filter(|s| s.id != m.id)
-                .map(|s| s.bounds)
-                .collect();
-        // Game owns the mutable level, its scheduled ticks, RNG and shape hooks.
-        // Defer the complete attempt, including failed candidates' shape updates.
-        cx.events.push(MobEvent::EndermanPlaceBlock {
-            mob: m.id,
-            pos: [x, y, z],
-            carried,
-            occupants,
-        });
     }
 }
 
@@ -603,20 +97,12 @@ pub fn carried_block_drop_kept(stack: &ItemStack) -> bool {
 }
 
 #[cfg(test)]
-#[path = "enderman_anger_tests.rs"]
-mod anger_tests;
-#[cfg(test)]
 mod tests {
     use super::*;
     use crate::mobs::DamageKind;
     use horizon_world::registry::BlockRegistry;
     use std::sync::Arc;
 
-    fn enderman() -> Mob {
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::Enderman;
-        Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
-    }
 
     /// Enderman.hurtServer: a projectile makes a free enderman teleport away
     /// unhurt, but one that rides something (`isPassenger`) takes the hit.
@@ -880,6 +366,3 @@ mod tests {
         );
     }
 }
-#[cfg(test)]
-#[path = "enderman_block_stare_tests.rs"]
-mod block_stare_tests;

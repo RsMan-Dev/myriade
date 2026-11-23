@@ -4929,9 +4929,6 @@ horizon_mod_runtime::impl_attachment_lifetime!(
     ItemFrame
 );
 
-#[cfg(test)]
-#[path = "entities/attachment_lifetime_tests.rs"]
-mod attachment_lifetime_tests;
 
 #[cfg(test)]
 mod orb_lava_tests {

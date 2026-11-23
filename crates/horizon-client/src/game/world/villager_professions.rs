@@ -110,18 +110,6 @@ impl Game<'_> {
 mod tests;
 
 impl Game<'_> {
-    pub(super) fn resolve_loaded_profession(&mut self, mob: &mut horizon_client::mobs::Mob) {
-        self.stations().professions.resolve_loaded(mob);
-        if let horizon_client::mobs::villager::ProfessionState::Unresolved(id) =
-            &mob.extra.profession
-            && self.missing_professions.insert(id.clone())
-        {
-            log::warn!(
-                "Unknown villager profession {id} at {:?}; preserving its saved identity",
-                mob.position
-            );
-        }
-    }
 }
 
 impl Game<'_> {

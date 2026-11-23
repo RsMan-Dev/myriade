@@ -3,7 +3,7 @@
 //! the save and load of a cart. The parts that need `Game` stay in horizon-client.
 use horizon_client::fast_hash::FxHashSet;
 use horizon_client::join_seq::{JoinList, ListStamp};
-use horizon_client::mobs::{Mob, seen_grid::SeenGrid};
+use horizon_client::mobs::{seen_grid::SeenGrid};
 use horizon_client::{
     items::{ItemStack, Items},
     mobs::{Part, Species},
@@ -314,35 +314,6 @@ impl CartIndex {
             return false;
         }
         true
-    }
-    /// The slots of the mobs whose box may meet `area` into `out`, and
-    /// whether a mob rides cart `cart`; None: scan them all.
-    pub fn mobs_near(
-        &mut self,
-        mobs: &JoinList<Mob>,
-        cart: u32,
-        area: Aabb,
-        out: &mut Vec<u32>,
-    ) -> Option<bool> {
-        if !Self::usable() {
-            return None;
-        }
-        if !self
-            .mobs
-            .as_ref()
-            .is_some_and(|(stamp, ..)| *stamp == mobs.stamp())
-        {
-            let mut mounted = FxHashSet::default();
-            let grid = SeenGrid::new(mobs.iter().map(|m| {
-                if let Some(v) = m.extra.mount {
-                    mounted.insert(v);
-                }
-                m.bounds()
-            }));
-            self.mobs = Some((mobs.stamp(), grid, mounted));
-        }
-        let (_, grid, mounted) = self.mobs.as_ref()?;
-        grid.candidates(area, out).then(|| mounted.contains(&cart))
     }
 }
 /// Where the cart `id` is in `carts`: at `hint` (where it was a moment ago,

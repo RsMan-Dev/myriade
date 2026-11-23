@@ -316,28 +316,6 @@ impl Game<'_> {
         None
     }
 
-    /// `Entity.isInvulnerableTo` asked of `mob` outside a hit, for a source of `damage_type`:
-    /// the vanilla answer, which `entity_invulnerability_check` listeners may change.
-    pub(in crate::game) fn mob_query_invulnerable(
-        &self,
-        mob: &horizon_client::mobs::Mob,
-        damage_type: &str,
-    ) -> bool {
-        let source = Damage::of(Self::damage_kind(
-            &self.health_resources.damage,
-            damage_type,
-        ));
-        let vanilla = mob.refuses_damage(&source);
-        horizon_client::health::query_invulnerability(
-            &self.world,
-            self.pack.assets.registry,
-            Some(world_items!(self)),
-            Some(&self.pack.block_registries),
-            &self.damage_hooks,
-            horizon_client::health::Hurting::Mob(mob, &source),
-            vanilla,
-        )
-    }
 
     /// Whether `source`'s damage may hit `entity` through their teams
     /// (`Player.canHarmPlayer`, `Team.allowFriendlyFire`,

@@ -23,20 +23,6 @@ const MOB_HEADS: [&str; 4] = [
     "minecraft:piglin_head",
 ];
 
-/// The [`Cover`] of `m`: its armour slots and its head.
-pub fn cover(m: &super::Mob) -> Cover {
-    let equipment = &m.extra.equipment;
-    let filled = horizon_items::equipment::ARMOR
-        .iter()
-        .filter(|slot| equipment.get(**slot).is_some())
-        .count();
-    Cover {
-        armor: filled as f32 / 4.0,
-        head: equipment
-            .get(horizon_items::equipment::HEAD)
-            .and_then(|stack| MOB_HEADS.into_iter().find(|head| *head == &*stack.item)),
-    }
-}
 
 /// The `mob_visibility` component vanilla gives an item by default
 /// (`Item.Properties.loweredMobVisibility`): how visible its wearer is to a
@@ -73,21 +59,6 @@ impl Seen {
 }
 
 impl MobWorld<'_> {
-    /// The squared range from which mob `looking` sees the mob `target`, with the
-    /// 2-block floor `TargetingConditions.test` keeps: `range` times its
-    /// visibility, which a mod's `living_visibility` scales last and which
-    /// clamps to 0..=10 as vanilla's does.
-    pub fn reach_sqr(&self, target: u32, looking: &super::Mob, range: f64) -> f64 {
-        let Some(seen) = self.seen(target) else {
-            return range * range;
-        };
-        let visibility = seen.visibility_percent(looking.species());
-        let visibility = match self.mob_hooks {
-            Some(hooks) => hooks.living_visibility_mob(target, looking.id, visibility),
-            None => visibility,
-        };
-        (range * visibility.clamp(0.0, 10.0)).max(2.0).powi(2)
-    }
 }
 
 #[cfg(test)]
@@ -95,7 +66,7 @@ mod tests {
     use super::*;
     use crate::mobs::goals::{Cx, Goal, NearestTarget};
     use crate::mobs::world::with_test_world;
-    use crate::mobs::{Mob, MobHooks, PlayerView};
+    use crate::mobs::{MobHooks, PlayerView};
     use horizon_core::geometry::Vec3;
 
     /// A mod's `living_visibility` that hides every zombie from everyone.
@@ -118,63 +89,7 @@ mod tests {
         }
     }
 
-    /// Whether a golem at the origin picks the zombie `distance` blocks away
-    /// as prey, with `prepare` changing the zombie and `hooks` set on the world.
-    fn golem_targets(
-        distance: f64,
-        prepare: impl FnOnce(&mut Mob),
-        hooks: Option<&dyn MobHooks>,
-    ) -> Option<bool> {
-        let mut seen = None;
-        with_test_world(&[], |_, types| {
-            let kind = std::sync::Arc::new(types.types["minecraft:zombie"].clone());
-            let mut zombie = Mob::new(2, kind, Vec3::new(0.5 + distance, 64.0, 0.5), 0.0);
-            prepare(&mut zombie);
-            seen = Some(zombie.seen(None, &crate::items::Items::empty()));
-        });
-        // No prepared data: the world did not run, as other mob tests skip.
-        let seen = seen?;
-        let mut result = None;
-        with_test_world(&[seen], |w, types| {
-            let mut w = w.clone();
-            w.mob_hooks = hooks;
-            let kind = std::sync::Arc::new(types.types["minecraft:iron_golem"].clone());
-            let mut golem = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
-            let mut goal = NearestTarget::species(&[Species::Zombie], false).interval(0);
-            let (mut test_level, mut events) = (crate::health::TestLevel::new(0), Vec::new());
-            let level = &mut test_level.level();
-            let mut cx = Cx {
-                w: &w,
-                level,
-                events: &mut events,
-            };
-            result = Some(goal.can_use(&mut golem, &mut cx));
-        });
-        result
-    }
 
-    /// `TargetingConditions.test` shrinks the range by the target's
-    /// visibility: an invisible zombie with no armour is 7% as visible, so a
-    /// golem 10 blocks away does not find it, and one in full armour is.
-    #[test]
-    #[ignore = "daily"]
-    fn an_invisible_mob_is_found_from_less_far() {
-        let invisible = |m: &mut Mob| m.invisible = true;
-        let Some(visible) = golem_targets(10.0, |_| {}, None) else {
-            return;
-        };
-        assert!(visible, "a visible zombie is found");
-        assert_eq!(
-            golem_targets(10.0, invisible, None),
-            Some(false),
-            "16 x 0.07, floored to 2 blocks"
-        );
-        assert_eq!(
-            golem_targets(1.5, invisible, None),
-            Some(true),
-            "within the 2-block floor"
-        );
-    }
 
     /// A mod's visibility answer scales a mob target's range as a player's.
     #[test]

@@ -14,7 +14,7 @@ use bevy_ecs::{
 };
 #[allow(unused_imports)]
 use horizon_client_lib::mobs::{
-    Mob, MobWorld,
+    MobWorld,
     nav::Navigation,
     path::{Evaluator, Finder, Path, PathMob, PATH_TYPES},
 };
@@ -44,26 +44,6 @@ pub struct Config {
     pub push_k: f64,
 }
 
-/// `getWalkTargetValue` of the template `Mob`, as data (the species the prototype ports; the others read zero).
-pub(crate) fn walk_value_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> crate::spots::WalkValue {
-    use crate::spots::WalkValue as W;
-    use horizon_client_lib::mobs::Species as S;
-    match mob.species() {
-        S::Mooshroom => W::Mooshroom,
-        S::Bee => W::Bee,
-        S::Turtle => W::Turtle,
-        S::Guardian | S::ElderGuardian => W::Guardian,
-        S::HappyGhast => W::HappyGhast,
-        S::Hoglin => W::Hoglin,
-        S::Strider => W::Strider,
-        S::Silverfish => W::Silverfish,
-        S::Enderman | S::Pillager | S::Warden | S::Axolotl | S::Nautilus | S::ZombieNautilus | S::Creaking => W::Zero,
-        S::Slime | S::MagmaCube | S::Ghast | S::Phantom => W::Zero,
-        _ if mob.hostile() => W::Monster,
-        _ if kind.flags.animal => W::Animal,
-        _ => W::Zero,
-    }
-}
 
 /// The species' navigation data, read once from a real `Mob` of the type.
 /// The species of an entity: an index into the `SpeciesTable`.
@@ -235,55 +215,6 @@ pub mod tag {
     pub const SCREAMER: u32 = 1 << 14;
 }
 
-/// The class bits of a species.
-pub(crate) fn tags_of(mob: &Mob, kind: &horizon_client_lib::mobs::MobType) -> u32 {
-    use horizon_client_lib::mobs::{doors, equine, finalize, raider, species::can_be_a_baby, Species as S};
-    let s = mob.species();
-    let mut t = 0;
-    // `flags.animal` also marks the allay and the giant, which do not extend `Animal`.
-    if (kind.flags.animal && !matches!(s, S::Allay | S::Giant)) || s == S::Hoglin {
-        t |= tag::ANIMAL;
-    }
-    if s == S::Tadpole || (finalize::ageable(s) && can_be_a_baby(s)) {
-        t |= tag::AGEING;
-        if s != S::Tadpole {
-            t |= tag::FORCED_AGE;
-        }
-    }
-    if equine::is_equine(s) {
-        t |= tag::EQUINE;
-    }
-    if mob.can_pick_up_loot() {
-        t |= tag::PICKS_UP;
-    }
-    if matches!(s, S::Bee | S::Wolf) {
-        t |= tag::ANGER_UNSET;
-    } else if horizon_client_lib::mobs::persistent_anger(s) {
-        t |= tag::ANGER_ZERO;
-    }
-    if s == S::Tadpole {
-        t |= tag::TADPOLE;
-    }
-    if matches!(s, S::Camel | S::CamelHusk) {
-        t |= tag::CAMEL;
-    }
-    if equine::is_chested(s) {
-        t |= tag::CHESTED;
-    }
-    if doors::is_zombie(s) {
-        t |= tag::ZOMBIE;
-    }
-    if raider::is_raider(s) {
-        t |= tag::RAIDER;
-    }
-    if matches!(s, S::Zombie | S::Husk | S::Drowned | S::ZombieVillager | S::ZombifiedPiglin | S::Piglin | S::Zoglin) {
-        t |= tag::BABY_FLAG;
-    }
-    if matches!(s, S::Cod | S::Salmon | S::Pufferfish | S::TropicalFish | S::Axolotl) {
-        t |= tag::BUCKETABLE;
-    }
-    t
-}
 
 /// The class bits of the species of an entity (0 when no level was built).
 pub fn tags_of_id(id: SpeciesId) -> u32 {

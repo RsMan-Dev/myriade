@@ -217,7 +217,6 @@ mod tests {
 #[cfg(test)]
 mod boat_callback_review_tests {
     use super::*;
-    use horizon_client::mobs::Mob;
     use std::sync::{Arc, Mutex};
 
     struct MutateRider {

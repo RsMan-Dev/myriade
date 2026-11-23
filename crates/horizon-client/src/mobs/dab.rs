@@ -7,7 +7,7 @@
 //! `customServerAiStep`). Navigation, move, look and jump controls, gravity, fluids, pushes, damage,
 //! effects, despawn checks, riding and leashes tick as always, and the mob's own random draws of the
 //! skipped decisions are not made.
-use super::{Mob, MobEvent, MobWorld, Species};
+use super::{MobEvent, MobWorld, Species};
 use horizon_core::geometry::Vec3;
 
 /// The four settings. `start` is in blocks.
@@ -67,104 +67,11 @@ pub fn settings() -> Option<Dab> {
 /// A mob hurt this recently keeps its full AI: ~2 s (`Mob.getLastHurtByMobTimestamp`).
 const HURT_TICKS: i32 = 40;
 
-/// Whether the mob's AI always runs, however far the player is. Each one keeps a behaviour a
-/// player sees or relies on at any distance:
-/// - Wither and warden: bosses whose fights and anger would stutter.
-/// - A target or anger: it is hunting or being hunted, and a slowed attack is a visible lag.
-/// - Hurt in the last ~2 s: it flees, retaliates or calls for help at once.
-/// - In a fluid deep enough to float in: `FloatGoal` and the brains' `Swim` jump every tick, or it
-///   sinks, drowns or burns.
-/// - In a raid: raids are balanced around raiders that act every tick.
-/// - Ridden, riding, with passengers, or led: a rider's input and a lead's pull expect a reply.
-/// - Tamed and not sitting: it follows or defends its owner, and teleports to them.
-pub fn exempt(m: &Mob) -> bool {
-    matches!(m.species(), Species::Wither | Species::Warden)
-        || m.ai.target.is_some()
-        || m.extra.anger > 0
-        || m.extra.angry_at.is_some()
-        || m.hurt_time > 0
-        || m.floats()
-        || (m.ai.last_hurt_by.is_some()
-            && (m.age as i32).wrapping_sub(m.ai.last_hurt_by_time) <= HURT_TICKS)
-        || super::raider::in_raid(m)
-        || m.rider.is_some()
-        || m.extra.rider.is_some()
-        || m.extra.mount.is_some()
-        || m.extra.leash.is_some()
-        || m.extra.leash_pending.is_some()
-        || m.extra.leash_player.is_some()
-        || ((m.extra.tame || m.extra.owner.is_some()) && !m.extra.sitting)
-}
 
-/// Whether the mob runs its AI this tick (`tick_count % interval == 0`). Always, with the setting
-/// off. A level without a player counts as far away: the longest interval.
-pub fn runs_ai(m: &Mob, w: &MobWorld) -> bool {
-    let Some(dab) = settings() else {
-        return true;
-    };
-    runs_ai_with(&dab, m, w.nearest_player)
-}
 
-/// `Mob.serverAiStep` for a mob in `LivingEntity.aiStep`: all of it on an AI tick, and on the others only
-/// what keeps the mob moving along its decisions of the last one.
-pub(super) fn step(
-    m: &mut Mob,
-    w: &MobWorld,
-    level_random: &mut crate::health::DamageLevel<'_>,
-    events: &mut Vec<MobEvent>,
-) {
-    if runs_ai(m, w) {
-        if settings().is_some() {
-            count_turn(m);
-        }
-        super::ai::server_ai_step(m, w, level_random, events);
-        return;
-    }
-    // Neither the goals and targets, nor the brains, nor `customServerAiStep`, so no draw of theirs.
-    m.ai.no_action_time += 1;
-    if m.species() == Species::HappyGhast {
-        super::happy_ghast::ensure_setup(m, Some(w));
-    }
-    // Then the rest of `serverAiStep`: the navigation follows its path, the controls carry it out.
-    let frozen = super::creaking::is_creaking(m) && !super::creaking::can_move(m);
-    if !frozen && !super::bee::pollinating(m) {
-        m.nav_tick(w);
-    }
-    if frozen {
-        m.ai.jumping = false;
-        return;
-    }
-    if !super::axolotl::is_playing_dead(m) {
-        m.move_control_tick(w, events);
-        if !(m.species() == Species::Bee && super::bee::angry(m, w)) {
-            m.look_control_tick();
-        }
-    }
-    m.jump_control_tick();
-}
 
-/// The tick `Mob.serverAiStep` alternates its full and partial selector updates by (`tickCount`,
-/// plus the id). With the setting on it counts the mob's AI turns instead (`count_turn`): a far
-/// mob's turns fall on ages that are all even at an even interval, which would leave an odd-id mob
-/// on the partial update forever.
-pub(super) fn selector_tick(m: &Mob) -> i64 {
-    if m.ai.dab_turns == 0 {
-        i64::from(m.age)
-    } else {
-        i64::from(m.ai.dab_turns)
-    }
-}
 
-fn count_turn(m: &mut Mob) {
-    m.ai.dab_turns = m.ai.dab_turns.checked_add(1).unwrap_or(1);
-}
 
-fn runs_ai_with(dab: &Dab, m: &Mob, nearest: Option<Vec3>) -> bool {
-    let distance_squared = nearest.map_or(f64::INFINITY, |p| p.distance_squared(m.position));
-    let interval = dab.interval(distance_squared);
-    // The exemptions are looked up only for a mob that would skip.
-    interval == 1 || i64::from(m.age) % interval == 0 || exempt(m)
-}
 
 #[cfg(test)]
 mod tests {
@@ -190,23 +97,6 @@ mod tests {
         assert_eq!(Dab::new(12.0, 0, 99).interval(1e9), 1);
     }
 
-    /// A data-free evoker (`sensor_scan_tests::kind`) `distance` blocks from the nearest player.
-    fn evoker() -> Mob {
-        let mut kind = crate::mobs::sensor_scan_tests::kind();
-        let def = Arc::make_mut(&mut kind);
-        def.id = "minecraft:evoker".into();
-        def.species = Species::Evoker;
-        Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0)
-    }
-    fn deciding(m: &mut Mob, distance: f64) -> i32 {
-        let nearest = Some(Vec3::new(0.5 + distance, 64.0, 0.5));
-        (0..280)
-            .filter(|&tick| {
-                m.age = tick;
-                runs_ai_with(&DEFAULTS, m, nearest)
-            })
-            .count() as i32
-    }
 
     #[test]
     fn a_far_mob_runs_its_ai_one_tick_in_n_and_a_near_one_every_tick() {
@@ -216,19 +106,6 @@ mod tests {
         assert_eq!(deciding(&mut m, 5.0), 280);
     }
 
-    /// Every AI turn over 280 ticks, as `step` would number them: whether its selectors update in full.
-    fn full_selector_turns(m: &mut Mob, distance: f64) -> Vec<bool> {
-        let nearest = Some(Vec3::new(0.5 + distance, 64.0, 0.5));
-        let mut turns = Vec::new();
-        for age in 0..280 {
-            m.age = age;
-            if runs_ai_with(&DEFAULTS, m, nearest) {
-                count_turn(m);
-                turns.push((selector_tick(m) + i64::from(m.id)) % 2 == 0 || m.age <= 1);
-            }
-        }
-        turns
-    }
 
     #[test]
     fn an_odd_id_far_mob_still_gets_full_selector_updates() {

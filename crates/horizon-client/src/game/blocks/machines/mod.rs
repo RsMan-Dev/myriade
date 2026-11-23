@@ -16,14 +16,6 @@ pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
 #[cfg(test)]
 mod tank_reopen_tests;
-use horizon_client::{
-    Result,
-    containers::{BlockEntity, HOPPER_SLOTS, ModContainer},
-    items::{ItemStack, Items},
-    mobs::Mob,
-    save,
-    world::World,
-};
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
@@ -694,24 +686,6 @@ fn bone_meal_stack() -> &'static ItemStack {
     &STACK
 }
 
-/// `ChestBlock.isCatSittingOnChest`: a sitting cat whose box meets the block
-/// above `key` (the box of the block above, not the chest's own).
-pub(super) fn cat_sitting_above(mobs: &[Mob], key: Pos) -> bool {
-    let area = Aabb::new(
-        Vec3::new(f64::from(key.0), f64::from(key.1 + 1), f64::from(key.2)),
-        Vec3::new(
-            f64::from(key.0 + 1),
-            f64::from(key.1 + 2),
-            f64::from(key.2 + 1),
-        ),
-    );
-    mobs.iter().any(|m| {
-        m.species() == horizon_client::mobs::Species::Cat
-            && m.alive()
-            && horizon_client::mobs::tame::cat_sitting(m)
-            && m.bounds().intersects(area)
-    })
-}
 
 /// `ChestBlock.isCatSittingOnChest` on the followed cats: a cat of the index sitting in the box above `key`.
 pub(super) fn ecs_cat_sitting_above(ecs: &crate::ecs_bridge::level::EcsLevel, key: Pos) -> bool {

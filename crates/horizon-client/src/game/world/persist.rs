@@ -27,7 +27,7 @@ use horizon_client::{
     Result,
     chunk::Chunk,
     entity_nbt,
-    mobs::{Mob, Who},
+    mobs::{Who},
     random_source,
     save::{ChunkExtras, random_uuid, text, uuid_from_text, uuid_text},
     scoreboard::Scoreboard,

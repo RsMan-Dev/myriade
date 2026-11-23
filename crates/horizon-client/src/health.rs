@@ -37,10 +37,7 @@ pub use attack::{damage_type, melee, mob_source, source_damage_type};
 /// hit's source.
 pub enum Hurting<'a> {
     /// A player, by its entity id.
-    Player(i32, HurtSource<'a>),
-    /// A mob, and what hurts it.
-    Mob(&'a crate::mobs::Mob, &'a crate::mobs::Damage),
-    /// The ender dragon, by its entity id.
+    Player(i32, HurtSource<'a>),    /// The ender dragon, by its entity id.
     Dragon(i32, HurtSource<'a>),
     /// An armor stand, by its entity id, for sweep knockback.
     ArmorStand(i32, HurtSource<'a>),
@@ -1969,32 +1966,6 @@ mod datapack_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn a_hook_can_refuse_one_damage_type_and_allow_another() {
-        use crate::mobs::{Damage, DamageKind, Mob};
-        fn immune_to_generic(_: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
-            match hurting {
-                Hurting::Mob(_, hit) if matches!(hit.kind, DamageKind::Generic) => true,
-                _ => vanilla,
-            }
-        }
-        let hooks = DamageHooks {
-            invulnerable: Some(immune_to_generic),
-            ..DamageHooks::NONE
-        };
-        let mut test_level = TestLevel::with_hooks(0, hooks);
-        let level = &mut test_level.level();
-        let mut mob = Mob::new(
-            9201,
-            crate::mobs::sensor_scan_tests::kind(),
-            Default::default(),
-            0.0,
-        );
-        assert!(!mob.damage(level, 2.0, Damage::of(DamageKind::Generic)));
-        assert_eq!(mob.health, 10.0);
-        assert!(mob.damage(level, 2.0, Damage::of(DamageKind::Fall)));
-        assert_eq!(mob.health, 8.0);
-    }
 
     #[test]
     fn the_weapon_is_the_attackers_main_hand_only_for_its_own_hit() {
@@ -2419,58 +2390,6 @@ mod tests {
         })
     }
 
-    #[test]
-    fn the_native_damage_hook_changes_or_cancels_a_mobs_hit() {
-        let (hooks, seen) = set_hook();
-        let mut test_level = crate::health::TestLevel::with_hooks(0, hooks);
-        let level = &mut test_level.level();
-        use crate::mobs::{Damage, DamageKind, Mob};
-        let mob = |id| {
-            Mob::new(
-                id,
-                crate::mobs::sensor_scan_tests::kind(),
-                Default::default(),
-                0.0,
-            )
-        };
-        let hit = Damage {
-            kind: DamageKind::PlayerAttack,
-            attacker: None,
-            from: Some([3.0, 0.0, 0.0]),
-            attacker_species: None,
-        };
-        // Canceled: no damage, cooldown, sound or knockback.
-        let mut kept = mob(9001);
-        assert!(!kept.damage(level, 2.0, hit));
-        assert_eq!(
-            (kept.health, kept.invulnerable, kept.hurt_time),
-            (10.0, 0, 0)
-        );
-        assert!(kept.outbox.is_empty() && kept.velocity == Default::default());
-        assert_eq!(seen(9001), [("PlayerAttack".to_owned(), 2.0)]);
-        let mut doubled = mob(9002);
-        assert!(doubled.damage(level, 2.0, hit));
-        assert_eq!(doubled.health, 6.0);
-        // LivingEntity.hurtServer: a negative amount hurts by 0, a NaN by
-        // Float.MAX_VALUE.
-        let (mut negative, mut nan) = (mob(9003), mob(9004));
-        assert!(negative.damage(level, 2.0, hit) && nan.damage(level, 2.0, hit));
-        assert!(negative.health == 10.0 && nan.health <= 0.0);
-        // 8 damage on a mob with 1.5 absorption hearts. Armor took none: +1 then x2 is 2, so 6
-        // goes on. The hearts would take their 1.5; half of it is 0.75, so 5.25 reaches the
-        // health (10 - 5.25) and 0.75 hearts are left.
-        let mut modified = mob(9005);
-        modified.add_effect("absorption", 600, 0);
-        modified.absorption = 1.5;
-        assert!(modified.damage(level, 8.0, hit));
-        assert_eq!((modified.health, modified.absorption), (4.75, 0.75));
-        // The same hit with no modifier: 8 less the 1.5 hearts.
-        let mut plain = mob(9006);
-        plain.add_effect("absorption", 600, 0);
-        plain.absorption = 1.5;
-        assert!(plain.damage(level, 8.0, hit));
-        assert_eq!((plain.health, plain.absorption), (3.5, 0.0));
-    }
 
     /// Needs the prepared data in `.local/horizon-client/26.3`; skipped
     /// without it.
@@ -2555,103 +2474,6 @@ mod tests {
         })
     }
 
-    /// A zombie in full netherite (0.1 a piece) is pushed 60 % as far as one
-    /// with no armour: `knockback` scales by the attribute's value with the
-    /// gear's modifiers, which the game hands the mob as `gear_knockback_resistance`.
-    #[test]
-    fn a_mobs_gear_resists_knockback() {
-        use crate::mobs::{Damage, Mob};
-        let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        let hit = Damage::player([3.0, 0.0, 0.0]);
-        let mut pushed = |gear: Option<f64>, own: f64| {
-            let mut m = Mob::new(
-                9200,
-                crate::mobs::sensor_scan_tests::kind(),
-                Default::default(),
-                0.0,
-            );
-            m.on_ground = true;
-            m.attrs.knockback_resistance = own;
-            m.gear_knockback_resistance = gear;
-            m.knockback(level, 0.4, 3.0, 0.0, &hit, 0.0);
-            m.velocity.x
-        };
-        assert_eq!(pushed(None, 0.0), -0.4);
-        assert!((pushed(Some(0.4), 0.0) - -0.4 * 0.6).abs() < 1e-12);
-        // The gear's value is the whole attribute: it replaces the mob's own.
-        assert!((pushed(Some(0.4), 0.5) - -0.4 * 0.6).abs() < 1e-12);
-    }
-    /// `LivingEntity.knockback`: the hook runs before knockback resistance
-    /// takes its share and before motion changes; a mod's strength or
-    /// direction is what pushes, a cancel pushes nothing, and with no mod in
-    /// the way the push is vanilla's. Expected values are worked out by hand
-    /// from vanilla's formula: the horizontal speed halves and the push is
-    /// subtracted along the normalized direction; on the ground the vertical
-    /// speed becomes `min(0.4, vy / 2 + strength)`.
-    #[test]
-    fn the_native_knockback_hook_changes_or_cancels_a_mobs_push() {
-        let (hooks, seen) = set_knockback_hook();
-        let mut test_level = crate::health::TestLevel::with_hooks(0, hooks);
-        let level = &mut test_level.level();
-        use super::Knock;
-        use crate::mobs::{Damage, Mob};
-        let mob = |id, resistance| {
-            let mut m = Mob::new(
-                id,
-                crate::mobs::sensor_scan_tests::kind(),
-                Default::default(),
-                0.0,
-            );
-            m.on_ground = true;
-            m.attrs.knockback_resistance = resistance;
-            m
-        };
-        let velocity = |m: &Mob| (m.velocity.x, m.velocity.y, m.velocity.z);
-        let hit = Damage::player([3.0, 0.0, 0.0]);
-        let mut push = |id, resistance| {
-            let mut m = mob(id, resistance);
-            m.knockback(level, 0.4, 3.0, 0.0, &hit, 0.0);
-            m
-        };
-        // No mod in the way (the hook leaves 9100 alone): vanilla's push, away from x = 3.
-        let plain = push(9100, 0.0);
-        assert_eq!(velocity(&plain), (-0.4, 0.4, 0.0));
-        assert!(plain.needs_sync);
-        // Canceled: no motion, no resync. The hook saw the push the game made.
-        let kept = push(9101, 0.0);
-        assert_eq!(velocity(&kept), (0.0, 0.0, 0.0));
-        assert!(!kept.needs_sync);
-        let made = Knock {
-            strength: 0.4,
-            x: 3.0,
-            z: 0.0,
-        };
-        assert_eq!(seen(9101), [("PlayerAttack".to_owned(), made)]);
-        // A stronger push the other way: twice the strength, x turned around.
-        let turned = push(9102, 0.0);
-        assert_eq!(velocity(&turned), (0.8, 0.4, 0.0));
-        assert_eq!(velocity(&push(9102, 0.5)), (0.4, 0.4, 0.0));
-        // Numbers that are not finite are put back as the game made them.
-        assert_eq!(velocity(&push(9103, 0.0)), (-0.4, 0.4, 0.0));
-        // Before the resistance (`LivingKnockBackEvent`): the hook is handed the raw 0.4, and
-        // the push that follows is halved.
-        let resisted = push(9104, 0.5);
-        assert_eq!(velocity(&resisted), (-0.2, 0.2, 0.0));
-        assert_eq!(seen(9104)[0].1.strength, 0.4);
-        // A full resistance takes all of what the hook leaves: no push.
-        let stopped = push(9105, 1.0);
-        assert_eq!(seen(9105)[0].1.strength, 0.4);
-        assert_eq!(velocity(&stopped), (0.0, 0.0, 0.0));
-        // The game's own hit on a mob reaches the hook with its damage.
-        let mut hurt = mob(9106, 0.0);
-        assert!(hurt.damage(level, 2.0, hit));
-        // dealDefaultKnockback pushes with the float 0.4F.
-        let strength = f64::from(0.4_f32);
-        assert_eq!(velocity(&hurt), (-strength, 0.4, 0.0));
-        let made = Knock { strength, ..made };
-        assert_eq!(seen(9106), [("PlayerAttack".to_owned(), made)]);
-    }
 
     /// #4301: `ServerPlayer.isInvulnerableTo`'s `!connection.hasClientLoaded`
     /// term spares a respawned player the void until the client has loaded the

@@ -154,16 +154,6 @@ pub(super) struct TransferredEntityState {
 }
 
 impl TransferredEntityState {
-    /// Move the single accepted-hit owner onto a reconstructed living body.
-    pub(in crate::game) fn restore_mob(&mut self, mob: &mut horizon_client::mobs::Mob) {
-        if mob.health > 0.0 {
-            self.died = false;
-        }
-        if let Some(hit) = self.accepted_hit.take() {
-            mob.last_damage = hit.committed;
-            mob.accepted_hit = Some(hit);
-        }
-    }
 }
 
 impl Game<'_> {

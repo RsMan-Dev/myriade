@@ -29,7 +29,6 @@ impl Game<'_> {
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use horizon_client::mobs::Mob;
 
     fn summon_dragon_20(game: &mut Game<'_>) {
         game.ecs_with(|ecs, mw| {

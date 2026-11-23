@@ -4,7 +4,7 @@
 use super::Game;
 use horizon_client::{
     blocks::Fluid,
-    mobs::{Mob, MobEvent, Species, Who, equine},
+    mobs::{MobEvent, Species, Who, equine},
     motion::{MotionWorld, PlayerMotion},
     pose::{Dimensions, Pose},
     sprint::Keys,
@@ -186,19 +186,6 @@ impl Game<'_> {
         dismount_location(mount, &rider, &GameDismountWorld(self))
     }
 
-    /// The same player search when the mount is lent out during a mob tick.
-    pub(super) fn player_dismount_from_lent_mob(
-        &self,
-        mount: &Mob,
-        yaw: f32,
-        player: &PlayerMotion,
-    ) -> Vec3 {
-        if mount.species() == Species::HappyGhast {
-            on_top(mount)
-        } else {
-            self.mount_player_dismount(&Mount::of(mount), yaw, player).0
-        }
-    }
     /// Where `stop_riding` sets a player in `p` facing `yaw` down off `vehicle`: None when
     /// `vehicle` is no boat, cart or mob.
     pub(in crate::game) fn player_dismount_point(
@@ -333,23 +320,6 @@ struct Mount {
     yaw: f32,
 }
 impl Mount {
-    fn of(m: &Mob) -> Self {
-        Self {
-            species: m.species(),
-            position: m.position,
-            bounds: m.bounds(),
-            width: m.width(),
-            yaw: m.yaw,
-        }
-    }
-}
-/// On top of `m`, where it lets off a rider it has no other rule for.
-pub(super) fn on_top(m: &Mob) -> Vec3 {
-    Vec3::new(
-        m.position.x,
-        m.position.y + f64::from(m.height()),
-        m.position.z,
-    )
 }
 /// The rider getting off: `getYRot`, `getBbWidth`, and
 /// `getLocalBoundsForPose` for each of `Player.getDismountPoses`.

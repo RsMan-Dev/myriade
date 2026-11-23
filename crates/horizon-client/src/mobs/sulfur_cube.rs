@@ -5,7 +5,7 @@
 //! knockback, sounds, contact damage, a TNT fuse), shearing the block out,
 //! buckets, and the outer/inner models and their render scale.
 use super::{
-    Damage, DamageKind, Mob, MobEvent, MobWorld,
+    Damage, DamageKind, MobEvent, MobWorld,
     control::MoveKind,
     goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone},
 };
@@ -334,112 +334,13 @@ pub const ARCHETYPE_ATTRIBUTES: [&str; 5] = [
     "minecraft:friction_modifier",
     "minecraft:air_drag_modifier",
 ];
-/// `SulfurCube.collectEquipmentChanges` (from `LivingEntity.tick`'s
-/// `detectEquipmentUpdates`), its attribute part: when the body changed,
-/// removes the previous body's archetype modifiers and adds the new body's
-/// as transient ones (`addOrUpdateTransientModifier`).
-pub fn adopt_body(m: &mut Mob) {
-    if m.species() != super::Species::SulfurCube
-        || m.extra.adopted_body.as_deref() == m.extra.body_id()
-    {
-        return;
-    }
-    let new = m.extra.body_id().map(std::sync::Arc::<str>::from);
-    let Some(map) = m.extra.armor_attributes.as_deref_mut() else {
-        return;
-    };
-    let old = std::mem::replace(&mut m.extra.adopted_body, new.clone());
-    for a in old.as_deref().into_iter().flat_map(matching) {
-        for (attribute, id, _, _) in attribute_modifiers(a) {
-            if let Some(key) = map.catalog().id(attribute) {
-                let _ = map.edit(key, |inst, observer| inst.remove(&id, observer));
-            }
-        }
-    }
-    for a in new.as_deref().into_iter().flat_map(matching) {
-        for (attribute, id, amount, op) in attribute_modifiers(a) {
-            let (Some(key), Ok(modifier)) =
-                (map.catalog().id(attribute), Modifier::new(&id, amount, op))
-            else {
-                continue;
-            };
-            let _ = map.edit(key, |inst, observer| {
-                inst.add_or_update_transient(modifier, observer)
-            });
-        }
-    }
-}
-/// `isSwallowableItem`: the `sulfur_cube_swallowable` tag.
-pub fn swallowable(m: &Mob, item: &str) -> bool {
-    m.kind.tempt.iter().any(|t| t == item)
-}
-pub fn has_body(m: &Mob) -> bool {
-    m.extra.body_id().is_some()
-}
 
 #[cfg(test)]
 mod knockback_sync_tests {
     use super::*;
-    use crate::mobs::{Mob, Species};
+    use crate::mobs::{Species};
     use std::sync::Arc;
 
-    /// `SulfurCube.knockback` sets `needsSync`, as `LivingEntity.knockback`
-    /// does, so a guest sees a cube with a block knocked about at once.
-    #[test]
-    fn a_knocked_cube_with_a_block_syncs_at_once() {
-        let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        test_archetype_items();
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        m.extra.set_body(Some("minecraft:tnt".into()));
-        assert!(!m.needs_sync);
-        m.damage(level, 5.0, Damage::player([2.0, 0.0, 0.0]));
-        assert!(m.velocity.x < 0.0, "velocity {:?}", m.velocity);
-        assert!(m.needs_sync);
-    }
-    /// `TemptGoal` scales its range by the player's visibility: an invisible
-    /// player five blocks away does not tempt a sulfur cube.
-    #[test]
-    #[ignore = "daily"]
-    fn an_invisible_player_tempts_a_sulfur_cube_only_within_two_blocks() {
-        use crate::mobs::goals::Cx;
-        use crate::mobs::world::{test_player, with_test_world};
-        let mut outcomes = Vec::new();
-        if !with_test_world(&[], |w, _| {
-            for invisible in [false, true] {
-                let mut world = w.clone();
-                let mut p = test_player(Vec3::new(5.5, 64.0, 0.5));
-                p.main_hand = Some("minecraft:iron_ingot".into());
-                p.invisible = invisible;
-                world.player = Some(p);
-                let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-                kind.species = Species::SulfurCube;
-                kind.tempt = Arc::from(vec!["minecraft:iron_ingot".to_string()]);
-                let mut m = Mob::new(1, Arc::new(kind), Vec3::new(0.5, 64.0, 0.5), 0.0);
-                m.ai.goals.add(1, SulfurTempt { player: None });
-                let mut lr = crate::health::TestLevel::new(0);
-                let mut events = Vec::new();
-                let mut cx = Cx {
-                    w: &world,
-                    level: &mut lr.level(),
-                    events: &mut events,
-                };
-                let mut goals = std::mem::take(&mut m.ai.goals);
-                goals.tick(&mut m, &mut cx);
-                outcomes.push(goals.is_running("SulfurTempt"));
-                m.ai.goals = goals;
-            }
-        }) {
-            return;
-        }
-        assert_eq!(
-            outcomes,
-            vec![true, false],
-            "a visible player tempts at five; an invisible one does not"
-        );
-    }
 }
 /// Added controls (H192): the attribute part of `collectEquipmentChanges` on
 /// the cube's own map, with the amounts and ids of the pinned 26.3
@@ -447,7 +348,7 @@ mod knockback_sync_tests {
 #[cfg(test)]
 pub(crate) mod adopt_body_tests {
     use super::*;
-    use crate::mobs::{Mob, Species};
+    use crate::mobs::{Species};
     use horizon_world::attributes::entity::{Catalog, EntityAttributes};
     use std::sync::Arc;
 
@@ -455,63 +356,6 @@ pub(crate) mod adopt_body_tests {
     const FRICTION: &str = "minecraft:friction_modifier";
     const AIR: &str = "minecraft:air_drag_modifier";
 
-    pub(crate) fn cube(body: Option<&str>) -> Mob {
-        test_archetype_items();
-        let bits = |v: f64| format!("{:016x}", v.to_bits());
-        let attribute = |id: &str, default: f64, min: f64, max: f64| serde_json::json!({"id": id, "default": bits(default), "min": bits(min), "max": bits(max), "syncable": id != KR});
-        let catalog = Arc::new(
-            Catalog::from_json(&serde_json::json!({
-                "data_version": horizon_world::DATA_VERSION,
-                "attributes": [
-                    attribute(KR, 0.0, -2.0, 1.0),
-                    attribute("minecraft:explosion_knockback_resistance", 0.0, 0.0, 1.0),
-                    attribute("minecraft:bounciness", 0.0, 0.0, 1.0),
-                    attribute(FRICTION, 1.0, 0.0, 2048.0),
-                    attribute(AIR, 1.0, 0.0, 2048.0),
-                ],
-                "entities": {"minecraft:sulfur_cube": {
-                    KR: bits(0.0),
-                    "minecraft:explosion_knockback_resistance": bits(0.0),
-                    "minecraft:bounciness": bits(0.0),
-                    FRICTION: bits(1.0),
-                    AIR: bits(1.0),
-                }}
-            }))
-            .unwrap(),
-        );
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        kind.id = "minecraft:sulfur_cube".into();
-        let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        m.extra.set_body(body.map(Into::into));
-        m.extra.armor_attributes = Some(Box::new(catalog.create("minecraft:sulfur_cube").unwrap()));
-        m
-    }
-    fn map(m: &mut Mob) -> &mut EntityAttributes {
-        m.extra.armor_attributes.as_deref_mut().unwrap()
-    }
-    fn value(m: &mut Mob, attribute: &str) -> f64 {
-        let map = map(m);
-        let key = map.catalog().id(attribute).unwrap();
-        map.value(key).unwrap()
-    }
-    fn permanent(m: &mut Mob, attribute: &str) -> Vec<(String, f64)> {
-        let map = map(m);
-        let key = map.catalog().id(attribute).unwrap();
-        map.instance(key)
-            .map(|i| {
-                i.permanent_modifiers()
-                    .iter()
-                    .map(|x| (x.id().to_string(), x.amount()))
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-    fn modifier(m: &mut Mob, attribute: &str, id: &str) -> Option<f64> {
-        let map = map(m);
-        let key = map.catalog().id(attribute).unwrap();
-        map.modifier_value(key, id).ok()
-    }
 
     #[test]
     fn a_body_change_swaps_the_archetype_modifiers_and_its_ids_shadow_then_drop_a_permanent_one() {
@@ -604,64 +448,13 @@ pub(crate) mod adopt_body_tests {
         assert_eq!(value(&mut other, KR), 0.0);
     }
 }
-pub fn archetype(m: &Mob) -> Option<&'static Archetype> {
-    m.extra.body_id().and_then(archetype_of)
-}
-/// The explosion data `SulfurCube.explosionData` caches: the adopted body's,
-/// as `collectEquipmentChanges` last took it.
-pub fn adopted_explosion(m: &Mob) -> Option<(i32, f32, bool)> {
-    m.extra
-        .adopted_body
-        .as_deref()
-        .and_then(archetype_of)
-        .and_then(|a| a.explosion)
-}
-/// The archetype whose bounciness, friction and air drag attributes a
-/// sulfur cube's physics use (no other mob has those modifiers).
-pub fn physics(m: &Mob) -> Option<&'static Archetype> {
-    if m.species() == super::Species::SulfurCube {
-        archetype(m)
-    } else {
-        None
-    }
-}
-pub fn fuse(m: &Mob) -> i32 {
-    m.extra.counter2 - 1
-}
-pub fn primed(m: &Mob) -> bool {
-    fuse(m) >= 0
-}
-/// `SulfurCube.tick`: tickFuse removes the cube before super.tick can handle
-/// its portal. This happens even when the TNT explosion gamerule is off.
-pub fn removes_before_portal_tick(m: &Mob) -> bool {
-    if m.species() != super::Species::SulfurCube {
-        return false;
-    }
-    let fuse = fuse(m);
-    let next_fuse = if fuse > 0 { fuse - 1 } else { fuse };
-    next_fuse == 0 && archetype(m).is_some_and(|a| a.explosion.is_some())
-}
-/// `hurtServer`'s priming by a hit whose direct entity is a burning
-/// `AbstractArrow` (an arrow or a trident): a cube with a block that can
-/// explode lights its fuse, the long one.
-pub fn burning_arrow_hit(m: &mut Mob) -> bool {
-    has_body(m) && can_explode(m) && prime(m, false)
-}
 
 #[cfg(test)]
 mod burning_arrow_tests {
     use super::*;
-    use crate::mobs::{Mob, Species};
+    use crate::mobs::{Species};
     use std::sync::Arc;
 
-    fn cube(head: Option<&str>) -> Mob {
-        test_archetype_items();
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        m.extra.set_body(head.map(Into::into));
-        m
-    }
 
     #[test]
     fn a_burning_arrow_lights_the_long_fuse() {
@@ -752,30 +545,13 @@ mod burning_arrow_tests {
         }
     }
 }
-/// Client copy of `tickFuse`: count the fuse down for the renderer. The
-/// server alone explodes (`tick_fuse`); a guest never fires `Explode` here.
-pub fn client_tick(m: &mut Mob) {
-    if m.extra.counter2 > 1 {
-        m.extra.counter2 -= 1;
-    }
-}
-fn can_explode(m: &Mob) -> bool {
-    archetype(m).is_some_and(|a| a.explosion.is_some()) && m.alive() && !primed(m)
-}
 
 #[cfg(test)]
 mod immune_tests {
     use super::*;
-    use crate::mobs::{Mob, Species};
+    use crate::mobs::{Species};
     use std::sync::Arc;
 
-    fn cube(head: Option<&str>) -> Mob {
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        m.extra.set_body(head.map(Into::into));
-        m
-    }
 
     /// `#sulfur_cube_with_block_immune_to` has these too: a cube with a block
     /// loses no health to any of them (and `hurtServer` still answers true), a cube without one does.
@@ -846,80 +622,6 @@ mod immune_tests {
         assert_eq!(m.health, health - 1.0);
     }
 }
-pub fn register(m: &mut Mob) {
-    use super::cube;
-    m.ai.goals.add(1, cube::CubeFloat);
-    m.ai.goals.add(2, SulfurTempt { player: None });
-    m.ai.goals.add(3, SearchForItems);
-    m.ai.goals.add(4, cube::CubeRandomDirection::default());
-    m.ai.goals.add(5, cube::CubeKeepJumping);
-    m.ai.mov.kind = MoveKind::Custom;
-    m.ai.nav.can_float = true;
-    m.extra.vector[0] = f64::from(180.0 * m.yaw / std::f32::consts::PI);
-    // Created at size 1 (finalizeSpawn sizes it); not made a baby here.
-    set_size(m, 1, false);
-    m.health = m.attrs.max_health;
-}
-/// `setSize`: the max health (`setCubeMobHealth`, 4 per size) and movement
-/// speed (0.2 + 0.1 * size, in floats) bases, which the save then holds;
-/// size 1 makes an adult a baby.
-pub fn set_size(m: &mut Mob, size: i32, update_health: bool) {
-    use super::finalize::{Attr, set_base};
-    let size = size.clamp(1, 127);
-    m.extra.size = size;
-    set_base(m, Attr::MaxHealth, f64::from(4 * size));
-    set_base(
-        m,
-        Attr::MovementSpeed,
-        f64::from(0.2f32 + 0.1f32 * size as f32),
-    );
-    if update_health {
-        m.health = m.attrs.max_health;
-        if size == 1 && !m.is_baby() {
-            m.extra.age = -24000;
-        }
-    }
-}
-/// `setSpawnSize`: babies are size 1, adults size 2.
-pub fn finalize(m: &mut Mob) {
-    let size = if m.is_baby() { 1 } else { 2 };
-    set_size(m, size, true);
-}
-/// `getSplitCount`: two babies, none from a primed cube.
-pub fn split_count(m: &Mob) -> i32 {
-    if primed(m) { 0 } else { 2 }
-}
-pub fn tiny(m: &Mob) -> bool {
-    m.extra.size <= 1
-}
-pub fn jump_sound(m: &Mob) -> &'static str {
-    if tiny(m) {
-        "entity.small_sulfur_cube.jump"
-    } else {
-        "entity.sulfur_cube.jump"
-    }
-}
-pub fn squish_sound(m: &Mob) -> &'static str {
-    if tiny(m) {
-        "entity.small_sulfur_cube.squish"
-    } else if has_body(m) {
-        "entity.sulfur_cube.bounce"
-    } else {
-        "entity.sulfur_cube.squish"
-    }
-}
-/// The hurt and death sounds by size.
-pub fn sounds(m: &Mob) -> [&'static str; 3] {
-    if tiny(m) {
-        [
-            "",
-            "entity.small_sulfur_cube.hurt",
-            "entity.small_sulfur_cube.death",
-        ]
-    } else {
-        ["", "entity.sulfur_cube.hurt", "entity.sulfur_cube.death"]
-    }
-}
 thread_local! {
     /// The `tnt_explodes` game rule of the level this thread ticks, which
     /// `primeTime` and `tickFuse` read (shared by the game each tick and on
@@ -933,31 +635,6 @@ pub fn tnt_explodes() -> bool {
 /// Share the `tnt_explodes` rule with this thread's sulfur cubes.
 pub fn set_tnt_explodes(on: bool) {
     TNT_EXPLODES.set(on);
-}
-/// `primeTime`: light the fuse (short when an explosion did it), only
-/// while `tnt_explodes` is on.
-pub fn prime(m: &mut Mob, imminent: bool) -> bool {
-    let Some((fuse, _, _)) = archetype(m).and_then(|a| a.explosion) else {
-        return false;
-    };
-    prime_with_fuse(m, imminent, fuse)
-}
-/// `primeTime` with the fuse of the cached `explosionData` (the body
-/// `collectEquipmentChanges` last adopted), which is not the live body's
-/// when the body changed since.
-pub fn prime_with_fuse(m: &mut Mob, imminent: bool, fuse: i32) -> bool {
-    if !m.alive() || !TNT_EXPLODES.get() || primed(m) {
-        return false;
-    }
-    let t = if imminent {
-        m.random.next_int_bound((fuse / 4).max(1)).unwrap_or(0) + fuse / 8
-    } else {
-        fuse
-    };
-    m.invulnerable_flag = true;
-    m.extra.counter2 = t + 1;
-    m.extra.scratch[1] |= 1;
-    true
 }
 /// `#sulfur_cube_with_block_immune_to`: the damage a cube with a block shrugs off and is only
 /// knocked by.
@@ -988,34 +665,6 @@ pub fn immune_to(source: &Damage) -> bool {
             | DamageKind::SulfurCubeHot
             | DamageKind::WindCharge
     )
-}
-/// `hurtServer`: fire or `#is_explosion` (a firework rocket's burst too)
-/// light an explosive cube; with a block it shrugs off blows, falls and
-/// explosions and is only knocked about.
-pub fn accepts_damage(
-    m: &mut Mob,
-    level: &mut DamageLevel<'_>,
-    source: &Damage,
-    amount: f32,
-) -> bool {
-    if !has_body(m) {
-        return true;
-    }
-    if can_explode(m) && !primed(m) {
-        if source.is_fire() {
-            prime(m, false);
-        } else if matches!(source.kind, DamageKind::Explosion | DamageKind::Fireworks) {
-            prime(m, true);
-        }
-    }
-    if immune_to(source) {
-        // `dealDefaultKnockback`, unless the damage type is tagged no_knockback.
-        if !source.no_knockback() {
-            deal_default_knockback(m, level, source, amount);
-        }
-        return false;
-    }
-    true
 }
 /// `Vec2.rotate`: `Mth.sin`/`Mth.cos` of the angle, in floats.
 fn rotate(x: f32, y: f32, angle: f64) -> (f32, f32) {
@@ -1151,276 +800,8 @@ fn launch(
     };
     [-kx, f64::from(v) * 1.2, -kz]
 }
-/// `LivingEntity.dealDefaultKnockback` for a cube with a block: from where the blow came
-/// (`source.getSourcePosition()`) with `knockback(0.4, ...)`. A source with a causing entity goes
-/// through `SulfurCube.knockback`; one with none (a cactus, a fall) through `super.knockback`.
-fn deal_default_knockback(m: &mut Mob, level: &mut DamageLevel<'_>, source: &Damage, damage: f32) {
-    // A projectile knocks the way it travelled (`calculateHorizontalHurtKnockbackDirection`),
-    // else from the source's position.
-    let (xd, zd) = match m.projectile_motion.take() {
-        Some([x, z]) => (-x, -z),
-        None => source
-            .from
-            .map_or((0.0, 0.0), |f| (f[0] - m.position.x, f[2] - m.position.z)),
-    };
-    if source.attacker.is_some() {
-        knockback(m, (xd, zd), source.from, damage, None);
-    } else {
-        m.knockback(level, f64::from(0.4_f32), xd, zd, source, damage);
-    }
-}
-/// `SulfurCube.knockback` with a block and a causing entity: the archetype's powers, turned by
-/// where the blow came from and by the entity's aim (`Mob::attacker_aim`, from the game).
-pub fn knockback(
-    m: &mut Mob,
-    direction: (f64, f64),
-    from: Option<[f64; 3]>,
-    damage: f32,
-    effect_power: Option<f64>,
-) -> bool {
-    let Some(a) = archetype(m) else {
-        return false;
-    };
-    let aim = m.attacker_aim.take();
-    let from = from.unwrap_or([m.position.x, m.position.y, m.position.z]);
-    let delta = launch(
-        (a.horizontal_power, a.vertical_power),
-        resistance(a.knockback_resistance),
-        damage,
-        direction,
-        aim.map_or(from, |a| a.feet),
-        [m.position.x, m.position.y, m.position.z],
-        m.center(),
-        m.height(),
-        aim.map(|a| (a.eye, a.look)),
-        effect_power.map_or(1.0, |p| p as f32 * 0.25),
-    );
-    m.velocity = Vec3::new(
-        m.velocity.x + delta[0],
-        m.velocity.y + delta[1],
-        m.velocity.z + delta[2],
-    );
-    // The hit sound plays on the next tick (no event queue here).
-    m.extra.scratch[1] = 2;
-    // needsSync: the push reaches the other players at once.
-    m.needs_sync = true;
-    true
-}
-/// `SulfurCube.tickFuse`: count down and discard at zero before the living
-/// tick, including NoAI cubes. Pickup and push cooldowns belong to AI instead.
-pub fn tick_fuse(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    if m.extra.counter2 > 1 {
-        m.extra.counter2 -= 1;
-    }
-    if fuse(m) == 0
-        && let Some((_, power, _)) = archetype(m).and_then(|a| a.explosion)
-    {
-        // With `tnt_explodes` off the cube still goes, without a blast.
-        if TNT_EXPLODES.get() {
-            // `level.explode(this, ..., TNT)`: the cube is the blast's source and its
-            // causing entity, so its entity query leaves it out.
-            let name = match &m.custom_name {
-                Some(name) => crate::text::Text::literal(name.clone()),
-                None => crate::text::Text::translate("entity.minecraft.sulfur_cube", &[]),
-            };
-            events.push(MobEvent::ExplosionSource {
-                mob: m.id,
-                charged: false,
-                name,
-                in_water: m.fluids.in_water,
-                kind: m.kind.id.clone(),
-            });
-            events.push(MobEvent::Explode(
-                [m.position.x, m.position.y + 0.0625, m.position.z],
-                power,
-                m.species(),
-                m.silent,
-            ));
-        }
-        m.removed = true;
-    }
-}
 
-/// `SulfurCube.customServerAiStep` and the remaining cube additions:
-/// the timers, a swallowed block's stillness, buoyancy and
-/// facing, growing up, and players pushing it.
-pub fn ai_step(m: &mut Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    // primeTime's sound, then knockback's: a burning arrow plays both.
-    let pending = m.extra.scratch[1];
-    if pending & 1 != 0 {
-        events.push(MobEvent::Sound("entity.tnt.primed", m.center(), 1.0, 1.0));
-    }
-    if pending & 2 != 0
-        && let Some(a) = archetype(m)
-    {
-        events.push(MobEvent::Sound(a.hit_sound, m.center(), 1.0, 1.0));
-    }
-    m.extra.scratch[1] = 0;
-    if m.extra.ints[3] > 0 {
-        m.extra.ints[3] -= 1;
-    }
-    if m.extra.scratch[2] > 0 {
-        m.extra.scratch[2] -= 1;
-    }
-    // Growing to size 2 is `ageBoundaryReached`, run only where `setAge` crosses
-    // the baby boundary (`finalize::set_age`), never by the tick (#14916).
-    let body = has_body(m);
-    // collectEquipmentChanges: a swallowed block takes every goal away.
-    if body {
-        m.ai.goals.disabled |= MOVE | LOOK | JUMP;
-        m.ai.speed = 0.0;
-        // SulfurCubeLookControl: square to the nearest quarter turn.
-        let close = (m.yaw + 45.0).rem_euclid(90.0) - 45.0;
-        m.yaw -= close;
-        m.head_yaw = m.yaw;
-    } else {
-        m.ai.goals.disabled &= !(MOVE | LOOK | JUMP);
-    }
-    // travelInFluid: a buoyant block bobs up.
-    if body && m.is_in_liquid() && archetype(m).is_some_and(|a| a.buoyant) {
-        let vibe = 0.2 * (m.age as f32 * 0.4).sin();
-        let height = if m.fluids.in_water {
-            m.fluids.water
-        } else {
-            m.fluids.lava
-        };
-        let immersion = height - f64::from(m.height()) * 0.2 + f64::from(vibe);
-        if immersion > 0.0 {
-            m.velocity.y += immersion.min(1.0) * f64::from(0.04f32);
-        }
-    }
-    if body && let Some(p) = w.selected_player() {
-        player_push(m, p, w, events);
-    }
-}
-/// `SulfurCube.doPush` / `applyContactDamage`, for ordinary mob targets.
-/// Use the same overlap, pushability and team predicate as pushEntities; the
-/// contact still happens when Entity.push produces no impulse at equal centres.
-/// The built-in hot archetype has attribute_to_source=false for nonplayers.
-pub fn mob_contacts(m: &Mob, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    let Some(amount) = archetype(m).and_then(|a| a.contact_damage) else {
-        return;
-    };
-    let bounds = m.bounds();
-    let own_team = w.teams.of(super::Who::Mob(m.id));
-    for other in w.others_near(bounds) {
-        if other.id != m.id
-            && other.alive
-            && other.pushable
-            && other.bounds.intersects(bounds)
-            && crate::scoreboard::pushable_by(own_team, w.teams.of(super::Who::Mob(other.id)), true)
-        {
-            events.push(MobEvent::DamageMob {
-                target: other.id,
-                amount,
-                source: Damage::of(DamageKind::SulfurCubeHot),
-            });
-        }
-    }
-}
 
-/// `playerTouch` / `playerPush`: a cube holding a block is shoved by a
-/// player walking into it (and burns them when hot).
-fn player_push(m: &mut Mob, p: &super::PlayerView, w: &MobWorld, events: &mut Vec<MobEvent>) {
-    if !p.alive || p.spectator {
-        return;
-    }
-    let touch = p.bounds.inflate(Vec3::new(1.0, 0.5, 1.0));
-    if !m.bounds().intersects(touch) {
-        return;
-    }
-    let (dx, dz) = (m.position.x - p.position.x, m.position.z - p.position.z);
-    let horizontal = (dx * dx + dz * dz).sqrt();
-    let (bottom, top) = (m.position.y, m.position.y + f64::from(m.height()));
-    let player_top = p.bounds.max_position().y;
-    if !(horizontal < f64::from(1.3f32) && p.position.y <= top && player_top > bottom) {
-        return;
-    }
-    let a = archetype(m);
-    let kb = push_factor(a.map_or(0.0, |a| a.knockback_resistance));
-    let len = horizontal.max(1.0e-4);
-    let speed = (p.velocity.length() * 2.0 * f64::from(0.3f32)).clamp(0.0, 0.5);
-    let push = Vec3::new(
-        dx / len * kb * speed,
-        if m.on_ground {
-            kb * f64::from(0.3f32) * speed
-        } else {
-            0.0
-        },
-        dz / len * kb * speed,
-    );
-    let (sound, cooldown, threshold) = a.map_or(DEFAULT_PUSH, |a| {
-        (a.push_sound, a.push_cooldown, a.push_threshold)
-    });
-    if push.length_squared() > f64::from(threshold * threshold) && m.extra.scratch[2] <= 0 {
-        m.extra.scratch[2] = (cooldown * 20.0) as i32;
-        events.push(MobEvent::Sound(sound, m.center(), 1.0, 1.0));
-    }
-    m.velocity = m.velocity.add_vector(push);
-    if let Some(amount) = a.and_then(|a| a.contact_damage) {
-        events.push(w.route_player_event(MobEvent::DamagePlayer {
-            amount,
-            from: [m.position.x, m.position.y, m.position.z],
-            kind: "minecraft:sulfur_cube_hot",
-        }));
-    }
-}
-/// `SulfurCubeRenderer.scale` (after the cube's size and squish, flat when
-/// holding a block): the fuse swell, half size for an adult and the lift.
-pub fn scale(m: &Mob, alpha: f32) -> glam::Mat4 {
-    let size = m.extra.size.max(1) as f32;
-    let squish = if has_body(m) {
-        0.0
-    } else {
-        m.anim.lerp(0, alpha) / (size * 0.5 + 1.0)
-    };
-    let w = 1.0 / (squish + 1.0);
-    let mut t = glam::Mat4::from_scale(glam::Vec3::splat(0.999))
-        * glam::Mat4::from_translation(glam::Vec3::new(0.0, 0.001, 0.0))
-        * glam::Mat4::from_scale(glam::Vec3::new(w * size, 1.0 / w * size, w * size));
-    let fuse = if primed(m) {
-        fuse(m) as f32 - alpha + 1.0
-    } else {
-        0.0
-    };
-    if fuse < 10.0 && fuse > 0.0 {
-        let g = (1.0 - fuse / 10.0).clamp(0.0, 1.0);
-        let s = 1.0 + g * g * g * g * 0.3;
-        t *= glam::Mat4::from_scale(glam::Vec3::splat(s));
-    }
-    let baby = m.is_baby();
-    let (offset, down) = if baby { (1.24, 1.0) } else { (0.98, 0.5) };
-    t * glam::Mat4::from_scale(glam::Vec3::splat(down))
-        * glam::Mat4::from_translation(glam::Vec3::new(0.0, offset - 1.0 / 16.0, 0.0))
-}
-/// The outer body model and texture.
-pub fn body(m: &Mob) -> (String, String) {
-    if m.is_baby() {
-        (
-            "sulfur_cube_small#main".into(),
-            "entity/sulfur_cube/sulfur_cube_outer_small".into(),
-        )
-    } else {
-        (
-            "sulfur_cube#main".into(),
-            "entity/sulfur_cube/sulfur_cube_outer".into(),
-        )
-    }
-}
-/// `SulfurCubeInnerLayer`: the inner cube when no block is held.
-pub fn inner(m: &Mob) -> Option<(&'static str, &'static str)> {
-    if has_body(m) {
-        return None;
-    }
-    Some(if m.is_baby() {
-        (
-            "sulfur_cube_small#inner",
-            "entity/sulfur_cube/sulfur_cube_inner_small",
-        )
-    } else {
-        ("sulfur_cube#inner", "entity/sulfur_cube/sulfur_cube_inner")
-    })
-}
 /// `SulfurCubeTemptGoal` (`TemptGoal.ForNonPathfinders`): face a player
 /// holding slime balls (babies) or something to swallow (adults) and hop.
 #[derive(Clone, Debug)]
@@ -1432,43 +813,6 @@ impl Goal for SulfurTempt {
     fn flags(&self) -> u8 {
         LOOK
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        let Some(p) = cx.w.selected_player() else {
-            return false;
-        };
-        let wants = |i: &Option<std::sync::Arc<str>>| {
-            i.as_deref().is_some_and(|i| {
-                if m.is_baby() {
-                    m.kind.food.iter().any(|f| f == i)
-                } else {
-                    swallowable(m, i)
-                }
-            })
-        };
-        // Attributes.TEMPT_RANGE 8, scaled by visibility (floor 2).
-        let range = (8.0 * p.visibility_percent(m.species())).max(2.0);
-        let ok = p.alive
-            && !p.spectator
-            && (wants(&p.main_hand) || wants(&p.off_hand))
-            && m.distance_sqr(p.position) <= range * range;
-        self.player = ok.then_some(p.eye);
-        ok
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(p) = cx.w.selected_player() else {
-            return;
-        };
-        if m.distance_sqr(p.position) < 1.0 {
-            super::cube::set_wanted(m, 0.0);
-            return;
-        }
-        m.turn_to(p.eye, 10.0, 10.0);
-        let yaw = m.yaw;
-        super::cube::set_direction(m, yaw, true);
-    }
-    fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        super::cube::set_wanted(m, 0.0);
-    }
 }
 /// `SulfurCubeSearchForItemsGoal`: hop toward the nearest thing it could
 /// swallow (the game marks it in `point`).
@@ -1479,89 +823,15 @@ impl Goal for SearchForItems {
     fn flags(&self) -> u8 {
         LOOK
     }
-    fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        !m.is_baby() && m.extra.ints[3] <= 0 && m.extra.point.is_some()
-    }
-    fn tick(&mut self, m: &mut Mob, _: &mut Cx) {
-        let Some(p) = m.extra.point else { return };
-        m.turn_to(p, 10.0, 10.0);
-        let yaw = m.yaw;
-        super::cube::set_direction(m, yaw, true);
-    }
-}
-/// `addAdditionalSaveData`: the cube's size, the timers and the fuse.
-pub fn to_nbt(m: &Mob, map: &mut horizon_core::nbt::Compound) {
-    use horizon_core::nbt::Tag;
-    map.insert("Size".into(), Tag::Int(m.extra.size.max(1) - 1));
-    map.insert("wasOnGround".into(), Tag::Byte(i8::from(m.extra.flag2)));
-    map.insert("pickup_timer".into(), Tag::Int(m.extra.ints[3]));
-    map.insert(
-        "from_bucket".into(),
-        Tag::Byte(i8::from(m.extra.scratch[3] != 0)),
-    );
-    map.insert("fuse".into(), Tag::Int(fuse(m)));
-    for (key, value) in [
-        ("Age", Tag::Int(m.extra.age)),
-        ("AgeLocked", Tag::Byte(i8::from(m.extra.age_locked))),
-    ] {
-        map.insert(key.into(), value);
-    }
-    map.entry("ForcedAge".into()).or_insert(Tag::Int(0));
-}
-/// `SulfurCube.readAdditionalSaveData`: size precedes the living health default.
-pub fn from_nbt(m: &mut Mob, tag: &horizon_core::nbt::Tag) {
-    use horizon_core::nbt::Tag;
-    let int = |k: &str| match tag.get(k) {
-        Some(Tag::Int(v)) => Some(*v),
-        Some(Tag::Byte(v)) => Some(i32::from(*v)),
-        _ => None,
-    };
-    m.extra.age = int("Age").unwrap_or(0);
-    m.extra.age_locked = int("AgeLocked").unwrap_or(0) != 0;
-    set_size(m, int("Size").unwrap_or(0) + 1, false);
-    // LivingEntity's load applies the saved bases after the size, so they win.
-    if let Some(Tag::List(saved)) = tag.get("attributes") {
-        use super::finalize::{Attr, set_base};
-        for a in saved {
-            let attr = match crate::save::text(a.get("id")).as_deref() {
-                Some("minecraft:max_health") => Attr::MaxHealth,
-                Some("minecraft:movement_speed") => Attr::MovementSpeed,
-                _ => continue,
-            };
-            if let Some(base) = crate::save::float(a.get("base")) {
-                set_base(m, attr, base);
-            }
-        }
-    }
-    // The saved Health, not the one the living load's Health Boost clamp cut
-    // to the unsized maximum: vanilla sizes the cube before `setHealth`.
-    m.health = crate::save::float(tag.get("Health"))
-        .map_or(m.attrs.max_health, |h| h as f32)
-        .min(super::finalize::loaded_max_health(m));
-    m.extra.flag2 = int("wasOnGround").unwrap_or(0) != 0;
-    m.extra.ints[3] = int("pickup_timer").unwrap_or(0);
-    m.extra.scratch[3] = int("from_bucket").unwrap_or(0);
-    m.extra.counter2 = int("fuse").unwrap_or(-1).max(-1) + 1;
-    if primed(m) {
-        m.invulnerable_flag = true;
-    }
 }
 
 #[cfg(test)]
 mod tnt_rule_tests {
     use super::*;
-    use crate::mobs::{Damage, DamageKind, Mob, Species};
+    use crate::mobs::{Damage, DamageKind, Species};
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    fn tnt_cube() -> Mob {
-        test_archetype_items();
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        let mut m = Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0);
-        m.extra.set_body(Some("minecraft:tnt".into()));
-        m
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -1654,15 +924,10 @@ mod tnt_rule_tests {
 #[cfg(test)]
 mod fuse_anim_tests {
     use super::*;
-    use crate::mobs::{Mob, Species};
+    use crate::mobs::{Species};
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    fn cube() -> Mob {
-        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
-        kind.species = Species::SulfurCube;
-        Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
-    }
 
     #[test]
     fn a_primed_cube_is_still_knocked_about() {
@@ -1898,61 +1163,4 @@ mod mob_contact_tests {
     use super::*;
     use std::sync::Arc;
 
-    #[test]
-    #[ignore = "daily"]
-    fn mob_tick_contacts_only_overlapping_pushable_mobs_with_a_hot_body() {
-        let mut test_level = crate::health::TestLevel::new(0);
-        let level = &mut test_level.level();
-        test_archetype_items();
-        let victim = |id: u32, at: Vec3, alive: bool| {
-            let mut m = Mob::new(id, crate::mobs::sensor_scan_tests::kind(), at, 0.0);
-            if !alive {
-                m.health = 0.0;
-            }
-            m.seen(None, &crate::items::Items::empty())
-        };
-        let others = [
-            victim(2, Vec3::ZERO, true),
-            victim(3, Vec3::new(8.0, 0.0, 0.0), true),
-            victim(4, Vec3::ZERO, false),
-        ];
-        crate::mobs::world::with_test_world(&others, |w, types| {
-            for no_ai in [true, false] {
-                for body in [
-                    None,
-                    Some("minecraft:white_concrete_powder"),
-                    Some("minecraft:magma_block"),
-                ] {
-                    let mut m = Mob::new(
-                        1,
-                        Arc::new(types.types["minecraft:sulfur_cube"].clone()),
-                        Vec3::ZERO,
-                        0.0,
-                    );
-                    m.no_ai = no_ai;
-                    m.no_gravity = true;
-                    m.persistent = true;
-                    m.extra.set_body(body.map(Into::into));
-                    let mut events = Vec::new();
-                    assert!(m.tick(w, level, &mut events));
-                    let hits: Vec<_> = events
-                        .iter()
-                        .filter_map(|event| match event {
-                            MobEvent::DamageMob {
-                                target,
-                                amount,
-                                source,
-                            } => Some((*target, *amount, source.kind)),
-                            _ => None,
-                        })
-                        .collect();
-                    if body == Some("minecraft:magma_block") {
-                        assert_eq!(hits, [(2, 1.0, DamageKind::SulfurCubeHot)], "NoAI={no_ai}");
-                    } else {
-                        assert!(hits.is_empty(), "{body:?}, NoAI={no_ai}: {hits:?}");
-                    }
-                }
-            }
-        });
-    }
 }

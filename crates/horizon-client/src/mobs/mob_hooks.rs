@@ -1,6 +1,6 @@
 //! `MobHooks`: the native mod hooks the mob AI asks while it decides, and the
 //! `MobWorld` helpers that ask them.
-use super::{Mob, MobWorld, PlayerView, TargetChange, Who, path::PathType};
+use super::{MobWorld, PlayerView, TargetChange, Who, path::PathType};
 use horizon_world::registry::BlockStateId;
 
 /// Native mod hooks the mob AI asks while it decides.
@@ -37,16 +37,6 @@ pub trait MobHooks {
     /// percent as mob `looking` targets it, as mods scale it.
     fn living_visibility_mob(&self, _target: u32, _looking: u32, visibility: f64) -> f64 {
         visibility
-    }
-    /// A proposed target change. A listener may cancel or substitute a target.
-    fn living_change_target(
-        &self,
-        _mob: &mut Mob,
-        _world: &MobWorld<'_>,
-        _is_brain: bool,
-        target: Option<Who>,
-    ) -> TargetChange {
-        TargetChange::Set(target)
     }
     /// `IBlockExtension.canEntityDestroy`: whether mob `mob` may destroy the
     /// block at `pos`, `vanilla` (the mob's own rule) unless the block's parts

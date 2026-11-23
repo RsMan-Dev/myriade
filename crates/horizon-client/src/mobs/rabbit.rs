@@ -1,6 +1,6 @@
 //! Rabbit hopping controls and the clocks consumed by `RabbitModel`.
 use super::{
-    Mob, MobEvent, MobWorld, Species,
+    MobEvent, MobWorld, Species,
     control::Operation,
     goals::{
         Avoid, AvoidEntity, Breed, ClimbOnTopOfPowderSnow, Cx, Float, Goal, HurtByTarget, JUMP,
@@ -43,36 +43,6 @@ pub fn random_variant(white: bool, gold: bool, random: &mut impl RandomSource) -
     }
 }
 
-/// Rabbit.registerGoals.
-pub fn register(m: &mut Mob) {
-    let food = m.kind.food.clone();
-    let monsters = super::species::ALL
-        .iter()
-        .map(|d| d.species)
-        .filter(|s| super::ai::is_monster(*s))
-        .collect::<Vec<Species>>();
-    let g = &mut m.ai.goals;
-    g.add(1, Float);
-    g.add(1, ClimbOnTopOfPowderSnow);
-    g.add(1, Panic::new(2.2));
-    g.add(2, Breed::new(0.8));
-    g.add(3, Tempt::new(1.0, food, false));
-    g.add(4, RabbitAvoid::new(Avoid::Player, 8.0));
-    g.add(
-        4,
-        RabbitAvoid::new(Avoid::Species(vec![Species::Wolf]), 10.0),
-    );
-    g.add(4, RabbitAvoid::new(Avoid::Species(monsters), 4.0));
-    g.add(5, RaidGarden::new());
-    g.add(6, Stroll::avoiding_water(0.6));
-    g.add(11, LookAtPlayer::new(10.0));
-    m.ai.mov.kind = super::control::MoveKind::Custom;
-    // Rabbit's constructor ends with setSpeedModifier(0.0), which leaves the move control in
-    // MOVE_TO towards the default wanted position (0, 0, 0).
-    m.ai.mov.set_wanted(0.0, 0.0, 0.0, 0.0);
-    m.ai.nav.can_float = true;
-    m.extra.ints[IDLE_TIMEOUT] = m.random.next_int_bound(40).unwrap_or(0) + 180;
-}
 
 /// `Rabbit.RaidGardenGoal.isValidTarget`: farmland-like ground (`#supports_crops`) under a
 /// carrot crop at its maximum age, while the rabbit wants more food and has not found one.
@@ -113,88 +83,8 @@ impl Goal for RaidGarden {
     fn flags(&self) -> u8 {
         MOVE | JUMP
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        // MoveToBlockGoal.canUse draws the next delay only once the last one ran out.
-        if self.block.next_start > 0 {
-            self.block.next_start -= 1;
-            return false;
-        }
-        if !cx.w.can_grief(m.id) {
-            return false;
-        }
-        self.can_raid = false;
-        self.wants_to_raid = m.extra.more_carrot_ticks <= 0;
-        let next = reduced(200 + m.random.next_int_bound(200).unwrap_or(0));
-        let wants = self.wants_to_raid;
-        let found = std::cell::Cell::new(false);
-        let target = self.block.can_use(m, cx.w, next, |w, p| {
-            let ok = raid_target(w, p, wants, false);
-            found.set(found.get() || ok);
-            ok
-        });
-        self.can_raid = found.get();
-        target
-    }
-    fn can_continue(&mut self, _: &mut Mob, cx: &mut Cx) -> bool {
-        let (wants, raid) = (self.wants_to_raid, self.can_raid);
-        self.can_raid
-            && self
-                .block
-                .can_continue(cx.w, |w, p| raid_target(w, p, wants, raid))
-    }
-    fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.block.start(m, cx.w);
-    }
     fn every_tick(&self) -> bool {
         true
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.block.tick(m, cx.w);
-        let b = self.block.block;
-        m.ai.look.set_look_at(
-            [
-                f64::from(b[0]) + 0.5,
-                f64::from(b[1] + 1),
-                f64::from(b[2]) + 0.5,
-            ],
-            10.0,
-            m.max_head_x_rot(),
-        );
-        if !self.block.reached {
-            return;
-        }
-        let crop = [b[0], b[1] + 1, b[2]];
-        if self.can_raid && cx.w.block_name(crop[0], crop[1], crop[2]) == "minecraft:carrots" {
-            let age =
-                cx.w.prop(crop[0], crop[1], crop[2], "age")
-                    .and_then(|a| a.parse::<i32>().ok())
-                    .unwrap_or(0);
-            let old = cx.w.world.block(crop[0], crop[1], crop[2]);
-            if age == 0 {
-                // `setBlock(AIR, 2)`, then `destroyBlock` finds air and does nothing.
-                if let Some(air) = cx.w.registry.default_state("minecraft:air") {
-                    cx.events.push(MobEvent::CropRaided {
-                        pos: crop,
-                        state: air,
-                        old: None,
-                        mob: m.id,
-                    });
-                }
-            } else if let Some(mut s) = cx.w.registry.state(old).cloned() {
-                s.properties.insert("age".into(), (age - 1).to_string());
-                if let Some(state) = cx.w.registry.id(&s) {
-                    cx.events.push(MobEvent::CropRaided {
-                        pos: crop,
-                        state,
-                        old: Some(old),
-                        mob: m.id,
-                    });
-                }
-            }
-            m.extra.more_carrot_ticks = 40;
-        }
-        self.can_raid = false;
-        self.block.next_start = 10;
     }
 }
 
@@ -215,255 +105,21 @@ impl Goal for RabbitAvoid {
     fn flags(&self) -> u8 {
         self.0.flags()
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        m.extra.variant != EVIL && self.0.can_use(m, cx)
-    }
-    fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        self.0.can_continue(m, cx)
-    }
-    fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.0.start(m, cx)
-    }
-    fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.0.stop(m, cx)
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.0.tick(m, cx)
-    }
 }
 
-/// Rabbit.baseTick: the idle timeout branch precedes the hop clock branch.
-pub fn base_tick(m: &mut Mob) {
-    let age = m.age as f32;
-    let leashed = m.extra.leash.is_some();
-    if m.extra.ints[IDLE_TIMEOUT] <= 0 && !leashed && !m.no_ai {
-        m.extra.ints[IDLE_TIMEOUT] = m.random.next_int_bound(40).unwrap_or(0) + 180;
-        m.anim.states[1].start(age);
-    } else if m.extra.ints[CLIENT_JUMP_TICKS] > 0 {
-        m.anim.states[0].start_if_stopped(age);
-        m.anim.states[1].stop();
-    } else {
-        m.extra.ints[IDLE_TIMEOUT] -= 1;
-        m.anim.states[0].stop();
-    }
-    if leashed {
-        m.anim.states[1].stop();
-    }
-}
 
-/// `Rabbit.facePoint`.
-fn face_point(m: &mut Mob, x: f64, z: f64) {
-    m.yaw = trig::atan2_degrees(z - m.position.z, x - m.position.x) - 90.0;
-}
 
-/// `Rabbit.setVariant(EVIL)`, run the first time a killer bunny ticks (its
-/// variant comes from `/summon`, a save or a spawn): armor 8, the bite and
-/// target goals, attack damage plus 5 and the "Killer Bunny" name.
-fn set_evil(m: &mut Mob) {
-    use super::finalize::{Attr, Op, add_modifier, set_base};
-    if m.ai.goals.has("MeleeAttack") {
-        return;
-    }
-    set_base(m, Attr::Armor, 8.0);
-    m.ai.goals.add(4, MeleeAttack::new(1.4, true));
-    m.ai.targets.add(1, HurtByTarget::new().alert());
-    m.ai.targets.add(2, NearestTarget::player(true));
-    m.ai.targets
-        .add(2, NearestTarget::species(&[Species::Wolf], true));
-    add_modifier(m, Attr::AttackDamage, "minecraft:evil", 5.0, Op::AddValue);
-    if m.custom_name.is_none() && m.custom_name_text.is_none() {
-        let name = crate::text::Text::translate("entity.minecraft.killer_bunny", &[]);
-        m.custom_name = Some(name.plain());
-        m.custom_name_text = Some(name);
-    }
-}
 
-fn start_jumping(m: &mut Mob) {
-    m.ai.jumping = true;
-    m.extra.ints[JUMP_DURATION] = 15;
-    m.extra.ints[JUMP_TICKS] = 0;
-    let pitch = ((m.random.next_float() - m.random.next_float()) * 0.2 + 1.0) * 0.8;
-    if !m.silent {
-        m.outbox.push(MobEvent::Sound(
-            "entity.rabbit.jump",
-            [m.position.x, m.position.y, m.position.z],
-            1.0,
-            pitch,
-        ));
-    }
-}
 
-/// `Rabbit.playAttackSound`: only the killer bunny bites with a sound, at
-/// volume 1 and a pitch drawn from its own random. The pitch is an argument of
-/// `playSound`, so its two draws are made even for a silent rabbit.
-pub fn attack_sound(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    if m.extra.variant != EVIL {
-        return;
-    }
-    let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-    if m.silent {
-        return;
-    }
-    events.push(MobEvent::Sound(
-        "entity.rabbit.attack",
-        [m.position.x, m.position.y, m.position.z],
-        1.0,
-        pitch,
-    ));
-}
 
-/// Rabbit.customServerAiStep: start a hop toward the current path waypoint;
-/// `target` is where the rabbit's target stands, if it has one.
-pub fn server_ai_step(m: &mut Mob, target: Option<Vec3>) {
-    if m.extra.variant == EVIL {
-        set_evil(m);
-    }
-    // RabbitMoveControl.setWantedPosition applies the water override before landing checks.
-    if m.fluids.in_water && m.ai.mov.speed_modifier > 0.0 {
-        m.ai.mov.speed_modifier = 1.5;
-    }
-    if m.extra.ints[MOVE_DELAY] > 0 {
-        m.extra.ints[MOVE_DELAY] -= 1;
-    }
-    // `moreCarrotTicks` runs down by up to 2 a tick.
-    if m.extra.more_carrot_ticks > 0 {
-        m.extra.more_carrot_ticks =
-            (m.extra.more_carrot_ticks - m.random.next_int_bound(3).unwrap_or(0)).max(0);
-    }
-    if m.on_ground {
-        if !m.extra.flag {
-            m.ai.jumping = false;
-            m.extra.ints[MOVE_DELAY] = if m.ai.mov.speed_modifier < 2.2 { 10 } else { 3 };
-        }
-        // A killer bunny within 4 blocks of its target faces it and hops at it.
-        if m.extra.variant == EVIL
-            && m.extra.ints[MOVE_DELAY] == 0
-            && let Some(t) = target
-            && m.distance_sqr(t) < 16.0
-        {
-            face_point(m, t.x, t.z);
-            let speed = m.ai.mov.speed_modifier;
-            m.ai.mov.set_wanted(t.x, t.y, t.z, speed);
-            start_jumping(m);
-        }
-        if !m.ai.jump && m.ai.mov.has_wanted() && m.extra.ints[MOVE_DELAY] == 0 {
-            let mut at = m.ai.mov.wanted;
-            if let Some(path) = m.ai.nav.path.as_ref().filter(|p| !p.is_done()) {
-                let p = path.entity_pos_at(path.next, m.width());
-                at = [p.x, p.y, p.z];
-            }
-            face_point(m, at[0], at[2]);
-            start_jumping(m);
-        }
-    }
-    m.extra.flag = m.on_ground;
-}
 
-/// RabbitMoveControl.tick: wait on the ground and restore the last wanted speed in flight.
-pub fn move_control(m: &mut Mob, w: &MobWorld) {
-    prepare_move(m);
-    m.ground_move_tick(w, m.movement_speed());
-}
-fn prepare_move(m: &mut Mob) {
-    if m.ai.mov.speed_modifier > 0.0 {
-        m.extra.vector[0] = if m.fluids.in_water {
-            1.5
-        } else {
-            m.ai.mov.speed_modifier
-        };
-    }
-    if m.on_ground && !m.ai.jumping && !m.ai.jump {
-        m.ai.mov.speed_modifier = 0.0;
-        m.set_speed(0.0);
-    } else if m.ai.mov.has_wanted() || m.ai.mov.operation == Operation::Jumping {
-        m.ai.mov.speed_modifier = if m.fluids.in_water {
-            1.5
-        } else {
-            m.extra.vector[0]
-        };
-    }
-}
 
-/// RabbitJumpControl.tick: explicit jump requests do not wait for the landing cooldown.
-pub fn jump_control(m: &mut Mob) {
-    if m.ai.jump {
-        start_jumping(m);
-        m.ai.jump = false;
-    }
-}
 
-/// Rabbit.aiStep runs after the living physics; the fifteenth tick still renders the hop.
-pub fn post_tick(m: &mut Mob) {
-    for (ticks, duration) in [
-        (JUMP_TICKS, JUMP_DURATION),
-        (CLIENT_JUMP_TICKS, CLIENT_JUMP_DURATION),
-    ] {
-        if m.extra.ints[ticks] != m.extra.ints[duration] {
-            m.extra.ints[ticks] += 1;
-        } else if m.extra.ints[duration] != 0 {
-            m.extra.ints[ticks] = 0;
-            m.extra.ints[duration] = 0;
-            if ticks == JUMP_TICKS {
-                m.ai.jumping = false;
-            }
-        }
-    }
-}
 
-fn jump_scale(m: &Mob) -> f32 {
-    let step =
-        m.ai.nav
-            .path
-            .as_ref()
-            .filter(|p| !p.is_done())
-            .is_some_and(|p| f64::from(p.next_node().y) > m.position.y + 0.5);
-    let high =
-        m.horizontal_collision || step || m.ai.jumping && m.ai.mov.wanted[1] > m.position.y + 0.5;
-    let base = if high {
-        0.5
-    } else if m.ai.mov.speed_modifier <= 0.6 {
-        0.2
-    } else {
-        0.3
-    };
-    base / 0.42
-}
 
-/// Rabbit.jumpFromGround: ordinary small hops, larger hops toward raised terrain.
-pub fn jump(m: &mut Mob, w: &MobWorld) {
-    let power = m.jump_power_with(w, jump_scale(m));
-    apply_jump(m, power);
-}
 
-#[cfg(test)]
-fn jump_power(m: &Mob, block_factor: f32) -> f32 {
-    m.attrs.jump_strength as f32 * jump_scale(m) * block_factor + m.jump_boost_power()
-}
 
-fn apply_jump(m: &mut Mob, power: f32) {
-    if power > 1.0e-5 {
-        m.velocity.y = f64::from(power).max(m.velocity.y);
-    }
-    if m.ai.mov.speed_modifier > 0.0
-        && m.velocity.x * m.velocity.x + m.velocity.z * m.velocity.z < 0.01
-    {
-        m.move_relative(
-            0.1,
-            Vec3::new(0.0, if m.is_baby() { 0.5 } else { 1.5 }, 1.0),
-        );
-    }
-    hop_event(m);
-    m.outbox.push(MobEvent::RabbitHop {
-        mob: m.id,
-        at: [m.position.x, m.position.y, m.position.z],
-    });
-}
 
-/// Rabbit.handleEntityEvent(1): reset the counter without starting the clock early.
-pub fn hop_event(m: &mut Mob) {
-    m.extra.ints[CLIENT_JUMP_DURATION] = 15;
-    m.extra.ints[CLIENT_JUMP_TICKS] = 0;
-}
 
 #[cfg(test)]
 mod tests {
@@ -477,61 +133,6 @@ mod tests {
     use serde_json::json;
     use std::{collections::HashMap, sync::Arc};
 
-    fn rabbit() -> Mob {
-        let model = Arc::new(Part::parse(
-            "root",
-            &json!({"children": {"head": {}, "left_hind_foot": {}}}),
-        ));
-        let kind = Arc::new(MobType {
-            shadow: None,
-            id: "minecraft:rabbit".into(),
-            species: Species::Rabbit,
-            width: 0.4,
-            height: 0.5,
-            eye_height: 0.4,
-            category: "creature".into(),
-            max_health: 3.0,
-            speed: 0.3,
-            flying_speed: 0.4,
-            attack_damage: 0.0,
-            attack_knockback: 0.0,
-            follow_range: 16.0,
-            step_height: 0.6,
-            armor: 0.0,
-            armor_toughness: 0.0,
-            knockback_resistance: 0.0,
-            jump_strength: 0.42,
-            attributes: Arc::default(),
-            item_stack_limits: Default::default(),
-            attribute_bounds: Default::default(),
-            gravity: 0.08,
-            safe_fall_distance: 3.0,
-            fall_damage_multiplier: 1.0,
-            water_efficiency: 0.0,
-            water_slowdown: 0.8,
-            air_speed: 0.02,
-            baby_scale: 0.5,
-            head_rot_speed: 10.0,
-            max_head_x_rot: 40.0,
-            max_head_y_rot: 75.0,
-            ambient_interval: 120,
-            flags: Flags {
-                animal: true,
-                ..Default::default()
-            },
-            model,
-            layers: Default::default(),
-            texture: String::new(),
-            brain: Brain::Passive,
-            anim: Anim::Rabbit,
-            sounds: [""; 3],
-            sound_overrides: Default::default(),
-            food: Arc::default(),
-            tempt: Arc::default(),
-            passenger_attachments: Vec::new(),
-        });
-        Mob::new(1, kind, Vec3::ZERO, 0.0)
-    }
     fn near(a: f64, b: f64) {
         assert!((a - b).abs() < 1.0e-6, "{a} != {b}");
     }
@@ -780,15 +381,6 @@ mod attack_sound_tests {
     use super::*;
     use crate::mobs::sensor_scan_tests::kind;
 
-    fn rabbit(variant: u8) -> Mob {
-        let mut kind = kind();
-        let k = std::sync::Arc::make_mut(&mut kind);
-        k.id = "minecraft:rabbit".into();
-        k.species = Species::Rabbit;
-        let mut m = Mob::new(1, kind, Vec3::new(2.5, 64.0, -1.5), 0.0);
-        m.extra.variant = variant;
-        m
-    }
 
     /// `Rabbit.playAttackSound`: the killer bunny's bite at volume 1 and
     /// `(nextFloat - nextFloat) * 0.2 + 1`, and nothing from another rabbit.

@@ -1,7 +1,7 @@
 //! `NeutralMob`'s persistent anger: the absolute end time vanilla saves
 //! (`anger_end_time`) beside Horizon's per-tick countdown (`Extra::anger`).
 
-use super::{Mob, Species};
+use super::{Species};
 
 /// `NeutralMob.readPersistentAngerSaveData`: the anger runs until its end
 /// time, so a mob that is loaded again is angry for what is left of it.
@@ -24,98 +24,9 @@ pub fn persistent_anger(s: Species) -> bool {
             | Species::ZombifiedPiglin
     )
 }
-/// `NeutralMob.readPersistentAngerSaveData`: the gameplay countdown restarts
-/// from the end time just read, and the pair is remembered as untouched.
-pub fn adopt_anger_end(m: &mut Mob, game_time: i64) {
-    m.extra.anger = anger_left(m.extra.anger_end, game_time);
-    m.extra.anger_stamp = Some((m.extra.anger, m.age));
-}
-/// Before a `NeutralMob`'s tick: a countdown nothing changed since the end
-/// time was last settled runs from that end time, so ticks the mob missed (its
-/// chunk out of the entity-ticking area) still count, as they do for vanilla's
-/// `isAngry`. The countdown is what is left after the previous tick, so in
-/// a mob ticked every tick nothing changes.
-pub fn resume_anger(m: &mut Mob, game_time: i64) {
-    if m.extra.anger_stamp == Some((m.extra.anger, m.age)) {
-        m.extra.anger = anger_left(m.extra.anger_end, game_time - 1);
-        m.extra.anger_stamp = Some((m.extra.anger, m.age));
-    }
-}
-/// `NeutralMob.getPersistentAngerEndTime` at `game_time`, from Horizon's
-/// countdown. Vanilla keeps an absolute end time that only
-/// `setPersistentAngerEndTime` changes (`startPersistentAngerTimer`,
-/// `stopBeingAngry`): it is not rewritten when it passes, and it does not move
-/// while the mob is not ticked. So the end stays as it is while the countdown
-/// is what the end time says (`anger_left`), or the countdown has not changed
-/// since the end was last read or written (`anger_stamp`: the mob has not
-/// ticked, or does not count its anger down: NoAI, an enderman). Only a
-/// countdown the gameplay set otherwise moves the end to `game_time` plus it,
-/// or to -1 for anger the gameplay stopped.
-pub fn settle_anger_end(m: &mut Mob, game_time: i64) -> i64 {
-    let anger = m.extra.anger;
-    let untouched = m.extra.anger_stamp.is_some_and(|(stamped, age)| {
-        stamped == anger && (age == m.age || m.no_ai || m.species() == Species::Enderman)
-    });
-    if anger != anger_left(m.extra.anger_end, game_time) && !untouched {
-        m.extra.anger_end = if anger > 0 {
-            game_time + i64::from(anger)
-        } else {
-            -1
-        };
-    }
-    m.extra.anger_stamp = Some((anger, m.age));
-    m.extra.anger_end
-}
-/// `Wolf.defineSynchedData`: DATA_ANGER_END_TIME starts at -1 (the other
-/// `NeutralMob`s keep a plain long field, 0 until something sets it).
-pub fn init(m: &mut Mob) {
-    if m.species() == Species::Wolf {
-        m.extra.anger_end = -1;
-    }
-}
-/// `NeutralMob.stopBeingAngry`'s anger: no countdown, end time -1.
-pub fn stop(m: &mut Mob) {
-    m.extra.anger = 0;
-    m.extra.anger_end = -1;
-}
-/// One tick of a mob: a `NeutralMob`'s countdown resumes from its end time
-/// before, and the end time is settled after.
-pub fn around_tick(m: &mut Mob, game_time: i64, tick: impl FnOnce(&mut Mob) -> bool) -> bool {
-    before_tick(m, game_time);
-    let kept = tick(m);
-    after_tick(m, game_time);
-    kept
-}
 
-/// The pausable counterpart of `around_tick`: do not settle at a consumption
-/// pause; the resumed segment completes the same tick.
-pub(super) fn tick_until_consumption(
-    m: &mut Mob,
-    w: &super::MobWorld,
-    level: &mut super::DamageLevel<'_>,
-    events: &mut Vec<super::MobEvent>,
-) -> super::ai::TickProgress {
-    before_tick(m, w.game_time);
-    let progress = super::ai::tick_until_consumption(m, w, level, events);
-    if matches!(progress, super::ai::TickProgress::Complete(_)) {
-        after_tick(m, w.game_time);
-    }
-    progress
-}
 
-/// Start either a complete tick or the first segment of a pausable tick.
-pub(super) fn before_tick(m: &mut Mob, game_time: i64) {
-    if persistent_anger(m.species()) {
-        resume_anger(m, game_time);
-    }
-}
 
-/// Settle only after the complete AI tick, including any resumed segment.
-pub(super) fn after_tick(m: &mut Mob, game_time: i64) {
-    if persistent_anger(m.species()) {
-        settle_anger_end(m, game_time);
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -124,31 +35,6 @@ mod tests {
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    /// A `NeutralMob` of `species`; no resources are needed, only the species
-    /// decides how its anger is kept.
-    fn neutral(species: Species, id: &str) -> Mob {
-        let mut kind = (*sensor_scan_tests::kind()).clone();
-        kind.id = id.into();
-        kind.species = species;
-        Mob::new(1, Arc::new(kind), Vec3::ZERO, 0.0)
-    }
-    /// The mob as `readPersistentAngerSaveData` leaves it at `game_time`.
-    fn loaded(species: Species, id: &str, end: i64, game_time: i64) -> Mob {
-        let mut m = neutral(species, id);
-        m.extra.anger_end = end;
-        adopt_anger_end(&mut m, game_time);
-        m
-    }
-    /// One tick at `game_time` of the mob's own countdown (`age` goes on with
-    /// it), bracketed as `Mob::tick` does.
-    fn tick(m: &mut Mob, game_time: i64) {
-        resume_anger(m, game_time);
-        m.age += 1;
-        if m.extra.anger > 0 {
-            m.extra.anger -= 1;
-        }
-        settle_anger_end(m, game_time);
-    }
 
     /// #13076: vanilla writes the end time as it was read, whatever it is,
     /// past, zero, absent (-1) or future, as long as nothing restarted the anger.

@@ -1,10 +1,6 @@
 //! What piglin code calls on `ServerLevel` beyond [`MobLevel`]: the content tables it
 //! reads and the questions only the game can answer.
 use crate::mob_level::MobLevel;
-use horizon_client::{
-    items::{ItemStack, Items},
-    mobs::Mob,
-};
 use horizon_core::geometry::Vec3;
 
 pub trait PiglinLevel: MobLevel {
@@ -20,12 +16,8 @@ pub trait PiglinLevel: MobLevel {
     /// `PiglinAi.isBarterCurrency`.
     fn piglin_currency(&self, stack: &ItemStack) -> bool;
     fn item_blocks_attacks(&self, item: &str) -> bool;
-    fn piglin_wanted(&self, m: &Mob, item: &str) -> bool;
     fn piglin_slot(&self, item: &str) -> usize;
-    fn piglin_can_replace(&self, m: &Mob, stack: &ItemStack, slot: usize) -> bool;
-    fn piglin_can_add(&self, m: &Mob, stack: &ItemStack) -> bool;
     fn piglin_max_stack(&self, item: &str) -> u32;
-    fn piglin_wants(&self, m: &Mob, stack: &ItemStack) -> bool;
     fn piglin_equip(&mut self, index: usize, stack: &ItemStack) -> bool;
     fn piglin_stash(&mut self, index: usize, stack: ItemStack);
     fn piglin_keep(&mut self, index: usize, stack: ItemStack);

@@ -3,7 +3,7 @@
 //! `treasurePos` the game found for it (`MobEvent::DolphinTreasure`). `extra.point` is where the
 //! game saw the first item floating within 8 blocks (`Dolphin.ALLOWED_ITEMS`).
 use super::{
-    Mob, MobEvent, Who,
+    MobEvent, Who,
     goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone, reduced},
 };
 use crate::blocks::Fluid;
@@ -29,16 +29,6 @@ pub struct SwimToTreasure {
     stuck: bool,
 }
 impl SwimToTreasure {
-    /// `BlockPos.containing(x, dolphin.getY(), z).closerToCenterThan(position, 4)`.
-    fn arrived(m: &Mob) -> bool {
-        let Some(t) = m.extra.home else { return false };
-        let d = [
-            f64::from(t[0]) + 0.5 - m.position.x,
-            m.position.y.floor() + 0.5 - m.position.y,
-            f64::from(t[2]) + 0.5 - m.position.z,
-        ];
-        d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 16.0
-    }
 }
 impl Goal for SwimToTreasure {
     goal_clone!();
@@ -47,80 +37,6 @@ impl Goal for SwimToTreasure {
     }
     fn interruptable(&self) -> bool {
         false
-    }
-    fn can_use(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        m.extra.flag && m.air >= 100
-    }
-    fn can_continue(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        m.extra.home.is_some() && !Self::arrived(m) && !self.stuck && m.air >= 100
-    }
-    fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
-        self.stuck = false;
-        m.nav_stop();
-        // The game looks for the structure and sets the position, or none.
-        m.extra.home = None;
-        cx.events.push(MobEvent::DolphinTreasure { mob: m.id });
-    }
-    fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        if m.extra.home.is_none() || Self::arrived(m) || self.stuck {
-            m.extra.flag = false;
-        }
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(t) = m.extra.home else { return };
-        let close = m.ai.nav.target_pos.is_some_and(|p| {
-            let d = [
-                f64::from(p[0]) + 0.5 - m.position.x,
-                f64::from(p[1]) + 0.5 - m.position.y,
-                f64::from(p[2]) + 0.5 - m.position.z,
-            ];
-            d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < 144.0
-        });
-        if !close && !m.ai.nav.is_done() {
-            return;
-        }
-        let treasure = [
-            f64::from(t[0]) + 0.5,
-            f64::from(t[1]) + 0.5,
-            f64::from(t[2]) + 0.5,
-        ];
-        let eighth = f64::from(std::f32::consts::FRAC_PI_8);
-        let half = f64::from(std::f32::consts::FRAC_PI_2);
-        let mut next = m.default_random_pos_towards(cx.w, 16, 1, treasure, eighth);
-        if next.is_none() {
-            next = m.default_random_pos_towards(cx.w, 8, 4, treasure, half);
-        }
-        // isPathfindable(WATER) is a water fluid state.
-        if let Some(n) = next
-            && cx.w.fluid(
-                n[0].floor() as i32,
-                n[1].floor() as i32,
-                n[2].floor() as i32,
-            ) != Fluid::Water
-        {
-            next = m.default_random_pos_towards(cx.w, 8, 5, treasure, half);
-        }
-        let Some(next) = next else {
-            self.stuck = true;
-            return;
-        };
-        let (y, x) = (m.kind.max_head_y_rot + 20.0, m.kind.max_head_x_rot);
-        m.look_at_speed(next, y, x);
-        m.nav_move_to(cx.w, next, 1.3);
-        // `adjustedTickDelay(80)`: this goal does not require every tick, so
-        // 40, and the draw is the level's random, not the dolphin's.
-        if cx.level.random().next_int_bound(reduced(80)).unwrap_or(1) == 0 {
-            // Entity event 38: happy villager particles about the dolphin.
-            cx.events.push(MobEvent::AroundSelf {
-                mob: m.id,
-                event: 38,
-                kind: "happy_villager",
-                feet: [m.position.x, m.position.y, m.position.z],
-                width: f64::from(m.width()),
-                height: f64::from(m.height()),
-                burst: crate::particles::Burst::DOLPHIN,
-            });
-        }
     }
 }
 
@@ -139,42 +55,6 @@ impl Goal for SwimWithPlayer {
     goal_clone!();
     fn flags(&self) -> u8 {
         MOVE | LOOK
-    }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        // getNearestPlayer(forNonCombat().range(10).ignoreLineOfSight()).
-        m.can_see_player_through_walls(cx.w, 10.0)
-            && cx.w.selected_player().is_some_and(|p| p.swimming)
-            && m.ai.target != Some(Who::Player)
-    }
-    fn can_continue(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        cx.w.selected_player()
-            .is_some_and(|p| p.swimming && m.distance_sqr(p.position) < 256.0)
-    }
-    fn start(&mut self, _: &mut Mob, cx: &mut Cx) {
-        cx.events.push(cx.w.route_player_event(grace()));
-    }
-    fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        m.nav_stop();
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(p) = cx.w.selected_player().cloned() else {
-            return;
-        };
-        let (y, x) = (m.kind.max_head_y_rot + 20.0, m.kind.max_head_x_rot);
-        m.look_at_speed(p.eye, y, x);
-        if m.distance_sqr(p.position) < 6.25 {
-            m.nav_stop();
-        } else {
-            m.nav_move_to_entity(
-                cx.w,
-                [p.position.x, p.position.y, p.position.z],
-                1,
-                self.speed,
-            );
-        }
-        if p.swimming && m.random.next_int_bound(6).unwrap_or(1) == 0 {
-            cx.events.push(cx.w.route_player_event(grace()));
-        }
     }
 }
 /// `MobEffectInstance(DOLPHINS_GRACE, 100)`.
@@ -208,68 +88,6 @@ impl Goal for Jump {
     }
     fn interruptable(&self) -> bool {
         false
-    }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if m.random.next_int_bound(self.interval).unwrap_or(1) != 0 {
-            return false;
-        }
-        let [sx, sz] = motion_step(m.yaw);
-        let (bx, by, bz) = (
-            m.position.x.floor() as i32,
-            m.position.y.floor() as i32,
-            m.position.z.floor() as i32,
-        );
-        let w = cx.w;
-        [0, 1, 4, 5, 6, 7].into_iter().all(|i| {
-            let (x, z) = (bx + sx * i, bz + sz * i);
-            // waterIsClear, then surfaceIsClear.
-            w.fluid(x, by, z) == Fluid::Water
-                && !w.has_tag("minecraft:blocks_dolphin_jump", w.block_name(x, by, z))
-                && w.facts.is_air(w.world.block(x, by + 1, z))
-                && w.facts.is_air(w.world.block(x, by + 2, z))
-        })
-    }
-    fn can_continue(&mut self, m: &mut Mob, _: &mut Cx) -> bool {
-        let yd = m.velocity.y;
-        (yd * yd >= f64::from(0.03f32)
-            || m.head_pitch == 0.0
-            || m.head_pitch.abs() >= 10.0
-            || !m.fluids.in_water)
-            && !m.on_ground
-    }
-    fn start(&mut self, m: &mut Mob, _: &mut Cx) {
-        let [sx, sz] = motion_step(m.yaw);
-        m.velocity.x += f64::from(sx) * 0.6;
-        m.velocity.y += 0.7;
-        m.velocity.z += f64::from(sz) * 0.6;
-        m.nav_stop();
-    }
-    fn stop(&mut self, m: &mut Mob, _: &mut Cx) {
-        m.head_pitch = 0.0;
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let already = self.breached;
-        if !already {
-            self.breached = cx.w.fluid(
-                m.position.x.floor() as i32,
-                m.position.y.floor() as i32,
-                m.position.z.floor() as i32,
-            ) == Fluid::Water;
-        }
-        if self.breached && !already {
-            m.sound("entity.dolphin.jump", cx.events);
-        }
-        let v = m.velocity;
-        if v.y * v.y < f64::from(0.03f32) && m.head_pitch != 0.0 {
-            // Mth.rotLerp(0.2, xRot, 0).
-            m.head_pitch += 0.2 * super::living::wrap(0.0 - m.head_pitch);
-        } else if v.length() > f64::from(1.0e-5f32) {
-            // `Math.atan2(-vy, horizontalDistance) * 57.2957763671875`.
-            let horizontal = (v.x * v.x + v.z * v.z).sqrt();
-            m.head_pitch = (horizon_core::jmath::atan2(-v.y, horizontal)
-                * f64::from(horizon_core::geometry::trig::RAD_TO_DEG))
-                as f32;
-        }
     }
 }
 
@@ -318,129 +136,8 @@ impl Goal for FollowPlayerRidden {
     fn flags(&self) -> u8 {
         0
     }
-    /// `FollowPlayerRiddenEntityGoal.canUse`.
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        let Some(p) = self.rider(cx) else {
-            return false;
-        };
-        if self.following && Self::moved(p) {
-            return true;
-        }
-        let area = m
-            .bounds()
-            .inflate(horizon_core::geometry::Vec3::new(5.0, 5.0, 5.0));
-        p.vehicle
-            .as_ref()
-            .is_some_and(|v| v.bounds.intersects(area))
-            && Self::moved(p)
-    }
-    /// `FollowPlayerRiddenEntityGoal.canContinueToUse`.
-    fn can_continue(&mut self, _: &mut Mob, cx: &mut Cx) -> bool {
-        self.following
-            && self
-                .rider(cx)
-                .is_some_and(|p| p.passenger && Self::moved(p))
-    }
-    /// `FollowPlayerRiddenEntityGoal.start`.
-    fn start(&mut self, _: &mut Mob, cx: &mut Cx) {
-        self.following = self.rider(cx).is_some();
-        self.recalc = 0;
-        self.leading = false;
-    }
-    /// `FollowPlayerRiddenEntityGoal.stop`.
-    fn stop(&mut self, _: &mut Mob, _: &mut Cx) {
-        self.following = false;
-    }
-    /// `FollowPlayerRiddenEntityGoal.tick`.
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        let Some(p) = self.rider(cx) else { return };
-        let (position, yaw) = (p.position, p.yaw);
-        let speed = if self.leading { 0.01 } else { 0.015 };
-        let input = horizon_core::geometry::Vec3::new(
-            f64::from(m.ai.xxa),
-            f64::from(m.ai.yya),
-            f64::from(m.ai.zza),
-        );
-        m.move_relative(speed, input);
-        m.do_move(cx.w, cx.level, cx.events, &mut MoveGate::new());
-        self.recalc -= 1;
-        if self.recalc > 0 {
-            return;
-        }
-        self.recalc = reduced(10);
-        let [dx, dz] = motion_step(yaw);
-        let block = [
-            position.x.floor() as i32,
-            position.y.floor() as i32,
-            position.z.floor() as i32,
-        ];
-        if !self.leading {
-            // The block behind the player, one lower.
-            let behind = [block[0] - dx, block[1] - 1, block[2] - dz];
-            m.nav_move_to(
-                cx.w,
-                [
-                    f64::from(behind[0]),
-                    f64::from(behind[1]),
-                    f64::from(behind[2]),
-                ],
-                1.0,
-            );
-            if m.distance_sqr(position) < 16.0 {
-                self.recalc = 0;
-                self.leading = true;
-            }
-        } else {
-            let ahead = [block[0] + dx * 10, block[1] - 1, block[2] + dz * 10];
-            m.nav_move_to(
-                cx.w,
-                [
-                    f64::from(ahead[0]),
-                    f64::from(ahead[1]),
-                    f64::from(ahead[2]),
-                ],
-                1.0,
-            );
-            if m.distance_sqr(position) > 144.0 {
-                self.recalc = 0;
-                self.leading = false;
-            }
-        }
-    }
 }
 
-/// Where the first item floating in the water within 8 blocks lies (`Dolphin.ALLOWED_ITEMS`:
-/// no pickup delay, alive, in water), found by the game each tick.
-pub fn set_item_at(m: &mut Mob, at: Option<[f64; 3]>) {
-    m.extra.point = at;
-}
-/// `Dolphin.ItemGoal.drop` of the item in the mouth (`dropItem`): thrown from the eye, in
-/// the direction it faces, with a pickup delay of 40. False when the mouth is empty.
-fn drop_item(m: &mut Mob, events: &mut Vec<MobEvent>) -> bool {
-    let Some(stack) = super::finalize::item_stack(m, super::equip::Slot::MainHand.index()) else {
-        return false;
-    };
-    let y_hand = m.eye_y() - f64::from(0.3_f32);
-    let pow = 0.3_f32;
-    let dir = m.random.next_float() * (std::f32::consts::PI * 2.0);
-    let pow2 = 0.02_f32 * m.random.next_float();
-    let to_rad = std::f32::consts::PI / 180.0;
-    let (yaw, pitch) = (m.yaw * to_rad, m.head_pitch * to_rad);
-    let motion = [
-        f64::from(pow * -yaw.msin() * pitch.mcos() + dir.mcos() * pow2),
-        f64::from(pow * pitch.msin() * 1.5),
-        f64::from(pow * yaw.mcos() * pitch.mcos() + dir.msin() * pow2),
-    ];
-    events.push(MobEvent::ThrowItem {
-        mob: m.id,
-        stack,
-        at: [m.position.x, y_hand, m.position.z],
-        motion,
-        pickup_delay: 40,
-    });
-    m.extra.set_main_hand_stack(None);
-    true
-}
 /// `Dolphin.MoveToItemGoal`: swim to a floating item, playing a sound; drops what it holds
 /// when it stops and rests for up to 100 ticks.
 #[derive(Clone, Debug, Default)]
@@ -452,30 +149,6 @@ impl Goal for MoveToItem {
     fn flags(&self) -> u8 {
         MOVE
     }
-    fn can_use(&mut self, m: &mut Mob, cx: &mut Cx) -> bool {
-        if self.cooldown > cx.w.game_time {
-            return false;
-        }
-        m.extra.point.is_some()
-    }
-    fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
-        if drop_item(m, cx.events) {
-            self.cooldown = cx.w.game_time + i64::from(m.random.next_int_bound(100).unwrap_or(0));
-        }
-    }
-    fn start(&mut self, m: &mut Mob, cx: &mut Cx) {
-        if let Some(at) = m.extra.point {
-            m.nav_move_to_entity(cx.w, at, 0, f64::from(1.2_f32));
-            // `Entity.playSound(DOLPHIN_PLAY, 1.0, 1.0)` is silent-aware.
-            m.sound("entity.dolphin.play", cx.events);
-        }
-        self.cooldown = 0;
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        if let Some(at) = m.extra.point {
-            m.nav_move_to_entity(cx.w, at, 0, f64::from(1.2_f32));
-        }
-    }
 }
 /// `Dolphin.PlayWithItemsGoal`: a dolphin that holds something throws it away.
 #[derive(Clone, Debug, Default)]
@@ -484,15 +157,6 @@ impl Goal for PlayWithItems {
     goal_clone!();
     fn flags(&self) -> u8 {
         0
-    }
-    fn can_use(&mut self, m: &mut Mob, _cx: &mut Cx) -> bool {
-        m.extra.main_hand_id().is_some()
-    }
-    fn stop(&mut self, m: &mut Mob, cx: &mut Cx) {
-        drop_item(m, cx.events);
-    }
-    fn tick(&mut self, m: &mut Mob, cx: &mut Cx) {
-        drop_item(m, cx.events);
     }
 }
 
@@ -503,13 +167,6 @@ mod item_tests {
     use crate::mobs::{Species, sensor_scan_tests::kind};
     use horizon_core::geometry::Vec3;
 
-    fn dolphin() -> Mob {
-        let mut kind = kind();
-        let k = std::sync::Arc::make_mut(&mut kind);
-        k.id = "minecraft:dolphin".into();
-        k.species = Species::Dolphin;
-        Mob::new(1, kind, Vec3::ZERO, 0.0)
-    }
 
     /// `Dolphin.ItemGoal.dropItem`: a dolphin facing south (yaw 0, level) throws the item
     /// forward (+Z) at 0.3, off by at most 0.02 sideways, with a pickup delay of 40, and
@@ -567,15 +224,6 @@ mod target_tests {
     use crate::mobs::{Species, sensor_scan_tests::kind};
     use horizon_core::geometry::Vec3;
 
-    fn dolphin(baby: bool) -> Mob {
-        let mut kind = kind();
-        let k = std::sync::Arc::make_mut(&mut kind);
-        k.id = "minecraft:dolphin".into();
-        k.species = Species::Dolphin;
-        let mut m = Mob::new(1, kind, Vec3::ZERO, 0.0);
-        m.extra.age = if baby { -24000 } else { 0 };
-        m
-    }
 
     /// `Dolphin.canAttack`: a baby takes nobody as its target, so a hit on it
     /// is not answered; an adult does take the one that hurt it.
@@ -603,13 +251,6 @@ mod treasure_play_tests {
     use crate::mobs::{Species, sensor_scan_tests::kind};
     use horizon_core::geometry::Vec3;
 
-    fn dolphin() -> Mob {
-        let mut kind = kind();
-        let k = std::sync::Arc::make_mut(&mut kind);
-        k.id = "minecraft:dolphin".into();
-        k.species = Species::Dolphin;
-        Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0)
-    }
 
     /// `DolphinSwimToTreasureGoal.tick`: `level.getRandom().nextInt(this.adjustedTickDelay(80))`,
     /// the level's random and 40 ticks for a goal that does not tick every tick.

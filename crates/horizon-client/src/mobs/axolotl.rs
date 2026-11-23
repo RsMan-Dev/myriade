@@ -1,5 +1,5 @@
 //! Axolotl-specific damage, animation and prey rules; activities live in animal_brain.
-use super::{Mob, MobEvent, MobWorld, Species, Who, animal_brain, keyframes::AnimationState};
+use super::{MobEvent, MobWorld, Species, Who, animal_brain, keyframes::AnimationState};
 use horizon_core::random::RandomSource;
 pub const PLAY_DEAD_TICKS: i32 = 200;
 pub const HUNTING_COOLDOWN: i64 = 2400;
@@ -35,43 +35,6 @@ fn roll_play_dead(
         && water
         && entity_source
         && !already
-}
-pub fn before_damage(m: &mut Mob, damage: f32, source: &super::Damage) {
-    if m.species() != Species::Axolotl {
-        return;
-    }
-    let playing = m.extra.axolotl.playing_dead;
-    if roll_play_dead(
-        &mut m.random,
-        m.no_ai,
-        m.health,
-        m.attrs.max_health,
-        damage,
-        m.fluids.in_water,
-        source.attacker.is_some() || source.is_projectile(),
-        playing,
-    ) {
-        animal_brain::set_play_dead(m);
-    }
-}
-pub fn is_playing_dead(m: &Mob) -> bool {
-    m.species() == Species::Axolotl && m.extra.axolotl.playing_dead
-}
-/// Axolotl.onStopAttacking: help the player whose last damage killed the target.
-pub fn on_stop_attacking(m: &Mob, w: &MobWorld, target: Who, events: &mut Vec<MobEvent>) {
-    if let Who::Mob(id) = target
-        && let Some(s) = w.seen(id)
-        && !s.alive
-        && s.last_damage
-            .is_some_and(|d| d.attacker == Some(Who::Player))
-        && w.selected_player().is_some_and(|p| {
-            m.bounds()
-                .inflate(horizon_core::geometry::Vec3::new(20.0, 20.0, 20.0))
-                .intersects(p.bounds)
-        })
-    {
-        events.push(w.route_player_event(MobEvent::AxolotlSupportPlayer { mob: m.id }));
-    }
 }
 /// BinaryAnimator(10, IN_OUT_SINE), plus the seven exclusive baby animation states.
 #[derive(Clone, Debug, Default)]
@@ -130,17 +93,6 @@ impl Animation {
             / 10.0;
         ((1.0 - horizon_core::jmath::cos(f64::from(x) * std::f64::consts::PI)) / 2.0) as f32
     }
-}
-pub fn tick_animation(m: &mut Mob) {
-    if m.species() != Species::Axolotl {
-        return;
-    }
-    let moving =
-        m.limb_speed > 1.0e-5 || m.yaw != m.previous_yaw || m.head_pitch != m.previous_head_pitch;
-    let baby = m.is_baby();
-    m.extra
-        .axolotl
-        .tick(baby, m.fluids.in_water, m.on_ground, moving, m.age as f32);
 }
 #[cfg(test)]
 mod axolotl_parity_tests {

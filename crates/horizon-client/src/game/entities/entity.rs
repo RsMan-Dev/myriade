@@ -19,7 +19,7 @@ use horizon_client::entities::{
 use horizon_client::entity_rules::EntityRules;
 use horizon_client::join_seq::JoinSeq;
 use horizon_client::join_seq::Joined as _;
-use horizon_client::mobs::{Mob, Species};
+use horizon_client::mobs::{Species};
 use horizon_client::projectiles::{Projectile, ProjectileKind};
 use horizon_core::geometry::{Aabb, Direction, Vec3};
 use horizon_core::nbt::Tag;
@@ -835,137 +835,6 @@ impl Game<'_> {
     }
 }
 
-impl Entity for Mob {
-    const SERIALIZES_ATTACHMENTS: bool = true;
-
-    fn reset_fall_distance(&mut self) {
-        self.fall_distance = 0.0;
-    }
-
-    fn set_on_ground(&mut self, on_ground: bool) {
-        self.on_ground = on_ground;
-    }
-    /// `Entity.noPhysics`: written through the mod API; no mob tick rewrites it
-    /// (a vex sets it only for the length of its own, custom travel). Its own
-    /// field is the write's store, so `stored` is None for a mob.
-    fn no_physics(&self, _stored: Option<bool>) -> bool {
-        self.no_physics
-    }
-    /// `Entity.move(MoverType.PISTON, ...)` ends in `setPos`, which `Shulker`
-    /// overrides to snap to the block centre.
-    fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
-        if gate.skipped() {
-            return;
-        }
-        let moved = self.position.add_vector(movement);
-        if self.species() == Species::Shulker {
-            crate::mobs::shulker::client_set_pos(self, moved.x, moved.y, moved.z);
-        } else {
-            self.position = moved;
-        }
-    }
-    fn rotation(&self) -> [f32; 2] {
-        [self.yaw, self.head_pitch]
-    }
-    fn set_rotation(&mut self, [yaw, pitch]: [f32; 2]) {
-        let previous = self.rotation();
-        let yaw = if yaw.is_finite() { yaw } else { previous[0] };
-        let pitch = if pitch.is_nan() { previous[1] } else { pitch };
-        self.yaw = yaw;
-        self.body_yaw = yaw;
-        self.head_yaw = yaw;
-        self.head_pitch = pitch.clamp(-90.0, 90.0);
-        self.previous_yaw = self.yaw;
-        self.previous_head_pitch = self.head_pitch;
-    }
-    fn native_type(&self) -> Cow<'static, str> {
-        super::native_hooks::mob_kind(self).into()
-    }
-    fn save_nbt(
-        game: &mut Game<'_>,
-        index: usize,
-        keys: &HashSet<ChunkKey>,
-    ) -> Option<(ChunkKey, Tag)> {
-        // Mobs are saved by the ECS by chunk; no kind walks the mob list any more.
-        let _ = (game, index, keys);
-        None
-    }
-    fn load_nbt(
-        game: &mut Game<'_>,
-        kind: &str,
-        _uuid: Option<[i32; 4]>,
-        _player_uuid: Option<[i32; 4]>,
-        tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Result<(), Tag> {
-        if !game.loads_as_mob(kind) {
-            return Err(tag);
-        }
-        load_with_transfer!(game, transferred, load_mob, load_mob_transferred, tag, None);
-        Ok(())
-    }
-    stored_motion!();
-    fn portal_size(&self) -> Option<(f32, f32)> {
-        Some((self.width(), self.height()))
-    }
-    fn sweeps_portals(&self) -> bool {
-        true
-    }
-    fn can_use_portal(&self, game: &Game<'_>) -> bool {
-        game.mob_portal_eligible(self)
-    }
-    /// `PersistentEntitySectionManager.Callback.onRemove`: discard stops
-    /// section enumeration immediately, before the entity list is swept; and
-    /// `EntitySelectorParser`'s `Entity::isAlive` drops a dying mob at once.
-    fn selector_target(&self) -> Option<Target> {
-        (!self.removed && self.alive()).then_some(Target::Mob(self.id))
-    }
-    // TODO(phase 1 Mob): pas d'accès ECS ici, équivalent level_read::bounds(id) à brancher
-    fn bounds(&self) -> Aabb {
-        Mob::bounds(self)
-    }
-    fn on_ground(&self) -> bool {
-        self.on_ground
-    }
-    fn get_step_height(&self) -> f32 {
-        self.kind.step_height as f32
-    }
-    fn is_alive(&self) -> bool {
-        !self.removed && self.alive()
-    }
-    fn is_removed(&self) -> bool {
-        self.removed
-    }
-    /// `Bat.isIgnoringBlockTriggers`.
-    fn is_ignoring_block_triggers(&self) -> bool {
-        self.species() == Species::Bat
-    }
-    /// `Warden.ignoreExplosion`: while it digs or emerges.
-    fn ignores_explosion(&self, blast: &Blast) -> bool {
-        !self.alive()
-            || blast.spared == Some(self.id)
-            || (self.species() == Species::Warden
-                && horizon_client::mobs::warden::digging_or_emerging(self))
-    }
-    /// `getEyeHeight` of the mob as it stands: a baby's, a slime's or a
-    /// phantom's own scaled eye height, not the adult kind's. The blast's box
-    /// is its real `bounds`, so it needs no override.
-    fn explosion_eye_height(&self) -> f64 {
-        self.eye_height()
-    }
-    /// `Entity.push` sets `needsSync`.
-    fn push_from_explosion(&mut self, push: Vec3) {
-        self.velocity = Vec3::new(
-            self.velocity.x + push.x,
-            self.velocity.y + push.y,
-            self.velocity.z + push.z,
-        );
-        self.needs_sync = true;
-    }
-    fn is_supported_by(&self, pos: BlockPos) -> bool {
-        self.supporting == Some([pos.x, pos.y, pos.z])
-    }
-}
 
 impl Entity for Boat {
     fn reset_fall_distance(&mut self) {

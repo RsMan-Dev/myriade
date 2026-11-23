@@ -5657,8 +5657,6 @@ fn neighbours_ready(
 
 #[cfg(test)]
 mod tests {
-    #[path = "../far_tests.rs"]
-    mod far_tests;
     mod bundle_sound_tests;
     mod cave_air_tests;
     mod chunk_ready_tests;

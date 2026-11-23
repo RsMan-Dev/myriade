@@ -331,9 +331,6 @@ impl ProfessionRegistry {
     }
 }
 
-#[cfg(test)]
-#[path = "villager_professions_tests.rs"]
-mod tests;
 
 fn vanilla_definition(
     id: &str,

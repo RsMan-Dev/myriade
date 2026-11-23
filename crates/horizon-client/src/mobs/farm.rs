@@ -1,7 +1,7 @@
 //! Farm animals: pigs, cows, mooshrooms, sheep and chickens (`registerGoals`,
 //! chicken flapping and egg laying, sheep wool colours).
 use super::{
-    Mob, MobEvent, MobWorld, Species,
+    MobEvent, MobWorld, Species,
     goals::{
         Breed, EatBlock, Float, FollowParent, LookAtPlayer, Panic, RandomLookAround, Stroll, Tempt,
     },
@@ -9,116 +9,6 @@ use super::{
 use horizon_core::random::RandomSource;
 use std::sync::Arc;
 
-pub fn register(m: &mut Mob) {
-    let food = m.kind.food.clone();
-    let tempt = m.kind.tempt.clone();
-    let g = &mut m.ai.goals;
-    match m.kind.species {
-        Species::Pig => {
-            g.add(0, Float);
-            g.add(1, Panic::new(1.25));
-            g.add(3, Breed::new(1.0));
-            g.add(
-                4,
-                Tempt::new(
-                    1.2,
-                    Arc::from(vec!["minecraft:carrot_on_a_stick".to_owned()]),
-                    false,
-                ),
-            );
-            g.add(4, Tempt::new(1.2, tempt, false));
-            g.add(5, FollowParent::new(1.1));
-            g.add(6, Stroll::avoiding_water(1.0));
-            g.add(7, LookAtPlayer::new(6.0));
-            g.add(8, RandomLookAround::default());
-        }
-        Species::Cow | Species::Mooshroom => {
-            g.add(0, Float);
-            g.add(1, Panic::new(2.0));
-            g.add(2, Breed::new(1.0));
-            g.add(3, Tempt::new(1.25, food, false));
-            g.add(4, FollowParent::new(1.25));
-            g.add(5, Stroll::avoiding_water(1.0));
-            g.add(6, LookAtPlayer::new(6.0));
-            g.add(7, RandomLookAround::default());
-        }
-        Species::Sheep => {
-            g.add(0, Float);
-            g.add(1, Panic::new(1.25));
-            g.add(2, Breed::new(1.0));
-            g.add(3, Tempt::new(1.1, food, false));
-            g.add(4, FollowParent::new(1.1));
-            g.add(5, EatBlock::default());
-            g.add(6, Stroll::avoiding_water(1.0));
-            g.add(7, LookAtPlayer::new(6.0));
-            g.add(8, RandomLookAround::default());
-        }
-        Species::Chicken => {
-            g.add(0, Float);
-            g.add(1, Panic::new(1.4));
-            g.add(2, Breed::new(1.0));
-            g.add(3, Tempt::new(1.0, food, false));
-            g.add(4, FollowParent::new(1.1));
-            g.add(5, Stroll::avoiding_water(1.0));
-            g.add(6, LookAtPlayer::new(6.0));
-            g.add(7, RandomLookAround::default());
-            m.extra.egg_time = m.random.next_int_bound(6000).unwrap_or(0) + 6000;
-            // `Chicken()`: water costs nothing.
-            m.set_malus(super::path::PathType::Water, 0.0);
-        }
-        _ => {}
-    }
-}
-/// Chicken.aiStep: wing flapping, slowed falling and laying eggs.
-pub fn chicken_ai_step(m: &mut Mob, _w: &MobWorld, events: &mut Vec<MobEvent>) {
-    chicken_flap(m);
-    if !m.on_ground && m.velocity.y < 0.0 {
-        m.velocity.y *= 0.6;
-    }
-    chicken_egg_step(m, events);
-}
-/// `Chicken.aiStep`: the server's egg timer runs even when NoAI skips goals.
-pub fn chicken_egg_step(m: &mut Mob, events: &mut Vec<MobEvent>) {
-    if m.alive() && !m.is_baby() && !m.extra.jockey {
-        m.extra.egg_time -= 1;
-        if m.extra.egg_time <= 0 {
-            let pitch = (m.random.next_float() - m.random.next_float()) * 0.2 + 1.0;
-            let at = [m.position.x, m.position.y, m.position.z];
-            // The sound and `entity_place` follow only a drop (`LayEgg`).
-            events.push(MobEvent::LayEgg {
-                mob: m.id,
-                at,
-                pitch,
-            });
-            m.extra.egg_time = m.random.next_int_bound(6000).unwrap_or(0) + 6000;
-        }
-    }
-}
-/// Chicken.aiStep's wings: `flapSpeed` rises in the air and falls on the
-/// ground, `flapping` restarts at 1 in the air and decays, and `flap` turns
-/// by it. It runs on a client too, for the chickens it only displays (the
-/// falling slowdown and the eggs are the server's).
-pub fn chicken_flap(m: &mut Mob) {
-    let a = &mut m.anim;
-    a.flap_o = a.flap;
-    a.flap_speed_o = a.flap_speed;
-    a.flap_speed = (a.flap_speed + if m.on_ground { -1.0 } else { 4.0 } * 0.3).clamp(0.0, 1.0);
-    if !m.on_ground && a.flapping < 1.0 {
-        a.flapping = 1.0;
-    }
-    a.flapping *= 0.9;
-    a.flap += a.flapping * 2.0;
-}
-/// `Chicken.isFlapping` and `Chicken.onFlap`: movement crosses a strict
-/// distance threshold, then schedules the next wing beat without a sound.
-pub fn chicken_process_flapping(m: &mut Mob) -> bool {
-    if m.ai.steps.fly_dist > m.ai.steps.next_flap {
-        m.ai.steps.next_flap = m.ai.steps.fly_dist + m.anim.flap_speed / 2.0;
-        true
-    } else {
-        false
-    }
-}
 /// Farm animal climate from the biome tags (`spawns_warm/cold_variant_farm_animals`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Climate {
@@ -168,10 +58,6 @@ mod tests {
     use super::*;
     use horizon_core::geometry::Vec3;
 
-    /// `chicken_flap` reads only the ground flag: any mob type will do.
-    fn chicken() -> Mob {
-        Mob::new(1, crate::mobs::sensor_scan_tests::kind(), Vec3::ZERO, 0.0)
-    }
 
     #[test]
     fn chicken_flap_threshold_is_strict_and_advances_once() {

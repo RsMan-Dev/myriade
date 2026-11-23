@@ -7,7 +7,7 @@
 use crate::{
     arrows::Pickup,
     entities::{ArmorStand, Cushion, ExperienceOrb, ItemEntity, ItemFrame, Painting},
-    mobs::{Mob, MobType, Who},
+    mobs::{MobType, Who},
     nbt_path::int_value,
     projectiles::{Projectile, ProjectileKind},
     save::{
@@ -535,47 +535,6 @@ fn is_air(registry: &BlockRegistry, state: BlockStateId) -> bool {
             "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
         )
     })
-}
-/// `AttributeInstance.Packed` of the attributes with a base or permanent
-/// modifier finalizeSpawn set (or a command or a load did), with their ids.
-pub fn attribute_entries(m: &Mob) -> Vec<(String, Tag)> {
-    use crate::mobs::finalize::{self, Attr, Op};
-    let Some(a) = m.extra.attributes.as_deref() else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for attr in Attr::ALL {
-        let modifiers: Vec<Tag> = a
-            .modifiers
-            .iter()
-            .filter(|x| x.attr == attr)
-            .map(|x| {
-                let op = match x.op {
-                    Op::AddValue => "add_value",
-                    Op::AddMultipliedBase => "add_multiplied_base",
-                    Op::AddMultipliedTotal => "add_multiplied_total",
-                };
-                Tag::compound([
-                    ("id", string(&x.id)),
-                    ("amount", Tag::Double(x.amount.to_bits())),
-                    ("operation", string(op)),
-                ])
-            })
-            .collect();
-        if modifiers.is_empty() && !a.bases.iter().any(|(b, _)| *b == attr) {
-            continue;
-        }
-        let id = format!("minecraft:{}", attr.name());
-        let mut entry = vec![
-            ("id", string(&id)),
-            ("base", Tag::Double(finalize::base_value(m, attr).to_bits())),
-        ];
-        if !modifiers.is_empty() {
-            entry.push(("modifiers", Tag::List(modifiers)));
-        }
-        out.push((id, Tag::compound(entry)));
-    }
-    out
 }
 /// `CustomName`: a text component saved as a string, a compound or a list,
 /// flattened as `Component.getString` does (`translate`, `extra`).
@@ -1312,7 +1271,6 @@ pub fn fireball_from_nbt(tag: &Tag, player: Option<[i32; 4]>) -> Option<Projecti
     Some(p)
 }
 
-mod names;
 /// `FireworkRocketEntity.readAdditionalSaveData`: Life, LifeTime (0 when
 /// absent: a bare `/summon` explodes at once), FireworksItem and
 /// ShotAtAngle, with `Projectile`'s Owner and LeftOwner.
@@ -4189,9 +4147,7 @@ mod shulker_bullet_nbt_tests {
     /// kept here as the same two calls so both halves of the bridge are what the
     /// round trips below go through.
     struct Level {
-        uuids: HashMap<u32, [i32; 4]>,
-        mobs: Vec<Mob>,
-        player: Option<[i32; 4]>,
+        uuids: HashMap<u32, [i32; 4]>,        player: Option<[i32; 4]>,
     }
     impl Level {
         /// `Game::save_who_uuid`.

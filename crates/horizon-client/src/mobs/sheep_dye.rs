@@ -1,5 +1,5 @@
 //! `DyeItem.interactLivingEntity`: the client hears it, the server changes wool.
-use super::{DYE_NAMES, Mob, Species};
+use super::{DYE_NAMES, Species};
 use crate::items::ItemStack;
 use horizon_core::nbt::Tag;
 
@@ -31,22 +31,6 @@ fn color(stack: &ItemStack) -> Option<u8> {
     Some(default)
 }
 
-/// Whether this invocation plays DYE_USE. Client state is deliberately left
-/// untouched, so repeated client clicks keep playing until metadata arrives.
-/// Player.interactOn's creative count restoration belongs to the caller.
-pub fn interact(mob: &mut Mob, stack: &mut ItemStack, client: bool) -> bool {
-    if mob.species() != Species::Sheep || !mob.alive() || mob.extra.sheared {
-        return false;
-    }
-    let Some(color) = color(stack).filter(|&c| c != mob.extra.color) else {
-        return false;
-    };
-    if !client {
-        mob.extra.color = color;
-        stack.count -= 1;
-    }
-    true
-}
 
 #[cfg(test)]
 mod tests {
@@ -54,11 +38,6 @@ mod tests {
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    fn sheep() -> Mob {
-        let mut kind = crate::mobs::sensor_scan_tests::kind();
-        Arc::make_mut(&mut kind).species = Species::Sheep;
-        Mob::new(37, kind, Vec3::ZERO, 0.0)
-    }
 
     #[test]
     fn client_repeats_without_consuming_or_predicting_the_color() {

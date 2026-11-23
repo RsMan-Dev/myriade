@@ -1,6 +1,6 @@
 //! The pushes of `LivingEntity.pushEntities`: the stack a mob rides, and the server's cap on how
 //! many mobs one mob pushes per tick (`[entities] max_collisions`, off = vanilla).
-use super::{Mob, MobWorld, Who};
+use super::{MobWorld, Who};
 
 /// `Entity.getRootVehicle` of the mob `id` riding `vehicle`: the bottom of
 /// its stack of vehicles (itself when it rides nothing).
@@ -57,28 +57,12 @@ pub(super) struct Cap {
     count: u32,
 }
 impl Cap {
-    pub fn new(m: &Mob, w: &MobWorld) -> Self {
-        let cap = max_collisions();
-        let count = if cap > 0 {
-            w.seen(m.id).map_or(0, |s| s.collisions)
-        } else {
-            0
-        };
-        Self { cap, count }
-    }
     pub fn check(&self, who: Who, w: &MobWorld) -> Verdict {
         match who {
             Who::Mob(_) if self.cap == 0 => Verdict::Push,
             Who::Mob(_) if self.count >= self.cap => Verdict::Stop,
             Who::Mob(id) if w.seen(id).is_some_and(|o| o.collisions >= self.cap) => Verdict::Skip,
             _ => Verdict::Push,
-        }
-    }
-    /// A push of `who` was made: the mob loop adds it to both sides after the turn (`m.pushed`).
-    pub fn record(&mut self, m: &mut Mob, who: Who) {
-        if let (true, Who::Mob(id)) = (self.cap > 0, who) {
-            self.count += 1;
-            m.pushed.push(id);
         }
     }
 }

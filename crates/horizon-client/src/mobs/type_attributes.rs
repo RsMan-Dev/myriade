@@ -113,34 +113,4 @@ mod tests {
         .unwrap()
     }
 
-    /// The loader's spawn fields go through the catalog it is given, as
-    /// `take_attribute_row`'s do: a row past the bounds spawns its mobs
-    /// inside them (20 health under a maximum of 10, 100 toughness under 20),
-    /// and a NaN takes the minimum, so a mob with no attribute map yet reads
-    /// what its map would answer.
-    #[test]
-    fn a_types_spawn_fields_take_the_catalogs_bounds() {
-        let root = tempfile::tempdir().unwrap();
-        std::fs::write(
-            root.path().join("entity-types.json"),
-            r#"{"minecraft:zombie":{"width":0.6,"height":1.95,"eye_height":1.74,"category":"monster","fire_immune":false,"attributes":{"minecraft:max_health":20.0,"minecraft:armor_toughness":100.0}}}"#,
-        )
-        .unwrap();
-        let catalog = catalog();
-        let types = super::super::MobTypes::load_for_server(root.path(), &catalog).unwrap();
-        let zombie = &types.types["minecraft:zombie"];
-        assert_eq!(zombie.max_health, 10.0);
-        assert_eq!(zombie.armor_toughness, 20.0);
-        let mob = super::super::Mob::new(
-            1,
-            Arc::new(zombie.clone()),
-            horizon_core::geometry::Vec3::ZERO,
-            0.0,
-        );
-        assert_eq!(super::super::armor::values(&mob).1, 20.0);
-        let mut kind = zombie.clone();
-        let row = HashMap::from([("minecraft:armor_toughness".to_owned(), f64::NAN)]);
-        kind.take_attribute_row(Arc::new(row), &catalog);
-        assert_eq!(kind.armor_toughness, 0.0);
-    }
 }

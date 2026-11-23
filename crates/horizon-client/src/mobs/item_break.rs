@@ -1,9 +1,3 @@
-//! `LivingEntity.breakItem` as a client sees it. A server never plays the
-//! break itself: `LivingEntity.onEquippedItemBroken` broadcasts the entity
-//! event `entityEventForEquipmentBreak` gives for the slot, and each client's
-//! `LivingEntity.handleEntityEvent` breaks the item it still draws in that
-//! slot (`getItemBySlot`), with the sound and the crumbs.
-use super::Mob;
 use crate::items::ItemStack;
 use horizon_core::equipment_slot::EquipmentSlot;
 
@@ -38,25 +32,6 @@ pub fn equipment_break_event(slot: EquipmentSlot) -> i8 {
     }
 }
 
-impl Mob {
-    /// `Mob.sunProtectionSlot`, overridden by zombie horses and zombie nautiluses.
-    pub fn sun_protection_slot(&self) -> EquipmentSlot {
-        if matches!(
-            self.species(),
-            super::Species::ZombieHorse | super::Species::ZombieNautilus
-        ) {
-            EquipmentSlot::Body
-        } else {
-            EquipmentSlot::Head
-        }
-    }
-    /// `LivingEntity.getItemBySlot` for a mob or another player a server
-    /// sends: the stack it wears or holds in `slot`, with the components
-    /// `ClientboundSetEquipmentPacket` gave it where they are kept.
-    pub fn item_by_slot(&self, slot: EquipmentSlot) -> Option<ItemStack> {
-        self.equipment_stacks()[slot as usize].clone()
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -65,13 +40,6 @@ mod tests {
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    fn mob(id: &str, species: Species) -> Mob {
-        let mut kind = crate::mobs::sensor_scan_tests::kind();
-        let k = Arc::make_mut(&mut kind);
-        k.id = id.into();
-        k.species = species;
-        Mob::new(1, kind, Vec3::ZERO, 0.0)
-    }
 
     /// `LivingEntity.entityEventForEquipmentBreak` and its inverse agree for
     /// every slot a mob or another player can wear something in.
@@ -199,53 +167,4 @@ mod tests {
         );
     }
 
-    /// `Wolf.actuallyHurt`: each time the armor's crackiness level changes it
-    /// plays the crack sound and sends twenty armadillo scute particles.
-    #[test]
-    fn a_wolfs_armor_throws_scutes_as_it_cracks() {
-        use crate::mobs::MobEvent;
-        let mut wolf = mob("minecraft:wolf", Species::Wolf);
-        wolf.extra.set_body(Some("minecraft:wolf_armor".into()));
-        // Levels change below 95%, 69% and 32% of the 64 points left, that is
-        // after 4, 20 and 44 points of wear.
-        let hurt = |wolf: &mut Mob, damage: f32| {
-            wolf.hurt_wolf_armor(damage);
-            std::mem::take(&mut wolf.outbox)
-        };
-        let scutes = |events: &[MobEvent]| {
-            events
-                .iter()
-                .filter(|e| {
-                    matches!(
-                        e,
-                        MobEvent::ItemParticles {
-                            item: "minecraft:armadillo_scute",
-                            at,
-                            spread,
-                            speed,
-                            count: 20,
-                        } if *at == [0.0, 1.0, 0.0] && *spread == [0.2, 0.1, 0.2] && *speed == 0.1
-                    )
-                })
-                .count()
-        };
-        let cracks = |events: &[MobEvent]| {
-            events
-                .iter()
-                .filter(|e| matches!(e, MobEvent::Sound("item.wolf_armor.crack", ..)))
-                .count()
-        };
-        // Three points: still the first level.
-        let events = hurt(&mut wolf, 3.0);
-        assert_eq!((cracks(&events), scutes(&events)), (0, 0));
-        // The fourth point cracks it, with the sound and the scutes together.
-        let events = hurt(&mut wolf, 1.0);
-        assert_eq!((cracks(&events), scutes(&events)), (1, 1));
-        // Within the level: nothing.
-        let events = hurt(&mut wolf, 10.0);
-        assert_eq!((cracks(&events), scutes(&events)), (0, 0));
-        // Over 69%: the next level.
-        let events = hurt(&mut wolf, 6.0);
-        assert_eq!((cracks(&events), scutes(&events)), (1, 1));
-    }
 }

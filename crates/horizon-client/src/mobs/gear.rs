@@ -3,7 +3,7 @@
 //! its saved form, and the combat numbers the enchantments give (Sharpness,
 //! Smite, Bane of Arthropods, Fire Aspect, Knockback, Power, Punch, Flame,
 //! Quick Charge and the protections).
-use super::{DamageKind, Mob, Species};
+use super::{DamageKind, Species};
 use std::sync::Arc;
 
 /// Equipment slots in the order `Extra` keeps them.
@@ -47,41 +47,6 @@ impl Gear {
     }
 }
 
-pub fn gear(m: &Mob) -> Option<&Gear> {
-    m.extra.gear.as_deref()
-}
-/// The level of an enchantment on what `m` wears or holds in `slot`.
-pub fn level(m: &Mob, slot: usize, id: &str) -> u32 {
-    gear(m).map_or(0, |g| g.level(slot, id))
-}
-/// Whether the item in `slot` is enchanted (the glint).
-pub fn enchanted(m: &Mob, slot: usize) -> bool {
-    gear(m).is_some_and(|g| !g.slots[slot].is_empty())
-}
-/// Replace the enchantments of a slot; an empty list removes them. The slot's
-/// item is new, so its trim goes too (`set_trim` puts one back).
-pub fn set(m: &mut Mob, slot: usize, levels: Levels) {
-    let g = m.extra.gear.get_or_insert_with(Box::default);
-    g.slots[slot] = levels;
-    g.trims[slot] = None;
-    if g.is_empty() {
-        m.extra.gear = None;
-    }
-}
-/// Set (None removes) the trim of a slot's item.
-pub fn set_trim(m: &mut Mob, slot: usize, trim: Option<Trim>) {
-    let g = m.extra.gear.get_or_insert_with(Box::default);
-    g.trims[slot] = trim;
-    if g.is_empty() {
-        m.extra.gear = None;
-    }
-}
-pub fn upgrade(m: &mut Mob, slot: usize, id: &str, level: u32) {
-    m.extra
-        .gear
-        .get_or_insert_with(Box::default)
-        .upgrade(slot, id, level);
-}
 
 /// `#sensitive_to_smite` and `#sensitive_to_bane_of_arthropods`.
 fn undead(s: Species) -> bool {
@@ -130,39 +95,6 @@ pub fn damage_bonus(levels: &[(Arc<str>, u32)], target: Option<Species>) -> f32 
     }
     bonus
 }
-/// `Mob.doHurtTarget`'s `getAttributeValue(ATTACK_DAMAGE)`: the mob's own
-/// value plus the `attack_damage` modifiers of the stack in its main hand
-/// (an iron axe adds 8, a sword 4 to 7, a trident 8) — the stack's own
-/// `attribute_modifiers`, components included, or its item's, as
-/// `item_attribute_modifier` leaves them (arismoko/horizon#941). Vanilla applies them to the
-/// attribute map when the item is equipped; the live map reads the same rows.
-pub fn attack_damage(m: &Mob, items: Option<&crate::items::Items>) -> f32 {
-    let base = f64::from(m.attrs.attack_damage);
-    let Some(items) = items else {
-        return base as f32;
-    };
-    let Some(stack) = m.extra.slot_stack(horizon_items::equipment::MAINHAND) else {
-        return base as f32;
-    };
-    super::equip::attribute_with(
-        &crate::item_attributes::attribute_modifiers(stack, items),
-        "minecraft:attack_damage",
-        base,
-        super::equip::Slot::MainHand,
-    ) as f32
-}
-/// The extra damage of the mob's held weapon against a target species.
-pub fn melee_bonus(m: &Mob, target: Option<Species>) -> f32 {
-    gear(m).map_or(0.0, |g| damage_bonus(&g.slots[MAIN], target))
-}
-/// Seconds of fire a melee hit sets (`Fire Aspect`: 4 per level).
-pub fn fire_aspect(m: &Mob) -> i32 {
-    4 * level(m, MAIN, "minecraft:fire_aspect") as i32
-}
-/// `minecraft:knockback` of the held weapon.
-pub fn knockback(m: &Mob) -> u32 {
-    level(m, MAIN, "minecraft:knockback")
-}
 /// What a bow adds to its arrows.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ArrowBonus {
@@ -172,25 +104,6 @@ pub struct ArrowBonus {
     pub punch: u32,
     /// Piercing: entities an arrow passes through.
     pub pierce: u32,
-}
-pub fn arrow_bonus(m: &Mob) -> ArrowBonus {
-    let power = level(m, MAIN, "minecraft:power");
-    ArrowBonus {
-        damage: if power > 0 {
-            1.0 + 0.5 * (power as f32 - 1.0)
-        } else {
-            0.0
-        },
-        punch: level(m, MAIN, "minecraft:punch"),
-        pierce: level(m, MAIN, "minecraft:piercing"),
-    }
-}
-/// Enchantment protection points of the worn armour against a damage kind
-/// (`damage_protection`: 1 per level of Protection, 2 for the specialist
-/// ones, 3 for Feather Falling), capped at 20.
-pub fn protection(m: &Mob, kind: DamageKind) -> f32 {
-    let Some(g) = gear(m) else { return 0.0 };
-    protection_points(g, kind).min(20.0)
 }
 pub fn protection_points(g: &Gear, kind: DamageKind) -> f32 {
     // getDamageAfterMagicAbsorb returns before enchantments for #bypasses_effects;

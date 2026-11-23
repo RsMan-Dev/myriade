@@ -1,5 +1,5 @@
 //! Client-side `Allay.mobInteract` state, before the authoritative server reply.
-use super::super::{Mob, Species};
+use super::super::{Species};
 use crate::items::ItemStack;
 
 #[derive(Debug)]
@@ -19,44 +19,6 @@ impl Interaction {
     }
 }
 
-/// `Allay.mobInteract`: clients update the hand and duplication flag too, so a
-/// second click must use that predicted state. ClientLevel does not insert the
-/// duplicate into its entity list; the server pairs the real child later.
-pub fn predict(
-    mob: &mut Mob,
-    offered: Option<&ItemStack>,
-    main_hand: bool,
-    duplicates: bool,
-    actor: [i32; 4],
-) -> Option<Interaction> {
-    if mob.species() != Species::Allay || !mob.alive() {
-        return None;
-    }
-    let offered = offered.filter(|s| s.count > 0 && &*s.item != "minecraft:air");
-    if mob.extra.flag && duplicates && offered.is_some() && mob.extra.egg_time == 0 {
-        mob.extra.egg_time = 6000;
-        return Some(Interaction::Duplicate);
-    }
-    let held = mob.extra.main_hand_stack().cloned();
-    if held.is_none()
-        && let Some(mut given) = offered.cloned()
-    {
-        given.count = 1;
-        mob.extra.set_main_hand_stack(Some(given));
-        super::like_player(mob, actor);
-        return Some(Interaction::Give);
-    }
-    if main_hand
-        && offered.is_none()
-        && let Some(held) = held
-    {
-        mob.extra.set_main_hand(None);
-        super::forget_liked_player(mob);
-        mob.swing();
-        return Some(Interaction::Take(held));
-    }
-    None
-}
 
 #[cfg(test)]
 mod tests {
@@ -64,13 +26,6 @@ mod tests {
     use horizon_core::geometry::Vec3;
     use std::sync::Arc;
 
-    fn allay() -> Mob {
-        let mut kind = crate::mobs::sensor_scan_tests::kind();
-        let kind_mut = Arc::make_mut(&mut kind);
-        kind_mut.species = Species::Allay;
-        kind_mut.id = "minecraft:allay".into();
-        Mob::new(37, kind, Vec3::ZERO, 0.0)
-    }
 
     #[test]
     fn giving_and_taking_update_the_state_used_by_the_next_click() {
