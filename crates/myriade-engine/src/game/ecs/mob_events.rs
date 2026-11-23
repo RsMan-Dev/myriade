@@ -117,9 +117,7 @@ impl Game<'_> {
                 | MobEvent::BowShot{ .. }
                 | MobEvent::CrossbowLoad{ .. }
                 | MobEvent::CrossbowShot{ .. }
-                | MobEvent::Spawn(..)
                 | MobEvent::SpawnKind{ .. }
-                | MobEvent::Convert{ .. }
                 | MobEvent::DropItem{ .. }
                 | MobEvent::DropStack{ .. }
                 | MobEvent::ThrowItem{ .. }

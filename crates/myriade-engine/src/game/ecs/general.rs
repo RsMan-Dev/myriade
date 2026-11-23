@@ -9,11 +9,7 @@ impl Game<'_> {
     pub(in crate::game) fn ecs_general_events(&mut self, evs: impl IntoIterator<Item = GeneralEvent>) {
         for ev in evs {
             match ev {
-                GeneralEvent::ModTick { entity, kind } => {
-                    let id = self.ecs_id_of(entity);
-                    self.general_mod_tick(id, kind);
-                }
-                GeneralEvent::Clicked { .. } | GeneralEvent::Changed { .. } => {}
+                GeneralEvent::ModTick { .. } | GeneralEvent::Clicked { .. } | GeneralEvent::Changed { .. } => {}
             }
         }
     }

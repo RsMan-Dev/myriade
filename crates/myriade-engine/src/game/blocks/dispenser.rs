@@ -241,7 +241,7 @@ fn can_use_slot(s: Species, grown: bool, tame: bool, slot: Slot) -> bool {
         | Species::Llama
         | Species::TraderLlama => true,
         _ if equine(s) && slot == Slot::Saddle => grown && tame,
-        _ if myriade_engine::mobs::nautilus::is_nautilus(s)
+        _ if matches!(s, Species::Nautilus | Species::ZombieNautilus)
             && matches!(slot, Slot::Saddle | Slot::Body) =>
         {
             grown && tame
@@ -255,7 +255,7 @@ fn can_dispenser_equip(s: Species, loot: bool, tame: bool, slot: Slot) -> bool {
     match s {
         Species::Pig | Species::Strider => slot == Slot::Saddle || loot,
         _ if equine(s) => matches!(slot, Slot::Body | Slot::Saddle) && tame || loot,
-        _ if myriade_engine::mobs::nautilus::is_nautilus(s) => {
+        _ if matches!(s, Species::Nautilus | Species::ZombieNautilus) => {
             matches!(slot, Slot::Body | Slot::Saddle) || loot
         }
         Species::SulfurCube | Species::HappyGhast => slot == Slot::Body,
@@ -275,7 +275,7 @@ pub(super) fn equip_sound_of(s: Species, underwater: bool, slot: Slot, default: 
         Species::Camel => "minecraft:entity.camel.saddle".into(),
         Species::CamelHusk => "minecraft:entity.camel_husk.saddle".into(),
         _ if equine(s) => "minecraft:entity.horse.saddle".into(),
-        _ if myriade_engine::mobs::nautilus::is_nautilus(s) => {
+        _ if matches!(s, Species::Nautilus | Species::ZombieNautilus) => {
             if underwater {
                 "minecraft:item.nautilus_saddle_underwater_equip".into()
             } else {
@@ -1286,14 +1286,14 @@ impl Game<'_> {
             c[2] + f64::from(s[2]) * 1.125,
         );
         let front = offset(pos, facing);
-        let y_offset = if let Some(rail) = self.rail(None, front.0, front.1, front.2) {
+        let y_offset = if let Some(rail) = self.rail(front.0, front.1, front.2) {
             if rail.shape.is_slope() { 0.6 } else { 0.1 }
         } else {
             if !self.res.facts().is_air(self.block_at(front)) {
                 return (self.dispense_default_in_level(pos, facing, stack), CLICK);
             }
             let below = (front.0, front.1 - 1, front.2);
-            let Some(rail) = self.rail(None, below.0, below.1, below.2) else {
+            let Some(rail) = self.rail(below.0, below.1, below.2) else {
                 return (self.dispense_default_in_level(pos, facing, stack), CLICK);
             };
             if facing != Direction::Down && rail.shape.is_slope() {
@@ -1429,14 +1429,12 @@ impl Game<'_> {
         &mut self,
         pos: Pos,
         facing: Direction,
-        mut stack: ItemStack,
+        stack: ItemStack,
     ) -> Result<Dispensed> {
         let target = offset(pos, facing);
         let target_pos = Self::pos_of(target);
-        let ask = self.bonemeal(target_pos, false, &mut stack);
         let grown = self.with_level(|b, level, ticks| {
-            ask.crop
-                .unwrap_or_else(|| b.grow_crop(level, ticks, target_pos, ask.check))
+            b.grow_crop(level, ticks, target_pos, None)
                 || b.grow_water_plant(level, ticks, target_pos, None)
         });
         if grown {
@@ -1449,8 +1447,7 @@ impl Game<'_> {
                 });
         }
         self.process_level_events()?;
-        // A canceled `BonemealEvent` that succeeded uses none of the meal.
-        let left = if grown && ask.crop != Some(true) {
+        let left = if grown {
             shrink(stack)
         } else {
             (stack.count > 0).then_some(stack)
@@ -1622,17 +1619,6 @@ impl Game<'_> {
         if !self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx)) {
             return Ok((Some(stack), FAIL));
         }
-        if false
-            && let Some(preview) =
-                self.with_level(|b, level, ticks| b.placement_preview(level, ticks, &ctx))
-        {
-            let against = ctx.placed_against_pos(preview.pos);
-            let against = self.world.block(against.x, against.y, against.z);
-            let mut canceled = false;
-            if canceled {
-                return Ok((Some(stack), FAIL));
-            }
-        }
         let outcome = self.with_level(|b, level, ticks| b.place_block(level, ticks, &ctx));
         let PlaceOutcome::Placed { pos: placed, state } = outcome else {
             self.process_level_events()?;
@@ -1648,7 +1634,6 @@ impl Game<'_> {
         if self.world.block_entities.get(&target).is_some() {
             self.apply_placed_item([target.0, target.1, target.2], &stack, false);
         }
-        self.block_item_placed(&stack, None, placed, &ctx);
         self.process_level_events()?;
         Ok((shrink(stack), CLICK))
     }
@@ -1830,20 +1815,10 @@ impl Game<'_> {
             }
             if let Target::Ecs(id) = t {
                 let Some(m) = self.ecs_mob(id) else { continue };
-                let part = self.part_shearable_of(id, m.kind, None, &shears);
-                if !m.alive || part.is_some_and(|(_, shearable)| !shearable) {
+                if !m.alive {
                     continue;
                 }
-                let kind = match part {
-                    Some((part, _)) => {
-                        self.part_shear_ecs(id, m.kind, part, None, &shears);
-                        m.kind
-                    }
-                    None => {
-                        let Some(kind) = self.shear_ecs(id, &shears) else { continue };
-                        kind
-                    }
-                };
+                let Some(_kind) = self.shear_ecs(id, &shears) else { continue };
                 self.post_block_game_event("minecraft:shear", [target.0, target.1, target.2], None, None);
                 return Ok(true);
             }

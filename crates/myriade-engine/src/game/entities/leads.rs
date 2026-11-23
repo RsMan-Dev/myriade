@@ -3,10 +3,12 @@
 //! `LeashFenceKnotEntity.interact`), loading and saving who holds what,
 //! breaking, and drawing the rope (`LeashFeatureRenderer`) and the knot.
 use super::{Game, commands::Target};
-use myriade_engine::mobs::MobEvent;
 use myriade_engine::{
     items::ItemStack,
-    mobs::leash::{self, Holder},
+    mobs::{
+        MobEvent,
+        leash::{self, Holder},
+    },
 };
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::leash::Holder as EcsHolder;
@@ -125,19 +127,12 @@ impl Game<'_> {
     }
     /// `Leashable.dropLeash` / `removeLeash`: the lead falls as an item.
     pub(super) fn break_leash(&mut self, id: u32, drop: bool, sound: bool) {
-        self.drop_leash(id, drop, sound, false, None);
+        self.drop_leash(id, drop, sound, None);
     }
-    /// A mob's `MobEvent::LeashBreak`: the lead drops where the event says
-    /// (`Mob.startRiding` drops it before the rider is seated), else at the mob.
+    /// A mob's `MobEvent::LeashBreak`: the lead drops where the event says, else at the mob.
     pub(super) fn leash_break_event(&mut self, event: MobEvent) {
-        if let MobEvent::LeashBreak {
-            mob,
-            drop,
-            sound,
-            at,
-        } = event
-        {
-            self.drop_leash(mob, drop, sound, false, at);
+        if let MobEvent::LeashBreak { mob, drop, sound, at } = event {
+            self.drop_leash(mob, drop, sound, at);
         }
     }
     /// `Leashable.tickLeash` ending a lead: a dying mob's falls as an item only under
@@ -209,21 +204,15 @@ impl Game<'_> {
     }
     /// `break_leash` by the acting player's use (untying it, shears).
     fn break_leash_used(&mut self, id: u32, drop: bool) {
-        self.drop_leash(id, drop, false, true, None);
+        self.drop_leash(id, drop, false, None);
     }
     /// `Leashable.dropLeash`; `from` is where the mob stood when it let go,
     /// when that is not where it is now.
-    fn drop_leash(&mut self, id: u32, drop: bool, sound: bool, used: bool, from: Option<[f64; 3]>) {
-        let Some((at, kind, holder)) = self.ecs_take_leash(id, from) else {
+    fn drop_leash(&mut self, id: u32, drop: bool, sound: bool, from: Option<[f64; 3]>) {
+        let Some((at, _kind, holder)) = self.ecs_take_leash(id, from) else {
             return;
         };
         self.notify_knot_leashee_removed(holder);
-        self.native_entity_unleash(id, &kind);
-        if used
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_unleash_entity(player, &name, id);
-        }
         if sound {
             self.lead_sound("break", at);
         }
@@ -358,7 +347,6 @@ impl Game<'_> {
         if existing.is_empty()
             && existing_boats.is_empty()
             && (!in_hand.is_empty() || !boats_in_hand.is_empty())
-            && self.hanging_place_cancelled("minecraft:leash_knot", knot_pos)
         {
             return true;
         }

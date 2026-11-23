@@ -48,8 +48,6 @@ impl Game<'_> {
                 }
             }
         }
-        // Unloaded with their chunk: PersistentEntitySectionManager.stopTracking.
-        self.native_leaves_flush();
         self.persist
             .anon
             .retain(|_, (at, _)| !keys.contains(&chunk_of(*at)));

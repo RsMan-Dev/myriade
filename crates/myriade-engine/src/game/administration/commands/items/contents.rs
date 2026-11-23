@@ -157,7 +157,7 @@ impl Game<'_> {
             return true;
         }
         let Some(item) = item else { return true };
-        if !myriade_engine::menu::container_items::can_be_in_bundle(&self.loop_context, item) {
+        if !myriade_engine::menu::container_items::can_be_in_bundle(item) {
             return false;
         }
         let rest = slots

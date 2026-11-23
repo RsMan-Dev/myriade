@@ -31,10 +31,6 @@ impl Game<'_> {
             return v;
         }
         let mut v: Vec<usize> = (0..36).collect();
-        if let Some(shown) = self.native_screen_slots() {
-            v.extend(shown);
-            return v;
-        }
         match self.container_kind() {
             Some(BlockEntity::Chest(_)) => {
                 v.extend((0..self.open_container_size()).map(|i| 300 + i))
@@ -67,7 +63,6 @@ impl Game<'_> {
                 | BlockEntity::ChiseledBookshelf(_)
                 | BlockEntity::Brushable(_)
                 | BlockEntity::Shelf(_)
-                | BlockEntity::Mod(_)
                 | BlockEntity::PotentSulfur(_)
                 | BlockEntity::StructureBlock(_)
                 | BlockEntity::JigsawBlock(_)

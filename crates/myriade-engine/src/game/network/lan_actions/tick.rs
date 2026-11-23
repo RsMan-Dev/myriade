@@ -9,15 +9,12 @@ impl Game<'_> {
     }
 
     fn tick_guests_inner(&mut self) {
-        // `EntityEvent.Size` for the poses the guests' moves set since the last tick.
-        self.native_guest_sizes();
         self.tick_guest_cameras();
         self.lan_merchant_tick();
         self.lan_stations_tick();
         self.lan_tables_tick();
         self.lan_containers_tick();
         self.tick_lan_mount_menus();
-        self.native_players_equipment();
         self.announce_guest_advancements();
         // Entity.commonTick belongs to each player, including spectators and
         // players whose client has not loaded yet, not to the server clock.
@@ -189,7 +186,6 @@ impl Game<'_> {
             self.as_guest(conn, |g| {
                 g.tick_maps();
                 g.tick_lodestone_compasses();
-                g.native_inventory_ticks();
                 g.count_tick_stats(sleeping);
                 g.tick_advancements();
                 g.update_player_attributes();
@@ -248,14 +244,6 @@ impl Game<'_> {
     /// `handlePlayerPositionChange` jumps from the pre-move position and yaw.
     /// A later attack packet reads the resulting velocity even before travel.
     pub(in crate::game) fn guest_jump(&mut self, conn: u32, from: [f64; 3], yaw: f32) {
-        let identity = if !false {
-            None
-        } else {
-            self.lan
-                .as_ref()
-                .and_then(|host| host.hub.guest(conn))
-                .map(|g| (g.uuid, g.name.clone()))
-        };
         self.as_guest(conn, |game| {
             let Some(player) = game.player.as_mut() else {
                 return;
@@ -281,9 +269,6 @@ impl Game<'_> {
             let _ = w.jump_from_ground();
             (w.player.position, w.player.yaw, w.player.ground.on_ground) =
                 (position, yaw_after, ground);
-            if let Some((uuid, name)) = identity {
-                game.native_player_jump(uuid, &name);
-            }
         });
     }
 }

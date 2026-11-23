@@ -319,13 +319,10 @@ impl Game<'_> {
                     g.guest_use = Some(GuestUse::OnBlock(hand));
                     let swings = g.swings_started;
                     let predicted = g.predicted_swings;
-                    let consumed = g.with_block_use_original(hand, |g| {
-                        let consumed = matches!(g.use_item(), Ok(Some(_)));
-                        if consumed && !g.use_failed {
-                            g.finish_block_use(hit.pos, hand);
-                        }
-                        consumed
-                    });
+                    let consumed = matches!(g.use_item(), Ok(Some(_)));
+                    if consumed && !g.use_failed {
+                        g.finish_block_use(hit.pos, hand);
+                    }
                     (g.forced_hit, g.guest_use) = saved;
                     reset_use_attack_strength(&mut g.attack_ticks, swings, g.swings_started);
                     (
@@ -529,40 +526,6 @@ impl Game<'_> {
             }
         }
         if self.guest_attack_stops(gi, id) {
-            return Ok(false);
-        }
-        // Native mods, where Player.attack starts: the global `attack_entity`,
-        // then the held item's `on_left_click_entity` Part. A canceled blow
-        // does nothing (game/native_hooks.rs).
-        let Some(host) = self.lan.as_ref() else {
-            return Err(ActionRefused::Stale);
-        };
-        let aimed = if let Some(g) = host
-            .hub
-            .guests
-            .iter()
-            .find(|g| g.entity_id == id && g.conn != conn && host.hub.here(g))
-        {
-            Some(("minecraft:player".to_owned(), g.position))
-        } else {
-            // The mod hooks hear no natural fence knot (#13036).
-            self.level_entity(id)
-                .filter(|t| !matches!(t, crate::game::commands::Target::Knot(_)))
-                .map(|t| {
-                    (
-                        self.target_type(t),
-                        self.target_position(t).unwrap_or_default(),
-                    )
-                })
-        };
-        if let Some((kind, at)) = aimed
-            && self.as_guest_at(gi, conn, |g| {
-                let mut canceled = false;
-                let dimension = g.dim.id();
-                g.native_attack_entity(dimension, id, &kind, at, &mut canceled);
-                canceled || g.native_left_click_entity_event(id, &kind)
-            }) == Ok(true)
-        {
             return Ok(false);
         }
         if let Some(victim) = self.pvp_victim(conn, id) {

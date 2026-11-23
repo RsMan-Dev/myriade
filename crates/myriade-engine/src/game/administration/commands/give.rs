@@ -8,17 +8,17 @@ impl Game<'_> {
     /// `Inventory.add`, then what did not fit thrown from the eyes with no pickup delay and
     /// `owner` (the player's UUID) its only taker, or the pickup sound when it all went in.
     pub(in crate::game) fn give_acting_stack(&mut self, stack: ItemStack, owner: Option<[i32; 4]>) {
-        let uuid = self.native_acting_id();
+        let uuid = myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid());
         self.journal_player(uuid);
         let left = self.add_stack_to_inventory(stack);
         // At the player who gets them.
         if let Some(rest) = left {
-            let uuid = self.native_acting_id();
+            let uuid = myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid());
             self.after_commit(crate::game::transactions::After::GiveRest(
                 uuid, rest, owner,
             ));
         } else {
-            let uuid = self.native_acting_id();
+            let uuid = myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid());
             self.after_commit(crate::game::transactions::After::GivePickup(uuid));
         }
     }

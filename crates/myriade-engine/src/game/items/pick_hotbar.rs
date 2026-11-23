@@ -12,16 +12,12 @@ impl Game<'_> {
         stack: &ItemStack,
         infinite: bool,
     ) -> bool {
-        // With no such part, no player id is made and each hotbar stack costs nothing more.
-        let player =
-            false
-                .then(|| self.native_acting_id());
         let picked = myriade_engine::pick_item::plan(
             &self.inventory[..36],
             self.selected,
             stack,
             infinite,
-            &mut |held, slot| self.pick_keeps(player, held, slot),
+            &mut |held, _| myriade_engine::pick_item::vanilla_not_replaceable(held),
         );
         let Some(picked) = picked else {
             return false;
@@ -33,24 +29,5 @@ impl Game<'_> {
             picked,
         );
         true
-    }
-    /// `ItemStack.isNotReplaceableByPickAction` for `held` in hotbar `slot`: vanilla's answer
-    /// (enchanted), then the parts of its item, asked for `player` when parts are listening.
-    fn pick_keeps(&self, player: Option<u128>, held: &ItemStack, slot: usize) -> bool {
-        let mut not_replaceable = myriade_engine::pick_item::vanilla_not_replaceable(held);
-        let listens = |item: &str| {
-            false
-        };
-        if let Some(player) = player
-            && listens(&held.item)
-        {
-            self.native_is_not_replaceable_by_pick_action(
-                player,
-                held,
-                slot as u32,
-                &mut not_replaceable,
-            );
-        }
-        not_replaceable
     }
 }

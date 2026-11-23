@@ -20,7 +20,8 @@ use horizon_core::{
     random::RandomSource,
 };
 use horizon_world::registry::BlockStateId;
-use myriade_types::PositionSource;
+use myriade_level::particle_options::PositionSource;
+use myriade_engine::neoforge_mob_maps::NeoForgeMobMaps;
 use crate::game::cosmetic_random::cosmetic_random;
 use std::collections::HashSet;
 
@@ -694,9 +695,6 @@ impl Game<'_> {
         pos: [f64; 3],
         mut make_ctx: impl FnMut(&mut Self) -> Context,
     ) {
-        let ctx = {
-            None
-        };
         if !self.sculk.tables.built {
             return;
         }
@@ -704,7 +702,7 @@ impl Game<'_> {
         let radius = sculk::notification_radius(event).min(16);
         let near = self.sculk.index.within(at, radius);
         // The ECS listeners hear the vibration from P's ears: P ranges them by its index, so nothing here scans the mobs.
-        let ctx = ctx.unwrap_or_else(|| make_ctx(self));
+        let ctx = make_ctx(self);
         let ctx = self.with_vibration_uuids(ctx);
         for key in near {
             self.sculk_listen(key, event, pos, &ctx);
@@ -829,7 +827,7 @@ impl Game<'_> {
                 // The sensor does not hear its own placement or removal.
                 let own = source_block == [key.0, key.1, key.2]
                     && matches!(event, "minecraft:block_destroy" | "minecraft:block_place");
-                let frequency = self.mob_maps().vibration_frequency(event);
+                let frequency = NeoForgeMobMaps::vanilla().vibration_frequency(event);
                 let calibrated_out = kind == SculkKind::Calibrated && {
                     let back = self.calibrated_signal(key);
                     back != 0 && frequency != back
@@ -955,12 +953,6 @@ impl Game<'_> {
         Ok(())
     }
     fn tick_sculk_block(&mut self, key: (i32, i32, i32), adjacent: bool) -> Result<()> {
-        // A mod block's sculk template (a catalyst spreading, a sensor's vibrations) is the
-        // template's own: it waits while the block's mod is off.
-        let state = self.world.block(key.0, key.1, key.2);
-        if crate::game::code_block_owners::suppressed(self.pack.assets.registry, state) {
-            return Ok(());
-        }
         let time = self.world.game_time;
         let Some(entity) = self.sculk_entity(key) else {
             self.sculk.index.remove(&key);
@@ -1043,7 +1035,7 @@ impl Game<'_> {
             SculkKind::Sensor | SculkKind::Calibrated => {
                 let state = self.world.block(key.0, key.1, key.2);
                 if self.res.behaviours().sculk_sensor_can_activate(state) {
-                    let frequency = self.mob_maps().vibration_frequency(info.event);
+                    let frequency = NeoForgeMobMaps::vanilla().vibration_frequency(info.event);
                     if let Some(e) = self.sculk_entity(key) {
                         e.last_frequency = frequency;
                     }
@@ -1527,7 +1519,12 @@ impl Game<'_> {
         to: [f64; 3],
         ticks: i32,
     ) {
-        let source = super::lan_particles::particle_position_source(&source);
+        let source = match source {
+            horizon_protocol::entity_data::PositionSource::Block(pos) => PositionSource::Block(pos),
+            horizon_protocol::entity_data::PositionSource::Entity { id, y_offset } => {
+                PositionSource::Entity { id, y_offset }
+            }
+        };
         self.vibration_particle(source, from, to, ticks);
     }
     // ---- entity events ----

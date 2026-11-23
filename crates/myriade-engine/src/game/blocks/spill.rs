@@ -3,7 +3,6 @@
 //! block drops (`Block.dropResources`), drawn from the level random at the
 //! moment vanilla draws them. The item entities they make are added to the
 //! world as soon as the behaviour returns, within the same tick.
-use super::api_values::TryIntoApi;
 use super::{Game, GameLevel, storage::is_shulker_box};
 use myriade_engine::{
     block_entity_item, block_entity_nbt,
@@ -321,7 +320,7 @@ pub(super) struct Spawn {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct BlockItemDrop {
     pub(super) random: Option<ItemRandom>,
-    pub(super) stack: ItemStack,
+    pub(in crate::game) stack: ItemStack,
     pub(super) position: [f64; 3],
     pub(super) velocity: [f64; 3],
     pub(super) pickup_delay: u32,
@@ -355,13 +354,13 @@ impl BlockItemDrop {
     }
 }
 
-pub(super) struct BlockDrops {
+pub(in crate::game) struct BlockDrops {
     /// The item entities to add, as the mods left them.
-    pub(super) items: Vec<BlockItemDrop>,
+    pub(in crate::game) items: Vec<BlockItemDrop>,
     /// The experience points to award at the block's centre.
-    pub(super) experience: u32,
+    pub(in crate::game) experience: u32,
     /// A mod canceled the break's drops: `spawnAfterBreak` doesn't run.
-    pub(super) canceled: bool,
+    pub(in crate::game) canceled: bool,
 }
 
 #[derive(Default)]
@@ -395,35 +394,6 @@ impl Spill {
             && self.orbs.is_empty()
             && self.removed.is_empty()
             && self.used.is_empty()
-    }
-}
-
-/// Lets `say` change each use's run of `spawns`, newest first so the earlier
-/// ranges hold. A run's stacks keep their spots, and a stack `say` adds takes
-/// the run's last spot, else the block's top.
-fn retell_runs(
-    spawns: &mut Vec<Spawn>,
-    used: &[UsedDrops],
-    mut say: impl FnMut(&UsedDrops, [f64; 3], &mut Vec<ItemStack>),
-) {
-    for used in used.iter().rev() {
-        let run: Vec<Spawn> = spawns.drain(used.start..used.end).collect();
-        let mut drops: Vec<ItemStack> = run.iter().map(|s| s.stack.clone()).collect();
-        let origin = used.pos.map(|c| f64::from(c) + 0.5);
-        say(used, origin, &mut drops);
-        let top = [origin[0], origin[1] + 0.5, origin[2]];
-        let kept: Vec<Spawn> = drops
-            .into_iter()
-            .enumerate()
-            .map(|(i, stack)| Spawn {
-                random: run.get(i).and_then(|s| s.random),
-                stack,
-                pos: run.get(i).or(run.last()).map_or(top, |s| s.pos),
-                motion: run.get(i).and_then(|s| s.motion),
-                delay: run.get(i).map_or(10, |s| s.delay),
-            })
-            .collect();
-        spawns.splice(used.start..used.start, kept);
     }
 }
 
@@ -611,14 +581,11 @@ impl GameLevel<'_> {
     }
     /// `Block.dropResources(state, level, pos, blockEntity)`: the block's loot
     /// (from its random sequence, else the level random), with what its block
-    /// entity copies into it, popped at once. While a mod's machine breaks
-    /// the block (`native_machine_destroy_block`), the loot is rolled with its
-    /// `drop_tool` (`dropResources(.., entity, tool)`) and, given `drop_into`,
-    /// kept there instead of popped.
+    /// entity copies into it, popped at once.
     pub(super) fn drop_resources_now(&mut self, pos: BlockPos, state: BlockStateId) {
         let key = (pos.x, pos.y, pos.z);
         let at = [pos.x, pos.y, pos.z];
-        self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(super::container_loot::LootTarget::Block(key), false);
         if let Some(entity) = self.world.block_entities.get(&key) {
             let entity = entity.clone();
             let block = self.facts.get(state).name.clone();
@@ -627,38 +594,26 @@ impl GameLevel<'_> {
             self.pending.record_saved(at, &tag);
         }
         let dynamic = self.pending.dynamic(at);
-        let machine = self
-            .drop_tool
-            .as_ref()
-            .is_some_and(|(target, _)| *target == key);
-        let tool = self
-            .drop_tool
-            .as_ref()
-            .filter(|_| machine)
-            .and_then(|(_, tool)| tool.clone());
         let roll = myriade_engine::items::BlockLootRoll {
-            held: tool.as_ref(),
             dynamic: &dynamic,
-            breaker: self.drop_breaker_at == Some(pos),
             ..Default::default()
         };
-        let entity = self
-            .drop_entity
-            .filter(|_| self.drop_breaker_at == Some(pos));
-        let drops = self.roll_block_loot(pos, state, entity, roll);
-        let dropped = self.block_dropped(pos, state, None, tool.as_ref(), drops, None);
+        let drops = self.items.block_drops(
+            self.registry,
+            state,
+            roll,
+            &mut self.world.random,
+            Some((&mut *self.rand_sequences, self.seed)),
+        );
+        let dropped = self.block_dropped(pos, state, None, None, drops, None);
         for item in dropped.items {
-            if let Some(kept) = self.drop_into.as_mut().filter(|_| machine) {
-                kept.push(item.stack);
-            } else {
-                self.spill.spawns.push(Spawn {
-                    random: item.random_with_state(),
-                    stack: item.stack,
-                    pos: item.position,
-                    motion: Some(item.velocity),
-                    delay: item.pickup_delay,
-                });
-            }
+            self.spill.spawns.push(Spawn {
+                random: item.random_with_state(),
+                stack: item.stack,
+                pos: item.position,
+                motion: Some(item.velocity),
+                delay: item.pickup_delay,
+            });
         }
         self.pending.clear(at);
         if dropped.experience > 0 {
@@ -703,7 +658,13 @@ impl GameLevel<'_> {
             breaker: entity.is_some(),
             ..Default::default()
         };
-        let mut drops = self.roll_block_loot(pos, state, entity, roll);
+        let mut drops = self.items.block_drops(
+            self.registry,
+            state,
+            roll,
+            &mut self.world.random,
+            Some((&mut *self.rand_sequences, self.seed)),
+        );
         drops.retain(|stack| &*stack.item != "minecraft:air" && stack.count > 0);
         for stack in &mut drops {
             copied.attach(at, stack);
@@ -718,7 +679,7 @@ impl GameLevel<'_> {
     /// `BlockDropsEvent`). Nothing is spawned here: the caller adds the
     /// entities and orbs, and a canceled break leaves both empty. The random
     /// draws happen with or without a listener, in vanilla's order.
-    pub(super) fn block_dropped(
+    pub(in crate::game) fn block_dropped(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -738,7 +699,6 @@ impl GameLevel<'_> {
         let name = self.facts.get(state).name.clone();
         let silk = tool.is_some_and(|tool| tool.enchantment_level("minecraft:silk_touch") > 0);
         let experience = exp_to_drop
-            .or_else(|| self.part_break_experience(pos, state, breaker, tool))
             .unwrap_or_else(|| {
                 removal::break_experience(&mut self.world.random, &name)
                     .filter(|_| !silk || &*name == "minecraft:spawner")
@@ -780,34 +740,17 @@ impl GameLevel<'_> {
     /// initial experience; the event may still award it.
     pub(super) fn block_drops_ready(
         &mut self,
-        pos: BlockPos,
-        state: BlockStateId,
-        breaker: Option<u128>,
-        tool: Option<&ItemStack>,
+        _pos: BlockPos,
+        _state: BlockStateId,
+        _breaker: Option<u128>,
+        _tool: Option<&ItemStack>,
         dropped: BlockDrops,
     ) -> BlockDrops {
         let BlockDrops {
             mut items,
             mut experience,
-            mut canceled,
+            canceled,
         } = dropped;
-        if false
-            && let Ok(mut snapshots) = items.try_into_api()
-        {
-            let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
-            let mut next_experience = experience;
-            let mut next_canceled = canceled;
-            if let Ok(mut next_items) =
-                super::api_values::item_drops_into_engine(&snapshots, self.items)
-            {
-                for (next, original) in next_items.iter_mut().zip(&items) {
-                    next.random = original.random;
-                }
-                items = next_items;
-                experience = next_experience;
-                canceled = next_canceled;
-            }
-        }
         if canceled || !self.rules.block_drops {
             items.clear();
             experience = 0;
@@ -838,7 +781,7 @@ impl GameLevel<'_> {
         side_effects: bool,
     ) -> u8 {
         let key = (pos.x, pos.y, pos.z);
-        self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(super::container_loot::LootTarget::Block(key), false);
         // A replacement is a new block entity, even at the same position.
         // Headless servers cannot rely on renderer visibility to discard this state.
         if &*self.facts.get(old).name == "minecraft:end_gateway" {
@@ -855,41 +798,12 @@ impl GameLevel<'_> {
         ) {
             return 0;
         }
-        // A mod's block entity answers its parts in place (its slot, so its
-        // attachments, stay until `put`), as vanilla's override runs on `this`.
-        // One out for its own tick or menu button, which an empty id stands in
-        // for, isn't here to answer: its part isn't asked.
-        let mut part_drops = Vec::new();
-        if side_effects
-            && matches!(
-                self.world.block_entities.get(&key),
-                Some(BlockEntity::Mod(m)) if !m.id().is_empty()
-            )
-            && let Some((lease, BlockEntity::Mod(entity))) = self.world.block_entities.take(&key)
-        {
-            self.api_pre_remove_side_effects(pos, old, &entity, &mut part_drops);
-            self.world
-                .block_entities
-                .put(lease, BlockEntity::Mod(entity));
-        }
         let entity = self.world.block_entities.remove(&key);
         self.positions.hoppers.remove(&key);
         self.world.block_names.remove(&key);
         self.world.forget_block_entity_source(key);
         let name = self.facts.get(old).name.clone();
-        let kind = match &entity {
-            // BaseContainerBlockEntity.preRemoveSideEffects: Containers.dropContents.
-            Some(BlockEntity::Mod(m))
-                if !m.items.is_empty()
-                    && self.world.block_entities.mod_container(old.0).is_some() =>
-            {
-                PreRemove::Contents {
-                    slots: m.items.len(),
-                    furnace: false,
-                }
-            }
-            _ => removal::pre_remove(&name),
-        };
+        let kind = removal::pre_remove(&name);
         let mut neighbour_updates = 0;
         if side_effects {
             match kind {
@@ -977,9 +891,6 @@ impl GameLevel<'_> {
                 | PreRemove::CreakingHeart
                 | PreRemove::Beacon
                 | PreRemove::Nothing => {}
-            }
-            for stack in part_drops {
-                self.drop_item_stack(pos, Some(stack));
             }
         }
         // BlockEntity.setRemoved: a jukebox always reports its song stopping,
@@ -1104,7 +1015,7 @@ impl GameLevel<'_> {
 }
 
 impl Game<'_> {
-    /// [`GameLevel::roll_block_loot`] for a roll outside a level write:
+    /// The block's loot roll for a break outside a level write:
     /// `entity` is `THIS_ENTITY`'s id. With no listener it builds no level.
     pub(in crate::game) fn roll_block_loot(
         &mut self,
@@ -1122,7 +1033,7 @@ impl Game<'_> {
         )
     }
     /// Apply the shared block-drop event's item entities and experience unchanged.
-    pub(super) fn spawn_block_drops(&mut self, pos: [i32; 3], dropped: BlockDrops) {
+    pub(in crate::game) fn spawn_block_drops(&mut self, pos: [i32; 3], dropped: BlockDrops) {
         for item in dropped.items {
             self.add_item_drop(item);
         }
@@ -1151,12 +1062,7 @@ impl Game<'_> {
         let _save_lease = myriade_engine::join_seq::visibility::PassLease::enter();
         let mut spill = std::mem::take(&mut self.spill);
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
-        let used = std::mem::take(&mut spill.used);
-        let tool = self.held().cloned();
-        let player = Some(myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()));
-        retell_runs(&mut spill.spawns, &used, |used, origin, drops| {
-            let block = Some((used.pos, used.state));
-        });
+        let _used = std::mem::take(&mut spill.used);
         for s in spill.spawns {
             self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
         }
@@ -1186,47 +1092,6 @@ mod tests {
 
     use myriade_engine::{block_entity_item, item_data, mobs::raider, save};
     use horizon_core::nbt::Tag;
-
-    #[test]
-    fn a_used_run_is_retold_in_place() {
-        let spawn = |item: &str, x: f64| Spawn {
-            random: None,
-            stack: ItemStack::new(item, 1),
-            pos: [x, 0.0, 0.0],
-            motion: None,
-            delay: 10,
-        };
-        let mut spawns = vec![
-            spawn("minecraft:stone", 0.0),
-            spawn("minecraft:sweet_berries", 1.0),
-            spawn("minecraft:sweet_berries", 2.0),
-            spawn("minecraft:dirt", 3.0),
-        ];
-        let used = [UsedDrops {
-            start: 1,
-            end: 3,
-            pos: [4, 64, 4],
-            state: BlockStateId(0),
-            table: "minecraft:harvest/sweet_berry_bush",
-        }];
-        retell_runs(&mut spawns, &used, |used, origin, drops| {
-            assert_eq!(used.table, "minecraft:harvest/sweet_berry_bush");
-            assert_eq!(origin, [4.5, 64.5, 4.5]);
-            assert_eq!(drops.len(), 2);
-            drops.remove(0);
-            drops.push(ItemStack::new("minecraft:diamond", 1));
-        });
-        let items: Vec<(&str, f64)> = spawns.iter().map(|s| (&*s.stack.item, s.pos[0])).collect();
-        assert_eq!(
-            items,
-            [
-                ("minecraft:stone", 0.0),
-                ("minecraft:sweet_berries", 1.0),
-                ("minecraft:diamond", 2.0),
-                ("minecraft:dirt", 3.0),
-            ]
-        );
-    }
 }
 
 #[cfg(test)]

@@ -91,7 +91,6 @@ pub(super) trait Entity: EntityRules {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag>;
 
     fn on_ground(&self) -> bool {
@@ -338,6 +337,37 @@ macro_rules! direct_entity_edit {
 }
 pub(crate) use direct_entity_edit;
 
+/// The network id of the entity a target names; None for a player and a guest, who are no entity here.
+pub(in crate::game) fn target_id(t: Target) -> Option<u32> {
+    match t {
+        Target::Mob(id)
+        | Target::Item(id)
+        | Target::Orb(id)
+        | Target::Projectile(id)
+        | Target::Stand(id)
+        | Target::Frame(id)
+        | Target::Painting(id)
+        | Target::Boat(id)
+        | Target::Cart(id)
+        | Target::Other(id)
+        | Target::Fangs(id)
+        | Target::Crystal(id)
+        | Target::Dragon(id)
+        | Target::DragonPart(id)
+        | Target::Tnt(id)
+        | Target::Cushion(id)
+        | Target::Falling(id)
+        | Target::Rocket(id)
+        | Target::Trident(id)
+        | Target::Spawner(id)
+        | Target::Cloud(id)
+        | Target::Hook(id)
+        | Target::Knot(id)
+        | Target::General(id) => Some(id),
+        Target::Player | Target::Guest(_) => None,
+    }
+}
+
 macro_rules! define_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         /// Every list, borrowed apart from the rest of `Game`, for
@@ -345,6 +375,7 @@ macro_rules! define_entity_handles {
         #[derive(Clone, Copy)]
         pub(super) struct EntityLists<'w> {
             $(pub(super) $field: &'w [$ty],)*
+            pub(super) _lists: std::marker::PhantomData<&'w ()>,
         }
 
         /// One entity, by list and index.
@@ -695,21 +726,11 @@ macro_rules! save_entities_of_every_kind {
 }
 
 /// A matched kind consumes only its own explicit token; failed kind probes never do.
-macro_rules! load_with_transfer {
-    ($game:expr, $state:expr, $ordinary:ident, $transfer:ident, $($arg:expr),+ $(,)?) => {{
-        if let Some(state) = $state.take() {
-            $game.$transfer($($arg),+, Some(state));
-        } else {
-            $game.$ordinary($($arg),+);
-        }
-    }};
-}
-
 macro_rules! load_lists {
-    (($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr)
+    (($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr)
      $($kind_name:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {{
         let mut tag = $tag;
-        $(match <$ty as $crate::game::entity::Entity>::load_nbt($game, $kind, $uuid, $player, tag, $transferred) {
+        $(match <$ty as $crate::game::entity::Entity>::load_nbt($game, $kind, $uuid, $player, tag) {
             Ok(()) => return Ok(()),
             Err(back) => tag = back,
         })*
@@ -725,15 +746,14 @@ pub(crate) use load_lists;
 /// otherwise. A kind added to the lists cannot be left out, since `load_nbt`
 /// has no default.
 macro_rules! load_entity_of_any_kind {
-    ($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr, $transferred:expr) => {
+    ($game:expr, $kind:expr, $uuid:expr, $player:expr, $tag:expr) => {
         $crate::game::entity::entity_lists!(
             load_lists,
             $game,
             $kind,
             $uuid,
             $player,
-            $tag,
-            $transferred
+            $tag
         )
     };
 }
@@ -761,7 +781,7 @@ impl Game<'_> {
         player_uuid: Option<[i32; 4]>,
         tag: Tag,
     ) -> Result<(), Tag> {
-        load_entity_of_any_kind!(self, kind, uuid, player_uuid, tag, &mut None)
+        load_entity_of_any_kind!(self, kind, uuid, player_uuid, tag)
     }
     /// Restore a live portal object with its explicitly captured runtime ownership.
     /// This dispatch covers only reconstructible portal kinds; ordinary disk loads
@@ -772,22 +792,19 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        state: super::entity_initialization::TransferredEntityState,
     ) -> Result<(), Tag> {
-        let mut state = Some(state);
-        load_entity_of_any_kind!(self, kind, uuid, player_uuid, tag, &mut state)
+        load_entity_of_any_kind!(self, kind, uuid, player_uuid, tag)
             .or_else(|tag| {
                 self.load_unlisted_transferred(
                     Self::chunk_of(myriade_engine::entity_nbt::position(&tag).unwrap_or_default()),
                     kind,
                     uuid,
                     tag,
-                    &mut state,
                 )
             })
             .or_else(|tag| {
                 let saved = tag.clone();
-                self.load_other_transferred(tag, kind, state.take())
+                self.load_other_transferred(tag, kind)
                     .map(|_| ())
                     .ok_or(saved)
             })
@@ -873,20 +890,11 @@ impl Entity for Boat {
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
         if !game.loads_as_boat(kind) {
             return Err(tag);
         }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_boat,
-            load_boat_transferred,
-            tag,
-            uuid,
-            kind
-        );
+        game.load_boat(tag, uuid, kind);
         Ok(())
     }
     stored_motion!();
@@ -966,7 +974,6 @@ impl Entity for Minecart {
         _uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        _transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
         Err(tag)
     }
@@ -1044,12 +1051,11 @@ impl Entity for PrimedTnt {
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
         if !loads_as_tnt(kind) {
             return Err(tag);
         }
-        load_with_transfer!(game, transferred, load_tnt, load_tnt_transferred, tag, uuid);
+        game.load_tnt(tag, uuid);
         Ok(())
     }
     stored_motion!();
@@ -1136,19 +1142,11 @@ impl Entity for Rocket {
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
         if !(kind == "minecraft:firework_rocket") {
             return Err(tag);
         }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_rocket,
-            load_rocket_transferred,
-            tag,
-            uuid
-        );
+        game.load_rocket(tag, uuid);
         Ok(())
     }
     stored_motion!();
@@ -1218,19 +1216,11 @@ impl Entity for ThrownTrident {
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> Result<(), Tag> {
         if !(kind == "minecraft:trident") {
             return Err(tag);
         }
-        load_with_transfer!(
-            game,
-            transferred,
-            load_trident,
-            load_trident_transferred,
-            tag,
-            uuid
-        );
+        game.load_trident(tag, uuid);
         Ok(())
     }
     stored_motion!();

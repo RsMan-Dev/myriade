@@ -197,8 +197,4 @@ impl Game<'_> {
 }
 
 #[cfg(test)]
-#[path = "tick_status_broadcast_tests.rs"]
-mod tick_status_broadcast_tests;
-
-#[cfg(test)]
 mod random_command_tests;

@@ -650,14 +650,9 @@ impl Game<'_> {
 
     // ---- /test ----------------------------------------------------------
 
-    /// `TestCommand`: running, resetting and clearing tests is
-    /// `test_runs`; `locate`, `pos` and `create` are `test_locate`.
+    /// `TestCommand`: `locate`, `pos` and `create` are `test_locate`.
     pub(super) fn cmd_test(&mut self, id: &str, ctx: &Context) -> R<i32> {
         match id {
-            "test.run" | "test.run.found" | "test.clear" | "test.stop" => {
-                self.cmd_test_runs(id, ctx)
-            }
-            "test.verify" => self.test_verify(ctx),
             "test.create" => self.test_create(ctx),
             "test.locate" => self.test_locate(ctx),
             _ => self.test_show_pos(ctx),

@@ -13,18 +13,13 @@ use horizon_world::level::flags as level_flags;
 pub(super) use horizon_gameplay::tnt::PrimedTnt;
 
 impl Game<'_> {
-    /// Asks the mods whether the TNT at `pos` may be primed
-    /// (`native_tnt_primed`); the acting guest, if any, is its player.
-    pub(super) fn tnt_prime_allowed(&mut self, pos: BlockPos) -> bool {
-        let mut cancel = false;
-        self.native_tnt_primed(self.lan_acting_uuid, [pos.x, pos.y, pos.z], &mut cancel);
+    /// Whether the TNT at `pos` may be primed: no hook refuses it any more.
+    pub(super) fn tnt_prime_allowed(&mut self, _pos: BlockPos) -> bool {
         // `TntBlock.prime` leaves the block alone with `tnt_explodes` off, for
         // redstone, fire and an unstable block breaking alike.
-        !cancel
-            && self
-                .session
-                .rules
-                .bool_at(myriade_engine::gamerules::vanilla::TNT_EXPLODES)
+        self.session
+            .rules
+            .bool_at(myriade_engine::gamerules::vanilla::TNT_EXPLODES)
     }
     /// Primes TNT a level event announced, or, when the mods refuse, puts
     /// back the block the fire or signal had already taken out.

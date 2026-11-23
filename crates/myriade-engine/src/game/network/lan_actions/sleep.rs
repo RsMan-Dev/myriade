@@ -64,14 +64,7 @@ impl Game<'_> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let g = &host.hub.guests[gi];
-        let player = g.uuid;
-        if let Some(head) = g.bed
-            && false
-        {
-            let name = g.name.clone();
-            self.native_player_bed_leave(player, &name, head, wake_immediately, update_level);
-        }
+        let player = host.hub.guests[gi].uuid;
         // A listener may have woken the guest already, or changed the list:
         // find the guest again; `wake` does nothing to one already awake.
         let Some(host) = self.lan.as_mut() else {

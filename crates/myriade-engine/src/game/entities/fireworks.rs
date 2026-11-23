@@ -13,7 +13,6 @@ impl Game<'_> {
     pub(super) fn new_rocket(&mut self, at: Vec3, stack: &ItemStack, attached: bool) -> Rocket {
         let (_, explosions) = fireworks_of(stack);
         Rocket {
-            attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             id: 0,
@@ -133,9 +132,6 @@ impl Game<'_> {
         }
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_elytra_boost(player, &name);
-        }
         true
     }
     /// `Projectile.getOwner` as a target's `Who`: a guest's `Who::Player`

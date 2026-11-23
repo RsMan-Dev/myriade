@@ -507,25 +507,12 @@ impl Game<'_> {
                 if !self.server_player_travel_allowed(conn, target, TravelCause::EndPortal) {
                     return;
                 }
-                // The first exit from the End keeps only `PlayerPersisted` of a mod's saved
-                // compound, as a death respawn does; later exits keep all of it.
-                self.keep_only_player_persisted(conn);
                 let Some(host) = self.lan.as_mut() else {
                     return;
                 };
                 if let Some(play) = host.play.get_mut(&conn) {
                     play.respawn_requested = false;
                     play.won_game = false;
-                }
-                // PlayerList.respawn(keepAllPlayerData = true), CHANGED_DIMENSION:
-                // PlayerEvent.Clone with `wasDeath` false.
-                if let Some(g) = host.hub.guest(conn) {
-                    let (uuid, name) = (g.uuid, g.name.clone());
-                    if let Some(original) = self.capture_original_player(conn) {
-                        self.with_original_player(original, |game, original| {
-                            game.native_player_clone(uuid, &name, false, original);
-                        });
-                    }
                 }
                 self.start_server_trip(conn, target, None, true);
                 self.trip_respawn(conn, respawn);
@@ -583,13 +570,7 @@ impl Game<'_> {
             && self.gateway_available(g)
         {
             if self.portals.player.cooldown == 0 {
-                let Some(player) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
-                    return;
-                };
-                let (id, name) = (player.uuid, player.name.clone());
-                let mut cancel = false;
-                self.native_player_teleport_end_gateway(id, &name, g, &mut cancel);
-                if cancel {
+                if self.lan.as_ref().and_then(|host| host.hub.guest(conn)).is_none() {
                     return;
                 }
                 if !self.server_player_travel_allowed(conn, self.dim, TravelCause::EndGateway) {
@@ -783,7 +764,6 @@ impl Game<'_> {
                 g.loading = true;
             });
         }
-        self.bind_player_attachments(conn, false);
         self.as_guest(conn, |g| {
             if credits_respawn {
                 // ServerGamePacketListenerImpl.handleClientCommand:
@@ -876,9 +856,7 @@ impl Game<'_> {
                 // PlayerList.respawn: the block was found, so the new player
                 // copies the respawn point (`copyRespawnPosition`). A cancel
                 // leaves it with none.
-                if self.spawn_point_change(config.dim, Some(config.pos), config.forced) {
-                    self.respawn_config = None;
-                }
+                self.respawn_config = None;
                 Some((at, yaw, pitch))
             }
             Ok(None) | Err(_) => {
@@ -1016,7 +994,6 @@ impl Game<'_> {
             }
             let mut trip = self.server_trips.remove(k);
             if trip.placed {
-                self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                 continue;
             }
             // A portal's trip (`start_server_trip`): its client waits to land.
@@ -1063,7 +1040,6 @@ impl Game<'_> {
                             host.hub.guests[i].position == [at.x, at.y, at.z]
                         }) =>
                     {
-                        self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                         // PlayerRespawnPositionEvent: the column is the point.
                         let pitch = self.lan.as_ref().map_or(0.0, |h| h.hub.guests[i].pitch);
                         let found = Respawn {
@@ -1161,7 +1137,6 @@ impl Game<'_> {
                     Some(d) => {
                         self.apply_respawn_copy(trip.conn, &d, trip.missing);
                         if d.to.dim != trip.dim {
-                            self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
                             self.respawn_into_other_level(trip.conn, d.to);
                             continue;
                         }
@@ -1210,7 +1185,6 @@ impl Game<'_> {
             } else {
                 host.hub.teleport(i, Some(at));
             }
-            self.tell_mods_changed_dimension(trip.conn, trip.left, trip.dim);
         }
         self.release_held_arrivals();
     }
@@ -1243,34 +1217,15 @@ impl Game<'_> {
         };
         // The load gives each pair (old id, new id) itself, in the order of the NBT.
         let pairs = self.ecs_load_tree(c, &old);
-        self.move_attachments(&pairs);
         for (before, after) in pairs {
             self.portals.carried_ids.insert(before, after);
         }
         self.portals.carried_ids.get(&id).copied()
     }
 
-    /// Tells the mods of the teleports a command made inside a level, with
-    /// each player's state swapped in: where the move has reached the hub.
-    pub(super) fn flush_teleport_notes(&mut self) {
-        for note in std::mem::take(&mut self.teleport_notes) {
-            let TeleportNote {
-                conn,
-                uuid,
-                name,
-                from,
-                to,
-                dimension,
-            } = note;
-            // In place when it is their turn already (as_guest finds them swapped in).
-            if self.lan_acting == Some(conn) {
-                self.native_player_teleported(uuid, &name, from, to, &dimension);
-            } else {
-                self.as_guest(conn, |g| {
-                    g.native_player_teleported(uuid, &name, from, to, &dimension);
-                });
-            }
-        }
+    /// Whether `mount` rides `root`, directly or through its vehicles, both still live.
+    pub(super) fn vehicle_tree_contains_mount(&self, root: u32, mount: u32) -> bool {
+        self.ecs.exists(root) && self.ecs.exists(mount) && self.ecs_root_vehicle(mount) == root
     }
 
     /// The players the command just run sends to another level
@@ -1299,7 +1254,6 @@ impl Game<'_> {
             let Some(host) = self.lan.as_mut() else {
                 return;
             };
-            let (uuid, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
             let (yaw, pitch, origin, passenger_body) = host.hub.guests.update(i, |g| {
                 let [yaw, pitch] = t.rotation.unwrap_or([g.yaw, g.pitch]);
                 let origin = g.position;
@@ -1326,12 +1280,8 @@ impl Game<'_> {
                     }
                 });
             }
-            self.bind_player_attachments(t.conn, false);
             self.as_guest(t.conn, |g| {
                 g.trigger_dimension(source, t.dim, origin);
-                // The mods hear the teleport into another level, with the
-                // player's state swapped in.
-                g.native_player_teleported(uuid, &name, origin, t.at, t.dim.id());
             });
             self.server_trips.retain(|trip| !trip.is(t.conn));
             self.server_trips.push(Trip {
@@ -1360,27 +1310,6 @@ impl Game<'_> {
                 log::error!("could not reopen {}: {e}", source.id());
             }
         }
-    }
-
-    /// `native_player_changed_dimension` for a guest who has ended a move
-    /// from the level `left` to the one in place, `to`, with their state
-    /// swapped in so that the helpers reach them. Nothing is heard when they
-    /// did not leave a level, or ended where they started.
-    pub(super) fn tell_mods_changed_dimension(&mut self, conn: u32, left: Option<Dim>, to: Dim) {
-        let Some(from) = left.filter(|from| *from != to) else {
-            return;
-        };
-        let Some((uuid, name)) = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(conn))
-            .map(|g| (g.uuid, g.name.clone()))
-        else {
-            return;
-        };
-        self.as_guest(conn, |g| {
-            g.native_player_changed_dimension(uuid, &name, from.id(), to.id());
-        });
     }
 
     /// The hub's view of the server for packets sent outside its own tick.

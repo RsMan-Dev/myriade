@@ -152,11 +152,10 @@ pub struct EntityMemory {
 /// Runtime ownership paired with serialized nodes by one object walk. UUIDs
 /// are admission identities, never keys for matching distinct object states.
 #[derive(Debug)]
-pub(super) struct TransferredVehicleTree {
+pub(in crate::game) struct TransferredVehicleTree {
     source_id: u32,
     kind: VehicleTreeKind,
     name: String,
-    state: super::entity_initialization::TransferredEntityState,
     /// `None` is an unspawned saved slot, at exactly the same NBT child index.
     passengers: Vec<Option<TransferredVehicleTree>>,
 }
@@ -182,7 +181,6 @@ struct PreparedVehicleTransfer {
     tag: Tag,
     kind: VehicleTreeKind,
     name: String,
-    state: super::entity_initialization::TransferredEntityState,
     passengers: Vec<PreparedVehiclePassenger>,
 }
 
@@ -226,7 +224,7 @@ const UNLISTED_KINDS: &[&str] = &[
 ];
 
 /// Queue `tag` with the chunk loads as a fresh add.
-pub(super) fn mark_fresh(tag: &mut Tag) {
+pub(in crate::game) fn mark_fresh(tag: &mut Tag) {
     if let Tag::Compound(c) = tag {
         c.insert(FRESH_ADD.into(), Tag::Byte(1));
     }
@@ -377,10 +375,6 @@ impl Game<'_> {
         let pos = ChunkPos::new(chunk.x, chunk.z);
         let time = self.world.game_time;
         let mut extras: ChunkExtras = chunk.saved.as_deref().cloned().unwrap_or_default();
-        extras.block_entity_attachments = self
-            .world
-            .block_entities
-            .chunk_attachments(chunk.x, chunk.z);
         // ComparatorBlockEntity.saveAdditional: the output belongs to the
         // circuit, not the inventory map. Overlay only that field on the raw
         // compound so components and other saved data survive.
@@ -641,7 +635,7 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         tag: Tag,
     ) -> std::result::Result<(), Tag> {
-        self.load_unlisted_transferred(key, kind, uuid, tag, &mut None)
+        self.load_unlisted_transferred(key, kind, uuid, tag)
     }
     pub(super) fn load_unlisted_transferred(
         &mut self,
@@ -649,18 +643,13 @@ impl Game<'_> {
         kind: &str,
         uuid: Option<[i32; 4]>,
         tag: Tag,
-        transferred: &mut Option<super::entity_initialization::TransferredEntityState>,
     ) -> std::result::Result<(), Tag> {
         if !UNLISTED_KINDS.contains(&kind) {
             return Err(tag);
         }
         match kind {
             "minecraft:area_effect_cloud" => {
-                let id = if let Some(state) = transferred.take() {
-                    self.load_potion_cloud_transferred(&tag, Some(state))
-                } else {
-                    self.load_potion_cloud(&tag)
-                };
+                let id = self.load_potion_cloud(&tag);
                 if let Some(id) = id {
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
@@ -671,9 +660,6 @@ impl Game<'_> {
                     let delay = myriade_engine::save::number(tag.get("Warmup")).unwrap_or(0) as i32;
                     let owner = self.loaded_fangs_owner(&tag);
                     let id = self.add_fangs([at.x, at.y, at.z], entity_nbt::rotation(&tag)[0], delay, owner);
-                    if let Some(state) = transferred.take() {
-                        self.adopt_transferred_entity_state(id, state);
-                    }
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
                 }
@@ -684,9 +670,6 @@ impl Game<'_> {
                     _ => None,
                 };
                 if let Some(id) = id {
-                    if let Some(state) = transferred.take() {
-                        self.adopt_transferred_entity_state(id, state);
-                    }
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
                 }
@@ -697,9 +680,6 @@ impl Game<'_> {
                     _ => None,
                 };
                 if let Some(id) = id {
-                    if let Some(state) = transferred.take() {
-                        self.adopt_transferred_entity_state(id, state);
-                    }
                     let uuid = with_constructor_uuid(uuid);
                     self.remember(id, uuid, tag);
                 }
@@ -715,7 +695,7 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
     ) {
-        self.load_arrow_transferred(tag, uuid, player_uuid, None);
+        self.load_arrow_transferred(tag, uuid, player_uuid);
     }
 
     /// A saved llama spit or shulker bullet.
@@ -725,7 +705,7 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
     ) {
-        self.load_spit_or_bullet_transferred(tag, uuid, player_uuid, None);
+        self.load_spit_or_bullet_transferred(tag, uuid, player_uuid);
     }
 
     /// A saved fireball or wind charge.
@@ -735,7 +715,7 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
     ) {
-        self.load_fireball_transferred(tag, uuid, player_uuid, None);
+        self.load_fireball_transferred(tag, uuid, player_uuid);
     }
 
     /// A saved thrown item.
@@ -745,33 +725,33 @@ impl Game<'_> {
         uuid: Option<[i32; 4]>,
         player_uuid: Option<[i32; 4]>,
     ) {
-        self.load_throwable_transferred(tag, uuid, player_uuid, None);
+        self.load_throwable_transferred(tag, uuid, player_uuid);
     }
 
     /// A saved falling block.
     pub(super) fn load_falling(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_falling_transferred(tag, uuid, None);
+        self.load_falling_transferred(tag, uuid);
     }
 
     /// A saved thrown trident.
     pub(super) fn load_trident(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_trident_transferred(tag, uuid, None);
+        self.load_trident_transferred(tag, uuid);
     }
 
     /// A saved firework rocket.
     pub(super) fn load_rocket(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_rocket_transferred(tag, uuid, None);
+        self.load_rocket_transferred(tag, uuid);
     }
 
     /// `PrimedTnt.readAdditionalSaveData`: its numeric short fuse (80 when absent) and motion.
     // Its Passengers ride it (EntityType.loadEntityRecursive forces them on).
     pub(super) fn load_tnt(&mut self, tag: Tag, uuid: Option<[i32; 4]>) {
-        self.load_tnt_transferred(tag, uuid, None);
+        self.load_tnt_transferred(tag, uuid);
     }
 
     /// A saved boat.
     pub(super) fn load_boat(&mut self, tag: Tag, uuid: Option<[i32; 4]>, k: &str) {
-        self.load_boat_transferred(tag, uuid, k, None);
+        self.load_boat_transferred(tag, uuid, k, false);
     }
 
     /// `Entity.load`: adopt the bounded TAG_LIST_CODEC input as a set.
@@ -794,7 +774,7 @@ impl Game<'_> {
 
     /// A saved mob and, under `Passengers`, the mobs riding it.
     pub(super) fn load_mob(&mut self, tag: Tag, mount: Option<u32>) -> Option<u32> {
-        self.load_mob_transferred(tag, mount, None)
+        self.load_mob_transferred(tag, mount)
     }
 
     /// The UUIDs `spawn_entity_from_nbt` would add for `tag`, in
@@ -867,7 +847,6 @@ impl Game<'_> {
             .then(|| super::interactions::InteractionState::from_tag(tag));
         let rotation = entity_nbt::loaded_rotation(tag);
         Some(super::commands::OtherEntity {
-            attachment_lifetime: Default::default(),
             join: Default::default(),
             id,
             kind: kind.to_owned(),
@@ -883,28 +862,19 @@ impl Game<'_> {
 
     /// An entity of a type Horizon does not simulate, kept as its compound.
     fn load_other(&mut self, tag: Tag, kind: &str) -> Option<u32> {
-        self.load_other_transferred(tag, kind, None)
+        self.load_other_transferred(tag, kind)
     }
     pub(super) fn load_other_transferred(
         &mut self,
         mut tag: Tag,
         kind: &str,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
-        // A missing mod's record is opaque, not a vanilla fallback entity to normalize.
-        let quarantined = super::general::quarantined_kind(kind).then(|| tag.clone());
         strip_finalize(&mut tag);
         let Tag::Compound(c) = &tag else { return None };
         let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
         let id = self.ecs_id_of(e);
         let uuid = with_constructor_uuid(entity_nbt::uuid(&tag));
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
-        if let Some(original) = quarantined {
-            self.persist.raw.insert(id, original);
-        }
         Some(id)
     }
     /// The compound of an entity Horizon does not simulate, with its current
@@ -1060,9 +1030,6 @@ impl Game<'_> {
         }
         for &g in &gone {
             if let Some(e) = self.ecs.entity_of(g) {
-                if let Some(w) = self.ecs.ecs_mut() {
-                    horizon_ecs_proto::mod_goals::clear_behaviours(w.world_mut(), e);
-                }
                 self.ecs.despawn(e);
             }
         }
@@ -1259,8 +1226,11 @@ impl Game<'_> {
         } else {
             None
         };
+        if player == Some(uuid) {
+            return Some(Who::Player);
+        }
         // Legacy mobs are no longer resident: the ECS answers for every mob.
-        entity_nbt::who_by_uuid(&self.persist.uuids, &[], player, uuid).or_else(|| self.ecs_who_by_uuid(uuid))
+        self.ecs_who_by_uuid(uuid)
     }
     /// The mob that was loaded or saved with a UUID.
     pub(in crate::game) fn mob_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
@@ -1435,12 +1405,6 @@ impl Game<'_> {
     pub(super) fn prune_entity_memory(&mut self) {
         // Forget entities that no longer exist.
         let alive = self.live_entity_ids();
-        for id in self.persist.uuids.keys() {
-            if !alive.contains(id) {
-                self.entity_attachments.remove(id);
-            }
-        }
-        self.prune_entity_initializations(&alive);
         self.persist.uuids.retain(|id, _| alive.contains(id));
         self.persist.raw.retain(|id, _| alive.contains(id));
         self.persist.score_destroyed.retain(|id| alive.contains(id));
@@ -1454,15 +1418,8 @@ impl Game<'_> {
         self.spawn_loaded_entities();
         let keys: HashSet<(i32, i32)> = unloaded.iter().map(|c| (c.x, c.z)).collect();
         let chunks = self.entity_chunks(&keys, true);
-        let counts: Vec<_> = chunks
-            .iter()
-            .map(|(key, entities)| (*key, entities.len()))
-            .collect();
         if let Err(e) = self.save.save_entities_later(chunks) {
             log::warn!("Horizon: failed to save entities: {e}");
-        }
-        for (chunk, count) in counts {
-            self.native_entities_unload(self.dim.id(), [chunk.0, chunk.1], count);
         }
     }
 }

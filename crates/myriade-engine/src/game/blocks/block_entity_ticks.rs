@@ -128,11 +128,9 @@ impl Game<'_> {
             scratch,
         };
         let this = &mut *enclosing.game;
-        this.fire_pending_block_entity_loads();
         this.tick_craft_table();
         this.tick_container_reach();
         this.load_entity_types();
-        this.ensure_stateful_entity_table();
         if !this.world.block_entities.has_states() {
             let states = this.ticking_states();
             this.world.block_entities.set_states(states);
@@ -177,12 +175,7 @@ impl Game<'_> {
             horizon_threads::work::set_entity(horizon_threads::work::entity_id(
                 this.world.block_entities.get(&pos).map_or("", ticker_name),
             ));
-            let suppressed = crate::game::code_block_owners::suppressed(
-                this.pack.assets.registry,
-                this.world.block(pos.0, pos.1, pos.2),
-            );
             match kind {
-                _ if suppressed => {}
                 TickedKind::Hopper => this.tick_hopper(pos),
                 TickedKind::Crafter => this.tick_crafter(pos),
                 TickedKind::Jukebox => this.tick_jukebox(pos),

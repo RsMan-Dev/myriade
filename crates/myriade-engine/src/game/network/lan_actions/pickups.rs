@@ -26,21 +26,12 @@ impl Game<'_> {
         for (item, stack) in candidates {
             let kind = stack.item.clone();
             let count = stack.count;
-            // `item_picked_up` is asked before the take: a refusal leaves the stack where it lay.
-            let refused = self
-                .as_guest(conn, |g| {
-                    let mut can = myriade_types::TriState::Default;
-                    if let Some(handle) = g.native_item_handle(item) {
-                        g.native_item_picked_up(uuid, handle, &mut can);
-                    }
-                    can == myriade_types::TriState::False
-                })
-                .unwrap_or(false);
-            if refused {
-                continue;
-            }
+            // `Inventory.add` of the stack: a creative player takes all of it.
             let rest = self
-                .as_guest(conn, |g| g.native_pickup_insert(&stack))
+                .as_guest(conn, |g| {
+                    g.add_stack_to_inventory(stack.clone())
+                        .filter(|_| !g.creative)
+                })
                 .unwrap_or(Some(stack.clone()));
             let left = rest.as_ref().map_or(0, |r| r.count);
             let got = count.saturating_sub(left);
@@ -50,11 +41,7 @@ impl Game<'_> {
             let Some((_, at)) = self.ecs_with(|ecs, mw| ecs.pickup_item(mw, who, uuid_ints, item, position, 1.5, &mut |_| got)) else {
                 continue;
             };
-            // `item_picked_up_post` for a whole pickup, `item_picked_up_partial` for a part: what a mod leaves lies at the feet.
-            let kept = match rest {
-                None => self.as_guest(conn, |g| g.native_pickup_post(item, &stack)).flatten(),
-                Some(rest) => self.as_guest(conn, |g| g.native_pickup_partial(&stack, rest)).flatten(),
-            };
+            let kept = rest;
             let kept_count = kept.as_ref().map_or(0, |k| k.count);
             // A listener that kills the item leaves no take animation; a stack it did not kill stays under `item`, or lies anew.
             let killed = left > 0 && self.ecs.item(item).is_none();
@@ -77,9 +64,6 @@ impl Game<'_> {
             if !killed {
                 counts.push((item, got));
             }
-            if self.ecs.item(item).is_none() {
-                self.native_entity_left(item);
-            }
         }
         if let Some(host) = self.lan.as_ref() {
             for (item, count) in counts {
@@ -94,7 +78,7 @@ impl Game<'_> {
             return;
         };
         let g = &host.hub.guests[gi];
-        let (conn, id, at, player, name) = (g.conn, g.entity_id, g.position, g.uuid, g.name.clone());
+        let (conn, id, at) = (g.conn, g.entity_id, g.position);
         let mut next = self.next_entity;
         let touching = self.ecs_with(|ecs, mw| ecs.pickup_orbs(mw, at, 1.0, &mut || { next += 1; next }));
         self.next_entity = next;
@@ -104,28 +88,15 @@ impl Game<'_> {
         let pick = self.world.random.next_int_bound(touching.len() as i32).unwrap_or(0) as usize;
         let orb = touching[pick];
         let orb_at = self.ecs.position(orb).unwrap_or(at);
-        let Some(view) = self.ecs.orb(orb) else {
+        if self.ecs.orb(orb).is_none() {
             return;
-        };
-        // `PlayerXpEvent.PickupXp`: a cancel leaves the orb and the delay; a listener's value and count are kept.
-        let (mut value, mut count, mut canceled) = (view.value, view.count, false);
-        self.native_pickup_xp(player, self.dim.id(), orb, &mut value, &mut count, &mut canceled);
-        if canceled {
-            return;
-        }
-        if (value, count) != (view.value, view.count) {
-            self.ecs.set_orb_stack(orb, value, count.max(1));
         }
         let Some(value) = self.ecs_with(|ecs, mw| ecs.collect_orb(mw, orb)) else {
             return;
         };
-        if !self.ecs.exists(orb) {
-            self.native_entity_left(orb);
-        }
         if let Some(host) = self.lan.as_mut() {
             host.play.entry(conn).or_default().xp_delay = 2;
         }
-        self.native_player_exp_cooldown_change(player, &name, 2);
         if let Some(host) = self.lan.as_ref() {
             host.hub.take_item(orb as i32, id, 1, at);
         }
@@ -149,19 +120,12 @@ impl Game<'_> {
             return;
         };
         let g = &host.hub.guests[gi];
-        let (conn, player, name) = (g.conn, g.uuid, g.name.clone());
-        let unable = g.spectator() || g.dead || g.health <= 0.0;
+        let (conn, unable) = (g.conn, g.spectator() || g.dead || g.health <= 0.0);
         let play = host.play.entry(conn).or_default();
-        let cooldown = if play.xp_delay > 0 {
+        if play.xp_delay > 0 {
             play.xp_delay -= 1;
-            Some(play.xp_delay)
-        } else {
-            None
-        };
-        let delayed = play.xp_delay > 0;
-        if let Some(cooldown) = cooldown {
-            self.native_player_exp_cooldown_change(player, &name, cooldown);
         }
+        let delayed = play.xp_delay > 0;
         if unable || delayed {
             return;
         }

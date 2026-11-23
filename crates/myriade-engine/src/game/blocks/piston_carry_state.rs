@@ -42,12 +42,6 @@ pub(super) fn take_position_data(world: &mut World, from: Pos) -> Compound {
                 .as_ref()
                 .and_then(|t| t.get("CustomName"))
                 .cloned()
-        })
-        .or_else(|| match world.block_entities.get(&from) {
-            Some(myriade_engine::containers::BlockEntity::Mod(e)) => {
-                e.nbt.get(&"CustomName".into()).cloned()
-            }
-            _ => None,
         });
     if let Some(name) = name {
         data.insert("Name".into(), name);
@@ -101,7 +95,6 @@ impl Game<'_> {
                         self.world.chest_openers.remove(&at);
                         self.lid_openers.remove(&at);
                     }
-                    self.mod_container_viewers.retain(|(_, at), _| *at != from);
                     if self
                         .world
                         .block_entities

@@ -805,7 +805,7 @@ impl Game<'_> {
             Some("vehicle") => self.passenger_vehicle_target(entity).into_iter().collect(),
             Some("passengers") => {
                 let mut passengers = self.player_passengers(entity);
-                if let Some(id) = super::super::native_entities::target_id(entity) {
+                if let Some(id) = super::targets::target_id(entity) {
                     passengers.extend(
                         self.ordered_live_passengers(id)
                             .into_iter()
@@ -895,11 +895,6 @@ impl Game<'_> {
     /// in it; the one the level still holds is the entity.
     pub(in crate::game) fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
         if is_player_in_place(uuid, self.lan_acting_uuid) {
-            if self.native_command_filter {
-                return self
-                    .player(myriade_engine::lan::playerdata::ints_uuid(uuid))
-                    .and_then(|player| self.native_entity_target(player.entity()));
-            }
             return Some(Target::Player);
         }
         // The ECS answers for the entities of the level (the residency table holds none).
@@ -1292,7 +1287,6 @@ mod tests {
 #[cfg(test)]
 mod passenger_relation_tests {
     use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
     use horizon_core::nbt::Tag;
     use horizon_core::position::BlockPos;
 
@@ -1627,7 +1621,6 @@ mod terminal_fork_tests {
 #[cfg(test)]
 mod score_condition_tests {
     use super::*;
-    use crate::game::game_tests::tests::server_game;
 
     fn game(resources: &mut Option<std::sync::Arc<crate::game::Resources>>) -> Game<'_> {
         let mut game = server_game(resources);
@@ -1691,7 +1684,6 @@ mod score_condition_tests {
 #[cfg(test)]
 mod stopwatch_condition_tests {
     use super::*;
-    use crate::game::native_machines::tests::server_game;
 
     fn game() -> Game<'static> {
         let mut game = server_game();

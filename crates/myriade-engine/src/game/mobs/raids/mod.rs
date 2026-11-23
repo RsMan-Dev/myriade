@@ -559,7 +559,6 @@ impl Game<'_> {
                 self.mount_mob(rider, id);
             }
         }
-        self.native_raid_spawn_wave(raid_id, pos, wave, spawns.len());
     }
     /// `Raid.joinRaid` for a new raider: placed at the block's centre one
     /// above, finalized for an event, its raid buffs applied.
@@ -819,21 +818,9 @@ impl Game<'_> {
                 state["member_present"] = json!(!self.ecs.raiders_of(id).is_empty());
             }
         }
-        // RESTE-SANS-ECS: the actors' and the villagers' NBT observations read Mob data.
-        let pos: [i32; 3] =
-            std::array::from_fn(|i| op["poi"][i].as_i64().unwrap_or(i64::MIN) as i32);
-        let loaded = self.world.loaded(pos[0], pos[2]);
-        let live_poi = loaded.then(|| {
-            let w = self.mob_world_base(&[]);
-            format!(
-                "{:?}",
-                myriade_engine::mobs::villager_brain::poi_at(&w, pos[0], pos[1], pos[2])
-            )
-        });
         eprintln!(
             "raid input raw: {}",
-            json!({"label":op["label"],"id":id,"loaded":loaded,
-            "live_poi":live_poi,"claimed_pois":self.village_pois(),
+            json!({"label":op["label"],"id":id,"claimed_pois":self.village_pois(),
             "raid_nbt":myriade_engine::snbt::to_snbt(&self.raiding.raids.to_nbt()),
             "actors":[],"villagers":[]})
         );

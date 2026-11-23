@@ -93,3 +93,21 @@ impl Game<'_> {
         state
     }
 }
+
+impl Game<'_> {
+    /// `ServerPlayerGameMode.destroyBlock`'s `Level.removeBlock`, then `Block.destroy`: the block
+    /// goes, as a player's break, and the caller decides the drops. True when the block was removed.
+    pub(in crate::game) fn remove_block_as_player(&mut self, pos: [i32; 3], creative: bool, correct_tool: bool) -> bool {
+        let source = self.lan_acting_uuid.map(horizon_world::level::LevelEventPlayer);
+        self.with_level(|b, level, ticks| {
+            b.player_destroy_block(
+                level,
+                ticks,
+                BlockPos::new(pos[0], pos[1], pos[2]),
+                creative,
+                correct_tool,
+                source,
+            )
+        })
+    }
+}

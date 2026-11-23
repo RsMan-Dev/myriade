@@ -153,6 +153,14 @@ impl Game<'_> {
     }
 }
 
+impl Game<'_> {
+    /// Apply an in-place edit to the acting hand's stack (no mod listens to
+    /// the operation's original, so the held stack is the only one edited).
+    pub(in crate::game) fn edit_block_use_stack(&mut self, edit: impl Fn(&mut Option<ItemStack>)) {
+        edit(self.held_mut());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::relative_index;

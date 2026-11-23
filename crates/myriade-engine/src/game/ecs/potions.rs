@@ -105,9 +105,7 @@ impl Game<'_> {
                     if self.can_be_affected(Some(mob as i32), kind, id)
                         && let Some(name) = super::super::potions::mob_effect_id(id)
                     {
-                        let new = !self.ecs_mob_has_effect(mob, name);
                         self.ecs_mob_add_effect(mob, name, duration, amp, !hidden.contains(&id), ambient.contains(&id));
-                        self.mod_effect_added(name, Some(mob as i32), amp, new);
                     }
                 }
             }

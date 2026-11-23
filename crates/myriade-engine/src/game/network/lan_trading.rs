@@ -118,7 +118,6 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_mut() {
             host.play.entry(conn).or_default().merchant = Some(gm);
         }
-        self.player_menu_opening(conn);
     }
     /// `Entity.getDisplayName` of the merchant, the screen's title: its name
     /// (custom, else the profession's) with the show_entity hover event and
@@ -312,7 +311,7 @@ impl Game<'_> {
             limited_crafting: host.hub.limited_crafting,
             can_equip: None,
             known_recipes: Some(&g.recipe_book),
-            slot_rules: Some(self),
+            slot_rules: None,
         };
         let mut menu = Menu::new(Kind::Merchant);
         menu.set_registry_id(Some("minecraft:merchant"));
@@ -369,16 +368,6 @@ impl Game<'_> {
             self.merchant_apply(session, gm.merchant.mob)
         };
         if !traded.is_empty() {
-            // The guest's own statistic and advancements.
-            if let Some((uuid, name)) = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-                .map(|g| (g.uuid, g.name.clone()))
-                && let Some(entity_id) = gm.merchant.mob
-            {
-                self.native_player_trade(uuid, &name, entity_id);
-            }
             let mob = gm.merchant.mob;
             self.as_guest(conn, |g| {
                 g.merchant_traded(mob, &mut session.offers, &traded)
@@ -445,25 +434,9 @@ impl Game<'_> {
         let Ok(index) = usize::try_from(index) else {
             return;
         };
-        let Some((uuid, name)) = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-            .map(|guest| (guest.uuid, guest.name.clone()))
-        else {
-            return;
-        };
-        if self.lan_merchant_op(conn, None, false, |menu, env| {
+        self.lan_merchant_op(conn, None, false, |menu, env| {
             menu.merchant_select(env, index)
-        }) {
-            let villager = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.play.get(&conn))
-                .and_then(|p| p.merchant.as_ref())
-                .and_then(|m| m.merchant.mob);
-            self.native_trade_select(uuid, &name, villager, index);
-        }
+        });
     }
     /// The guest closed the trading window (or it is closed for them):
     /// MerchantMenu.removed, then the villager gets its state back.
@@ -481,7 +454,6 @@ impl Game<'_> {
         };
         self.merchant_closed(&mut gm.merchant);
         if window.is_some() {
-            self.player_menu_closing(conn);
         }
         true
     }

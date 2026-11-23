@@ -325,15 +325,9 @@ pub(super) struct TickTiming {
 #[derive(Default)]
 pub(super) struct Levels {
     pub(super) parked: HashMap<Dim, Parked>,
-    /// The levels whose open the mods heard (`native_level_load`), each to
-    /// be told closed once.
-    heard_open: Vec<Dim>,
     /// `max-chained-neighbor-updates` of a dedicated server, for the levels it opens;
     /// `None` is the default every other server runs with.
     max_chained_neighbor_updates: Option<i32>,
-    /// The levels a mod asked to have saved (`level_request_save`), each once, saved at the start
-    /// of the next server tick.
-    requested_saves: Vec<Dim>,
 }
 
 impl Levels {
@@ -351,31 +345,9 @@ impl Levels {
         ticks
     }
 
-    /// Queue `dim` to be saved at the start of the next server tick; a level already queued is
-    /// not queued twice.
-    pub(in crate::game) fn request_save(&mut self, dim: Dim) {
-        if !self.requested_saves.contains(&dim) {
-            self.requested_saves.push(dim);
-        }
-    }
-
-    /// Whether a save of `dim` is still waiting for a tick that admits
-    /// saves (the arismoko/horizon#2488 gate holds it back).
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(in crate::game) fn save_pending(&self, dim: Dim) -> bool {
-        self.requested_saves.contains(&dim)
-    }
-
-    /// Drop a save of `dim` still waiting for a tick: its level is gone.
-    pub(super) fn cancel_requested_save(&mut self, dim: Dim) {
-        self.requested_saves.retain(|saved| *saved != dim);
-    }
-
-    /// Clear every parked level and dimensions recorded as heard open.
+    /// Clear every parked level.
     pub(super) fn clear(&mut self) {
         self.parked.clear();
-        self.heard_open.clear();
-        self.requested_saves.clear();
     }
 
     /// A parked level, without opening or loading it.
@@ -458,17 +430,6 @@ impl Levels {
     ) {
         for level in self.parked.values() {
             level.save.install_profession_snapshot(table.clone());
-        }
-    }
-
-    pub(super) fn install_mob_map_snapshots(
-        &self,
-        snapshot: &Arc<myriade_engine::neoforge_mob_maps::NeoForgeMobMaps>,
-    ) {
-        for level in self.parked.values() {
-            if let Some(terrain) = &level.locator {
-                terrain.set_mob_maps(snapshot);
-            }
         }
     }
 
@@ -595,11 +556,7 @@ impl Game<'_> {
                 .clone(),
         )?;
         save.install_profession_snapshot(self.stations().professions.clone());
-        if let Some(terrain) = &locator {
-            terrain.set_mob_maps(self.mob_map_snapshot());
-        }
-        let mut world = Game::world_for_mods(self.res.facts().air, seed);
-        world.attachments = save.load_attachments();
+        let mut world = World::new(self.res.facts().air, self.level.seed);
         world.shape = self.level_shapes.get(dim.id());
         world.fast_lava = self.dimension_type_of(dim).fast_lava;
         world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type_of(dim)));
@@ -609,7 +566,7 @@ impl Game<'_> {
             streaming,
             locator,
             save,
-            block_ticks: self.levels.new_ticks(seed as i32),
+            block_ticks: self.levels.new_ticks(self.level.seed as i32),
             tick_chunks: Default::default(),
             tickets,
             random_tick_sections: Default::default(),
@@ -619,7 +576,7 @@ impl Game<'_> {
             paintings: Default::default(),
             item_frames: Default::default(),
             hoppers: HashMap::new(),
-            ecs: self.new_ecs_level(dim, seed),
+            ecs: self.new_ecs_level(dim, self.level.seed),
             persist: Default::default(),
             lectern_pulses: Vec::new(),
             lid_openers: HashMap::new(),
@@ -811,7 +768,6 @@ impl Game<'_> {
                 // The new streaming's radius and meshing options.
                 // ServerLevel's constructor reads the level's raids.
                 self.read_raids();
-                self.native_level_opened(target);
             }
         }
         if let Some(h) = self.lan.as_mut() {
@@ -918,19 +874,6 @@ impl Game<'_> {
         } else {
             None
         };
-        self.run_requested_saves();
-        // A config edited while the server is paused (empty) still reloads.
-        // The parts outside every level get spans of their own, so that a slow
-        // tick's line and `horizon-report` say when a mod's tick hook took it.
-        {
-            let _span = myriade_engine::spans::guard("mod_configs_poll");
-            self.native_configs_poll();
-        }
-        if let Some(running) = running {
-            let _span = myriade_engine::spans::guard("mods_server_tick_start");
-            self.native_lifecycle_server_tick_start(running);
-        }
-        let observe_level = running.is_some();
         let dims = self.levels_to_tick();
         let order = dims.clone();
         let n = dims.len();
@@ -960,17 +903,12 @@ impl Game<'_> {
                 running,
                 packets_drained: false,
             };
-            if observe_level && let Some(level) = self.level(dim.id()) {
-                self.native_level_tick_pre(level);
-            }
             myriade_engine::spans::time("dedicated_streaming", || {
                 self.update_dedicated_streaming();
             });
             myriade_engine::spans::time("update_world", || self.update_world());
             let tick_span = myriade_engine::spans::guard("level_tick");
-            result = myriade_engine::block_contact::in_level(
-                Some(dim.id()),
-                || {
+            result = {
                     if paused {
                         self.tick_lan(true);
                         Ok(())
@@ -980,15 +918,10 @@ impl Game<'_> {
                         let running = running.unwrap_or_else(|| self.clock.world_runs());
                         self.tick_world(running)
                     }
-                },
-            );
+                };
             drop(tick_span);
-            self.drain_entity_inside();
             if result.is_err() {
                 break;
-            }
-            if observe_level && let Some(level) = self.level(dim.id()) {
-                self.native_level_tick_post(level);
             }
             #[cfg(feature = "state-digest")]
             self.state_digest_tick(dim, running);
@@ -1019,24 +952,12 @@ impl Game<'_> {
             let _ = self.enter_level(first);
         }
         self.level_pass = Pass::default();
-        if result.is_err() {
-            self.native_lifecycle.cancel_server_tick();
-        }
         result?;
         let closed = {
             let _span = myriade_engine::spans::guard("close_idle_levels");
             self.close_idle_levels()
         };
-        if let Err(error) = closed {
-            self.native_lifecycle.cancel_server_tick();
-            return Err(error);
-        }
-        // `ServerTickEnd`: an errored tick or an idle-close failure (at
-        // the `?` above) never reaches this site.
-        {
-            let _span = myriade_engine::spans::guard("mods_server_tick_end");
-            self.native_lifecycle_server_tick_end(paused);
-        }
+        closed?;
         Ok(())
     }
 
@@ -1102,7 +1023,6 @@ impl Game<'_> {
             Some(running) => running,
             None => self.clock.world_runs(),
         };
-        span("mods_inventory_ticks", || self.native_inventory_ticks());
         if running {
             // `MinecraftServer.tickChildren`: `commandFunctions` runs before
             // any level ticks, so a tick function reads the game time and the
@@ -1143,9 +1063,6 @@ impl Game<'_> {
             self.advance_clock();
             // `ServerLevel.tickTime`, once the clock has moved on.
             span("scheduled_functions", || self.run_scheduled_functions());
-        }
-        if window && self.use_delay > 0 {
-            self.use_delay -= 1;
         }
         self.tick_totem();
         self.update_totem_ready();
@@ -1196,7 +1113,7 @@ impl Game<'_> {
         let mut dims: Vec<Dim> = Dim::all()
             .into_iter()
             .filter(|d| {
-                // `/forceload`ed chunks, or a native mod's tickets.
+                // `/forceload`ed chunks.
                 let held = |s: &Streaming| !s.forced.is_empty();
                 let forced = if *d == self.dim {
                     held(&self.streaming)
@@ -1207,12 +1124,8 @@ impl Game<'_> {
                         .is_some_and(|p| held(&p.streaming))
                 };
                 guests.iter().any(|g| g.dimension == d.id() && g.participates_in_player_simulation())
-                    // A viewer count not yet told to 0 (`tick_mod_container_viewers`).
-                    || self.mod_container_viewers.keys().any(|(k, _)| *k == d.id())
                     || self.player_bed_levels().any(|b| b == *d)
                     || forced
-                    // A game test runs in its own level, players or not.
-                    || self.game_tests.has_tests_in(*d)
                     || self.pregen_level() == Some(*d)
                     // A pending portal arrival keeps its destination level
                     // running so it can land and tick (the portal ticket).
@@ -1296,21 +1209,13 @@ impl Game<'_> {
         let back = self.dim;
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
-        self.native_chunks_loaded();
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
             self.enter_level(back)?;
             return Err(why);
         }
-        let chunks: Vec<_> = self.world.chunks.values().cloned().collect();
-        self.native_chunks_unloaded(&chunks);
-        // Its entities' attachments are saved with them; they leave memory too.
-        for id in self.persist.uuids.keys() {
-            self.entity_attachments.remove(id);
-        }
         self.enter_level(back)?;
         self.levels.parked.remove(&dim);
-        self.native_level_closed(dim);
         Ok(())
     }
 
@@ -1323,73 +1228,11 @@ impl Game<'_> {
 
     /// The mods hear `dim`'s level open (`LevelEvent.Load`), on a server.
     pub(super) fn native_level_opened(&mut self, dim: Dim) {
-        if false
-
-            || self.levels.heard_open.contains(&dim)
-        {
-            return;
-        }
         let journal = self.resident_entities.table.borrow().producer();
         if dim == self.dim {
             self.bind_resident_owners(&journal, dim.key(), true);
         } else if let Some(parked) = self.levels.parked.get_mut(&dim) {
             parked.bind_resident_owners(&journal, dim.key(), true);
-        }
-        self.bind_dimension_attachments(dim);
-        self.levels.heard_open.push(dim);
-        self.native_level_load(dim.id());
-        self.validate_mod_chunk_tickets(dim);
-    }
-
-    /// The mods hear `dim`'s level close (`LevelEvent.Unload`), once for
-    /// each open they heard.
-    fn native_level_closed(&mut self, dim: Dim) {
-        self.remove_level_fake_players(dim.id());
-        if let Some(i) = self.levels.heard_open.iter().position(|d| *d == dim) {
-            self.levels.heard_open.remove(i);
-            self.native_level_unload(dim.id());
-        }
-        if dim == self.dim {
-            self.world.water_tickets.clear();
-        } else if let Some(world) = self.levels.parked_world_mut_of(dim.id()) {
-            world.water_tickets.clear();
-        }
-        self.attachment_indexes.remove(&dim);
-        self.passages.retire_level(dim.key());
-    }
-
-    /// Every level still open closes with the server, however it ends
-    /// (`MinecraftServer.stopServer`'s `level.close()` loop), in vanilla's
-    /// order of its levels: the Overworld, the Nether, the End.
-    pub(super) fn native_levels_closing(&mut self) {
-        for dim in Dim::all() {
-            self.native_level_closed(dim);
-        }
-    }
-
-    /// Save the levels mods asked for since the last tick, each as an autosave does but with its
-    /// chunks on disk when it ends: `level_save` fires for each that was written, and one that
-    /// could not be is logged. A level not open any more is opened to be saved, like a parked one.
-    /// The level in place is put back.
-    pub(super) fn run_requested_saves(&mut self) {
-        if Self::admit_entity_save().is_err() {
-            return;
-        }
-        let requested = std::mem::take(&mut self.levels.requested_saves);
-        if requested.is_empty() {
-            return;
-        }
-        let back = self.dim;
-        for dim in requested {
-            if let Err(e) = self.enter_level(dim).and_then(|()| self.save_level(true)) {
-                log::error!("saving {} on a mod's request failed: {e}", dim.id());
-            }
-        }
-        if let Err(e) = self.enter_level(back) {
-            log::error!(
-                "returning to {} after a requested save failed: {e}",
-                back.id()
-            );
         }
     }
 
@@ -1421,16 +1264,6 @@ fn slowest_steps(notes: &[(f32, String)]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn levels_clear_empties_parked_and_heard_open() {
-        let mut levels = Levels::default();
-        levels.heard_open.push(Dim::Nether);
-        assert!(!levels.heard_open.is_empty());
-        levels.clear();
-        assert!(levels.heard_open.is_empty());
-        assert!(levels.parked.is_empty());
-    }
 
     /// A game on the prepared resources in `HORIZON_TEST_RESOURCES`, with no
     /// world opened and commands allowed.
@@ -2007,24 +1840,6 @@ mod tests {
         );
         // (0, 0) is far from the new chunks: nothing calculated it.
         assert!(game.save.calculated_blending(0, 0).is_none());
-    }
-}
-
-#[cfg(test)]
-mod request_save_tests {
-    use super::{Dim, Levels};
-
-
-    /// A level asked for twice is queued once, and clearing the levels drops the queue.
-    #[test]
-    fn a_level_asked_for_twice_is_saved_once() {
-        let mut levels = Levels::default();
-        levels.request_save(Dim::Nether);
-        levels.request_save(Dim::Nether);
-        levels.request_save(Dim::End);
-        assert_eq!(levels.requested_saves, [Dim::Nether, Dim::End]);
-        levels.clear();
-        assert!(levels.requested_saves.is_empty());
     }
 }
 

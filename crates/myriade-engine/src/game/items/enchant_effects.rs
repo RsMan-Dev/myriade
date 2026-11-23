@@ -120,22 +120,6 @@ fn block_break_speed_factor(value: Option<f64>) -> f32 {
     value.map_or(1.0, |value| value as f32)
 }
 
-/// Says once per item that its parts' `xp_repair_ratio` answered `ratio`,
-/// which isn't finite.
-fn refuse_xp_repair_ratio(item: &str, ratio: f32) {
-    static REFUSED: std::sync::Mutex<std::collections::BTreeSet<String>> =
-        std::sync::Mutex::new(std::collections::BTreeSet::new());
-    if REFUSED
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .insert(item.to_owned())
-    {
-        log::warn!(
-            "Horizon: an xp_repair_ratio part of {item} answered {ratio}, which isn't finite; Mending's own repair is used"
-        );
-    }
-}
-
 impl Game<'_> {
     /// `Attributes.MINING_EFFICIENCY` (efficiency), which `Player.getDestroySpeed`
     /// adds to a tool speed above 1: 0 without a player or attribute.
@@ -174,18 +158,9 @@ impl Game<'_> {
         &mut self,
         stack: &ItemStack,
         amount: u32,
-        wearer: Wearer,
+        _wearer: Wearer,
     ) -> u32 {
-        let loss = self.unbreaking_loss(stack, amount);
-        if loss == 0 {
-            return loss;
-        }
-        // One table lookup tells whether any part of this item listens; with none,
-        // the stack is not converted and no host is made.
-        if !false {
-            return loss;
-        }
-        self.damage_item_loss(stack, loss, wearer)
+        self.unbreaking_loss(stack, amount)
     }
     /// `EnchantmentHelper.processDurabilityChange` (unbreaking) for `amount` points.
     fn unbreaking_loss(&mut self, stack: &ItemStack, amount: u32) -> u32 {
@@ -379,17 +354,14 @@ impl Game<'_> {
         // ignite (fire aspect) and apply_mob_effect (bane of arthropods).
         let mut ignite = 0.0f32;
         let mut mob_effects = Vec::new();
-        let mut hook_calls: Vec<(String, String, std::sync::Arc<horizon_core::nbt::Tag>, u32)> =
-            Vec::new();
         for (id, level) in held.all_enchantments().iter() {
             let Some(def) = world_stations!(self).enchantments.get(id) else {
                 continue;
             };
-            for (effect_index, effect) in def.effects["minecraft:post_attack"]
+            for effect in def.effects["minecraft:post_attack"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .enumerate()
             {
                 let e = &effect["effect"];
                 if effect["enchanted"] != "attacker" || effect["affected"] != "victim" {
@@ -401,8 +373,7 @@ impl Game<'_> {
                     Some(k) => format!("minecraft:{k}"),
                     None => continue,
                 };
-                let own = !kind_of.starts_with("minecraft:");
-                if !own && !matches!(&*kind_of, "minecraft:ignite" | "minecraft:apply_mob_effect") {
+                if !matches!(&*kind_of, "minecraft:ignite" | "minecraft:apply_mob_effect") {
                     continue;
                 }
                 let mut random = self.world.random.clone();
@@ -416,16 +387,11 @@ impl Game<'_> {
                 if !ok {
                     continue;
                 }
-                // A mod's own kind: its hook answers, after this loop (the
-                // stations borrow is held here).
-                if own {
-                    if let Some(data) = def.native_post_attack.get(&effect_index) {
-                        hook_calls.push((id.to_string(), kind_of, data.clone(), *level));
-                    }
-                } else if kind_of == "minecraft:ignite" {
+                // A mod's own kind has no part here: only the two vanilla kinds act.
+                if kind_of == "minecraft:ignite" {
                     ignite =
                         ignite.max(myriade_engine::enchant::level_value(&e["duration"], *level));
-                } else {
+                } else if kind_of == "minecraft:apply_mob_effect" {
                     mob_effects.push((e.clone(), *level));
                 }
             }
@@ -435,9 +401,6 @@ impl Game<'_> {
         }
         for (effect, level) in mob_effects {
             self.apply_mob_effect_ecs(victim, &effect, level);
-        }
-        for (id, kind_of, data, level) in hook_calls {
-            self.native_enchant_effect(&id, &kind_of, &data, level, victim);
         }
         self.post_attack_bursts(held, kind);
     }
@@ -543,11 +506,11 @@ impl Game<'_> {
         };
         let ticks = (between("min_duration", "max_duration") * 20.0).round() as i32;
         let amplifier = (between("min_amplifier", "max_amplifier").round() as i32).max(0);
-        let Some(name) = super::potions::mob_effect_id(ids[pick]) else { return };
+        if super::potions::mob_effect_id(ids[pick]).is_none() {
+            return;
+        }
         let Some(def) = myriade_engine::brewing::effect(ids[pick]) else { return };
-        let new = !self.ecs.has_effect(id, def.index);
         self.ecs.add_effect(id, myriade_engine::effects::EffectInstance::from_def(def, ticks, amplifier));
-        self.mod_effect_added(name, Some(id as i32), amplifier, new);
     }
     /// `minecraft:post_attack` explode effects on the attacker (wind burst):
     /// a burst at the player's feet that only knocks back and triggers
@@ -746,7 +709,26 @@ impl Game<'_> {
     /// an item that takes no wear or a creative player, Unbreaking's share
     /// from the level's random, and a piece worn out leaves the slot.
     fn wear_player_piece(&mut self, slot: PlayerSlot, amount: u32) {
-        self.damage_player_equipment(slot.equipment_slot(), amount.min(i32::MAX as u32) as i32);
+        let Some(stack) = self.player_slot(slot).clone().filter(|s| {
+            amount > 0 && myriade_engine::stations::is_damageable(world_items!(self), s)
+        }) else {
+            return;
+        };
+        let loss = self.durability_loss(&stack, amount, Wearer::Player);
+        if loss == 0 {
+            return;
+        }
+        let damage = stack.damage + loss;
+        let max = world_items!(self)
+            .get(&stack.item)
+            .map_or(0, |i| i.max_damage);
+        if damage < max {
+            let mut worn = stack;
+            worn.damage = damage;
+            *self.player_slot_mut(slot) = Some(worn);
+            return;
+        }
+        *self.player_slot_mut(slot) = None;
     }
     /// `EnchantmentHelper.doPostAttackEffectsWithItemSource`'s victim loop:
     /// each equipment slot's chance, damage from the attacker's random, then wear.
@@ -922,7 +904,6 @@ impl Game<'_> {
     /// `ExperienceOrb.repairPlayerItems`: returns the experience left over.
     pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
         let mut amount = amount;
-        let player = Some(self.native_acting_id());
         loop {
             // EnchantmentHelper.getRandomItemWith(REPAIR_WITH_XP, damaged), in
             // EquipmentSlot order, drawn from the player's own random.
@@ -944,7 +925,7 @@ impl Game<'_> {
                 amount,
                 &mut self.world.random,
             );
-            let to_repair_xp = self.xp_repair(player, &stack, amount, vanilla_repair);
+            let to_repair_xp = vanilla_repair;
             // No re-check that the slot still holds the picked stack, eligible
             // and damaged: nothing between the pick and here can change it. The
             // `xp_repair_ratio` parts are asked through `&self` with a read-only
@@ -962,59 +943,11 @@ impl Game<'_> {
             stack.damage -= repaired;
             let item = stack.item.to_string();
             *self.player_slot_mut(slot) = Some(stack);
-
-            if let Some(player) = player
-                && let Some(name) = self
-                    .native_server_players()
-                    .into_iter()
-                    .find(|p| p.uuid() == player)
-                    .and_then(|p| self.player_name(p))
-            {
-                self.native_player_item_mend(player, &name, &item, repaired, amount);
-            }
             if remaining == 0 {
                 return 0;
             }
             amount = remaining;
         }
-    }
-    /// The repair Mending gives `stack` for `experience` points: `vanilla`
-    /// (its `minecraft:repair_with_xp` repair) as the item's parts scale it
-    /// (`IItemExtension.getXpRepairRatio`), `floor(experience × ratio)` within
-    /// `0..=i32::MAX`. A ratio left as it arrived keeps `vanilla` exactly, and
-    /// one that isn't finite is refused for it. `player` is the acting player,
-    /// `None` when no server runs (no part is asked then).
-    fn xp_repair(
-        &self,
-        player: Option<u128>,
-        stack: &ItemStack,
-        experience: u32,
-        vanilla: u32,
-    ) -> u32 {
-        let Some(player) = player else {
-            return vanilla;
-        };
-        // One table lookup tells whether any part of this item listens; with none,
-        // the stack is not converted and no host is made.
-        if experience == 0
-            || !false
-        {
-            return vanilla;
-        }
-        let arrived = vanilla as f32 / experience as f32;
-        let mut ratio = arrived;
-        self.native_xp_repair_ratio(player, stack, experience, &mut ratio);
-        if ratio.to_bits() == arrived.to_bits() {
-            return vanilla;
-        }
-        if !ratio.is_finite() {
-            refuse_xp_repair_ratio(&stack.item, ratio);
-            return vanilla;
-        }
-        // `as` saturates: a negative product repairs nothing.
-        (f64::from(experience) * f64::from(ratio))
-            .floor()
-            .min(f64::from(i32::MAX)) as u32
     }
     /// `LivingEntity.getItemBySlot` for the player.
     fn player_slot(&self, slot: PlayerSlot) -> &Option<ItemStack> {
@@ -1145,10 +1078,7 @@ impl Game<'_> {
     /// `ItemStack.hurtAndBreak` on the worn boots (`change_item_damage`):
     /// Unbreaking applies, and they break when worn out.
     fn wear_boots(&mut self, amount: u32) {
-        self.damage_player_equipment(
-            myriade_types::EquipmentSlot::Feet,
-            amount.min(i32::MAX as u32) as i32,
-        );
+        self.wear_player_piece(PlayerSlot::Armor(3), amount);
     }
     /// `EnchantmentHelper.runLocationChangedEffects` for the worn armor of the
     /// player, run on the server once the player has moved: `LivingEntity.baseTick`
@@ -1200,33 +1130,11 @@ impl Game<'_> {
             return;
         }
         let id = stand.id;
-        let told: Vec<_> = (0..changed.len())
-            .filter(|&i| changed[i])
-            .map(|i| {
-                let slot = horizon_items::equipment::SLOT_NAMES[i];
-                (
-                    slot,
-                    stand.enchantment_equipment[i].clone(),
-                    stand.equipment[i].clone(),
-                )
-            })
-            .collect();
         stand.enchantment_equipment.clone_from(&stand.equipment);
         self.armor_stand_edit(id, |a| {
             a.enchantment_block = stand.enchantment_block;
             a.enchantment_equipment.clone_from(&stand.enchantment_equipment);
         });
-        {
-            for (slot, from, to) in told {
-                self.native_living_equipment_change(
-                    id,
-                    "minecraft:armor_stand",
-                    slot,
-                    from.as_ref(),
-                    to.as_ref(),
-                );
-            }
-        }
         let at = [stand.position.x, stand.position.y, stand.position.z];
         let who = Who::Mob(stand.id);
         let equipment = stand

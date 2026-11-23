@@ -4,7 +4,7 @@
 use super::Game;
 use myriade_engine::{
     blocks::Fluid,
-    mobs::{MobEvent, Species, Who, equine},
+    mobs::{MobEvent, Species, Who},
     motion::{MotionWorld, PlayerMotion},
     pose::{Dimensions, Pose},
     sprint::Keys,
@@ -164,9 +164,6 @@ impl Game<'_> {
         let Some(id) = self.riding else {
             return;
         };
-        if !self.native_may_leave(id) {
-            return;
-        }
         self.riding = None;
         self.dismount_mount_ecs(id);
     }
@@ -378,7 +375,7 @@ fn dismount_location(
         return strider_dismount_location(mount, rider, world);
     }
     // `Camel` is an `AbstractHorse`, so the horse rule comes first.
-    if equine::is_equine(mount.species) {
+    if crate::game::mount_menu::is_equine(mount.species) {
         return horse_dismount_location(mount, rider, world);
     }
     if myriade_engine::mobs::drops::is_animal(mount.species) {

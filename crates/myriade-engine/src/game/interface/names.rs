@@ -29,8 +29,6 @@ impl Game<'_> {
         if !self.ecs.alive(id) {
             return false;
         }
-        let entity_id = id;
-        let entity_name = name.clone();
         // NameTagItem.interactLivingEntity: setCustomName with the tag's whole name, and the persistence it sets.
         let tag = match &text {
             Some(text) => myriade_engine::scoreboard::component_tag(&text.component()),
@@ -51,11 +49,6 @@ impl Game<'_> {
         let ctx = self.who_context(Some(Who::Player), None);
         self.post_game_event("minecraft:entity_interact", at, ctx);
         self.swing_arm();
-        if let (Some(player), Some(player_name)) =
-            (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_name_entity(player, &player_name, entity_id, &entity_name);
-        }
         true
     }
     /// The local player's profile name as others see it.

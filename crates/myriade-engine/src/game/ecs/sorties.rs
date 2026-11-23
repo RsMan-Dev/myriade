@@ -2,7 +2,6 @@
 //! cleared, a hit dealt, a lead taken off, an item or an orb at the end of its life, equipment that changed or broke.
 use crate::game::Game;
 use bevy_ecs::entity::Entity;
-use myriade_engine::health::{HurtSource, Hurting};
 use myriade_engine::items::ItemStack;
 use horizon_ecs_proto::host_out_equipment::EquipmentEvent;
 use horizon_ecs_proto::host_out_items::ItemEvent;
@@ -19,75 +18,26 @@ impl Game<'_> {
     /// `HostEvent::Death`: the game event is posted where it died. While a mod hears `living_death_post` P keeps the entity `Dying`
     /// (`set_death_vetoable`): the loot leaves (`loot_dying`), the hook reads the entity still there, then `despawn`. The attacker is
     /// the mob's id, 0 for a player or none.
-    pub(in crate::game) fn ecs_death_event(&mut self, e: Entity, cause: &str, attacker: Option<Who>, at: [f64; 3]) {
+    pub(in crate::game) fn ecs_death_event(&mut self, e: Entity, _cause: &str, _attacker: Option<Who>, at: [f64; 3]) {
         let ctx = self.who_context(None, None);
         self.post_game_event("minecraft:entity_die", at, ctx);
         if self.ecs.world().is_none_or(|w| w.get_entity(e).is_err()) {
             return;
         }
         let id = self.entity_id(e);
-        // A hook that went away since the flag was set: the death simply goes on.
-        if !false {
-            self.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
-            return;
-        }
-        let by = match attacker {
-            Some(Who::Entity(a)) => self.entity_id(a),
-            _ => 0,
-        };
-        // As the mob's: the loot leaves first (`loot_dying`), the hook reads the entity still there, then it is removed. A false
-        // answer means P no longer holds it `Dying` (gone already): there is nothing to tell or remove.
-        if !self.ecs_with(|ecs, mw| ecs.loot_dying(mw, id)) {
-            return;
-        }
-        self.native_ecs_death_post(id, &format!("minecraft:{cause}"), by);
-        self.ecs.despawn(e);
+        self.ecs_with(|ecs, mw| ecs.resolve_death(mw, id, None));
     }
 
-    /// `HostEvent::TotemAsk`: `living_use_totem` may cancel the totem of a lethal hit before P uses it up; the answer goes back with
-    /// `resolve_totem` (cancelled: the entity dies and keeps the item).
-    pub(in crate::game) fn ecs_totem_asked(&mut self, e: Entity, off_hand: bool, cause: &str, attacker: Option<Who>) {
-        let id = self.entity_id(e);
-        let by = self.ecs_who_id(attacker) as i32;
-        let cancel = match (self.ecs_kind(id), self.ecs.position(id)) {
-            (Some(kind), at) => {
-                let damage_type = format!("minecraft:{cause}");
-                let source = HurtSource { damage_type: &damage_type, causing: by, direct: by, position: at };
-                crate::game::entity::damage_level_of!(self).totem_canceled(Hurting::Entity(id as i32, &kind, source), off_hand)
-            }
-            _ => false,
-        };
-        self.ecs_with(|ecs, mw| ecs.resolve_totem(mw, e, cancel));
-    }
-
-    /// `HostEvent::HitDealt`: the mods' `hurt_enemy` hears the stack the attacker holds, a player's (the acting one while it is told) or the
-    /// ECS mob's main hand.
-    pub(in crate::game) fn ecs_hit_dealt(&mut self, attacker: Who, victim: Entity) {
-        let vid = self.entity_id(victim);
-        match attacker {
-            Who::Player(p) => {
-                self.with_player(p, |g| {
-                    if let Some(stack) = g.held().cloned() {
-                        g.native_ecs_hurt_enemy(&stack, vid);
-                    }
-                });
-            }
-            Who::Entity(a) => {
-                let aid = self.entity_id(a);
-                if let Some(stack) = self.ecs.equipment_stack(aid, 0) {
-                    self.native_ecs_hurt_enemy(&stack, vid);
-                }
-            }
-        }
+    /// `HostEvent::TotemAsk`: no mod cancels the totem of a lethal hit, so P uses it up.
+    pub(in crate::game) fn ecs_totem_asked(&mut self, e: Entity) {
+        self.ecs_with(|ecs, mw| ecs.resolve_totem(mw, e, false));
     }
 
     /// `HostEvent::ConversionAsk`: `living_conversion_pre` may keep the entity; else the new one is born, `living_conversion_post` is
     /// told while both are alive, and the old one leaves.
-    pub(in crate::game) fn ecs_conversion_asked(&mut self, e: Entity, into: &str) {
-        let outcome = if into.contains(':') { into.to_owned() } else { format!("minecraft:{into}") };
+    pub(in crate::game) fn ecs_conversion_asked(&mut self, e: Entity, _into: &str) {
         let old = self.entity_id(e);
-        let cancel = self.ecs_conversion_pre(old, &outcome);
-        if let Some(new) = self.ecs.resolve_conversion(e, cancel) {
+        if let Some(new) = self.ecs.resolve_conversion(e, false) {
             self.ecs_converted(old, new);
             self.ecs.finish_conversion(e);
         }
@@ -96,32 +46,8 @@ impl Game<'_> {
     /// `HostEvent::TargetAsk`: no mod listens to `living_change_target`, so the brain's proposed target is kept.
     pub(in crate::game) fn ecs_target_asked(&mut self, e: Entity) {
         use horizon_ecs_proto::brain::behaviours::start_attacking::TargetAnswer;
-        self.ecs.resolve_target(e, TargetAnswer::Keep);
-    }
-
-    /// `HostEvent::Spawned`: the mods are told of a mob that joined the level (every spawn path announces).
-    pub(in crate::game) fn ecs_spawned_event(&mut self, e: Entity, natural: bool) {
-        let id = self.entity_id(e);
-        self.native_ecs_joined(id, natural);
-    }
-
-    /// `HostEvent::Tamed`: `entity_tame` with the owner's uuid (the player's, resolved where it acts). The single emitter: the host's
-    /// own tame paths no longer fire the hook.
-    pub(in crate::game) fn ecs_tamed_event(&mut self, e: Entity, owner: Who) {
-        let id = self.entity_id(e);
-        let Some(kind) = self.ecs_kind(id) else { return };
-        let owner = match owner {
-            Who::Player(p) => self.with_player(p, |g| myriade_engine::lan::playerdata::ints_uuid(g.acting_player_uuid())),
-            Who::Entity(_) => None,
-        };
-        self.native_entity_tame(id, &kind, owner);
-    }
-
-    /// `HostEvent::Unleashed`: `EntityUnleashEvent`, told while the entity is still in the level.
-    pub(in crate::game) fn ecs_unleashed_event(&mut self, e: Entity) {
-        let id = self.entity_id(e);
-        if let Some(kind) = self.ecs_kind(id) {
-            self.native_entity_unleash(id, &kind);
+        if let Some(w) = self.ecs.world_mut() {
+            horizon_ecs_proto::brain::behaviours::start_attacking::resolve_target(w, e, TargetAnswer::Keep);
         }
     }
 
@@ -155,7 +81,6 @@ impl Game<'_> {
             let at = [f64::from(at[0]) + 0.5, f64::from(at[1]), f64::from(at[2]) + 0.5];
             self.ecs_leash_broke(id, at, false, knot);
         }
-        self.entity_left_now(id);
         self.ecs.despawn(e);
     }
 

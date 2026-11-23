@@ -14,7 +14,7 @@ use myriade_engine::{
         finalize,
         spawn_rules::{Reason, SpawnLevel},
         spawn_place::{
-            Category, Heightmap, NaturalLevel, PlayerSquares, SpawnCost, StructureAt,
+            self, Category, Heightmap, NaturalLevel, PlayerSquares, SpawnCost, StructureAt,
             StructureSpawns,
         },
     },
@@ -226,12 +226,7 @@ impl LevelHost for &Game<'_> {
     fn mob_boxes(&self) -> Vec<MobBox> {
         self.ecs.mob_boxes()
     }
-    fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
-        let mut canceled = false;
-        self.native_potential_spawns(self.dim.id(), category.name(), pos, entries, &mut canceled);
-        if canceled {
-            entries.clear();
-        }
+    fn potential_spawns(&self, _category: Category, _pos: [i32; 3], _entries: &mut Vec<SpawnEntry>) {
     }
 }
 
@@ -331,7 +326,7 @@ impl<H: LevelHost> Level<'_, H> {
         myriade_engine::mobs::zoomed_block(self.host.biome_zoom, x, y, z)
     }
     fn zoomed_biome(&self, x: i32, y: i32, z: i32) -> Option<&BiomeInfo> {
-        Some(self.w.biomes.get(myriade_engine::mobs::zoomed_biome_index(self.w, self.host.biome_zoom, x, y, z)?))
+        Some(self.w.biomes.get(myriade_engine::mobs::zoomed_biome_index(&self.w, self.host.biome_zoom, x, y, z)?))
     }
     /// A provisional id, distinct within the pass, for a lent handle
     pub(super) fn provisional_id(&self) -> u32 {

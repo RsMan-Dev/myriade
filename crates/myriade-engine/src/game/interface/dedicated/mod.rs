@@ -1161,8 +1161,6 @@ impl Game<'_> {
         self.server_lists = Some(lists.clone());
         log("INFO", &format!("Preparing level \"{level_name}\""));
         let folder = world_dir.to_string_lossy().into_owned();
-        // The mods' common and server configs, read before the server starts.
-        self.native_configs_server_start(&world_dir, true);
         if !new_world {
             biome_regions::choose(&world_dir)?;
         }
@@ -1175,12 +1173,11 @@ impl Game<'_> {
             Some(props.seed),
             game_mode == 1,
             None,
-            Arc::new(crate::game::api_values::game_rule_registry()),
+            Arc::new(myriade_engine::gamerules::RuleRegistry::vanilla()),
         )?)?;
         *startup_began = true;
-        self.native_server_about_to_start(true);
-        self.native_server_starting(true);
-        self.native_lifecycle_open_started();
+        self.clear_composter_randoms();
+        self.reset_entity_residency();
         // The registries the server sends are read while the world prepares.
         let sync = super::lan::sync::preload_sync_data(&self.res.core.item_data);
         // `finish_open_world` loads the data packs, which admits the reloadable registries (WorldLoader)
@@ -1207,9 +1204,7 @@ impl Game<'_> {
         // sets the show_advancement_messages rule once, as the file is read.
         if let Some(announce) = props.announce_player_achievements {
             let value = myriade_engine::gamerules::Value::Bool(announce);
-            if self.session.rules.set("show_advancement_messages", value) {
-                self.game_rule_changed("minecraft:show_advancement_messages", value, None);
-            }
+            self.session.rules.set("show_advancement_messages", value);
         }
         self.settings.view_distance = props.view_distance.clamp(2, 32);
         self.settings.simulation_distance = props.simulation_distance.clamp(2, 32);
@@ -1331,7 +1326,7 @@ impl Game<'_> {
             simulation_distance: props.simulation_distance.clamp(2, 32),
             dimension: self.dim.id().to_owned(),
             levels: self.level_shapes,
-            level_seeds: self.levels.runtime.seeds(),
+            level_seeds: Default::default(),
             seed: self.level.seed,
             max_players: props.max_players.max(0) as usize,
         };
@@ -1371,7 +1366,6 @@ impl Game<'_> {
         let anticheat_on = anticheat.enabled;
         let chat_filter = load_chat_filter();
         self.set_pvp_legacy_rules(load_combat());
-        self.read_runtime_level_cap(|key| props.raw.get(key));
         load_entities();
         // Horizon's far ring (docs/hosting.md): server.toml's `max_view_distance`.
         let far = props
@@ -1427,7 +1421,6 @@ impl Game<'_> {
             host.hub.entity_range_percent = props.entity_broadcast_range_percentage;
         }
         // The dedicated server's open is complete before its first tick.
-        self.native_lifecycle_world_ready();
         let mut state = ServerState {
             lists,
             console,
@@ -1775,7 +1768,10 @@ impl Game<'_> {
             .iter()
             .map(|e| (e.user.id, e.level as u8))
             .collect();
-        self.resend_commands_filtered();
+        if let Some(host) = self.lan.as_mut() {
+            host.hub.refresh_permissions();
+            host.hub.resend_commands();
+        }
     }
 
     /// The mods' say on `user` getting the permission level `new` (0 for `deop`) in the
@@ -1786,27 +1782,9 @@ impl Game<'_> {
         user: &NameAndId,
         new: i32,
     ) -> bool {
-        let old = lists.lock().unwrap().ops.get(user).map_or(0, |e| e.level);
-        let entity = self
-            .lan
-            .as_ref()
-            .and_then(|h| {
-                h.hub
-                    .guests
-                    .iter()
-                    .find(|g| g.participates_online() && g.uuid == user.id)
-            })
-            .map(|g| g.entity_id);
-        let mut cancel = false;
-        self.native_permissions_changed(
-            user.id,
-            entity,
-            &user.name,
-            PermissionLevel::from_level(old),
-            PermissionLevel::from_level(new),
-            &mut cancel,
-        );
-        cancel
+        let _ = (lists, user, new);
+        // No mod can cancel the change.
+        false
     }
 
     /// A player on the server, by name.
@@ -2298,9 +2276,7 @@ impl Game<'_> {
                 self.chat_capture = Some(Vec::new());
                 // A command a native mod registered goes to the mods first,
                 // looked up by the same first word the match above read.
-                if !self.perform_native_console_command(line.trim()) {
-                    self.as_console_in_overworld(|g| g.run_command(line));
-                }
+                self.as_console_in_overworld(|g| g.run_command(line));
                 for text in self.chat_capture.take().unwrap_or_default() {
                     self.console_reply(text);
                 }
@@ -2398,16 +2374,8 @@ impl Game<'_> {
     /// `DedicatedServer.setUsingWhitelist`: the flag, and `white-list` in
     /// server.properties.
     pub(super) fn set_using_whitelist(&mut self, lists: &Arc<Mutex<Lists>>, on: bool) {
-        let changed = {
-            let mut lists = lists.lock().unwrap();
-            let changed = lists.use_whitelist != on;
-            lists.use_whitelist = on;
-            changed
-        };
+        lists.lock().unwrap().use_whitelist = on;
         self.store_property("white-list", on.to_string());
-        if changed {
-            self.native_whitelist_state_update(on);
-        }
     }
 
     /// `DedicatedServer.setPlayerIdleTimeout`: update the live idle sweep and persist its minutes.
@@ -2599,10 +2567,7 @@ impl Game<'_> {
 
     pub(super) fn stop_dedicated(&mut self, crashed: bool) -> Result<()> {
         // The close request starts before player and world saves.
-        self.native_lifecycle.begin_close();
-        self.native_configs_server_stop();
         log("INFO", "Stopping server");
-        self.native_players_leaving();
         log("INFO", "Saving players");
         // PlayerList.removeAll: each player's file, with the vehicle it
         // alone rides, then its records.
@@ -2674,11 +2639,11 @@ impl Game<'_> {
         if let Some(warning) = self.keep_interrupted_players() {
             log("WARN", warning);
         }
-        self.native_lifecycle.begin_close();
         log("INFO", "Saving worlds");
         self.save_game()?;
         self.log_saved_levels();
-        self.native_lifecycle_world_closed();
+        self.clear_composter_randoms();
+        self.clear_world_parts();
         self.lan_close(false);
         Err(format!("the server thread panicked: {message}").into())
     }

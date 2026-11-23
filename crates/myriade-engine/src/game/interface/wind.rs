@@ -140,7 +140,6 @@ impl Game<'_> {
         for component in &mut push {
             *component *= f64::from(multiplier);
         }
-        self.native_explosion_knockback(self.dim.id(), center, blocks, Some(id), &mut push);
         self.ecs.push(id, push);
     }
 
@@ -303,7 +302,7 @@ impl Game<'_> {
             spared: None,
         };
         let source = self.creatures.wind_source;
-        let mut late = Vec::new();
+        let mut late: Vec<(u32, crate::game::Vec3)> = Vec::new();
         let mut entities = self.take_entities();
         for_each_entity_mut!(entities, entity => {
             if entity.ignores_explosion(&burst) || !entity.pushed_by_wind() {
@@ -320,10 +319,7 @@ impl Game<'_> {
             let exposure = self.seen_percent(center, [lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]);
             let power = (1.0 - dist) * f64::from(exposure) * multiplier;
             let dir = direction([feet[0], feet[1] + entity.explosion_eye_height(), feet[2]]);
-            let mut push = [dir[0] * power, dir[1] * power, dir[2] * power];
-            let id = Some(entity.id());
-            self.native_explosion_knockback(self.dim.id(), center, blocks, id, &mut push);
-            let push = Vec3::new(push[0], push[1], push[2]);
+            let push = Vec3::new(dir[0] * power, dir[1] * power, dir[2] * power);
             // ServerLevel ticks entities in the order they joined. One that
             // joined before the charge has ticked by now in vanilla, so the
             // push is for its next tick; here its kind ticks after the
@@ -401,12 +397,11 @@ impl Game<'_> {
         );
         let power = (1.0 - dist) * f64::from(exposure) * f64::from(multiplier) * (1.0 - resistance);
         let l = (eye[0] * eye[0] + eye[1] * eye[1] + eye[2] * eye[2]).sqrt();
-        let mut push = if l < 1.0e-5 {
+        let push = if l < 1.0e-5 {
             [0.0; 3]
         } else {
             eye.map(|d| d / l * power)
         };
-        self.native_explosion_knockback(self.dim.id(), center, blocks, None, &mut push);
         let p = self.player.as_mut()?;
         p.velocity = Vec3::new(
             p.velocity.x + push[0],
@@ -473,8 +468,6 @@ impl Game<'_> {
                 let swap = self.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
                 targets.swap(i - 1, swap);
             }
-            let dimension = self.dim.id();
-            self.native_wind_burst(dimension, center, &mut targets);
             for pos in targets {
                 self.wind_trigger_block(pos)?;
             }

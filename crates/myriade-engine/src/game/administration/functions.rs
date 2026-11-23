@@ -19,8 +19,32 @@ use myriade_engine::{
     text::{self, Text},
 };
 use horizon_core::nbt::Tag;
-use myriade_types::ReloadStageError;
 use std::sync::Arc;
+
+/// A failed reload stage: the next generation's data could not be built, or
+/// a preparation step returned its error.
+#[derive(Debug)]
+pub(super) enum ReloadStageError {
+    DataSource(String),
+    Failed(Box<dyn std::error::Error>),
+}
+
+impl std::fmt::Display for ReloadStageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DataSource(error) => f.write_str(error),
+            Self::Failed(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for ReloadStageError {}
+
+impl From<Box<dyn std::error::Error>> for ReloadStageError {
+    fn from(error: Box<dyn std::error::Error>) -> Self {
+        Self::Failed(error)
+    }
+}
 
 /// A `TimerQueue` event.
 #[derive(Clone, Debug, PartialEq)]
@@ -115,7 +139,8 @@ pub(super) fn pack_stack(
 ) -> PackStack {
     let builtin = (!vanilla_disabled)
         .then(|| DataPack::from_source("vanilla".into(), builtin_source.clone()));
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let mut packs = myriade_level::datapack::discover_with_features(world_root, resources);
+    packs.extend(additional.iter().map(|pack| (**pack).clone()));
     let enabled = datapack::enabled_ids(world_root, &packs, enabled_features);
     PackStack {
         content: DataPack::from_source("horizon-content".into(), content_source.clone()),
@@ -237,28 +262,15 @@ impl Game<'_> {
         run_load: bool,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
-        let next_root = self
-            .stage_condition_inventory()
-            .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-        let resources = next_root
-            .as_ref()
-            .map_or(self.options.resources.as_path(), |root| root.prepared())
-            .to_path_buf();
-        let data = next_root
-            .as_ref()
-            .map_or(&self.pack.data_source, |root| root.data());
-        let changes = next_root
-            .as_ref()
-            .map_or(&self.pack.data_changes, |root| root.data_changes());
-        let additional = super::pack_finders::data_packs(&self.mods);
+        let resources = self.options.resources.clone();
         let stack = pack_stack(
             &self.world_root,
             &resources,
-            data,
-            changes,
+            &self.pack.data_source,
+            &self.pack.data_changes,
             self.cmds.vanilla_disabled,
             enabled_features,
-            &additional,
+            &[],
         );
         // `ReloadableServerRegistries.reload`: the candidate's registry references bind and
         // validate before anything is published, so a refusal keeps the live library, tables
@@ -273,11 +285,8 @@ impl Game<'_> {
             }
             return Err(error);
         }
-        let prepared = self.begin_condition_reload(&stack, &resources)?;
-        let context = self
-            .prepare_loop_context(&resources)
-            .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-        let prepared = self.apply_server_reload_callbacks(prepared);
+        let prepared = self.prepare_server_reload(&stack)?;
+        let context = self.prepare_loop_context();
         let world = if run_load {
             Some(
                 self.prepare_world_reload(&stack, &resources)
@@ -286,19 +295,12 @@ impl Game<'_> {
         } else {
             None
         };
-        if let Some(root) = next_root {
-            self.options.resources = root.prepared().to_owned();
-            self.pack.data_source = root.data().clone();
-            self.pack.data_changes = root.data_changes().clone();
-            self.mods.data_switched = true;
-        }
         self.install_loop_context(context);
         if !run_load {
             self.fns = Default::default();
         }
         self.fns.packs = stack.packs.clone();
         self.fns.enabled = stack.enabled.clone();
-        self.pack.additional_data = additional.into();
         self.fns.loaded = true;
         self.fns.load_pending = true;
         // An explicit reload (`/reload`, `/datapack`) also rebuilds the
@@ -307,7 +309,6 @@ impl Game<'_> {
         if let Some(world) = world {
             self.install_world_tables(world);
         }
-        self.build_native_commands(enabled_features);
         self.apply_server_reload(prepared, &stack);
         self.run_native_advancement_grants();
         // The schedule is the world's live `TimerQueue` `SavedData`, not pack
@@ -1375,7 +1376,6 @@ impl Game<'_> {
         // One resolve for the store and the tables, as `/reload`'s is: the
         // timers already in memory stay, and none come back from disk
         // (`ServerFunctionManager` keeps its queue over a pack change).
-        let additional = super::pack_finders::data_packs(&self.mods);
         let mut stack = pack_stack(
             &self.world_root,
             &self.options.resources,
@@ -1383,7 +1383,7 @@ impl Game<'_> {
             &self.pack.data_changes,
             self.cmds.vanilla_disabled,
             &self.level.enabled_features,
-            &additional,
+            &[],
         );
         stack.enabled =
             datapack::selected_ids(stack.packs.iter().map(Arc::as_ref), &self.fns.enabled);
@@ -1393,7 +1393,7 @@ impl Game<'_> {
             self.cmds.vanilla_disabled = previous_vanilla_disabled;
             return Err(Self::reload_failure(error));
         }
-        let prepared = match self.prepare_pack_condition_reload(&stack) {
+        let prepared = match self.prepare_server_reload(&stack) {
             Ok(prepared) => prepared,
             Err(error) => {
                 self.fns.enabled = previous_enabled;
@@ -1402,17 +1402,7 @@ impl Game<'_> {
             }
         };
         let root = self.options.resources.clone();
-        let context = match self.prepare_loop_context(&root) {
-            Ok(context) => context,
-            Err(error) => {
-                self.fns.enabled = previous_enabled;
-                self.cmds.vanilla_disabled = previous_vanilla_disabled;
-                return Err(Self::reload_failure(ReloadStageError::DataSource(
-                    error.to_string(),
-                )));
-            }
-        };
-        let prepared = self.apply_server_reload_callbacks(prepared);
+        let context = self.prepare_loop_context();
         let world = match self.prepare_world_reload(&stack, &root) {
             Ok(world) => world,
             Err(error) => {
@@ -1426,17 +1416,31 @@ impl Game<'_> {
         self.install_loop_context(context);
         self.fns.packs = stack.packs.clone();
         self.fns.enabled = stack.enabled.clone();
-        self.pack.additional_data = additional.into();
         self.save_datapack_settings();
         self.fns.load_pending = true;
         self.install_world_tables(world);
-        self.build_native_commands(&self.level.enabled_features.clone());
         self.apply_server_reload(prepared, &stack);
         self.run_native_advancement_grants();
         Ok(())
     }
 
-    fn reload_failure(error: ReloadStageError) -> myriade_engine::command::CommandError {
+    /// The loop context of the item data for this side, with no mod ids.
+    fn prepare_loop_context(&self) -> Arc<horizon_world::native_load_context::LoopContext> {
+        let side = self.options.execution_role.loop_side();
+        Arc::new(self.res.core.item_data.context().loop_context(side, []))
+    }
+
+    /// Publishes the loop context and its world generation context.
+    fn install_loop_context(
+        &mut self,
+        context: Arc<horizon_world::native_load_context::LoopContext>,
+    ) {
+        let worldgen = context.worldgen_context();
+        self.loop_context = context;
+        horizon_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
+    }
+
+    fn reload_failure(error: impl std::fmt::Display) -> myriade_engine::command::CommandError {
         log::warn!("Horizon: {error}");
         myriade_engine::command::CommandError::new(
             Text::translate("commands.reload.failure", &[])
@@ -1491,763 +1495,11 @@ impl Game<'_> {
 mod tests {
     use super::*;
 
-    #[test]
-    #[ignore = "daily"]
-    fn first_world_open_admits_block_function() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let folder = "first-open-block-function";
-            let world = std::env::current_dir().unwrap().join("saves").join(folder);
-            let pack = world.join("datapacks/first_open");
-            let functions = pack.join("data/first_open/function");
-            std::fs::create_dir_all(&functions).unwrap();
-            let f = horizon_core::version::DATA_PACK_FORMAT;
-            std::fs::write(
-                pack.join("pack.mcmeta"),
-                serde_json::json!({"pack":{
-                    "description":"First open regression", "pack_format":f.0,
-                    "min_format":[f.0,f.1], "max_format":[f.0,f.1]
-                }})
-                .to_string(),
-            )
-            .unwrap();
-            std::fs::write(
-                functions.join("block.mcfunction"),
-                "execute if block 0 64 0 minecraft:repeater[delay=2] run return 1\n",
-            )
-            .unwrap();
-            std::fs::write(
-                functions.join("invalid.mcfunction"),
-                "setblock 0 64 0 first_open:missing_block\n",
-            )
-            .unwrap();
-            let request = crate::game::world_loading::WorldRequest::new(
-                folder,
-                None,
-                Some(3042),
-                true,
-                None,
-                game.level.rule_registry.clone(),
-            )
-            .unwrap();
-            game.load_world(request).unwrap();
-            assert!(
-                game.fns.store.functions.contains_key("first_open:block"),
-                "first-open admission errors: {:?}",
-                game.fns.store.errors
-            );
-            assert!(!game.fns.store.functions.contains_key("first_open:invalid"));
-            assert!(
-                game.fns
-                    .store
-                    .errors
-                    .iter()
-                    .any(|(id, _)| id == "first_open:invalid")
-            );
-        });
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn prepared_function_calls_keep_causality_and_fallback_boundaries() {
-        use crate::game::native_guest_turn_tests::with_acting_guest;
-        use horizon_core::geometry::Vec3;
-        with_acting_guest(Vec3::new(4.5, 202.0, 4.5), |game| {
-            game.creative = true;
-            // Supply the synthetic chunk before forceload's synchronous load barrier.
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(myriade_engine::chunk::Chunk::empty(0, 0)),
-            );
-            game.world_root = std::env::current_dir().unwrap().join("h155-causal-world");
-            let pack = game.world_root.join("datapacks/h155_causal");
-            let dir = pack.join("data/h155c/function");
-            std::fs::create_dir_all(&dir).unwrap();
-            let f = horizon_core::version::DATA_PACK_FORMAT;
-            std::fs::write(pack.join("pack.mcmeta"), serde_json::json!({"pack":{"description":"H155 causal controls","pack_format":f.0,"min_format":[f.0,f.1],"max_format":[f.0,f.1]}}).to_string()).unwrap();
-            let body = "execute if score @s h155c_id matches 1 run scoreboard players operation #seen_a h155c = #r h155c\nexecute if score @s h155c_id matches 2 run scoreboard players operation #seen_b h155c = #r h155c\nscoreboard players add #calls h155c 1\nscoreboard players operation #trace h155c *= #ten h155c\nscoreboard players operation #trace h155c += @s h155c_id\n";
-            for (name, tail) in [
-                ("zero", "return 0\n"),
-                ("five", "return 5\n"),
-                ("fail", "return fail\n"),
-                ("none", ""),
-            ] {
-                std::fs::write(
-                    dir.join(format!("{name}.mcfunction")),
-                    format!("{body}{tail}"),
-                )
-                .unwrap();
-            }
-            for (name, text) in [
-                (
-                    "early",
-                    "scoreboard players add #early h155c 1\nreturn 0\nscoreboard players add #late h155c 1\n",
-                ),
-                ("inner", "scoreboard players add #inner h155c 1\nreturn 0\n"),
-                (
-                    "outer",
-                    "function h155c:inner\nscoreboard players add #outer h155c 1\nreturn 5\n",
-                ),
-                (
-                    "nested",
-                    "execute as @e[type=pig,tag=h155c,sort=nearest,limit=2] run function h155c:inner\nreturn 0\n",
-                ),
-                (
-                    "macro",
-                    "$scoreboard players add #macro h155c $(amount)\nreturn 0\n",
-                ),
-            ] {
-                std::fs::write(dir.join(format!("{name}.mcfunction")), text).unwrap();
-            }
-            std::fs::create_dir_all(pack.join("data/h155c/tags/function")).unwrap();
-            std::fs::write(
-                pack.join("data/h155c/tags/function/pair.json"),
-                r#"{"values":["h155c:zero","h155c:five"]}"#,
-            )
-            .unwrap();
-            game.reload_datapacks(false, &game.level.enabled_features.clone())
-                .unwrap();
-            game.build_registries();
-            game.set_allow_commands(true);
-            assert_eq!(game.fns.store.tag_functions("h155c:pair").len(), 2);
-            assert!(
-                game.fns
-                    .store
-                    .functions
-                    .get("h155c:macro")
-                    .unwrap()
-                    .is_macro()
-            );
-            assert!(game.run_command("forceload add 0 0 15 15"));
-            assert!(game.world.loaded(4, 4));
-            assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
-            for (n, x) in [(1, 4.5), (2, 8.5)] {
-                assert!(game.run_command(&format!("summon pig {x} 200 4.5 {{UUID:[I;155,2,0,{n}],Tags:[\"h155c\"],NoAI:1b,NoGravity:1b,Health:10f}}")));
-                assert!(game.run_command(&format!("execute if entity @e[type=pig,nbt={{UUID:[I;155,2,0,{n}],Health:10f,NoAI:1b,NoGravity:1b,Pos:[{x}d,200d,4.5d]}}]")));
-            }
-            assert!(game.run_command("scoreboard objectives add h155c dummy"));
-            assert!(game.run_command("scoreboard objectives add h155c_id dummy"));
-            for (holder, id) in [
-                ("@s".to_owned(), 3),
-                ("@e[nbt={UUID:[I;155,2,0,1]},limit=1]".to_owned(), 1),
-                ("@e[nbt={UUID:[I;155,2,0,2]},limit=1]".to_owned(), 2),
-            ] {
-                assert!(
-                    game.run_command(&format!("scoreboard players set {holder} h155c_id {id}"))
-                );
-            }
-            assert!(game.run_command("scoreboard players set #ten h155c 10"));
-            fn score(g: &Game<'_>, h: &str) -> i32 {
-                g.score.board.score(h, "h155c").unwrap().value
-            }
-            fn reset(g: &mut Game<'_>) {
-                for h in [
-                    "#calls", "#trace", "#seen_a", "#seen_b", "#early", "#late", "#inner",
-                    "#outer", "#macro",
-                ] {
-                    assert!(g.run_command(&format!("scoreboard players set {h} h155c 0")));
-                }
-                assert!(g.run_command("scoreboard players set #r h155c 91"));
-                assert!(g.run_command("scoreboard players set #s h155c 17"));
-            }
-            fn capture(g: &mut Game<'_>, line: &str) -> (Vec<String>, Vec<(bool, i32)>) {
-                g.chat_capture = Some(Vec::new());
-                g.cmds.results = Some(Vec::new());
-                assert!(g.run_command(line));
-                let texts = g.chat_capture.take().unwrap();
-                let callbacks = g.cmds.results.take().unwrap();
-                println!("causal raw {line}: {texts:?} callbacks={callbacks:?}");
-                assert!(
-                    g.exec.prepared_function.is_none(),
-                    "no prepared call after command/error/return"
-                );
-                (
-                    texts
-                        .iter()
-                        .map(|m| m.translation_key().unwrap_or("literal").to_owned())
-                        .collect(),
-                    callbacks,
-                )
-            }
-            let start = "commands.function.scheduled.single".to_owned();
-            let result = "commands.function.result".to_owned();
-            let prefix = "execute store result score #r h155c store success score #s h155c as @e[type=pig,tag=h155c,sort=nearest,limit=2] run ";
-            let clock = game.world.game_time;
-            let chunks = game.world.chunks.len();
-            for (name, value, success) in [
-                ("zero", Some(0), true),
-                ("five", Some(5), true),
-                ("fail", Some(0), false),
-                ("none", None, false),
-            ] {
-                reset(game);
-                let (keys, callbacks) = capture(game, &format!("{prefix}function h155c:{name}"));
-                let mut expected = vec![start.clone(); 2];
-                if value.is_some() {
-                    expected.extend(vec![result.clone(); 2]);
-                }
-                assert_eq!(keys, expected);
-                assert_eq!(
-                    callbacks,
-                    value.map_or_else(Vec::new, |v| vec![(success, v); 2])
-                );
-                assert_eq!((score(game, "#calls"), score(game, "#trace")), (2, 12));
-                assert_eq!(score(game, "#seen_a"), 91);
-                assert_eq!(
-                    score(game, "#seen_b"),
-                    value.unwrap_or(91),
-                    "first source callback/store precedes second body"
-                );
-                assert_eq!(score(game, "#r"), value.unwrap_or(91));
-                assert_eq!(
-                    score(game, "#s"),
-                    if value.is_some() {
-                        i32::from(success)
-                    } else {
-                        17
-                    }
-                );
-            }
-            // Each actual actor owns its leaf store; shared ancestors still deliver oldest first.
-            reset(game);
-            for n in [1, 2] {
-                assert!(game.run_command(&format!(
-                    "scoreboard players set @e[nbt={{UUID:[I;155,2,0,{n}]}},limit=1] h155c 91"
-                )));
-            }
-            let (keys, callbacks) = capture(
-                game,
-                "execute store result score #chain h155c as @e[type=pig,tag=h155c,sort=nearest,limit=2] store success score #chain h155c store result score @s h155c run function h155c:five",
-            );
-            assert_eq!(
-                keys,
-                vec![start.clone(), start.clone(), result.clone(), result.clone()]
-            );
-            assert_eq!(callbacks, vec![(true, 5); 2]);
-            assert_eq!(
-                score(game, "#chain"),
-                1,
-                "ancestor result then child success"
-            );
-            assert_eq!((score(game, "#calls"), score(game, "#trace")), (2, 12));
-            for n in [1, 2] {
-                let (_, callbacks) = capture(
-                    game,
-                    &format!(
-                        "scoreboard players get @e[nbt={{UUID:[I;155,2,0,{n}]}},limit=1] h155c"
-                    ),
-                );
-                assert_eq!(
-                    callbacks,
-                    vec![(true, 5)],
-                    "actual actor's own result store"
-                );
-            }
-            // These ineligible variants preserve the legacy path, not a Java-order parity claim.
-            for line in [
-                "execute as @e[type=pig,tag=h155c,sort=nearest,limit=2] if entity @s run function h155c:zero",
-                "execute run execute as @e[type=pig,tag=h155c,sort=nearest,limit=2] run function h155c:zero",
-                "execute as @e[type=pig,tag=h155c,sort=nearest,limit=2] run function h155c:macro {amount:1}",
-            ] {
-                reset(game);
-                let (keys, callbacks) = capture(game, line);
-                assert_eq!(
-                    keys,
-                    vec![start.clone(), result.clone(), start.clone(), result.clone()],
-                    "unchanged ineligible path"
-                );
-                assert_eq!(callbacks, vec![(true, 0); 2]);
-            }
-            reset(game);
-            let (keys, callbacks) = capture(
-                game,
-                "execute as @e[type=pig,tag=h155c,sort=nearest,limit=2] run function #h155c:pair",
-            );
-            assert_eq!(
-                keys,
-                vec![
-                    "commands.function.scheduled.multiple".to_owned(),
-                    result.clone(),
-                    result.clone(),
-                    "commands.function.scheduled.multiple".to_owned(),
-                    result.clone(),
-                    result.clone()
-                ]
-            );
-            assert_eq!(callbacks, vec![(true, 5); 2]);
-            assert_eq!(score(game, "#calls"), 4);
-            reset(game);
-            let source = Source {
-                silent: true,
-                ..game.player_source()
-            };
-            let (keys, callbacks) = game.with_source(source, |g| {
-                capture(g, &format!("{prefix}function h155c:zero"))
-            });
-            assert!(keys.is_empty());
-            assert_eq!(callbacks, vec![(true, 0); 2]);
-            assert_eq!(score(game, "#trace"), 12);
-            reset(game);
-            let (keys, callbacks) = capture(game, &format!("{prefix}function h155c:missing"));
-            assert!(keys.is_empty());
-            assert_eq!(callbacks, vec![(false, 0); 2]);
-            assert_eq!(score(game, "#calls"), 0);
-            for line in [
-                "function h155c:five",
-                "execute as @e[type=pig,tag=h155c,sort=nearest,limit=1] run function h155c:five",
-            ] {
-                reset(game);
-                let (keys, callbacks) = capture(game, line);
-                assert_eq!(keys, vec![start.clone(), result.clone()]);
-                assert_eq!(callbacks, vec![(true, 5)]);
-            }
-            reset(game);
-            let (keys, callbacks) = capture(game, &format!("{prefix}function h155c:outer"));
-            assert_eq!(
-                keys,
-                vec![start.clone(), start.clone(), result.clone(), result.clone()]
-            );
-            assert_eq!(callbacks, vec![(true, 5); 2]);
-            assert_eq!((score(game, "#inner"), score(game, "#outer")), (2, 2));
-            reset(game);
-            let (keys, callbacks) = capture(game, "function h155c:nested");
-            assert_eq!(keys, vec![start.clone(), result.clone()]);
-            assert_eq!(callbacks, vec![(true, 0)]);
-            assert_eq!(score(game, "#inner"), 2);
-            reset(game);
-            let (_, callbacks) = capture(game, &format!("{prefix}function h155c:early"));
-            assert_eq!(callbacks, vec![(true, 0); 2]);
-            assert_eq!((score(game, "#early"), score(game, "#late")), (2, 0));
-            // These are preservation/cleanup controls, not a Java limit-parity claim.
-            for budget in [1, 4] {
-                reset(game);
-                assert!(
-                    game.run_command(&format!("gamerule max_command_sequence_length {budget}"))
-                );
-                let (keys, callbacks) = capture(game, &format!("{prefix}function h155c:early"));
-                if budget == 1 {
-                    assert!(keys.is_empty() && callbacks.is_empty());
-                    assert_eq!(score(game, "#early"), 0);
-                } else {
-                    assert_eq!(callbacks, vec![(true, 0)]);
-                    assert_eq!((score(game, "#early"), score(game, "#late")), (1, 0));
-                    assert_eq!(keys.iter().filter(|k| **k == start).count(), 2);
-                }
-                assert!(game.run_command("gamerule max_command_sequence_length 65536"));
-                reset(game);
-                let (keys, callbacks) = capture(game, &format!("{prefix}function h155c:five"));
-                assert_eq!(
-                    keys,
-                    vec![start.clone(), start.clone(), result.clone(), result.clone()]
-                );
-                assert_eq!(callbacks, vec![(true, 5); 2]);
-                assert_eq!(score(game, "#seen_b"), 5);
-            }
-            assert_eq!(game.world.game_time, clock);
-            assert_eq!(game.world.chunks.len(), chunks);
-        });
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn forked_function_replies_keep_task_order_and_actual_callbacks() {
-        use crate::game::native_guest_turn_tests::with_acting_guest;
-        use horizon_core::geometry::Vec3;
-        with_acting_guest(Vec3::new(4.5, 202.0, 4.5), |game| {
-            game.creative = true;
-            // Supply the synthetic chunk before forceload's synchronous load barrier.
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(myriade_engine::chunk::Chunk::empty(0, 0)),
-            );
-            game.world_root = std::env::current_dir().unwrap().join("h155-world");
-            let pack = game.world_root.join("datapacks/h155_unit");
-            let dir = pack.join("data/h155/function");
-            std::fs::create_dir_all(&dir).unwrap();
-            let format = horizon_core::version::DATA_PACK_FORMAT;
-            std::fs::write(
-                pack.join("pack.mcmeta"),
-                serde_json::json!({"pack": {
-                    "description":"H155 actual Game regression", "pack_format":format.0,
-                    "min_format":[format.0,format.1], "max_format":[format.0,format.1]
-                }})
-                .to_string(),
-            )
-            .unwrap();
-            let body = "scoreboard players add #calls h155 1\nscoreboard players add @s h155 1\nscoreboard players operation #trace h155 *= #ten h155\nscoreboard players operation #trace h155 += @s h155_id\n";
-            for (name, tail) in [
-                ("zero", "return 0\n"),
-                ("five", "return 5\n"),
-                ("fail", "return fail\n"),
-                ("fallthrough", ""),
-            ] {
-                std::fs::write(
-                    dir.join(format!("{name}.mcfunction")),
-                    format!("{body}{tail}"),
-                )
-                .unwrap();
-            }
-            std::fs::write(
-                dir.join("admit.mcfunction"),
-                "scoreboard players add #pack h155 1\nreturn 1\n",
-            )
-            .unwrap();
-            game.reload_datapacks(false, &game.level.enabled_features.clone())
-                .unwrap();
-            game.build_registries();
-            game.set_allow_commands(true);
-            for name in ["zero", "five", "fail", "fallthrough", "admit"] {
-                assert!(
-                    game.fns
-                        .store
-                        .functions
-                        .contains_key(&format!("h155:{name}"))
-                );
-                assert!(
-                    game.session
-                        .registries
-                        .functions
-                        .contains(&format!("h155:{name}"))
-                );
-            }
-            assert!(game.run_command("forceload add 0 0 15 15"));
-            assert!(game.world.loaded(4, 4));
-            assert!(game.run_command("fill 0 199 0 15 199 15 stone"));
-            for (n, x) in [(1, 4.5), (2, 8.5)] {
-                assert!(game.run_command(&format!("summon pig {x} 200 4.5 {{UUID:[I;155,1,0,{n}],Tags:[\"h155u\"],NoAI:1b,NoGravity:1b,Silent:1b,PersistenceRequired:1b,Health:10f}}")));
-                assert!(game.run_command(&format!("execute if entity @e[type=pig,nbt={{UUID:[I;155,1,0,{n}],Health:10f,NoAI:1b,NoGravity:1b,Pos:[{x}d,200d,4.5d]}}]")));
-            }
-            assert!(game.run_command("scoreboard objectives add h155 dummy"));
-            assert!(game.run_command("scoreboard objectives add h155_id dummy"));
-            assert!(game.run_command("scoreboard players set #ten h155 10"));
-            assert!(game.run_command("scoreboard players set @s h155_id 3"));
-            let actor = |n| format!("@e[nbt={{UUID:[I;155,1,0,{n}]}},limit=1]");
-            for n in [1, 2] {
-                assert!(
-                    game.run_command(&format!("scoreboard players set {} h155_id {n}", actor(n)))
-                );
-            }
-            assert!(game.run_command("scoreboard players set #pack h155 0"));
-            assert!(game.run_command("function h155:admit"));
-            assert_eq!(game.score.board.score("#pack", "h155").unwrap().value, 1);
-            let clock = game.world.game_time;
-            let chunks = game.world.chunks.len();
-            let mut mismatches = Vec::new();
-            for (name, value, success) in [
-                ("zero", Some(0), true),
-                ("five", Some(5), true),
-                ("fail", Some(0), false),
-                ("fallthrough", None, false),
-            ] {
-                for route in ["direct", "one", "two", "nonfork"] {
-                    for holder in [
-                        "#calls".to_owned(),
-                        "#trace".to_owned(),
-                        "@s".to_owned(),
-                        actor(1),
-                        actor(2),
-                    ] {
-                        assert!(
-                            game.run_command(&format!("scoreboard players set {holder} h155 0"))
-                        );
-                    }
-                    assert!(game.run_command("scoreboard players set #r h155 91"));
-                    assert!(game.run_command("scoreboard players set #s h155 17"));
-                    let middle = match route {
-                        "one" => "as @e[type=pig,tag=h155u,sort=nearest,limit=1] ",
-                        "two" => "as @e[type=pig,tag=h155u,sort=nearest,limit=2] ",
-                        "nonfork" => "positioned 4.5 202 4.5 ",
-                        _ => "",
-                    };
-                    game.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
-                    let accepted = game.run_command(&format!("execute store result score #r h155 store success score #s h155 {middle}run function h155:{name}"));
-                    let messages = game.chat_capture.take().unwrap();
-                    let callbacks = game.cmds.results.take().unwrap();
-                    assert!(accepted, "actual registered function command");
-                    let count = if route == "two" { 2 } else { 1 };
-                    assert_eq!(
-                        game.score.board.score("#calls", "h155").unwrap().value,
-                        count
-                    );
-                    assert_eq!(
-                        game.score.board.score("#trace", "h155").unwrap().value,
-                        match route {
-                            "two" => 12,
-                            "one" => 1,
-                            _ => 3,
-                        }
-                    );
-                    assert_eq!(
-                        callbacks,
-                        value.map_or_else(Vec::new, |v| vec![(success, v); count as usize])
-                    );
-                    assert_eq!(
-                        game.score.board.score("#r", "h155").unwrap().value,
-                        value.unwrap_or(91)
-                    );
-                    assert_eq!(
-                        game.score.board.score("#s", "h155").unwrap().value,
-                        if value.is_some() {
-                            i32::from(success)
-                        } else {
-                            17
-                        }
-                    );
-                    let keys: Vec<_> = messages
-                        .iter()
-                        .map(|m| m.translation_key().unwrap_or("literal").to_owned())
-                        .collect();
-                    let mut expected =
-                        vec!["commands.function.scheduled.single".to_owned(); count as usize];
-                    if value.is_some() {
-                        expected
-                            .extend(vec!["commands.function.result".to_owned(); count as usize]);
-                    }
-                    if keys != expected {
-                        mismatches.push((name, route, keys, expected));
-                    }
-                }
-            }
-            assert!(game.run_command("scoreboard players set #plain h155 0"));
-            game.cmds.results = Some(Vec::new());
-            assert!(game.run_command("execute as @e[type=pig,tag=h155u,sort=nearest,limit=2] run scoreboard players add #plain h155 1"));
-            assert_eq!(
-                game.cmds.results.take().unwrap(),
-                vec![(true, 1), (true, 2)]
-            );
-            assert_eq!(game.score.board.score("#plain", "h155").unwrap().value, 2);
-            assert_eq!(game.world.game_time, clock);
-            assert_eq!(game.world.chunks.len(), chunks);
-            assert!(
-                mismatches.is_empty(),
-                "actual fork function feedback order mismatches: {mismatches:?}"
-            );
-        });
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn function_frames_restore_outer_frame() {
-        use crate::game::native_entity_refs::tests::with_game;
-        use myriade_engine::datapack::{Function, FunctionLine};
 
-        let mut ran = false;
-        with_game(|game| {
-            ran = true;
-            let inner = Function {
-                id: "test:inner".into(),
-                lines: vec![FunctionLine::Command("return 1".into())],
-                parameters: vec![],
-            };
-            game.exec.functions.push("test:outer".into());
-            let source = game.server_source();
-            game.run_function(&inner, None, source).unwrap();
-            assert_eq!(game.exec.functions, ["test:outer"]);
-            game.exec.functions.clear();
-            game.run_function(&inner, None, source).unwrap();
-            assert!(game.exec.functions.is_empty());
-        });
-        assert!(ran, "the prepared-resource fixture must run this case");
-    }
 
-    #[test]
-    #[ignore = "daily"]
-    fn pack_changes_publish_the_new_zip_generation_for_template_reads() {
-        use std::{io::Write, path::PathBuf};
-        use {
-            horizon_core::{nbt, nbt::Limits},
-            horizon_world::compression::Compression,
-        };
-        let root = std::env::temp_dir().join(format!(
-            "template-pack-change-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        std::fs::create_dir_all(root.join("datapacks")).unwrap();
-        struct Scratch(PathBuf);
-        impl Drop for Scratch {
-            fn drop(&mut self) {
-                let _ = std::fs::remove_dir_all(&self.0);
-            }
-        }
-        let scratch = Scratch(root);
-        let archive = scratch.0.join("datapacks/templates.zip");
-        let publish = |marker: &str| {
-            let named = nbt::NamedTag {
-                name: "".into(),
-                tag: Tag::compound([("marker", Tag::String(marker.into()))]),
-            };
-            let bytes = Compression::Gzip
-                .encode(&nbt::write_named(&named, Limits::templates()).unwrap())
-                .unwrap();
-            let next = archive.with_extension("next");
-            let mut zip = zip::ZipWriter::new(std::fs::File::create(&next).unwrap());
-            zip.start_file("pack.mcmeta", zip::write::SimpleFileOptions::default())
-                .unwrap();
-            zip.write_all(b"{}").unwrap();
-            zip.start_file(
-                "data/generation_test/structure/probe.nbt",
-                zip::write::SimpleFileOptions::default(),
-            )
-            .unwrap();
-            zip.write_all(&bytes).unwrap();
-            zip.finish().unwrap();
-            std::fs::rename(next, &archive).unwrap();
-        };
-        publish("old");
-        let mut ran = false;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            ran = true;
-            game.world_root = scratch.0.clone();
-            game.set_allow_commands(true);
-            game.reload_datapacks(false, &[]).unwrap();
-            let marker = |game: &Game<'_>| {
-                game.read_template_tag("generation_test:probe")
-                    .and_then(|tag| tag.get("marker").cloned())
-            };
-            assert_eq!(marker(game), Some(Tag::String("old".into())));
-            publish("new");
-            assert!(game.run_command("datapack disable \"file/templates.zip\""));
-            assert_eq!(marker(game), None);
-            assert!(game.run_command("datapack enable \"file/templates.zip\""));
-            assert_eq!(marker(game), Some(Tag::String("new".into())));
-            assert!(
-                !scratch
-                    .0
-                    .join("data/generation_test/structure/probe.nbt")
-                    .exists()
-            );
-        });
-        assert!(ran, "the prepared-resource fixture must run this case");
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn world_open_loads_functions_before_first_tick() {
-        use crate::game::{native_entity_refs::tests::with_game, world_loading::WorldRequest};
-
-        let root = std::env::current_dir()
-            .unwrap()
-            .join("target")
-            .join(format!("world-open-datapacks-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        let pack = root.join("datapacks/test");
-        for path in [
-            "data/test/function",
-            "data/minecraft/tags/function",
-            "data/test/tags/item",
-            "data/test/tags/worldgen/biome",
-            "data/test/recipe",
-        ] {
-            std::fs::create_dir_all(pack.join(path)).unwrap();
-        }
-        std::fs::write(
-            pack.join("pack.mcmeta"),
-            r#"{"pack":{"description":"Function fixture"}}"#,
-        )
-        .unwrap();
-        let function = pack.join("data/test/function/start.mcfunction");
-        std::fs::write(
-            &function,
-            "scoreboard objectives add loaded dummy\nscoreboard players add times loaded 1\n",
-        )
-        .unwrap();
-        std::fs::write(
-            pack.join("data/minecraft/tags/function/load.json"),
-            r#"{"values":["test:start"]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            pack.join("data/test/tags/item/sample.json"),
-            r#"{"values":["minecraft:stone"]}"#,
-        )
-        .unwrap();
-        std::fs::write(pack.join("data/test/recipe/sample.json"), r#"{"type":"minecraft:crafting_shapeless","ingredients":["minecraft:stone"],"result":{"id":"minecraft:diamond","count":1}}"#).unwrap();
-        std::fs::write(
-            pack.join("data/test/tags/worldgen/biome/feature_marker.json"),
-            r#"{"values":[]}"#,
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("datapacks.json"),
-            r#"{"enabled":["file/test"],"disabled":[]}"#,
-        )
-        .unwrap();
-        with_game(|game| {
-            let mut request = WorldRequest::new(
-                "test",
-                Some("test"),
-                Some(1),
-                true,
-                None,
-                std::sync::Arc::new(myriade_engine::gamerules::RuleRegistry::vanilla()),
-            )
-            .unwrap();
-            request.save_root = root.clone();
-            game.load_world(request).unwrap();
-            assert!(game.fns.store.functions.contains_key("test:start"));
-            assert_eq!(
-                game.fns.store.tag_functions("minecraft:load"),
-                ["test:start"]
-            );
-            assert!(game.items().item_tags["test:sample"].contains("minecraft:stone"));
-            assert!(game.stations().recipe_index.contains("test:sample"));
-            // Changes on disk must not make the first tick reload any table.
-            std::fs::write(&function, "scoreboard objectives add changed dummy\n").unwrap();
-            std::fs::write(
-                pack.join("data/test/tags/item/sample.json"),
-                r#"{"values":["minecraft:diamond"]}"#,
-            )
-            .unwrap();
-            std::fs::remove_file(pack.join("data/test/recipe/sample.json")).unwrap();
-            game.tick_functions();
-            assert!(game.score.board.objective("loaded").is_some());
-            assert!(game.score.board.objective("changed").is_none());
-            game.tick_functions();
-            assert_eq!(game.score.board.score("times", "loaded").unwrap().value, 1);
-            assert!(game.items().item_tags["test:sample"].contains("minecraft:stone"));
-            assert!(game.stations().recipe_index.contains("test:sample"));
-
-            // Changing packs must not reload an old timer from disk.
-            game.fns.schedule.push(Scheduled {
-                id: "test:start".into(),
-                time: 1000,
-                seq: 1,
-            });
-            game.save_schedule();
-            game.fns.schedule.clear();
-            assert!(game.run_command("datapack disable \"file/test\""));
-            assert!(game.fns.schedule.is_empty());
-            assert!(game.run_command("datapack enable \"file/test\""));
-            assert!(game.fns.schedule.is_empty());
-
-            // World-open selection and completions must both use the incoming
-            // level's flags, even while `self.level` is still the old level.
-            game.session.registries.by_registry.clear();
-            game.level.enabled_features = Default::default();
-            std::fs::write(
-                pack.join("pack.mcmeta"),
-                r#"{"pack":{"description":"Feature fixture"},"features":{"enabled":["test:feature"]}}"#,
-            )
-            .unwrap();
-            let stack = game
-                .reload_datapacks(false, &["test:feature".into()])
-                .unwrap();
-            assert!(
-                game.session.registries.by_registry["minecraft:worldgen/biome"]
-                    .tags
-                    .contains(&"test:feature_marker".to_owned())
-            );
-            (game.world_tables, game.health_resources, _) = game
-                .stage_world_tables(&stack, false, &game.options.resources.clone())
-                .unwrap();
-            assert!(game.items().item_tags["test:sample"].contains("minecraft:diamond"));
-        });
-        std::fs::remove_dir_all(root).unwrap();
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -3194,250 +2446,5 @@ mod required_tag_tests {
         );
     }
 
-    #[test]
-    #[ignore = "daily"]
-    fn named_predicates_resolve_loaded_references_for_actual_sources() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.build_registries();
-            game.set_allow_commands(true);
-            let dir = std::env::temp_dir().join(format!(
-                "horizon-predicate-reference-{}",
-                std::process::id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            let pack = dir.join("datapacks/references");
-            let folder = pack.join("data/h121/predicate");
-            std::fs::create_dir_all(&folder).unwrap();
-            std::fs::write(pack.join("pack.mcmeta"), r#"{"pack":{"description":"Predicate references","pack_format":121,"min_format":[121,0],"max_format":[121,0]}}"#).unwrap();
-            let write = |name: &str, value: serde_json::Value| {
-                std::fs::write(folder.join(format!("{name}.json")), value.to_string()).unwrap();
-            };
-            write(
-                "pig",
-                serde_json::json!({"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:pig"}}),
-            );
-            write(
-                "cow",
-                serde_json::json!({"type":"minecraft:entity_properties","entity":"this","predicate":{"minecraft:entity_type":"minecraft:cow"}}),
-            );
-            write(
-                "reference",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:pig"]}),
-            );
-            write(
-                "inverted",
-                serde_json::json!({"type":"minecraft:inverted","term":"h121:pig"}),
-            );
-            write(
-                "conjunction",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:pig",{"type":"minecraft:inverted","term":"h121:cow"}]}),
-            );
-            write(
-                "both",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:pig","h121:cow"]}),
-            );
-            write(
-                "either",
-                serde_json::json!({"type":"minecraft:any_of","terms":["h121:pig","h121:cow"]}),
-            );
-            write(
-                "repeated",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:pig","h121:pig"]}),
-            );
-            for index in 0..33 {
-                let next = if index == 32 {
-                    "h121:pig".to_owned()
-                } else {
-                    format!("h121:chain_{}", index + 1)
-                };
-                write(
-                    &format!("chain_{index}"),
-                    serde_json::json!({"type":"minecraft:all_of","terms":[next]}),
-                );
-            }
-            game.world_root = dir.clone();
-            game.reload_datapacks(false, &[]).unwrap();
-            assert!(game.fns.store.predicates.contains_key("h121:reference"));
-            assert!(
-                game.session
-                    .registries
-                    .predicates
-                    .contains(&"h121:reference".into())
-            );
-            let run = |game: &mut Game<'_>, line: &str| {
-                game.exec = ExecState::default();
-                let source = game.player_source();
-                game.execute_line(line, source).unwrap();
-            };
-            run(game, "scoreboard objectives add h121 dummy");
-            let mut actors = Vec::new();
-            for (index, kind) in ["pig", "cow"].into_iter().enumerate() {
-                let uuid = [121, 20, 30, index as i32 + 1];
-                let tag = Tag::compound([
-                    (
-                        "id",
-                        Tag::String(format!("minecraft:{kind}").as_str().into()),
-                    ),
-                    ("UUID", Tag::IntArray(uuid.to_vec())),
-                    (
-                        "Pos",
-                        Tag::List(vec![
-                            Tag::Double((4.5 + index as f64 * 4.0).to_bits()),
-                            Tag::Double(200.0_f64.to_bits()),
-                            Tag::Double(4.5_f64.to_bits()),
-                        ]),
-                    ),
-                    ("Health", Tag::Float(10.0_f32.to_bits())),
-                    ("NoAI", Tag::Byte(1)),
-                    ("NoGravity", Tag::Byte(1)),
-                ]);
-                let id = game.load_mob(tag, None).unwrap();
-                assert_eq!(game.persist.uuids.get(&id), Some(&uuid));
-                assert_eq!(
-                    game.entity_view_of(Target::Mob(id)).kind,
-                    format!("minecraft:{kind}")
-                );
-                actors.push((id, save::uuid_text(uuid), kind));
-            }
-            let clock = game.world.game_time;
-            for (_, uuid, kind) in &actors {
-                let pig = *kind == "pig";
-                for (name, expected) in [
-                    ("pig", pig),
-                    ("cow", !pig),
-                    ("reference", pig),
-                    ("inverted", !pig),
-                    ("conjunction", pig),
-                    ("both", false),
-                    ("either", true),
-                    ("repeated", pig),
-                    ("chain_0", pig),
-                ] {
-                    for sign in ["if", "unless"] {
-                        run(game, "scoreboard players set branch h121 -99");
-                        run(
-                            game,
-                            &format!(
-                                "execute as {uuid} {sign} predicate h121:{name} run scoreboard players set branch h121 1"
-                            ),
-                        );
-                        // The intended old failure is the real loaded reference on the pig.
-                        assert_eq!(
-                            game.score.board.score("branch", "h121").unwrap().value,
-                            if expected == (sign == "if") { 1 } else { -99 },
-                            "{kind} {sign} {name}"
-                        );
-                    }
-                }
-            }
-            let previous = game.command_source;
-            let server = game.server_source();
-            assert!(server.entity.is_none());
-            game.command_source = Some(server);
-            assert!(!game.check_predicate("h121:pig").unwrap());
-            assert!(!game.check_predicate("h121:reference").unwrap());
-            assert!(game.check_predicate("h121:inverted").unwrap());
-            assert!(game.check_predicate("h121:absent").is_err());
-            game.command_source = previous;
-            // Defensive evaluator controls only. Java rejects these graphs at
-            // world load, so this does not establish startup/availability parity.
-            write(
-                "missing",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:absent"]}),
-            );
-            write(
-                "nested_missing",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:missing"]}),
-            );
-            write(
-                "not_missing",
-                serde_json::json!({"type":"minecraft:inverted","term":"h121:absent"}),
-            );
-            write(
-                "cycle_a",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:cycle_b"]}),
-            );
-            write(
-                "cycle_b",
-                serde_json::json!({"type":"minecraft:all_of","terms":["h121:cycle_a"]}),
-            );
-            write(
-                "not_cycle",
-                serde_json::json!({"type":"minecraft:inverted","term":"h121:cycle_a"}),
-            );
-            for invalid in ["h121:absent", "h121:cycle_a"] {
-                for (label, kind, first) in [
-                    ("any_skip", "minecraft:any_of", "h121:pig"),
-                    ("any_reach", "minecraft:any_of", "h121:cow"),
-                    ("all_skip", "minecraft:all_of", "h121:cow"),
-                    ("all_reach", "minecraft:all_of", "h121:pig"),
-                ] {
-                    write(
-                        &format!("{label}_{}", invalid.split(':').next_back().unwrap()),
-                        serde_json::json!({"type":kind,"terms":[first,invalid]}),
-                    );
-                }
-            }
-            let canonical = pack.join("data/minecraft/predicate/h121_canonical.json");
-            std::fs::create_dir_all(canonical.parent().unwrap()).unwrap();
-            std::fs::write(
-                canonical,
-                r#"{"type":"minecraft:all_of","terms":["h121_canonical"]}"#,
-            )
-            .unwrap();
-            // Invalid holders now refuse the candidate at reload, keeping the working library.
-            assert!(game.reload_datapacks(false, &[]).is_err());
-            let mut source = game.player_source();
-            source.entity = Some(Target::Mob(actors[0].0));
-            source.pos = game.target_position(Target::Mob(actors[0].0)).unwrap();
-            game.command_source = Some(source);
-            for name in [
-                "missing",
-                "nested_missing",
-                "not_missing",
-                "cycle_a",
-                "not_cycle",
-                "any_skip_absent",
-                "any_reach_absent",
-                "all_skip_absent",
-                "all_reach_absent",
-                "any_skip_cycle_a",
-                "any_reach_cycle_a",
-                "all_skip_cycle_a",
-                "all_reach_cycle_a",
-            ] {
-                assert!(
-                    !game
-                        .fns
-                        .store
-                        .predicates
-                        .contains_key(&format!("h121:{name}"))
-                );
-                assert!(
-                    game.check_predicate(&format!("h121:{name}")).is_err(),
-                    "{name}"
-                );
-            }
-            assert!(game.check_predicate("minecraft:h121_canonical").is_err());
-            assert!(game.check_predicate("h121:reference").unwrap());
-            game.command_source = previous;
-            assert_eq!(game.world.game_time, clock);
-            std::fs::remove_dir_all(dir).unwrap();
-        });
-    }
 }
 
-#[cfg(test)]
-include!("functions/typed_state_range_tests.rs");
-
-#[cfg(test)]
-#[path = "functions/pack_tag_tests.rs"]
-mod pack_tag_tests;
-
-#[cfg(test)]
-#[path = "functions/schedule_reload_tests.rs"]
-mod schedule_reload_tests;
-
-#[cfg(test)]
-#[path = "functions/loading_tests.rs"]
-mod loading_tests;

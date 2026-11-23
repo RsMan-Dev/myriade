@@ -46,20 +46,15 @@ impl Game<'_> {
                     .is_some_and(|p| p.fluids.was_touching_water || p.is_in_lava())
             })
             .unwrap_or(true);
-        let mut changed = None;
         if let Some(host) = self.lan.as_mut() {
             let _ = host.hub.update_guest(conn, |g| {
                 let gliding = start && !in_liquid;
                 if g.fall_flying != gliding {
                     g.fall_flying = gliding;
-                    changed = Some((g.uuid, g.name.clone(), gliding));
                 } else if !gliding {
                     g.sent_shared ^= -128;
                 }
             });
-        }
-        if let Some((uuid, name, gliding)) = changed {
-            self.native_entity_toggle_glide(uuid, &name, gliding);
         }
     }
 

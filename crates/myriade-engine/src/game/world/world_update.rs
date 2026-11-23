@@ -23,7 +23,6 @@ impl Game<'_> {
                 match step {
                     myriade_engine::streaming::PlanStep::Ready(plan) => break plan,
                     myriade_engine::streaming::PlanStep::Save { chunk, resume } => {
-                        self.native_late_full_chunk_snapshot(&chunk);
                         self.streaming.save_finished(chunk);
                         step = self.streaming.resume_plan_update(&mut self.world, resume);
                     }
@@ -31,7 +30,6 @@ impl Game<'_> {
             }
         });
         let (commit, protos) = self.streaming.prepare_commit(&mut self.world, plan);
-        self.native_proto_snapshots(&protos);
         self.streaming.submit_protos(protos);
         let unloaded = myriade_engine::spans::time("streaming", || {
             self.streaming.complete_commit(&mut self.world, commit)
@@ -43,7 +41,6 @@ impl Game<'_> {
             .cloned()
             .collect();
         let modified = myriade_engine::spans::time("with_entities", || self.with_entities(&dirty));
-        self.native_full_chunk_snapshots(&modified);
         if !modified.is_empty()
             && let Err(e) = myriade_engine::spans::time("save_chunks", || {
                 self.save
@@ -54,14 +51,6 @@ impl Game<'_> {
         }
         myriade_engine::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
         self.ask_loaded_light_emission();
-        // Vanilla saves the chunk before its unload hook and drops its block entities afterwards.
-        myriade_engine::spans::time("mods_chunks_changed", || {
-            self.native_chunks_loaded();
-            self.native_chunks_unloaded(&unloaded);
-        });
-        for chunk in &unloaded {
-            self.world.modified.unloaded(&(chunk.x, chunk.z));
-        }
         for chunk in &unloaded {
             self.world.modified.unloaded(&(chunk.x, chunk.z));
         }

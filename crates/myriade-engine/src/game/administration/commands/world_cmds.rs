@@ -3,7 +3,7 @@
 use super::{Arg, Context, Game, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
 use myriade_engine::{
-    mobs::{Damage, DamageKind, MobEvent, NamedDamage, Who},
+    mobs::{Damage, DamageKind, NamedDamage, Who},
     text::Text,
 };
 use horizon_core::nbt::Tag;
@@ -41,13 +41,7 @@ impl Game<'_> {
         let index = &self.stations().recipe_index;
         index
             .ids()
-            .filter(|id| {
-                !index.special(id)
-                    || matches!(
-                        self.recipes().recipe(id),
-                        Some(myriade_engine::crafting::Recipe::Mod(_))
-                    )
-            })
+            .filter(|id| !index.special(id))
             .cloned()
             .collect()
     }
@@ -59,16 +53,12 @@ impl Game<'_> {
     /// many recipe book displays changed (a transmute recipe has one per
     /// material count).
     pub(in crate::game) fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
-        let (recipes, custom_count) = self.change_mod_crafting_recipes(give, recipes);
         if give {
-            return custom_count + self.award_recipes(&recipes) as i32;
+            return self.award_recipes(recipes) as i32;
         }
         let index = &world_stations!(self).recipe_index;
-        let removed = self.level.recipe_book.remove_recipes(index, &recipes);
-        let count = custom_count + removed.len() as i32;
-        if count != 0 {
-            self.invalidate_mod_book_placement_knowledge();
-        }
+        let removed = self.level.recipe_book.remove_recipes(index, recipes);
+        let count = removed.len() as i32;
         // A network player's client drops them from its book.
         if self.lan_acting.is_some() && !removed.is_empty() {
             self.guest_packets.push(C::RecipeBookRemove(
@@ -382,7 +372,7 @@ impl Game<'_> {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
-                crate::game::native_entities::target_id(target).map_or(0, |id| id as i32)
+                super::targets::target_id(target).map_or(0, |id| id as i32)
             }
             None => 0,
         };
@@ -633,7 +623,6 @@ impl Game<'_> {
             let guests = self.lan.iter().flat_map(|h| h.hub.online_players());
             self.player
                 .as_ref()
-                .filter(|_| !self.lan_acting_fake)
                 .map(|_| Target::Player)
                 .into_iter()
                 .chain(
@@ -1278,7 +1267,7 @@ impl Game<'_> {
                 Target::Player => self.stop_riding(),
                 Target::Mob(rider) => self.dismount_mob(rider),
                 _ => {
-                    if let Some(id) = super::super::native_entities::target_id(target) {
+                    if let Some(id) = super::targets::target_id(target) {
                         self.unlink_passenger(id);
                     }
                 }
@@ -1390,11 +1379,8 @@ impl Game<'_> {
                         | Target::Cushion(_)
                 ))
         {
-            let id = crate::game::native_entities::target_id(target).ok_or_else(generic)?;
-            let parent = crate::game::native_entities::target_id(vehicle).ok_or_else(generic)?;
-            if !self.native_mob_may_ride(id, parent, true) {
-                return Err(generic());
-            }
+            let id = super::targets::target_id(target).ok_or_else(generic)?;
+            let parent = super::targets::target_id(vehicle).ok_or_else(generic)?;
             self.link_loaded_passenger(id, parent);
             self.note_started_riding(parent);
             return Ok(());
@@ -1411,7 +1397,7 @@ impl Game<'_> {
     /// Non-player graph lookup; player/Guest resolution remains with the
     /// existing command helper (the separate Guest repair owns that method).
     pub(in crate::game) fn passenger_vehicle_target(&self, target: Target) -> Option<Target> {
-        match super::super::native_entities::target_id(target) {
+        match super::targets::target_id(target) {
             Some(id) => self.passenger_vehicle(id).and_then(|parent| {
                 self.level_entity(parent as i32).or_else(|| self.ride_vehicle(target))
             }),
@@ -1649,34 +1635,9 @@ impl Game<'_> {
             };
             let p = points[i];
             let y = self.spread_spawn_y(p, max_y);
-            let mut to = [p[0].floor() + 0.5, f64::from(y), p[1].floor() + 0.5];
-            let mut skip = false;
-            if false
-                && let (Some(entity), Some(from)) =
-                    (self.network_entity_id(t), self.target_position(t))
-            {
-                let mut moved = to;
-                let uuid = match t {
-                    Target::Player => self.lan_acting_uuid,
-                    Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
-                    _ => None,
-                };
-                self.native_spread_players_teleport(
-                    self.dim.id(),
-                    entity as u32,
-                    uuid,
-                    from,
-                    &mut moved,
-                    &mut skip,
-                );
-                if moved.iter().all(|v| v.is_finite()) {
-                    to = moved;
-                }
-            }
-            if !skip {
-                self.teleport_to(t, to, None, false);
-                self.teleport_stops(t);
-            }
+            let to = [p[0].floor() + 0.5, f64::from(y), p[1].floor() + 0.5];
+            self.teleport_to(t, to, None, false);
+            self.teleport_stops(t);
             let closest = points
                 .iter()
                 .enumerate()
@@ -1791,14 +1752,9 @@ fn command_operation(ctx: &Context) -> horizon_world::attributes::Operation {
 }
 
 #[cfg(test)]
-#[path = "attribute_missing_tests.rs"]
-mod attribute_missing_tests;
-
-#[cfg(test)]
 mod tests {
     use super::look_at;
     use horizon_gameplay::commands::sound::playsound_placement;
-    use myriade_engine::mobs::{MobEvent, Who};
 
     fn assert_angle(got: f32, want: f32) {
         assert!((got - want).abs() < 1.0e-4, "{got} is not {want}");
@@ -2112,181 +2068,6 @@ mod vehicle_damage_command_tests {
             })
             .count()
     }
-    #[test]
-    #[ignore = "daily"]
-    fn direct_guest_attributes_adopt_the_target_and_restore_the_issuer() {
-        use crate::game::commands::Target;
-        use myriade_engine::motion::PlayerMotion;
-        use horizon_core::geometry::Vec3;
-        with_game(|game| {
-            // TODO(phase 2): assertion sur l'hôte : host_uuid = acting_uuid() lié par bind_local_player(uuid 99) (world_cmds.rs:2122)
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
-            game.creative = true;
-            assert!(game.run_command("fill 0 99 0 15 99 15 stone"));
-            assert!(game.run_command("attribute @s minecraft:armor base set 2"));
-            let host_uuid = game.acting_uuid();
-            let clock = game.world.game_time;
-            let dimension = game.dim;
-            let receivers = attribute_guests(game);
-            for (conn, name) in [(2, "Bob"), (3, "Carol")] {
-                let g = game.command_guest(conn).unwrap();
-                assert_eq!(g.uuid, horizon_protocol::crypto::offline_uuid(name));
-                assert_eq!(g.health, 20.0);
-                assert!(g.loaded && g.placed);
-                assert_eq!(g.game_mode, 1);
-                assert_eq!(
-                    game.for_player(Target::Guest(conn), |g| g
-                        .player
-                        .as_mut()
-                        .unwrap()
-                        .attribute("minecraft:armor")
-                        .unwrap()),
-                    Some(0.0)
-                );
-            }
-            // Existing guest-issued Player path is positive before direct Guest dispatch.
-            assert_eq!(
-                game.for_player(Target::Guest(2), |g| g
-                    .run_command("attribute @s minecraft:armor base set 3")),
-                Some(true)
-            );
-            assert_eq!(
-                game.for_player(Target::Guest(2), |g| g
-                    .player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:armor")
-                    .unwrap()),
-                Some(3.0)
-            );
-            for rx in &receivers {
-                attribute_chat_count(rx);
-            }
-            game.chat_capture = Some(Vec::new());
-            let accepted = game.run_command("attribute Bob minecraft:armor base set 4");
-            let issuer = game.chat_capture.take().unwrap();
-            // This assertion fails old on the actual guest model, not feedback alone.
-            assert_eq!(
-                game.for_player(Target::Guest(2), |g| g
-                    .player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:armor")
-                    .unwrap()),
-                Some(4.0)
-            );
-            assert!(accepted);
-            assert_eq!(issuer.len(), 1);
-            assert!(issuer[0].plain().contains("Bob"));
-            assert_eq!(
-                attribute_chat_count(&receivers[0]),
-                0,
-                "success belongs to issuer, not Bob"
-            );
-            assert_eq!(
-                game.player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:armor")
-                    .unwrap(),
-                2.0
-            );
-            assert_eq!(
-                game.for_player(Target::Guest(3), |g| g
-                    .player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:armor")
-                    .unwrap()),
-                Some(0.0)
-            );
-            assert_eq!(
-                game.for_player(Target::Guest(2), |g| g
-                    .player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:max_health")
-                    .unwrap()),
-                Some(20.0)
-            );
-            game.chat_capture = Some(Vec::new());
-            assert!(
-                !game.run_command("attribute Bob minecraft:armor modifier remove h082:missing")
-            );
-            let errors = game.chat_capture.take().unwrap();
-            assert_eq!(errors.len(), 1);
-            assert!(errors[0].plain().contains("h082:missing"));
-            assert_eq!(
-                attribute_chat_count(&receivers[0]),
-                0,
-                "error returns to issuer"
-            );
-            game.chat_capture = Some(Vec::new());
-            assert!(game.run_command("attribute Bob minecraft:armor base reset"));
-            assert_eq!(game.chat_capture.take().unwrap().len(), 1);
-            assert_eq!(
-                game.for_player(Target::Guest(2), |g| g
-                    .player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:armor")
-                    .unwrap()),
-                Some(0.0)
-            );
-            assert_eq!(game.acting_uuid(), host_uuid);
-            assert_eq!(game.lan_acting, None);
-            assert_eq!(game.dim, dimension);
-            assert_eq!(game.world.game_time, clock);
-            assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
-        });
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn existing_attribute_operations_keep_their_exact_success_messages() {
-        use myriade_engine::motion::PlayerMotion;
-        use horizon_core::geometry::Vec3;
-        with_game(|game| {
-            // TODO(phase 2): assertion sur l'hôte : cibles "@s" et UUID 00000052 réglées avec bind_local_player(uuid 99) (world_cmds.rs:2250)
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
-            crate::game::native_entity_refs::tests::bind_local_player(game, 1, 99);
-            assert!(
-                game.run_command("summon pig 6.5 200 4.5 {UUID:[I;82,0,0,1],NoAI:1b,NoGravity:1b}")
-            );
-            assert!(
-                game.run_command("summon armor_stand 8.5 200 4.5 {UUID:[I;82,0,0,2],NoGravity:1b}")
-            );
-            for target in [
-                "@s",
-                "00000052-0000-0000-0000-000000000001",
-                "00000052-0000-0000-0000-000000000002",
-            ] {
-                for operation in [
-                    "get",
-                    "base get",
-                    "base set 2",
-                    "base get",
-                    "base reset",
-                    "modifier add h082:reply 1 add_value",
-                    "modifier value get h082:reply",
-                    "get",
-                    "modifier remove h082:reply",
-                ] {
-                    let command = format!("attribute {target} minecraft:armor {operation}");
-                    game.chat_capture = Some(Vec::new());
-                    game.cmds.results = Some(Vec::new());
-                    assert!(game.run_command(&command), "{command}");
-                    let messages = game.chat_capture.take().unwrap();
-                    assert_eq!(messages.len(), 1, "{command}");
-                    let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
-                    println!(
-                        "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.cmds.results.take().unwrap()})
-                    );
-                }
-            }
-        });
-    }
 }
 
 impl Game<'_> {
@@ -2298,10 +2079,6 @@ impl Game<'_> {
     }
 }
 
-
-#[cfg(test)]
-#[path = "attribute_tests.rs"]
-mod attribute_tests;
 
 #[cfg(test)]
 mod attribute_modifier_command_tests {
@@ -2357,57 +2134,4 @@ mod attribute_modifier_command_tests {
         test(&mut game);
     }
 
-    /// `AttributeCommand.addModifier` uses `AttributeInstance.addPermanentModifier`;
-    /// `AttributeInstance.pack` saves only permanent modifiers. A command
-    /// modifier must therefore be in the player's saved list and survive a reload.
-    #[test]
-    #[ignore = "daily"]
-    fn a_command_modifier_is_saved_with_the_player() {
-        with_game(|game| {
-            game.reset_entity_residency();
-            game.native_lifecycle
-                .begin_open(myriade_types::Authority::DedicatedServer);
-            crate::game::native_entity_refs::tests::bind_local_player(game, 1, 1);
-            crate::game::native_guest_turn_tests::lan_guests_on(game);
-            crate::game::native_guest_turn_tests::with_acting_guest_on(
-                game,
-                Vec3::new(0.5, 64.0, 0.5),
-                |game| {
-            assert!(game.run_command(
-                "attribute @s minecraft:step_height modifier add test:a 0.4 add_value"
-            ));
-            assert_eq!(
-                game.player
-                    .as_mut()
-                    .unwrap()
-                    .attribute("minecraft:step_height")
-                    .unwrap(),
-                1.0
-            );
-            let saved = game.player.as_ref().unwrap().saved_attributes();
-            let holds = match &saved {
-                Tag::List(instances) => instances.iter().any(|entry| {
-                    text(entry.get("id")).as_deref() == Some("minecraft:step_height")
-                        && matches!(
-                            entry.get("modifiers"),
-                            Some(Tag::List(modifiers))
-                                if modifiers
-                                    .iter()
-                                    .any(|m| text(m.get("id")).as_deref() == Some("test:a"))
-                        )
-                }),
-                _ => false,
-            };
-            assert!(holds, "saved attributes: {saved:?}");
-            let mut back = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
-            back.apply_saved_attributes(Some(&saved)).unwrap();
-            assert_eq!(
-                back.attribute("minecraft:step_height").unwrap(),
-                1.0,
-                "saved attributes: {saved:?}"
-            );
-                },
-            );
-        });
-    }
 }

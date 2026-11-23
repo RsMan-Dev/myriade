@@ -94,22 +94,15 @@ impl Game<'_> {
             None => answers.remove(&cell),
         };
     }
-    /// One cell's answer, clamped to a light level as `LightTables` clamps a state's.
+    /// One cell's answer: without mods no state has a dynamic emission, so none is given.
     fn ask_light_emission(
         &self,
-        dimension: LevelDimension,
-        x: i32,
-        y: i32,
-        z: i32,
-        state: u32,
+        _dimension: LevelDimension,
+        _x: i32,
+        _y: i32,
+        _z: i32,
+        _state: u32,
     ) -> Option<u8> {
-        let mut emission = None;
-        self.native_light_emission(
-            dimension,
-            BlockPos::new(x, y, z),
-            BlockStateId(state),
-            &mut emission,
-        );
-        emission.map(|level| level.min(15))
+        None
     }
 }

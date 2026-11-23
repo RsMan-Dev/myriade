@@ -91,10 +91,6 @@ impl Game<'_> {
             return;
         };
         let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
-        // Each move the player sent put it somewhere (`handleMovePlayer`'s `setPos`).
-        let (id, end) = (g.entity_id as u32, g.position);
-        self.entity_section_walked(id, end, moves.iter().map(|m| m.0));
-        let g = self.lan.as_ref().unwrap().hub.guest(conn).unwrap();
         if g.spectator() {
             // ServerPlayer.doTick runs the player's whole tick for a spectator
             // too, unless its box touches an unloaded chunk
@@ -277,13 +273,6 @@ impl Game<'_> {
             for event in &events {
                 match event {
                     MotionEvent::InsideWitherRose => game.wither_rose_contact(),
-                    MotionEvent::InsideEffect {
-                        id,
-                        duration,
-                        amplifier,
-                    } if game.session.difficulty != 0 => {
-                        game.give_player_effect(id, *duration, i32::from(*amplifier));
-                    }
                     _ => {}
                 }
             }
@@ -416,22 +405,8 @@ impl Game<'_> {
                         self.send_level_sound(LevelSound::new(name, at, volume, pitch), Some(conn));
                     }
                 }
-                // Player.causeFallDamage, mayfly: the mods hear the landing.
-                MotionEvent::Fall(myriade_engine::landing::FallEvent::FlyableFall {
-                    distance,
-                    multiplier,
-                }) => {
-                    if let Some((uuid, id, name)) = self
-                        .lan
-                        .as_ref()
-                        .and_then(|host| host.hub.guest(conn))
-                        .map(|g| (g.uuid, g.entity_id, g.name.clone()))
-                    {
-                        self.as_guest(conn, |game| {
-                            game.native_player_flyable_fall(uuid, id, &name, distance, multiplier);
-                        });
-                    }
-                }
+                // Player.causeFallDamage, mayfly: nothing is sent.
+                MotionEvent::Fall(myriade_engine::landing::FallEvent::FlyableFall { .. }) => {}
                 // HoneyBlock.fallOn: entity event 54, including the player who
                 // landed (`broadcastEntityEvent` has no excluded player).
                 MotionEvent::Fall(myriade_engine::landing::FallEvent::Broadcast(event))
@@ -452,8 +427,10 @@ impl Game<'_> {
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
                         .map(|g| (g.entity_id as u32, "minecraft:player"));
-                    let sound = self.block_sound_type(
-                        [position.x, position.y, position.z],
+                    let sound = myriade_engine::block_sounds::sound_type(
+                        &self.loop_context,
+                        self.res.facts(),
+                        horizon_core::position::BlockPos::new(position.x, position.y, position.z),
                         state,
                         entity,
                         myriade_types::BlockSoundCause::Fall,
@@ -542,15 +519,6 @@ impl Game<'_> {
             }
         }
         if let Some(v) = marked {
-            if false
-                && let Some((uuid, name)) = self
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guest(conn))
-                    .map(|g| (g.uuid, g.name.clone()))
-            {
-                self.native_player_velocity(uuid, &name, [v.x, v.y, v.z]);
-            }
             if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
                 g.send(&C::SetEntityMotion(play::SetEntityMotion {
                     id: g.entity_id,

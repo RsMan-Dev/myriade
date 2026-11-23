@@ -172,7 +172,7 @@ impl Game<'_> {
         let p = self.player.as_ref()?;
         let from = [p.position.x, p.position.y, p.position.z];
         let (amount, scale, crit, magic) =
-            self.melee_damage("minecraft:player", true, Some(victim));
+            self.melee_damage("minecraft:player", true);
         let sweep = self.sweep_attack_position(scale, crit, "minecraft:player");
         let (strength, knockback_attack) = self.extra_knockback("minecraft:player", scale);
         let (xd, zd) = self.extra_knockback_direction();
@@ -503,7 +503,7 @@ impl Game<'_> {
         let damage = if custom_damage.is_some() {
             0.0
         } else {
-            self.enchanted_damage("minecraft:player", base, None) * scale
+            self.enchanted_damage("minecraft:player", base) * scale
         };
         Sweep {
             attacker: self.lan_acting,
@@ -569,10 +569,8 @@ impl Game<'_> {
         let attack = self.attack_of(attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32));
         let land = |g: &mut Self| {
             let damage = if let Some(damage) = &sweep.custom_damage {
-                let victim = g.player.as_ref().map(|player| player.entity_id as u32);
                 g.weapon_enchanted_damage(
                     &damage.weapon,
-                    victim.map(|victim| (damage.attacker, victim)),
                     "minecraft:player",
                     &damage.damage_type,
                     damage.base,

@@ -25,8 +25,12 @@ use horizon_core::position::BlockPos;
 use horizon_world::carrier::codec;
 use horizon_world::carrier::contact::RigidTransform;
 use horizon_world::carrier::model::{Carrier, Cell, Invalid, LocalPos, MAX_CELLS};
+use horizon_world::level::BlockEntityNeighbors;
 use horizon_world::level::LevelAccess;
 use horizon_world::level::data::state_flags::REPLACEABLE;
+
+/// Without mods, a block entity beside a cell is observed by nobody and no cell receives weak changes through a conductor.
+impl BlockEntityNeighbors for crate::game::GameLevel<'_> {}
 
 /// Why a transfer refused. Refusals leave no partial transfer.
 #[cfg_attr(not(test), allow(dead_code))]

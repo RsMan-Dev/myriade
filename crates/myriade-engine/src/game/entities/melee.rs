@@ -207,7 +207,30 @@ impl Game<'_> {
     }
 }
 
-impl Game<'_> {}
+impl Game<'_> {
+    /// The [`Attack`] of `attacker` (an entity id, 0 for none) for the level a hit lands in: the
+    /// causing player's verified UUID when it is a player or a guest, nothing held.
+    pub(in crate::game) fn attack_of(&self, attacker: i32) -> myriade_engine::health::Attack {
+        let player_uuid = if self.player.as_ref().is_some_and(|p| p.entity_id == attacker) {
+            self.owner_damage_uuid()
+        } else {
+            self.lan
+                .as_ref()
+                .and_then(|host| host.hub.guests.iter().find(|g| g.entity_id == attacker))
+                .map(|g| myriade_engine::lan::playerdata::uuid_ints(g.uuid))
+        };
+        myriade_engine::health::Attack {
+            attacker,
+            held: [None, None],
+            projectile: None,
+            projectile_is_arrow: false,
+            direct: None,
+            position: None,
+            projectile_weapon: None,
+            player_uuid,
+        }
+    }
+}
 
 impl Game<'_> {
     /// `Player.attack` on the mob `id`: the ECS hit (`attack_entity`).
@@ -247,16 +270,11 @@ impl Game<'_> {
         // Item.getAttackDamageBonus (a mace's smash), before the critical hit.
         amount += self.smash_damage_bonus(target_kind);
         let vanilla_crit = living && self.critical_attack(scale);
-        let mut crit = vanilla_crit;
-        let mut multiplier = if vanilla_crit { 1.5 } else { 1.0 };
-        if living && damaging {
-            self.native_critical_hit(target_kind, vanilla_crit, &mut crit, &mut multiplier);
-        }
-        if crit {
-            amount *= multiplier;
+        if vanilla_crit {
+            amount *= 1.5;
         }
         // Enchantment damage (sharpness, smite, bane) scaled by the attack strength.
         amount += enchant_bonus * scale;
-        ((amount, scale, crit, enchant_bonus * scale > 0.0), damaging)
+        ((amount, scale, vanilla_crit, enchant_bonus * scale > 0.0), damaging)
     }
 }

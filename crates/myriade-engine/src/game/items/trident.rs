@@ -137,9 +137,6 @@ impl Game<'_> {
                 };
                 let up = Vec3::new(0.0, f64::from(1.1999999f32), 0.0);
                 let mut gate = myriade_engine::move_gate::armed(
-                    &self.loop_context,
-                    self.player.as_ref().map_or(0, |p| p.entity_id as u32),
-                    "minecraft:player",
                     horizon_world::entity_move::MoverType::SelfMovement,
                     up,
                 );
@@ -161,11 +158,6 @@ impl Game<'_> {
                         self.play_bound_sound(sound, player, None);
                     }
                     _ => self.audio.play(&sound, at, 1.0, 1.0),
-                }
-                if let (Some(player), Some(name)) =
-                    (self.lan_acting_uuid, self.lan_acting_name.clone())
-                {
-                    self.native_player_riptide(player, &name);
                 }
             }
             return;

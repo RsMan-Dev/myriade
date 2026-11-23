@@ -1,14 +1,10 @@
-//! `LivingEntity.startUsingItem` and the use over time of items vanilla's
-//! `Item` subclasses don't know: what `Item.getUseDuration` answers, a
-//! native mod's own item counted down to its `finishUsingItem`, and the hand
-//! pose of a `getUseAnimation` (`native_use_duration`, `native_use_animation`,
-//! `native_living_entity_use_item_start`, `native_living_entity_use_item_finish`),
-//! and each tick and the release of a use (`native_living_entity_use_item_tick`,
-//! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
+//! `LivingEntity.startUsingItem` and the use over time: what
+//! `Item.getUseDuration` answers, the countdown to `finishUsingItem`, and the
+//! tick and the release of a use.
 use super::{Game, shield::OFFHAND_SLOT};
-use myriade_engine::{items::{ItemInfo, ItemStack}, mobs::spear_use};
+use myriade_engine::items::{ItemInfo, ItemStack};
 use myriade_types::Hand;
-use horizon_core::use_animation::UseAnimation;
+use horizon_core::nbt::Tag;
 
 /// Resolve USE_EFFECTS through the stack's component patch.
 pub(super) fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> bool {
@@ -30,18 +26,14 @@ pub(super) fn interact_vibrations(stack: &ItemStack, default: Option<bool>) -> b
 impl Game<'_> {
     /// `LivingEntity.startUsingItem` for the acting player's hand: nothing
     /// when a use runs already or the hand is empty. The use lasts
-    /// `getUseDuration` ticks, which mods may change or refuse
-    /// (`LivingEntityUseItemEvent.Start`), on both sides as in vanilla. True
-    /// when the use started.
+    /// `getUseDuration` ticks, on both sides as in vanilla. True when the use
+    /// started.
     pub(super) fn start_using_item(&mut self) -> bool {
         let Some(stack) = self.held().cloned().filter(|_| self.using.is_none()) else {
             return false;
         };
-        let own = self.use_duration(&stack);
-        let (mut duration, mut canceled) = (own, false);
-        let hand = self.hand;
-        self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
-        let Some(ticks_set) = start_of(own, duration, canceled) else {
+        let duration = self.use_duration(&stack);
+        let Some(ticks_set) = start_of(duration, duration, false) else {
             return false;
         };
         self.using = Some((self.held_slot(), 0));
@@ -88,53 +80,15 @@ impl Game<'_> {
                 }
             }
         };
-        self.native_use_duration(stack, &mut duration);
         duration
-    }
-    /// Whether `stack` is a mod's item that only a mod uses over time: no
-    /// `consumable`, `blocks_attacks` or kinetic weapon of vanilla's own, and
-    /// a `native_use_duration` above 0. Its use is its own `Item.use`.
-    pub(super) fn mod_use(&self, stack: &ItemStack) -> bool {
-        let info = self.items().get(&stack.item);
-        !stack.item.starts_with("minecraft:")
-            && info.is_some()
-            && self.consumable(stack).is_none()
-            && !self.stack_carries_blocks_attacks(stack, info)
-            && !stack.carries_component(info, "minecraft:kinetic_weapon")
-            && self.use_duration(stack) > 0
-    }
-    /// A right click with a `mod_use` item: `startUsingItem` (CONSUME).
-    pub(super) fn start_mod_use(&mut self, stack: &ItemStack) -> bool {
-        if !self.mod_use(stack) {
-            return false;
-        }
-        self.start_using_item();
-        true
-    }
-    /// `LivingEntity.updateUsingItem` for a `mod_use` item used `ticks` so far:
-    /// `completeUsingItem` once its duration ran out.
-    pub(super) fn tick_mod_use(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
-        if !self.item_on_use_tick(stack, ticks) {
-            return;
-        }
-        if let Some(ticks) = count_down(ticks, self.use_duration) {
-            self.using = Some((slot, ticks));
-            return;
-        }
-        let Some(info) = self.items().get(&stack.item).cloned() else {
-            self.using = None;
-            return;
-        };
-        self.complete_using_item(slot, stack, &info);
     }
     /// `ServerPlayer.completeUsingItem` of `stack` in `slot`: the client is
     /// told, `ItemStack.finishUsingItem` (a consumable is eaten, a potion
     /// drunk, a spyglass lowered, anything else given back) with its use
-    /// cooldown, then `LivingEntityUseItemEvent.Finish`.
+    /// cooldown.
     pub(super) fn complete_using_item(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
-        // a potion is drunk (no last tick of its own: a mod's tick ran it out).
+        // a potion is drunk (no last tick of its own: the tick ran it out).
         if self.finish_drinking(slot, stack) {
-            self.use_item_finished(stack);
             self.use_vibration(stack, "minecraft:item_interact_finish");
             return;
         }
@@ -144,20 +98,8 @@ impl Game<'_> {
         if let Some(consumable) = self.consumable(stack) {
             self.finish_consuming(info, &consumable, stack);
         }
-        self.use_item_finished(stack);
         // `LivingEntity.completeUsingItem` ends with `stopUsingItem`.
         self.use_vibration(stack, "minecraft:item_interact_finish");
-    }
-    /// `LivingEntityUseItemEvent.Finish` after `finishUsingItem` of `stack`
-    /// (no ticks left): the hand holds what a mod made the result.
-    pub(super) fn use_item_finished(&mut self, stack: &ItemStack) {
-        let mut result = self.held().cloned();
-        let before = result.clone();
-        let hand = self.hand;
-        self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
-        if result != before {
-            *self.held_mut() = result.filter(|s| s.count > 0);
-        }
     }
     /// What `Item.finishUsingItem` leaves in the hand on a server's client: a
     /// stack that is not a consumable stays as it is (a spyglass); a
@@ -166,29 +108,11 @@ impl Game<'_> {
     /// (`UseRemainder.convertIntoRemainder`). Neither in creative mode. A
     /// remainder of a stack that is not emptied goes to the inventory on the
     /// server and arrives with its inventory update.
-    /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far, as
-    /// `updatingUsingItem` starts: a mod may change the ticks left, which
-    /// moves the end. False when it ran the use out (`tick_ran_out`): the
-    /// item's tick and countdown are skipped.
-    pub(super) fn use_item_ticked(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let before = ticks_left(self.use_duration, ticks);
-        let (mut remaining, mut canceled) = (before, false);
-        let hand = self.used_hand().unwrap_or(self.hand);
-        self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
-        let (left, set) = tick_left(before, remaining, canceled, self.use_start.ticks_set);
-        self.use_start.ticks_set = set;
-        self.use_duration = duration_leaving(ticks, left);
-        left > 0 || !set
-    }
-    /// A mod's `Item.onUseTick` of `stack` used `ticks`, while ticks are left.
-    /// False when that mod released the use, which then has nothing left to run.
-    pub(super) fn item_on_use_tick(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let using = self.using;
-        let remaining = ticks_left(self.use_duration, ticks);
-        if remaining > 0 {
-            self.native_on_use_tick(stack, None, remaining);
-        }
-        self.using == using
+    /// The use's tick at `ticks` used, as `updatingUsingItem` starts. False
+    /// when the use ran out: the item's tick and countdown are skipped.
+    pub(super) fn use_item_ticked(&mut self, ticks: u32) -> bool {
+        let left = ticks_left(self.use_duration, ticks);
+        left > 0 || !self.use_start.ticks_set
     }
     /// How long `stack`, used `ticks`, counts as held: `getUseDuration` less
     /// the ticks left (`BowItem.releaseUsing`, `CrossbowItem.onUseTick`,
@@ -200,33 +124,13 @@ impl Game<'_> {
             ticks_left(self.use_duration, ticks),
         )
     }
-    /// `LivingEntityUseItemEvent.Stop` as `releaseUsingItem` lets go of
-    /// `stack` used `ticks`: false when a mod skips its `releaseUsing`.
-    pub(super) fn use_item_stopped(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let mut canceled = false;
-        let remaining = ticks_left(self.use_duration, ticks);
-        let hand = self.hand;
-        self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
-        !canceled
-    }
-    /// A mod's `Item.releaseUsing` of `stack` used `ticks`: when it says it
-    /// was used, `ItemStack.releaseUsing` applies the use cooldown.
-    pub(super) fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
-        let mut used = false;
-        let remaining = ticks_left(self.use_duration, ticks);
-        self.native_release_using(stack, None, remaining, &mut used);
-        if used {
-            self.apply_use_cooldown(stack);
-        }
-    }
     /// Whether a use in `slot` lost its item: switching hotbar slots only ends
     /// a main-hand use.
     pub(super) fn use_hand_changed(&self, slot: usize) -> bool {
         slot != self.selected && slot != OFFHAND_SLOT
     }
     /// `LivingEntity.releaseUsingItem` of the acting player, the hand of the
-    /// item in use acting: the use is over before any hook runs, so a mod
-    /// that releases again from one finds nothing. False when none runs.
+    /// item in use acting. False when none runs.
     pub(super) fn release_using_item(&mut self) -> bool {
         let Some(hand) = self.used_hand() else {
             return false;
@@ -271,16 +175,13 @@ impl Game<'_> {
         let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else {
             return false;
         };
-        let own = self.use_duration(&stack);
-        let (mut duration, mut canceled) = (own, false);
-        let entity = Some(id as i32);
-        self.native_living_entity_use_item_start(&stack, entity, hand, &mut duration, &mut canceled);
-        if start_of(own, duration, canceled).is_none() {
+        let duration = self.use_duration(&stack);
+        if start_of(duration, duration, false).is_none() {
             return false;
         }
         let started = self.ecs_mob_free(id) && self.ecs_start_using(id, off_hand);
         if started {
-            // `startUsingItem`: `useItemRemaining` is the duration the mods left; the ECS keeps it as a deadline.
+            // `startUsingItem`: `useItemRemaining` is the duration; the ECS keeps it as a deadline.
             self.ecs_set_using(id, duration);
             self.ecs_mob_use_vibration(id, &stack, "minecraft:item_interact_start");
         }
@@ -305,28 +206,62 @@ impl Game<'_> {
         let Some(stack) = self.ecs_mob_hand_stack(id, off_hand) else {
             return true;
         };
-        let hand = if off_hand { Hand::Off } else { Hand::Main };
-        let entity = Some(id as i32);
-        let mut canceled = false;
-        self.native_living_entity_use_item_stop(&stack, entity, hand, remaining, &mut canceled);
-        if !canceled {
-            self.native_release_using(&stack, entity, remaining, &mut false);
-        }
         self.ecs_mob_use_vibration(id, &stack, "minecraft:item_interact_finish");
         true
     }
-    /// `Player.canEat(canAlwaysEat)` for `stack`, food that is eaten only
-    /// when hungry, then a mod's answer.
-    pub(super) fn can_eat(&self, stack: Option<&ItemStack>, can_always_eat: bool) -> bool {
-        let vanilla = can_always_eat
+    /// `Instrument.useDuration` of a goat horn: its instrument's time, from the
+    /// stack's own patch or the item's default, 0 without an instrument.
+    pub(in crate::game) fn native_item_instrument_duration(&self, stack: &ItemStack) -> i32 {
+        if !stack.carries_component(self.items().get(&stack.item), "minecraft:instrument") {
+            return 0;
+        }
+        if let Some(value) = stack
+            .data()
+            .and_then(|data| data.other("minecraft:instrument"))
+        {
+            return match value {
+                Tag::String(id) => self
+                    .items()
+                    .instruments
+                    .get(&id.to_string_lossy())
+                    .map_or(0, |value| value.use_ticks()),
+                _ => value
+                    .get("use_duration")
+                    .and_then(horizon_items::properties::component_float)
+                    .map_or(0, horizon_items::items::instrument_use_ticks),
+            };
+        }
+        let Some(value) = self
+            .res
+            .item_defaults()
+            .entries()
+            .get(&*stack.item)
+            .and_then(|item| item.get("minecraft:instrument"))
+        else {
+            return 0;
+        };
+        match value.as_str() {
+            Some(id) => self
+                .items()
+                .instruments
+                .get(id)
+                .map_or(0, |value| value.use_ticks()),
+            None => value
+                .get("use_duration")
+                .and_then(serde_json::Value::as_f64)
+                .map_or(0, |seconds| {
+                    horizon_items::items::instrument_use_ticks(seconds as f32)
+                }),
+        }
+    }
+    /// `Player.canEat(canAlwaysEat)`: food is eaten only when hungry.
+    pub(super) fn can_eat(&self, _stack: Option<&ItemStack>, can_always_eat: bool) -> bool {
+        can_always_eat
             || self.creative
             || self
                 .player
                 .as_ref()
-                .is_some_and(|p| p.health.food.food < 20);
-        let mut answer = None;
-        self.native_can_eat(stack, vanilla, &mut answer);
-        answer.unwrap_or(vanilla)
+                .is_some_and(|p| p.health.food.food < 20)
     }
 }
 

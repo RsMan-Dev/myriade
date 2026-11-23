@@ -247,26 +247,7 @@ impl Game<'_> {
         cause: Option<Target>,
         position: Option<[f64; 3]>,
     ) -> bool {
-        let creative = cause
-            .filter(|t| matches!(t, Target::Player | Target::Guest(_)))
-            .and_then(|t| self.for_player(t, |g| g.creative))
-            .unwrap_or(false);
-        let entity_id = |target| match target {
-            Some(Target::Player) => self.own_entity_id(),
-            Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
-            Some(target) => crate::game::native_entities::target_id(target).map_or(0, |id| id as i32),
-            None => 0,
-        };
-        let source = HurtSource {
-            damage_type: ty,
-            causing: entity_id(cause),
-            direct: entity_id(direct),
-            position,
-        };
-        let vanilla = is_fire(kind) || creative;
-        if self.native_nonliving_invulnerable(id, "minecraft:end_crystal", source, vanilla)
-            || matches!(cause, Some(Target::Dragon(_)))
-        {
+        if matches!(cause, Some(Target::Dragon(_))) {
             return false;
         }
         let by = self.command_player(cause).map(|p| self.player_entity_id(p));
@@ -394,10 +375,7 @@ impl Game<'_> {
             })
             .collect();
         let exposure = |b: Aabb| exposures.iter().find(|(x, _)| *x == b).map_or(0.0, |(_, e)| *e);
-        let push = self.ecs_with(|ecs, mw| ecs.blast_dragon(mw, id, center, radius, &exposure, None));
-        if let Some(mut push) = push {
-            self.native_explosion_knockback(self.dim.id(), center, blocks, Some(id), &mut push);
-        }
+        self.ecs_with(|ecs, mw| ecs.blast_dragon(mw, id, center, radius, &exposure, None));
     }
     /// `EndCrystalItem.useOn`'s checks: obsidian or bedrock clicked, air above it.
     /// The entity check of the 1x2x1 room is still missing (no ECS query of the boxes yet).
@@ -508,7 +486,7 @@ impl Game<'_> {
         let summoned = self.ecs_with(|ecs, mw| {
             ecs.summon_dragon(mw, at, yaw, seed, horizon_ecs_proto::species::ender_dragon::START_PHASE, &sheet, &mut || id)
         });
-        self.native_joins_flush(false, summoned).then_some(summoned)
+        Some(summoned)
     }
     /// `EnderDragon.hurtServer`: Thorns hits the body part, so damage is quartered plus at
     /// most one, with the player as its causing entity. The roll is the Thorns' own.

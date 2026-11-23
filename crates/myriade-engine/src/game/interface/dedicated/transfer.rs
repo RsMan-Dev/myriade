@@ -210,7 +210,6 @@ impl Game<'_> {
         match result {
             Ok(done) => {
                 self.take_arrival_records(uuid, &done);
-                self.sync_replaced_book_settings(uuid);
                 let handover = arrivals::handover_text(done.handover);
                 let placed = if done.place {
                     self.place_arrival(uuid, done.handover)
@@ -320,21 +319,16 @@ impl Game<'_> {
         host.hub.guests.insert(i, g);
         written?;
         let announced = host.hub.confirm_arrival(uuid, id)?;
-        let directory = myriade_engine::lan::playerdata::directory(&self.world_root);
-        self.native_player_save_to_file(uuid, &name, &directory);
         self.arrival_placed(uuid, &name, announced);
         Ok(true)
     }
 
-    /// What the game does once a held player is placed: the log's lines, and the mods' "logged
-    /// in" (`native_player_logged_in`), which a held login did not send, so a placed arrival
-    /// is heard of as any login and its leaving later is not the mods' first word of it.
+    /// What the game does once a held player is placed: the log's lines.
     fn arrival_placed(&mut self, uuid: u128, name: &str, announced: bool) {
         super::log("INFO", &arrivals::placed_line(name));
         if announced {
             super::log("INFO", &format!("System chat: {name} joined the game"));
         }
-        self.announce_login(uuid, name);
     }
 
     fn export_from(&mut self, uuid: u128, freeze: bool) -> Value {

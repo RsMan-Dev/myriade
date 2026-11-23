@@ -110,7 +110,7 @@ pub(super) fn cart_known_movement(velocity: Vec3) -> Vec3 {
 
 /// The entity id a vehicle's riders point at, for the targets that carry some.
 fn vehicle_id(t: Target) -> Option<u32> {
-    super::native_entities::target_id(t)
+    super::entity::target_id(t)
 }
 
 
@@ -142,13 +142,8 @@ impl Game<'_> {
     /// minecart's clamped (`cart_known_movement`). None for a player, whose
     /// client holds its motion, and an entity no level holds.
     pub(in crate::game) fn transition_motion(&mut self, t: Target) -> Option<Vec3> {
-        let id = super::native_entities::target_id(t)?;
-        let motion = self
-            .in_target_level(t, |g| {
-                let h = g.native_walk_entity(id)?;
-                Some(with_entity!(g, h, e => e.velocity()))
-            })
-            .flatten()?;
+        let id = super::entity::target_id(t)?;
+        let motion = self.in_target_level(t, |g| g.ecs.velocity(id)).flatten()?;
         Some(if matches!(t, Target::Cart(_)) {
             cart_known_movement(motion)
         } else {
@@ -158,12 +153,12 @@ impl Game<'_> {
     /// After a teleport placed `t` in its level: `motion` is its motion again
     /// (`Entity.teleportSetPosition` with `Relative.DELTA`).
     pub(in crate::game) fn restore_transition_motion(&mut self, t: Target, motion: Vec3) {
-        let Some(id) = super::native_entities::target_id(t) else {
+        let Some(id) = super::entity::target_id(t) else {
             return;
         };
         let _ = self.in_target_level(t, |g| {
-            if let Some(h) = g.native_walk_entity(id) {
-                with_entity_mut!(g, h, e => *e.velocity_mut() = motion);
+            if let Some(e) = g.ecs.entity_of(id) {
+                g.ecs.set_velocity(e, motion);
             }
         });
     }
@@ -182,13 +177,6 @@ impl Game<'_> {
         turn_riders: bool,
         motion: TeleportMotion,
     ) -> myriade_engine::Result<Option<bool>> {
-        if let Target::General(id) = target {
-            return Ok(Some(self.teleport_general_tree_across(
-                id,
-                destination,
-                at,
-            )?));
-        }
         if let Some(moved) = self.teleport_lone_across(target, destination, at, rotation, motion)? {
             return Ok(Some(moved));
         }
@@ -332,7 +320,6 @@ impl Game<'_> {
             }
             // Mobs and the other riders and every id's container, lead and identity here.
             game.take_passenger_entities(&tree, true);
-            game.native_leaves_flush();
             // The tree leaves this level and its root is loaded in the destination, riders by its `Passengers`.
             let Some(new_root) = game.ecs_carry(root, destination, |tag| {
                 arrival_pose(tag, at, rotation, keep);
@@ -351,7 +338,6 @@ impl Game<'_> {
                         vehicle: (mount == root).then_some(new_root),
                     });
             }
-            game.native_joins_flush(false, 0);
             game.enter_level(source)?;
             Ok(true)
         })
@@ -425,18 +411,12 @@ impl Game<'_> {
             }
             self.move_riders(id, old, new, rotation);
         }
-        let mut guest_steps = Vec::new();
         if self.riding == Some(vehicle)
             && let Some(p) = self.player.as_mut()
         {
-            let from = p.position;
             p.position = passenger_destination(old, new, p.position);
             p.teleported = true;
             self.previous_position = p.position;
-            let (to, own) = (p.position, self.own_entity_id());
-            if let Ok(own) = u32::try_from(own) {
-                self.entity_section_step(own, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-            }
         }
         if let Some(placed) = rotation
             && self.riding == Some(vehicle)
@@ -477,9 +457,7 @@ impl Game<'_> {
                         g.pitch = pitch;
                     });
                 }
-                let id = host.hub.guests[i].entity_id as u32;
                 let g = host.hub.guests[i].position;
-                let from = Vec3::new(g[0], g[1], g[2]);
                 let at = passenger_destination(old, new, Vec3::new(g[0], g[1], g[2]));
                 if rotation.is_some() {
                     // A rider turned with its vehicle: its position packet
@@ -488,11 +466,7 @@ impl Game<'_> {
                 } else {
                     host.hub.teleport_keeping_motion(i, [at.x, at.y, at.z]);
                 }
-                guest_steps.push((id, from, at));
             }
-        }
-        for (id, from, to) in guest_steps {
-            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
     }
 

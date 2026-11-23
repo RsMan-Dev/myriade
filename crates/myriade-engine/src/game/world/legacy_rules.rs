@@ -36,12 +36,8 @@ impl Game<'_> {
             _ => 0.0,
         };
         let vanilla_crit = living && legacy_combat::critical(self.legacy_attacker());
-        let (mut crit, mut multiplier) = (vanilla_crit, legacy_combat::CRIT);
-        if living && (base > 0.0 || enchant > 0.0) {
-            self.native_critical_hit(target_kind, vanilla_crit, &mut crit, &mut multiplier);
-        }
-        let amount = legacy_combat::damage(base, crit.then_some(multiplier), enchant);
-        (amount, 1.0, crit, enchant > 0.0)
+        let amount = legacy_combat::damage(base, vanilla_crit.then_some(legacy_combat::CRIT), enchant);
+        (amount, 1.0, vanilla_crit, enchant > 0.0)
     }
 
     /// What the held item adds to the attack damage in 26.3, for weapons 1.8.9 didn't have.

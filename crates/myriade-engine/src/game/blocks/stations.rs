@@ -365,16 +365,13 @@ impl Game<'_> {
                 s.anvil = answer.clone();
             }
             _ => {
-                let mut update = crate::menu::AnvilUpdate::new(
+                let update = crate::menu::AnvilUpdate::new(
                     left,
                     s.inputs[1].clone(),
                     Some(name.clone()),
                     &s.anvil,
                 );
-                let mut cancel = false;
-                let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
-                self.api_anvil_update(player, entity_id, s.pos, &mut update, &mut cancel);
-                update.answer(cancel, &mut s.anvil);
+                update.answer(false, &mut s.anvil);
                 s.anvil_answer = Some((s.inputs.clone(), name, s.anvil.clone()));
             }
         }
@@ -437,7 +434,6 @@ impl Game<'_> {
             }
             Kind::Grindstone => {
                 s.result = stations::grindstone_result(
-                    &self.loop_context,
                     &enchantments,
                     items,
                     s.inputs[0].as_ref(),

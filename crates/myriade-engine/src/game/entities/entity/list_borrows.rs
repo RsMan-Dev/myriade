@@ -9,11 +9,13 @@ macro_rules! borrow_lists {
     ((without_carts $game:expr) $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $crate::game::entity::EntityLists {
             $($field: $crate::game::entity::borrow_level_list!($kind, $game, $($list).+),)*
+            _lists: std::marker::PhantomData,
         }
     };
     (($game:expr) $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $crate::game::entity::EntityLists {
             $($field: &$game$(.$list)+,)*
+            _lists: std::marker::PhantomData,
         }
     };
 }

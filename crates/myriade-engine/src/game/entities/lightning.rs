@@ -70,9 +70,6 @@ impl Game<'_> {
                 .bool_at(myriade_engine::gamerules::vanilla::SPAWN_MOBS)
                 && self.world.random.next_double() < difficulty * 0.01
                 && !below.ends_with("lightning_rod");
-            if !self.lightning_strike_allowed(None, pos, "weather") {
-                continue;
-            }
             if trap {
                 let at = [f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])];
                 // ServerLevel.tickChunk: a trap horse waits for a player.
@@ -211,15 +208,9 @@ impl Game<'_> {
         }
         self.ecs_strike(at, visual_only);
     }
-    pub(super) fn lightning_strike_allowed(
-        &mut self,
-        player: Option<u128>,
-        pos: [i32; 3],
-        cause: &str,
-    ) -> bool {
-        let mut cancel = false;
-        self.native_lightning_strike(player, pos, cause, &mut cancel);
-        !cancel
+    /// Whether a strike may land at `pos`: no hook refuses one any more.
+    pub(super) fn lightning_strike_allowed(&mut self, _player: Option<u128>, _pos: [i32; 3], _cause: &str) -> bool {
+        true
     }
     /// `spawnFire`: fire at the strike point and `extra` random neighbours
     /// (from the bolt's own `random`), wherever `BaseFireBlock.getState` fire

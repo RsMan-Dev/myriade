@@ -14,8 +14,6 @@ pub(super) fn load_world_rest(
     let biomes = resources.biomes();
     let threads = resources.threads();
     let registry = assets.registry;
-    // The world tables of this root tick this registry: it takes the root's own mod owners.
-    crate::game::code_block_owners::bind(registry, root);
     let content = myriade_engine::datapack::DataPack::from_source(
         "horizon-content".into(),
         resource_root.data_changes().clone(),
@@ -37,7 +35,6 @@ pub(super) fn load_world_rest(
             Items::load(root, registry, facts, overlay, resources.item_defaults())
         })?;
         items.bind_component_damage_catalog(&resources.motion().health.damage);
-        api_values::resolve_item_registry(&items)?;
         log::info!("load items: {:.2}s", started.elapsed().as_secs_f32());
         progress.set(7);
         let sources = startup::time("rest.recipe_sources", || {
@@ -72,9 +69,6 @@ pub(super) fn load_world_rest(
             .map(|(k, v)| (k, Arc::new(v)))
             .collect();
         let mob_data = myriade_engine::mobs::MobData::load(resource_root, facts);
-        crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
-            mob_types.contains_key(kind)
-        })?;
         myriade_engine::trial_config::load_registry(root);
         Ok((mob_types, mob_data))
     };

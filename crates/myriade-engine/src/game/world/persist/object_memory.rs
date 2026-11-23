@@ -13,15 +13,11 @@ impl Game<'_> {
         &mut self,
         tag: &Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
         let Tag::Compound(c) = tag else { return None };
         let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
         let id = self.ecs_id_of(e);
         self.restore_portal_cooldown(id, tag);
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         if let Some(own) = uuid {
             self.remember_uuid(id, Some(own), tag);
         }
@@ -33,9 +29,8 @@ impl Game<'_> {
         tag: Tag,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        if let Some(id) = self.load_projectile_ecs(&tag, uuid, transferred) {
+        if let Some(id) = self.load_projectile_ecs(&tag, uuid) {
             self.remember_tags(id, &tag);
         }
     }
@@ -45,9 +40,8 @@ impl Game<'_> {
         tag: Tag,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        self.load_projectile_ecs(&tag, uuid, transferred);
+        self.load_projectile_ecs(&tag, uuid);
     }
 
     pub(in crate::game) fn load_fireball_transferred(
@@ -55,9 +49,8 @@ impl Game<'_> {
         tag: Tag,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        self.load_projectile_ecs(&tag, uuid, transferred);
+        self.load_projectile_ecs(&tag, uuid);
     }
 
     pub(in crate::game) fn load_throwable_transferred(
@@ -65,22 +58,17 @@ impl Game<'_> {
         tag: Tag,
         uuid: Option<[i32; 4]>,
         _player_uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        self.load_projectile_ecs(&tag, uuid, transferred);
+        self.load_projectile_ecs(&tag, uuid);
     }
 
     pub(in crate::game) fn load_falling_transferred(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
         let Tag::Compound(c) = &tag else { return };
         let Some(id) = self.ecs_load(c) else { return };
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
     }
 
@@ -88,13 +76,9 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
         let Tag::Compound(c) = &tag else { return };
         let Some(id) = self.ecs_load(c) else { return };
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
     }
 
@@ -102,13 +86,9 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
         let Tag::Compound(c) = &tag else { return };
         let Some(id) = self.ecs_load(c) else { return };
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
     }
 
@@ -116,16 +96,14 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) {
-        self.load_tnt_with_portal(tag, uuid, transferred, false);
+        self.load_tnt_with_portal(tag, uuid, false);
     }
 
     pub(in crate::game) fn load_tnt_with_portal(
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
         used_portal: bool,
     ) {
         if uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
@@ -140,9 +118,6 @@ impl Game<'_> {
         let Some(id) = self.ecs_load(c) else { return };
         self.ecs_set_tnt_used_portal(id, used_portal);
         // `Entity.load`: the `PortalCooldown` of one that just came through.
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
         if let (Some(u), Some(e)) = (uuid, self.ecs.entity_of(id)) {
             self.ecs.set_uuid(e, u);
@@ -157,15 +132,15 @@ impl Game<'_> {
         tag: Tag,
         uuid: Option<[i32; 4]>,
         k: &str,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
+        transferred: bool,
     ) -> Option<u32> {
         // A runtime transfer owns a distinct live object: like a Mob, the copy
         // refused residency stays below the passengers admitted before it.
         // A disk copy with a taken UUID is still not constructed.
-        if transferred.is_none() && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
+        if !transferred && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
             return None;
         }
-        let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
+        let refused = transferred && self.uuid_admission_refused(uuid);
         // `PersistentEntitySectionManager.addEntity` pops a refused copy: it and its riders never reach the level.
         // `k` names the boat's wood for a host copy only, which is no longer kept.
         let _ = k;
@@ -179,9 +154,6 @@ impl Game<'_> {
                 return None;
             };
             let id = self.ecs_load(c)?;
-            if let Some(state) = transferred {
-                self.adopt_transferred_entity_state(id, state);
-            }
             self.remember(id, uuid, tag);
             if let Some(riders) = riders {
                 self.load_passengers(id, riders);
@@ -206,7 +178,6 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         mount: Option<u32>,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
         // RESTE-SANS-ECS: the mount is the ECS's `Passengers` tree, not a host `Mob.extra.mount`; the mob's
         // anger target, dying body (`died`) and restored attachments are not re-applied at load.
@@ -216,9 +187,6 @@ impl Game<'_> {
         };
         let uuid = entity_nbt::uuid(&tag);
         let id = self.ecs_load(c)?;
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
         self.remember(id, uuid, tag);
         Some(id)
     }
@@ -276,7 +244,6 @@ impl Game<'_> {
                 source_id: root,
                 kind,
                 name,
-                state: self.take_transferred_entity_state(root),
                 passengers,
             },
         ))
@@ -318,7 +285,6 @@ impl Game<'_> {
             tag,
             kind: tree.kind,
             name: tree.name,
-            state: tree.state,
             passengers,
         })
     }
@@ -347,7 +313,6 @@ impl Game<'_> {
             tag,
             kind,
             name,
-            state,
             passengers,
         } = tree;
         let riders = passengers
@@ -359,7 +324,7 @@ impl Game<'_> {
                 PreparedVehiclePassenger::Saved(tag) => Some(PassengerSlot::Saved(tag)),
             })
             .collect::<Option<Vec<_>>>()?;
-        let root = self.restore_vehicle_object(tag, kind, &name, state)?;
+        let root = self.restore_vehicle_object(tag, kind, &name)?;
         for slot in riders {
             match slot {
                 PassengerSlot::Live(id) => self.link_loaded_passenger(id, root),
@@ -377,7 +342,6 @@ impl Game<'_> {
         &mut self,
         tag: Tag,
         uuid: Option<[i32; 4]>,
-        state: crate::game::entity_initialization::TransferredEntityState,
     ) -> Option<u32> {
         let mut tag = tag;
         let riders = passenger_graph::take_passengers(&mut tag);
@@ -385,7 +349,6 @@ impl Game<'_> {
             return None;
         };
         let id = self.ecs_load(c)?;
-        self.adopt_transferred_entity_state(id, state);
         self.remember(id, uuid, tag);
         if let Some(riders) = riders {
             self.load_passengers(id, riders);
@@ -398,16 +361,15 @@ impl Game<'_> {
         tag: Tag,
         kind: VehicleTreeKind,
         name: &str,
-        state: crate::game::entity_initialization::TransferredEntityState,
     ) -> Option<u32> {
         let uuid = entity_nbt::uuid(&tag);
         match kind {
-            VehicleTreeKind::Mob => self.load_mob_transferred(tag, None, Some(state)),
-            VehicleTreeKind::Boat => self.load_boat_transferred(tag, uuid, name, Some(state)),
-            VehicleTreeKind::Ecs => self.load_ecs_transferred(tag, uuid, state),
+            VehicleTreeKind::Mob => self.load_mob_transferred(tag, None),
+            VehicleTreeKind::Boat => self.load_boat_transferred(tag, uuid, name, true),
+            VehicleTreeKind::Ecs => self.load_ecs_transferred(tag, uuid),
             VehicleTreeKind::Other => {
                 let before = self.next_entity;
-                self.load_listed_transferred(name, uuid, self.level.player_uuid, tag, state)
+                self.load_listed_transferred(name, uuid, self.level.player_uuid, tag)
                     .ok()?;
                 ((before + 1)..=self.next_entity).find(|id| self.passenger_object_present(*id))
             }

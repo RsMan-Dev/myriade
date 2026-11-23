@@ -71,7 +71,6 @@ impl Game<'_> {
     pub(in crate::game) fn armor_stand_remove(&mut self, id: u32) -> bool {
         let Some(e) = self.ecs.entity_of(id) else { return false };
         self.ecs.despawn(e);
-        self.native_entity_left(id);
         true
     }
     /// `ArmorStandItem.useOn`.
@@ -259,9 +258,6 @@ impl Game<'_> {
                     horizon_ecs_proto::custom_name::set(w, e, Some(name.clone()));
                 }
                 self.consume_held();
-                if let (Some(player), Some(player_name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-                    self.native_player_name_entity(player, &player_name, id, &name);
-                }
             }
             let ctx = self.who_context(Some(Who::Player), None);
             self.post_game_event("minecraft:entity_interact", at, ctx);
@@ -284,17 +280,7 @@ impl Game<'_> {
         if held.as_ref().is_some_and(|h| h.count > 1) && current != 0 {
             return true;
         }
-        // A server's mods hear the swap before it happens, and may stop it; the stands are found again by id after the hook.
-        if held.as_ref().is_none_or(|h| h.count <= 1 || current == 0)
-            && target.is_some()
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            let slot_name = ["mainhand", "offhand", "feet", "legs", "chest", "head"][slot];
-            let mut cancel = false;
-            self.native_armor_stand_manipulate(player, &name, id as i32, slot_name, &mut cancel);
-            if cancel {
-                return true;
-            }
+        if held.as_ref().is_none_or(|h| h.count <= 1 || current == 0) && target.is_some() {
             let key = |s: &Option<ItemStack>| s.as_ref().map(|s| (s.item.clone(), s.count));
             let Some(w) = self.ecs.world() else { return true };
             if goals::equipped(w, e, slot_enum) != current

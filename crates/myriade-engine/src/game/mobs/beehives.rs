@@ -7,7 +7,7 @@ use myriade_engine::{
     beehive::{self, Beehive, BeehiveExt, HiveHost, Release},
     containers::BlockEntity,
     items::ItemStack,
-    mobs::{Who, bee},
+    mobs::Who,
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -37,7 +37,9 @@ impl HiveHost for GameHive<'_, '_> {
         if let Some(stay) = self.stay.get() {
             return stay;
         }
-        let stay = bee::bees_stay_in_hive(&self.game.mob_world_base(&[]));
+        let world = self.game.mob_world_base(&[]);
+        let night = (12542..23460).contains(&world.day_time.rem_euclid(24000));
+        let stay = night || world.raining;
         self.stay.set(Some(stay));
         stay
     }
@@ -222,9 +224,7 @@ impl Game<'_> {
             self.ecs.set_hive_full(at, full);
             let state = self.world.block(at[0], at[1], at[2]);
             self.post_block_game_event("minecraft:block_change", at, Some(Who::Mob(mob)), Some(state));
-            let block = self.res.facts().get(state).name.clone();
             self.ecs.despawn(bee);
-            self.native_entity_enter_block(mob, &kind, at, &block);
         }
     }
     /// `BeehiveBlockEntity.emptyAllLivingFromHive` with no player about.

@@ -4,7 +4,6 @@
 //! is replaced by keep and skipped by masked. `/fill ... destroy` reads the same fact, because
 //! `Level.destroyBlock` returns false for air and `LevelChunk.setBlockState` does nothing when
 //! the state is already there.
-use crate::game::game_tests::tests::server_game;
 use horizon_core::position::ChunkPos;
 
 #[test]

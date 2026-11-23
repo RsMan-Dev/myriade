@@ -263,10 +263,8 @@ impl Game<'_> {
     /// `GameRules.setAll`.
     fn set_environment_rules(&mut self, rules: &[(String, Value)]) {
         for (name, value) in rules {
-            if let Some(rule) = self.session.rules.rule(name).cloned()
-                && self.session.rules.set(&rule.name, *value)
-            {
-                self.game_rule_changed(&rule.name, *value, None);
+            if let Some(rule) = self.session.rules.rule(name).cloned() {
+                self.session.rules.set(&rule.name, *value);
             }
         }
         self.sync_rules();

@@ -239,12 +239,7 @@ impl Game<'_> {
     /// instead, which this doesn't cover, and the player moves itself.
     fn pushed_entity_colliders(&self, target: MoveWho, movement: Vec3) -> Vec<Aabb> {
         match target {
-            MoveWho::Entity(handle) => {
-                let own = with_entity!(self, handle, entity => Entity::bounds(entity));
-                let mut boxes = self.item_entity_collisions([own.expand_towards(movement)]);
-                boxes.retain(|b| *b != own);
-                boxes
-            }
+            MoveWho::Entity(_) => Vec::new(),
             // An entity of the ECS: its own solids (a boat or a cart gets none there, `canVehicleCollide` instead).
             MoveWho::Ecs(id) => self.ecs.bounds(id).map_or_else(Vec::new, |own| {
                 self.ecs.solid_colliders(id, own, [movement.x, movement.y, movement.z])
@@ -535,23 +530,7 @@ impl Game<'_> {
                 sticky_top,
             };
             let state = piston.shape_state();
-            // The `entity_move` gate of each pushed creature, only while a mod listens: without one the push costs nothing more.
-            let listened = false;
-            let context = listened.then(|| self.loop_context.clone());
-            let mut next = self.next_entity;
-            self.ecs_with(|ecs, mw| {
-                let mut alloc = || {
-                    next += 1;
-                    next
-                };
-                let mut arm = |id: u32, kind: &str, want: Vec3| {
-                    let gate = myriade_engine::move_gate::armed(context.as_deref()?, id, kind, MoverType::Piston, want);
-                    (!gate.skipped()).then(|| gate.delta())
-                };
-                let gate = context.is_some().then(|| horizon_ecs_proto::world_push::PushGate { alloc: &mut alloc, arm: &mut arm });
-                ecs.piston_push(mw, pos, state, new_progress, movement, &block, gate)
-            });
-            self.next_entity = next;
+            self.ecs_with(|ecs, mw| ecs.piston_push(mw, pos, state, new_progress, movement, &block, None));
         }
 
         let search = shape.bounds().map(|bounds| {
@@ -970,7 +949,7 @@ impl Game<'_> {
         if gate.skipped() {
             return;
         }
-        let id = match target {
+        let _ = match target {
             MoveWho::Player => {
                 if let Some(p) = self.player.as_mut() {
                     p.position = p.position.add_vector(movement);
@@ -1001,11 +980,6 @@ impl Game<'_> {
                 Some(id)
             }
         };
-        // `Entity.move` by the piston is one `setPos`.
-        if let Some(id) = id {
-            self.entity_section_moved_id(id);
-            self.tell_entity_sections();
-        }
     }
 
     /// `AbstractArrow.move` with a mover other than the arrow itself (a
@@ -1017,7 +991,7 @@ impl Game<'_> {
         let MoveWho::Entity(handle) = target else {
             return;
         };
-        let Some(bounds) = with_entity!(self, handle, entity => entity.piston_release_bounds())
+        let Some(bounds): Option<Aabb> = with_entity!(self, handle, entity => entity.piston_release_bounds())
         else {
             return;
         };

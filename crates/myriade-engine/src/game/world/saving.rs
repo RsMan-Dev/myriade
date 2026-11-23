@@ -101,11 +101,9 @@ impl Game<'_> {
         loop {
             match self.streaming.prepare_save(&mut self.world, wait, deadline) {
                 myriade_engine::streaming::SaveStep::Full(chunk) => {
-                    self.native_late_full_chunk_snapshot(&chunk);
                     self.streaming.save_finished(chunk);
                 }
                 myriade_engine::streaming::SaveStep::Protos(protos) => {
-                    self.native_proto_snapshots(&protos);
                     self.streaming.finish_save(protos, wait);
                     break;
                 }
@@ -113,12 +111,10 @@ impl Game<'_> {
             }
         }
         let keys: Vec<_> = self.world.modified.iter().copied().collect();
-        self.save.save_attachments(&self.world.attachments)?;
         for key in &keys {
             self.world.modified.remove(key);
         }
         let chunks = self.with_entities(keys.iter().filter_map(|k| self.world.chunks.get(k)));
-        self.native_full_chunk_snapshots(&chunks);
         self.save
             .save_later(&chunks, self.pack.assets.registry, world_biomes!(self))?;
         // Prepare entities while the chunk writer runs, then use one barrier.

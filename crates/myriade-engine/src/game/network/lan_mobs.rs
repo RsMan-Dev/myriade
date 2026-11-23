@@ -8,45 +8,6 @@ use myriade_engine::mobs::{MobEvent, PlayerView, Who};
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::packets::play::{self, Clientbound as C};
 
-/// The events of a mob's tick that act on the player it sees.
-pub(super) fn acts_on_player(e: &MobEvent) -> bool {
-    matches!(
-        e,
-        MobEvent::AttackPlayer(..)
-            | MobEvent::CubeHurtPlayer { .. }
-            | MobEvent::AttackPlayerWithEffect { .. }
-            | MobEvent::Sting {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::DamagePlayer { .. }
-            | MobEvent::SonicBoom {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::Push {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::Knockback {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::StabDismount {
-                target: Who::Player,
-            }
-            | MobEvent::Ignite(Who::Player, _)
-            | MobEvent::ZombieIgnite(Who::Player, _)
-            | MobEvent::IronGolemHit {
-                target: Who::Player,
-                ..
-            }
-            | MobEvent::EffectPlayer { .. }
-            | MobEvent::AxolotlSupportPlayer { .. }
-            | MobEvent::ParrotToShoulder { .. }
-    )
-}
-
 impl Game<'_> {
     /// The guest `conn`'s real identity — the uuid its lent view carries and
     /// its entity id — when the guest is a player the tick can name: a fake

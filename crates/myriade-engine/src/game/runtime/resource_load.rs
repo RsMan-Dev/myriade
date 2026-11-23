@@ -134,6 +134,25 @@ pub(super) struct GameplayTables {
     pub(super) motion: MotionResources,
 }
 
+/// The item defaults and components of the vanilla resources at `root`, read against the
+/// built-in registries' names.
+fn load_item_data(
+    root: &std::path::Path,
+) -> std::result::Result<horizon_world::item_defaults::ItemData, String> {
+    use horizon_protocol::registry::Builtin;
+    use horizon_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
+    let path = Builtin::find(root).ok_or("registries.json not found")?;
+    let builtin = Builtin::load(&path).map_err(|e| e.to_string())?;
+    let registries = builtin
+        .registries
+        .into_iter()
+        .map(|(name, ids)| (name, ids.names))
+        .collect();
+    let inputs = LoadInputs::new(registries, root.join("settings"));
+    let context = LoadContext::new(DataLoadOrigin::ServerDataLoad, Arc::new(inputs), []);
+    horizon_world::item_defaults::ItemData::load(root, context).map_err(|e| e.to_string())
+}
+
 /// [`CoreTables`] at `root`. Every table reads the block registry; past it,
 /// the block models and sprites (then the item defaults), the face visibility,
 /// the collisions, the biomes and the environment need no block facts and load
@@ -142,12 +161,10 @@ pub(super) struct GameplayTables {
 pub(super) fn load_core(
     resources: &horizon_assets::resource_source::ResourceRoot,
     additional_data: &[Arc<myriade_engine::datapack::DataPack>],
-    load_role: mods::LoadRole,
     parallel: bool,
     progress: &Progress,
     launch_world: Option<&str>,
 ) -> std::result::Result<std::result::Result<CoreTables, String>, String> {
-    let role = load_role.execution;
     let root = resources.prepared();
     let assets = startup::time("core.assets", || Assets::load(root));
     let assets = match assets {
@@ -155,8 +172,7 @@ pub(super) fn load_core(
         Err(e) => return Ok(Err(e.to_string())),
     };
     progress.set(1);
-    let item_data =
-        Arc::new(mods::load_item_data(root, role, load_role.owning).map_err(|e| e.to_string())?);
+    let item_data = Arc::new(load_item_data(root).map_err(|e| e.to_string())?);
     let registry = assets.registry;
     let (item_defaults, gameplay, biomes, environment, collision) = std::thread::scope(
         |scope| {
@@ -280,11 +296,8 @@ pub(super) fn load_resources(
     vanilla_root: &std::path::Path,
     _settings: &Settings,
     started: Instant,
-    role: impl Into<mods::LoadRole>,
     progress: &Progress,
 ) -> Result<Loaded> {
-    let load_role: mods::LoadRole = role.into();
-    let _role = load_role.execution;
     let mut root = resolved.prepared().to_path_buf();
     let threads = horizon_threads::sizing::for_pool_with(false, horizon_threads::sizing::Pool::Jobs);
     // One pool of workers for every level's streaming, the client's and the
@@ -305,7 +318,6 @@ pub(super) fn load_resources(
                     load_core(
                         &resolved,
                         &additional_data,
-                        load_role,
                         parallel,
                         progress,
                         early,
@@ -332,9 +344,6 @@ pub(super) fn load_resources(
         root = vanilla_root.to_path_buf();
         resolved = horizon_assets::resource_source::ResourceRoot::directory(root.clone());
     };
-    // Every loaded game publishes scalar registry keys, including callers that
-    // load a prepared root directly instead of building a mod content overlay.
-    crate::game::mods::register_iterated_registries(resolved.prepared())?;
     log::info!("load core tables: {:.2}s", started.elapsed().as_secs_f32());
     let CoreTables {
         item_data,
@@ -376,9 +385,6 @@ pub(super) fn load_resources(
             &additional_data,
         );
     }
-    api_values::resolve_block_definitions(assets.registry)?;
-    mods::extend_poi_types(assets.registry);
-    mods::register_cauldron_fluid_contents(assets.registry);
     let pack_step = startup::step("pack.assemble");
     let mut pack = PackResources::assemble(
         &resolved,

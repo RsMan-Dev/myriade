@@ -495,7 +495,7 @@ impl Game<'_> {
         pos: [i32; 3],
         rules: &BlastRules,
         explosion: &ExplosionStart<'_>,
-        answers: Option<&mut PartAnswers>,
+        _answers: Option<&mut PartAnswers>,
     ) -> (Option<f32>, bool) {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let f = self.res.facts().get(state);
@@ -524,29 +524,13 @@ impl Game<'_> {
                     .as_ref()
                     .is_some_and(|t| t.contains(&*f.name));
                 let own = f.explosion_resistance;
-                // WitherBoss.canDestroy for the skull's cap, or what the
-                // block's parts answer for the skull.
-                let kept = match (rules.cap, rules.direct) {
-                    (Some(_), Some(skull)) => !self.entity_may_destroy(skull, pos, !immune),
-                    _ => immune,
-                };
+                // WitherBoss.canDestroy for the skull's cap: no mod answers, so vanilla stands.
+                let kept = immune;
                 // Block.getExplosionResistance, or what the block's parts answer.
                 let base = if spared {
                     0.0
                 } else {
-                    let asked = match answers {
-                        Some(answers)
-                            if crate::game::api_values::block_state::explosion_resistance_pure(
-                                state,
-                            ) =>
-                        {
-                            *answers.entry(state).or_insert_with(|| {
-                                self.part_explosion_resistance(pos, state, explosion)
-                            })
-                        }
-                        _ => self.part_explosion_resistance(pos, state, explosion),
-                    };
-                    asked.unwrap_or(own).max(fluid)
+                    own.max(fluid)
                 };
                 Some(blast_resistance(base, rules.cap, kept))
             }
@@ -807,8 +791,7 @@ impl Game<'_> {
             }
         }
         if !spectator {
-            let mut push = [dir[0] * power, dir[1] * power, dir[2] * power];
-            self.native_explosion_knockback(self.dim.id(), center, blocks, None, &mut push);
+            let push = [dir[0] * power, dir[1] * power, dir[2] * power];
             if let Some(p) = self.player.as_mut() {
                 p.velocity = Vec3::new(
                     p.velocity.x + push[0],
@@ -1037,9 +1020,8 @@ impl Game<'_> {
             // storage yet. Removed entities no longer receive blast callbacks.
             // A discarded mob stays in its storage flagged removed, and its
             // selector target is gone, so the flag is read on its own.
-            if with_entity!(self, handle, e => e.is_removed())
-                || with_entity!(self, handle, e => e.selector_target())
-                    .is_some_and(|target| self.target_removed(&target))
+            if with_entity!(self, handle, e => e.is_removed()
+                || e.selector_target().is_some_and(|target| self.target_removed(&target)))
             {
                 continue;
             }
@@ -1054,13 +1036,6 @@ impl Game<'_> {
                 let amount = damage(dist, exposure);
                 let k = f64::from(knockback);
                 let mut velocity = [push.x * k, push.y * k, push.z * k];
-                self.native_explosion_knockback(
-                    self.dim.id(),
-                    center,
-                    blocks,
-                    Some(entity),
-                    &mut velocity,
-                );
                 let push = Vec3::new(velocity[0], velocity[1], velocity[2]);
                 let Some(handle) = self.refresh_entity_handle(entity, handle) else {
                     continue;
@@ -1068,7 +1043,6 @@ impl Game<'_> {
                 with_entity_mut!(self, handle, e => e.push_from_explosion(push));
             }
         }
-        self.native_leaves_flush();
         // Frames, paintings, cushions and armour stands last: vanilla lists
         // the entities in reach before hurting any, so the items they drop
         // here are neither destroyed nor pushed by the same blast.
@@ -1130,11 +1104,10 @@ impl Game<'_> {
     /// `canEntityGrief` refuses it: decorations take no harm.
     fn blast_mob_refused(&self) -> bool {
         // No listener and the rule on: no mob is refused, and no cause is looked up.
-        if !Game::grief_hooked(self)
-            && self
-                .session
-                .rules
-                .bool_at(myriade_engine::gamerules::vanilla::MOB_GRIEFING)
+        if self
+            .session
+            .rules
+            .bool_at(myriade_engine::gamerules::vanilla::MOB_GRIEFING)
         {
             return false;
         }
@@ -1212,16 +1185,8 @@ impl Game<'_> {
     }
     /// `ExplosionEvent.Start` for the explosion `start`: true when a mod
     /// cancels it, and nothing of it happens.
-    pub(in crate::game) fn explosion_start_cancelled(
-        &mut self,
-        start: &ExplosionStart<'_>,
-    ) -> bool {
-        if !false {
-            return false;
-        }
-        let mut cancel = false;
-        self.native_explosion_start(start, &mut cancel);
-        cancel
+    pub(in crate::game) fn explosion_start_cancelled(&mut self, _start: &ExplosionStart<'_>) -> bool {
+        false
     }
     /// Cushions in reach (`BlockAttachedEntity.hurtServer`). Paintings are broken by the ECS (`hanging_more`), not here.
     fn explosion_breaks_hanging(&mut self, center: [f64; 3], diameter: f64) {
@@ -1380,7 +1345,6 @@ impl Game<'_> {
         if self.explosion_start_cancelled(&start) {
             return Ok(());
         }
-        self.native_explosion_prime(center, radius);
         // Explosion.explode: the blast is heard.
         let ctx = myriade_engine::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
@@ -1547,9 +1511,7 @@ impl Game<'_> {
         }
         // Block.dropFromExplosion (only TntBlock refuses), or what the
         // block's parts answer: it gates spawnAfterBreak and the loot.
-        let drops = self
-            .part_drops_from_explosion(pos, state, explosion)
-            .unwrap_or(!is_tnt);
+        let drops = !is_tnt;
         // Block.onExplosionHit runs spawnAfterBreak before the drops.
         if drops && name.starts_with("minecraft:infested_") {
             self.spawn_infestation(pos);
@@ -1584,7 +1546,7 @@ impl Game<'_> {
                 .combat
                 .explosion_direct
                 .or(self.combat.explosion_source);
-            let mut drops = horizon_world::loot::with_native_loot_place(place, || {
+            let drops = horizon_world::loot::with_native_loot_place(place, || {
                 let roll = myriade_engine::items::BlockLootRoll {
                     dynamic: &dynamic,
                     explosion: decay,
@@ -1592,9 +1554,6 @@ impl Game<'_> {
                 };
                 self.roll_block_loot(pos, state, entity, roll)
             });
-            self.native_block_loot(pos, state, None, None, Some(radius), &mut drops);
-            let mut pieces: Vec<ExplosionDropPiece> = Vec::new();
-            let listened = false;
             for mut stack in drops {
                 if &*stack.item == "minecraft:air" || stack.count == 0 {
                     continue;
@@ -1606,26 +1565,11 @@ impl Game<'_> {
                     stack,
                     pos,
                     &|s| items.get(&s.item).map_or(64, |i| i.max_stack),
-                    |group, count| {
-                        if !listened {
-                            return;
-                        }
-                        if let Some(piece) = pieces.iter_mut().find(|p| p.group == group) {
-                            piece.count += count;
-                        } else {
-                            pieces.push(ExplosionDropPiece { group, count });
-                        }
-                    },
+                    |_, _| {},
                 );
-            }
-            if listened {
-                dropped
-                    .blocks
-                    .push(ExplosionBlockDrops { pos, state, pieces });
             }
         }
         self.pending.clear(pos);
-        self.notify_block_exploded(pos, state, explosion);
         self.level_set(pos, self.world.air)?;
         // BeehiveBlock.onExplosionHit: the bees about turn on the player.
         if is_hive {

@@ -1,9 +1,73 @@
+use super::Species;
 use horizon_core::{
     geometry::Vec3,
     random::{LevelRandom, RandomSource},
 };
 
 
+
+/// `Parrot.MOB_SOUND_MAP` (the happy ghast's is `SoundEvents.EMPTY`: "").
+const IMITATIONS: [(Species, &str); 41] = [
+    (Species::Blaze, "entity.parrot.imitate.blaze"),
+    (Species::Bogged, "entity.parrot.imitate.bogged"),
+    (Species::Breeze, "entity.parrot.imitate.breeze"),
+    (Species::CamelHusk, "entity.parrot.imitate.camel_husk"),
+    (Species::CaveSpider, "entity.parrot.imitate.spider"),
+    (Species::Creaking, "entity.parrot.imitate.creaking"),
+    (Species::Creeper, "entity.parrot.imitate.creeper"),
+    (Species::Drowned, "entity.parrot.imitate.drowned"),
+    (
+        Species::ElderGuardian,
+        "entity.parrot.imitate.elder_guardian",
+    ),
+    (Species::Endermite, "entity.parrot.imitate.endermite"),
+    (Species::Evoker, "entity.parrot.imitate.evoker"),
+    (Species::Ghast, "entity.parrot.imitate.ghast"),
+    (Species::HappyGhast, ""),
+    (Species::Guardian, "entity.parrot.imitate.guardian"),
+    (Species::Hoglin, "entity.parrot.imitate.hoglin"),
+    (Species::Husk, "entity.parrot.imitate.husk"),
+    (Species::Illusioner, "entity.parrot.imitate.illusioner"),
+    (Species::MagmaCube, "entity.parrot.imitate.magma_cube"),
+    (Species::Parched, "entity.parrot.imitate.parched"),
+    (Species::Phantom, "entity.parrot.imitate.phantom"),
+    (Species::Piglin, "entity.parrot.imitate.piglin"),
+    (Species::PiglinBrute, "entity.parrot.imitate.piglin_brute"),
+    (Species::Pillager, "entity.parrot.imitate.pillager"),
+    (Species::Ravager, "entity.parrot.imitate.ravager"),
+    (Species::Shulker, "entity.parrot.imitate.shulker"),
+    (Species::Silverfish, "entity.parrot.imitate.silverfish"),
+    (Species::Skeleton, "entity.parrot.imitate.skeleton"),
+    (Species::Slime, "entity.parrot.imitate.slime"),
+    (Species::Spider, "entity.parrot.imitate.spider"),
+    (Species::Stray, "entity.parrot.imitate.stray"),
+    (Species::Vex, "entity.parrot.imitate.vex"),
+    (Species::Vindicator, "entity.parrot.imitate.vindicator"),
+    (Species::Warden, "entity.parrot.imitate.warden"),
+    (Species::Witch, "entity.parrot.imitate.witch"),
+    (Species::Wither, "entity.parrot.imitate.wither"),
+    (
+        Species::WitherSkeleton,
+        "entity.parrot.imitate.wither_skeleton",
+    ),
+    (Species::Zoglin, "entity.parrot.imitate.zoglin"),
+    (Species::Zombie, "entity.parrot.imitate.zombie"),
+    (Species::ZombieHorse, "entity.parrot.imitate.zombie_horse"),
+    (
+        Species::ZombieNautilus,
+        "entity.parrot.imitate.zombie_nautilus",
+    ),
+    (
+        Species::ZombieVillager,
+        "entity.parrot.imitate.zombie_villager",
+    ),
+];
+
+/// `Parrot.MOB_SOUND_MAP`'s sound of a species (vanilla's table: packs go
+/// through `neoforge:parrot_imitations`, [`crate::neoforge_mob_maps`]).
+pub(crate) fn imitation(species: Species) -> Option<&'static str> {
+    IMITATIONS.iter().find(|i| i.0 == species).map(|i| i.1)
+}
 
 /// `Parrot.getPitch`.
 fn pitch(random: &mut impl RandomSource) -> f32 {
@@ -169,5 +233,56 @@ mod tests {
             shoulder_sound(maps, &mut r, true, false, true, &ghast).is_none()
         });
         assert!(silent.count() > 0);
+    }
+}
+/// ambient sound or a rare imitation (`Parrot.getAmbient`). `random` is drawn
+/// from in vanilla's order. Returns the sound, its volume and its pitch; the
+/// happy ghast's imitation is silent (`""`).
+pub fn shoulder_sound(
+    maps: &crate::neoforge_mob_maps::NeoForgeMobMaps,
+    random: &mut impl RandomSource,
+    player_alive: bool,
+    player_silent: bool,
+    peaceful: bool,
+    nearby: &[(&str, bool)],
+) -> Option<(&'static str, f32, f32)> {
+    if player_alive && !player_silent && random.next_int_bound(2).unwrap_or(1) == 0 {
+        let candidates: Vec<_> = nearby
+            .iter()
+            .filter(|(s, _)| maps.parrot_imitation(s).is_some())
+            .collect();
+        if !candidates.is_empty() {
+            let (species, silent) =
+                *candidates[random.next_int_bound(candidates.len() as i32).unwrap_or(0) as usize];
+            if !silent {
+                let sound = maps.parrot_imitation(species).filter(|s| !s.is_empty())?;
+                return Some((sound, 0.7, pitch(random)));
+            }
+        }
+    }
+    let sound = if !peaceful && random.next_int_bound(1000).unwrap_or(1) == 0 {
+        random_imitation(maps, random)
+    } else {
+        "entity.parrot.ambient"
+    };
+    Some((sound, 1.0, pitch(random))).filter(|s| !s.0.is_empty())
+}
+
+
+/// `getAmbient`'s rare draw: a random imitable mob's sound, from vanilla's
+/// table or the pack's map (the parrot's own sound when the map is empty).
+fn random_imitation(
+    maps: &crate::neoforge_mob_maps::NeoForgeMobMaps,
+    random: &mut impl RandomSource,
+) -> &'static str {
+    let sounds = maps.parrot_sounds();
+    let len = sounds.map_or(IMITATIONS.len(), <[_]>::len);
+    if len == 0 {
+        return "entity.parrot.ambient";
+    }
+    let i = random.next_int_bound(len as i32).unwrap_or(0) as usize;
+    match sounds {
+        Some(sounds) => sounds[i],
+        None => IMITATIONS[i].1,
     }
 }

@@ -3,12 +3,12 @@
 //! stops the fall, cancels its damage and knocks the creatures around the
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
-use super::Game;
+use super::{Game, stack_text::{stack_component, stack_view}};
 use myriade_engine::{
     enchant::EffectContext,
     health::ArmorWeapon,
     items::ItemStack,
-    mobs::{Damage, MobEvent, Species},
+    mobs::{Damage, Species},
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -115,6 +115,34 @@ pub(super) fn stack_smash_damage(
 }
 
 impl Game<'_> {
+    /// A stack's effective component: its own patch, else the item's default.
+    pub(in crate::game) fn item_combat_component(
+        &self,
+        stack: &ItemStack,
+        id: &str,
+    ) -> Option<serde_json::Value> {
+        stack_component(
+            self.res.item_defaults().entries(),
+            &stack_view(stack),
+            id,
+        )
+    }
+
+    /// The stack with its effective enchantments, for attacks and previews.
+    pub(in crate::game) fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
+        let mut effective = stack.clone();
+        let enchantments = self
+            .item_combat_component(stack, "minecraft:enchantments")
+            .unwrap_or_else(|| serde_json::json!({}));
+        let tag = myriade_data::scoreboard::json_to_tag(
+            &serde_json::json!({"minecraft:enchantments": enchantments}),
+        );
+        let (_, extra) = horizon_items::item_data::decode_components(Some(&tag));
+        effective.data_mut().enchantments =
+            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
+        effective
+    }
+
     /// The weapon's source override, item override, then the actor's ordinary melee source.
     pub(in crate::game) fn stack_melee_damage_type(
         &self,

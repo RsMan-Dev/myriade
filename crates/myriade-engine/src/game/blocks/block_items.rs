@@ -104,13 +104,7 @@ impl Game<'_> {
         if let (Some(name), Tag::Compound(map)) = (self.world.block_names.get(&key), &mut tag) {
             map.insert("CustomName".into(), name.clone());
         }
-        if matches!(entity, BlockEntity::Mod(_)) {
-            // The mod owns its serializer; the vanilla canonicalizer only knows
-            // vanilla entity types and must not discard this instance's data.
-            Some(tag)
-        } else {
-            block_entity_nbt::canonical(&tag)
-        }
+        block_entity_nbt::canonical(&tag)
     }
 
     /// The `CustomName` a block entity loads from `tag`
@@ -126,11 +120,7 @@ impl Game<'_> {
         if matches!(entity, BlockEntity::Banner(_) | BlockEntity::Sign(_)) {
             return false;
         }
-        let name = if matches!(entity, BlockEntity::Mod(_)) {
-            save::text(tag.get("CustomName")).map(|name| Tag::String(name.as_str().into()))
-        } else {
-            tag.get("CustomName").and_then(block_entity_nbt::component)
-        };
+        let name = tag.get("CustomName").and_then(block_entity_nbt::component);
         if self.world.block_names.get(&key) == name.as_ref() {
             return false;
         }

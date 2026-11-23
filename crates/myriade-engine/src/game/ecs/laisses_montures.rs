@@ -144,12 +144,6 @@ impl Game<'_> {
         let (Some(owner), Some(e)) = (self.acting_player_uuid_id(), self.ecs.entity_of(id)) else {
             return;
         };
-        // AnimalTameEvent cancelled: the roll fails and P refuses the rider (`EcsLevel::refuse_rider`, missing).
-        let (tamer, tamer_entity) = (self.native_acting_id(), self.own_entity_id());
-        if self.ecs_animal_tame_cancelled(id, tamer, tamer_entity) {
-            self.ecs.refuse_rider(e);
-            return;
-        }
         if let Some(w) = self.ecs.world_mut() {
             let health = w.get::<horizon_ecs_proto::cow::Health>(e).map_or(0.0, |h| h.0);
             horizon_ecs_proto::tame::tame(w, e, Who::Player(owner), health);

@@ -57,13 +57,7 @@ impl Game<'_> {
         self.lan
             .iter()
             .flat_map(|h| h.hub.online_players())
-            .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))
-    }
-
-    /// Native console calls cannot reach an outer turn's displaced player.
-    /// Ordinary command resolution is unchanged, including nested turns.
-    fn native_command_player_available(&self, guest: &Guest) -> bool {
-        !self.native_command_filter || self.entity(guest.entity_id as u32).is_some()
+            .filter(move |g| Some(g.conn) != acting)
     }
 
     /// The entity the command runs as (`CommandSourceStack.getEntity`): a
@@ -127,9 +121,7 @@ impl Game<'_> {
     /// by it, without its `~` or with it (quoted), so `/msg` and `/tell`
     /// reach a player by the name chat shows. No nickname, no change.
     pub(super) fn player_named(&self, name: &str) -> Option<Target> {
-        if !self.lan_acting_fake
-            && self.player.is_some()
-            && name.eq_ignore_ascii_case(self.acting_player_name())
+        if self.player.is_some() && name.eq_ignore_ascii_case(self.acting_player_name())
         {
             return Some(Target::Player);
         }
@@ -165,7 +157,7 @@ impl Game<'_> {
             })
         });
         if self.player.is_some() && own == Some(uuid) {
-            return (!self.lan_acting_fake).then_some(Target::Player);
+            return Some(Target::Player);
         }
         if let Some(g) = self.command_players().find(|g| g.uuid == uuid) {
             return Some(Target::Guest(g.conn));
@@ -188,7 +180,6 @@ impl Game<'_> {
         self.lan
             .iter()
             .flat_map(|h| h.hub.online_players())
-            .filter(|g| self.native_command_player_available(g))
             .filter(|g| !limited || g.dimension == here || Some(g.conn) == in_place)
             .filter(|g| !alive || (!g.dead && g.health > 0.0))
             .map(|g| {
@@ -331,7 +322,6 @@ mod tests {
 mod game_tests {
     use super::Target;
     use crate::game::Game;
-    use crate::game::native_entity_refs::tests::with_game;
     use myriade_engine::chunk::Chunk;
     use horizon_core::position::ChunkPos;
     use std::sync::Arc;

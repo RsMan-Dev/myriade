@@ -155,8 +155,7 @@ impl Game<'_> {
             return;
         };
         let guest = &host.hub.guests[gi];
-        let (conn, own, uuid, name) = (guest.conn, guest.entity_id, guest.uuid, guest.name.clone());
-        let previous = self.cmds.guest_cameras.get(&conn).map(|c| c.id);
+        let (conn, own) = (guest.conn, guest.entity_id);
         let camera = camera.filter(|id| *id != own);
         if self.cmds.guest_cameras.get(&conn).map(|c| c.id) == camera {
             return;
@@ -201,14 +200,6 @@ impl Game<'_> {
         let teleports = host.hub.guests[gi].teleport_counter;
         if let Some(c) = self.cmds.guest_cameras.get_mut(&conn) {
             c.teleports = teleports;
-        }
-        if let Some(entity_id) = camera {
-            self.native_player_start_spectating_entity(uuid, &name, entity_id);
-        }
-        if camera.is_none()
-            && let Some(entity_id) = previous
-        {
-            self.native_player_stop_spectating_entity(uuid, &name, entity_id);
         }
     }
 

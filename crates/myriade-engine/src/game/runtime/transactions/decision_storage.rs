@@ -115,18 +115,12 @@ pub(in crate::game) struct GameHost<'a, 'g> {
 impl ActionHost for GameHost<'_, '_> {
     fn identity(&self) -> Identity {
         let mut identity = self.identity;
-        if let Some(world) = self.game.native_lifecycle.epoch() {
-            identity.world = world;
-        }
         identity.side = Side::Server;
         identity
     }
 
     fn residence(&self, holder: EntityRef) -> Residence {
         use myriade_engine::join_seq::residency::table::EntityLookup;
-        if self.game.native_lifecycle.epoch() != Some(holder.epoch()) {
-            return Residence::Missing;
-        }
         // The shared entity table includes players and parked dimensions. A
         // missing row refuses the original holder; never fall back to a scan.
         match self.game.server_resident_entity(holder.id()) {

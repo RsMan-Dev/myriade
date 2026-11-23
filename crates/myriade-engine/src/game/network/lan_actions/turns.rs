@@ -28,9 +28,7 @@ impl Game<'_> {
                     .as_ref()
                     .is_some_and(|host| host.hub.guest(conn).is_some_and(|g| g.placed))
             });
-            let dimension = Some(self.dim.id());
-            let result = myriade_engine::block_contact::in_level(dimension, || f(self));
-            self.drain_entity_inside();
+            let result = f(self);
             result
         }));
         // Commit the guest's progress and restore the outer player before propagating a panic.
@@ -175,10 +173,6 @@ impl Game<'_> {
             // A new ServerPlayer has everything to record again.
             play.score_recorded = Default::default();
         }
-        let attachments = std::mem::replace(
-            &mut self.player_state.attachments,
-            std::mem::take(host.hub.guests.attachments_mut(conn).unwrap()),
-        );
         self.sculk.swap_player(&mut play.sculk);
         // The guest's own CombatTracker: damage to them is not the host's.
         // A new body starts with no record of the last one.
@@ -407,7 +401,6 @@ impl Game<'_> {
         self.block_reach = self.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
         let building_boxes = std::mem::replace(&mut self.lan_building_boxes, other_boxes);
         Ok(GuestSwap {
-            attachments,
             conn,
             i,
             play,
@@ -499,33 +492,6 @@ impl Game<'_> {
             }
             // A totem that saved the guest this turn (its hurt set it off).
             let totem = self.apply_totem();
-            // The mods hear the food level the turn changed (eating, hunger,
-            // starving...), once for the change it made as a whole, with the
-            // guest's state still swapped in; they may change or undo it before it
-            // reaches the guest.
-            let now = self.player.as_ref().map(|p| p.health.food.food);
-            let food = self
-                .lan
-                .as_ref()
-                .and_then(|host| host.hub.guests.get(swap.i))
-                .filter(|g| now.is_some_and(|now| g.food != now))
-                .map(|g| (g.uuid, g.name.clone(), g.food, g.saturation));
-            if let Some(now) = now
-                && let Some((uuid, name, from, saturation)) = food
-            {
-                let (mut to, mut cancel) = (now, false);
-                self.native_food_level_changed(uuid, &name, from, &mut to, &mut cancel);
-                if let Some(p) = self.player.as_mut() {
-                    if cancel {
-                        p.health.food.food = from;
-                        p.health.food.saturation = saturation;
-                    } else if to != now {
-                        p.health.food.food = to.clamp(0, 20);
-                        p.health.food.saturation =
-                            p.health.food.saturation.min(p.health.food.food as f32);
-                    }
-                }
-            }
             totem
         }));
         let (totem, panic) = match callbacks {
@@ -542,7 +508,6 @@ impl Game<'_> {
             self.lan_interrupted_turns.extend(above);
         }
         let GuestSwap {
-            attachments,
             conn,
             i,
             mut play,
@@ -743,7 +708,6 @@ impl Game<'_> {
         }
         let (stat_events, name, teleport) = host.hub.guests.update(i, |g| {
             let mut teleport = None;
-            g.attachments = std::mem::replace(&mut self.player_state.attachments, attachments);
             let left_vehicle = g.vehicle.filter(|_| guest_vehicle.is_none());
             if guest_vehicle.is_none() {
                 g.vehicle_good = None;
@@ -955,8 +919,6 @@ impl Game<'_> {
         if let Some(mob) = guest_mount {
             self.lan_open_mount(conn, mob);
         }
-        // The turn's teleports are in the hub now: the mods hear them.
-        self.flush_teleport_notes();
         if let Some(host) = self.lan.as_ref() {
             refresh_building_player(host, conn);
         }

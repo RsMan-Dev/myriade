@@ -114,9 +114,6 @@ impl Game<'_> {
     /// `getDismountLocationForPassenger` for the player riding the ECS boat `id`: the rider leaves its seat and
     /// stands in front of it or on top.
     pub(super) fn dismount_boat(&mut self, id: u32) {
-        if self.riding == Some(id) && !self.native_may_leave(id) {
-            return;
-        }
         self.riding = None;
         self.ecs.boat_release(id);
         let Some(at) = self.ecs_view(id).map(|v| Vec3::new(v.position[0], v.position[1], v.position[2])) else {
@@ -260,7 +257,6 @@ impl Game<'_> {
         self.apply_item_stack_config(super::commands::Target::Boat(id), &kind, stack, true);
         let key = (at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4);
         self.world.modified.insert(key);
-        self.native_vehicle_create(kind.as_str(), at);
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", at, ctx);
         if !self.creative {
@@ -413,15 +409,10 @@ impl Game<'_> {
     pub(in crate::game) fn hurt_boat_result(
         &mut self,
         id: u32,
-        mut damage: f32,
+        damage: f32,
         creative: bool,
         by: Option<Who>,
     ) -> Option<bool> {
-        let mut cancel = false;
-        self.native_vehicle_damage("boat", &mut damage, &mut cancel);
-        if cancel {
-            return None;
-        }
         let drops = self
             .session
             .rules
@@ -445,7 +436,6 @@ impl Game<'_> {
     }
     /// Existing boat access routes all use the shared unpack operation.
     pub(super) fn unpack_boat_loot(&mut self, id: u32, player: bool) {
-        let player = player.then(|| self.native_acting_player()).flatten();
         self.unpack_loot(super::container_loot::LootTarget::Boat(id), player);
     }
 

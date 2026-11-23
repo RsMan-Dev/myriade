@@ -129,7 +129,6 @@ impl Game<'_> {
 #[cfg(test)]
 mod tests {
     use super::Game;
-    use crate::game::native_guest_turn_tests::with_acting_guest;
     use myriade_engine::{command::vanilla, effects::EffectInstance};
     use horizon_core::geometry::Vec3;
 

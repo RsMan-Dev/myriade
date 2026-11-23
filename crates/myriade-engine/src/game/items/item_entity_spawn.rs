@@ -23,7 +23,6 @@ impl Game<'_> {
         if let Some(e) = self.ecs.entity_of(id) {
             self.ecs.despawn(e);
         }
-        self.native_entity_left(id);
         true
     }
     /// Every dropped item leaves the level, as `Entity.discard` does to each.

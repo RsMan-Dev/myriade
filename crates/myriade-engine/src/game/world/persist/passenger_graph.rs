@@ -1,7 +1,7 @@
 //! The ordered relationship shared by saved entity trees and live non-mob riders.
 //! Creation, boarding, joining the level and saving are separate decisions.
 use super::{Game, PassengerSlot, Tag, entity_nbt};
-use crate::game::{commands::Target, native_entities::target_id};
+use crate::game::commands::Target;
 
 impl Game<'_> {
     /// Object-backed vehicles load their entire ordered tree themselves.
@@ -175,12 +175,7 @@ impl Game<'_> {
             let Some(at) = entity_nbt::position(&tag) else {
                 continue;
             };
-            // A quarantined record keeps its riders inside it, as it arrived.
-            let children = if super::super::general::quarantine_store_kind(&kind) {
-                None
-            } else {
-                take_passengers(&mut tag)
-            };
+            let children = take_passengers(&mut tag);
             let before = self.next_entity;
             let key = super::chunk_of(at);
             let uuid = entity_nbt::uuid(&tag);
@@ -189,14 +184,8 @@ impl Game<'_> {
                 self.load_mob(tag, Some(vehicle));
             } else if let Err(tag) = self.load_unlisted(key, &kind, uuid, tag)
                 && let Err(tag) = self.load_listed(&kind, uuid, self.level.player_uuid, tag)
-                // The missing-mod gate decides whether an unknown kind may be kept.
-                && self.general_quarantine_admits(&tag, &kind, at, self.quarantined_in_chunk(key))
             {
-                if let Some(tag) = self.keep_quarantined(tag, &kind, key) {
-                    self.load_other(tag, &kind);
-                } else {
-                    continue;
-                }
+                self.load_other(tag, &kind);
             }
             let Some(id) = ((before + 1)..=self.next_entity)
                 .find(|id| self.passenger_object_present(*id))
@@ -324,5 +313,36 @@ impl Game<'_> {
             .and_then(|u| self.target_with_uuid(u))
             .and_then(target_id);
         id.is_none_or(|id| self.passenger_vehicle(id).is_none())
+    }
+}
+
+/// The entity id a summoned stack's root is known by.
+fn target_id(t: Target) -> Option<u32> {
+    match t {
+        Target::Mob(id)
+        | Target::Item(id)
+        | Target::Orb(id)
+        | Target::Projectile(id)
+        | Target::Stand(id)
+        | Target::Frame(id)
+        | Target::Painting(id)
+        | Target::Boat(id)
+        | Target::Cart(id)
+        | Target::Other(id)
+        | Target::Fangs(id)
+        | Target::Crystal(id)
+        | Target::Dragon(id)
+        | Target::DragonPart(id)
+        | Target::Tnt(id)
+        | Target::Cushion(id)
+        | Target::Falling(id)
+        | Target::Rocket(id)
+        | Target::Trident(id)
+        | Target::Spawner(id)
+        | Target::Cloud(id)
+        | Target::Hook(id)
+        | Target::Knot(id)
+        | Target::General(id) => Some(id),
+        Target::Player | Target::Guest(_) => None,
     }
 }

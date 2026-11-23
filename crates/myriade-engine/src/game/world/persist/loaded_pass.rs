@@ -7,23 +7,11 @@ impl Game<'_> {
         let _save_lease = myriade_engine::join_seq::visibility::PassLease::enter();
         let loaded = std::mem::take(&mut self.world.loaded_entities);
         for (key, tags) in loaded {
-            let count = tags.len();
             if self.ecs.is_active() {
-                // A missing mod's record is kept as loaded in the chunk's unknown store, never read by the world; the
-                // bounds count what the chunk already holds, once per load.
-                let mut held = self.quarantined_in_chunk(key);
                 let mut entities = Vec::new();
                 for pending in tags {
                     let tag = pending.into_parts().0;
-                    let kind = entity_nbt::kind(&tag).unwrap_or_default();
-                    if super::super::general::quarantine_store_kind(&kind) {
-                        if let Some(at) = entity_nbt::position(&tag)
-                            && self.general_quarantine_admits(&tag, &kind, at, held)
-                        {
-                            self.keep_quarantined(tag, &kind, key);
-                            held += 1;
-                        }
-                    } else if entity_nbt::position(&tag).is_none() {
+                    if entity_nbt::position(&tag).is_none() {
                         // No position: the ECS reads nothing from it, so it is kept byte for byte as the legacy path keeps it.
                         self.persist.unknown.entry(key).or_default().push(tag);
                     } else if let Tag::Compound(c) = tag {
@@ -34,30 +22,10 @@ impl Game<'_> {
             } else {
                 for pending in tags {
                     let (tag, reason) = pending.into_parts();
-                    self.spawn_loaded_entity_reason(key, tag, None, reason);
+                    self.spawn_loaded_entity_reason(key, tag, false, reason);
                 }
             }
-            self.native_entities_load(self.dim.id(), [key.0, key.1], count);
         }
-    }
-
-    /// The quarantined records of chunk `key` kept in its unknown store (`persist.unknown`).
-    pub(in crate::game) fn quarantined_in_chunk(&self, key: ChunkKey) -> usize {
-        self.persist.unknown.get(&key).map_or(0, |list| {
-            list.iter()
-                .filter(|tag| entity_nbt::kind(tag).is_some_and(|kind| super::super::general::quarantine_store_kind(&kind)))
-                .count()
-        })
-    }
-
-    /// Keeps a missing mod's record as loaded, byte for byte, in its chunk's unknown store, written back with the chunk.
-    /// The tag comes back for any other kind.
-    pub(in crate::game) fn keep_quarantined(&mut self, tag: Tag, kind: &str, chunk: ChunkKey) -> Option<Tag> {
-        if !super::super::general::quarantine_store_kind(kind) {
-            return Some(tag);
-        }
-        self.persist.unknown.entry(chunk).or_default().push(tag);
-        None
     }
 
     /// Install one fixture record or explicitly owned live transfer through the same
@@ -67,7 +35,7 @@ impl Game<'_> {
         &mut self,
         key: ChunkKey,
         tag: Tag,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
+        transferred: bool,
     ) {
         self.spawn_loaded_entity_reason(
             key,
@@ -81,7 +49,7 @@ impl Game<'_> {
         &mut self,
         key: ChunkKey,
         mut tag: Tag,
-        transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
+        transferred: bool,
         reason: myriade_engine::world::EntityLoadReason,
     ) {
         let player_uuid = self.level.player_uuid;
@@ -97,24 +65,18 @@ impl Game<'_> {
         }
         // PersistentEntitySectionManager.addEntity's `loaded`.
         let from_disk = !take_fresh(&mut tag);
-        // An End gateway's traveller never left the level: nothing joins.
-        let moved = take_moved(&mut tag);
-        // Whatever was added since the last tick joins before this one.
-        self.native_joins_flush(false, 0);
+        take_moved(&mut tag);
         let kind = entity_nbt::kind(&tag).unwrap_or_default();
-        // `EntityType.by` finds no type for a player or a kind outside the registry: nothing
-        // loads. A mod's kind (another namespace) is the missing-mod gate's to decide.
+        // `EntityType.by` finds no type for a player or a kind outside the registry: nothing loads.
         self.load_entity_types();
-        if transferred.is_none()
+        if !transferred
             && (kind == "minecraft:player"
-                || (self.entity_types_loaded()
-                    && !super::super::general::quarantined_kind(&kind)
-                    && !self.entity_type_exists(&kind)))
+                || (self.entity_types_loaded() && !self.entity_type_exists(&kind)))
         {
             return;
         }
         let is_mob = self.res.mob_types().contains_key(kind.as_str());
-        if transferred.is_none()
+        if !transferred
             && from_disk
             && is_mob
             && entity_nbt::position(&tag).is_none()
@@ -133,12 +95,10 @@ impl Game<'_> {
             }
             return;
         }
-        if !super::super::general::quarantined_kind(&kind) {
-            drop_unleashable_leash(&mut tag, &kind, is_mob);
-        }
+        drop_unleashable_leash(&mut tag, &kind, is_mob);
         let uuid = entity_nbt::uuid(&tag);
         // This shortcut deduplicates disk copies, never explicit runtime ownership.
-        if transferred.is_none() && uuid.is_some_and(|u| self.restored_vehicle(u).is_some()) {
+        if !transferred && uuid.is_some_and(|u| self.restored_vehicle(u).is_some()) {
             return;
         }
         if (matches!(
@@ -173,7 +133,7 @@ impl Game<'_> {
         }
         // Each tree has one loader: object-backed vehicles retain every rider for
         // their recursive loader; other kinds load the same ordered slots below.
-        let passengers = (transferred.is_none() && !super::super::general::quarantined_kind(&kind))
+        let passengers = (!transferred)
             .then(|| {
                 let own_loader = is_mob
                     || super::super::boats::any_boat_wood(&kind).is_some()
@@ -185,34 +145,26 @@ impl Game<'_> {
         let before = self.next_entity;
         // Kinds outside `entity_lists!` first, then the listed kinds
         // (`Entity::load_nbt`), then whatever else is a compound.
-        let transferring = transferred.is_some();
         let unloaded = if kind == "minecraft:tnt"
             && !is_mob
             && reason == myriade_engine::world::EntityLoadReason::TeleportedTnt
         {
-            self.load_tnt_with_portal(tag, uuid, transferred, true);
+            self.load_tnt_with_portal(tag, uuid, true);
             Ok(())
-        } else if let Some(state) = transferred {
-            self.load_listed_transferred(&kind, uuid, player_uuid, tag, state)
+        } else if transferred {
+            self.load_listed_transferred(&kind, uuid, player_uuid, tag)
         } else {
             self.load_unlisted(key, &kind, uuid, tag)
                 .or_else(|tag| self.load_listed(&kind, uuid, player_uuid, tag))
         };
         if let Err(tag) = unloaded {
-            if transferring {
+            if transferred {
                 log::warn!("refusing unsupported transferred entity kind {kind}");
                 return;
             }
             if !kind.is_empty() && entity_nbt::position(&tag).is_some() {
-                // A record no listed family claimed: the missing-mod gate
-                // decides whether the unknown-kind path may keep it.
-                let at = entity_nbt::position(&tag).unwrap();
-                let held = self.quarantined_in_chunk(chunk_of(at));
-                if self.general_quarantine_admits(&tag, &kind, at, held)
-                    && let Some(tag) = self.keep_quarantined(tag, &kind, chunk_of(at))
-                {
-                    self.load_other(tag, &kind);
-                }
+                // A record no listed family claimed.
+                self.load_other(tag, &kind);
             } else {
                 self.persist.unknown.entry(key).or_default().push(tag);
             }
@@ -222,13 +174,6 @@ impl Game<'_> {
             && let Some(passengers) = passengers
         {
             self.load_passengers(id, passengers);
-        }
-        // PersistentEntitySectionManager.addEntity: every kind that
-        // just joined tells the mods; a moved one does not join.
-        if moved {
-            self.native_joins_skip();
-        } else {
-            self.native_joins_flush(from_disk, 0);
         }
     }
 }

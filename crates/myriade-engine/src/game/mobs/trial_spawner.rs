@@ -132,11 +132,6 @@ impl Game<'_> {
         &self,
         encoder: &mut myriade_engine::lan::chunks::ChunkEncoder,
     ) {
-        encoder.mod_update_tag = Some(|pos, entity| {
-            let mut tag = None;
-            Game::api_block_entity_update_tag(pos, entity, &mut tag);
-            tag
-        });
         let registry = self.pack.assets.registry;
         encoder.trial_active = (0..registry.len() as u32)
             .filter(|&i| {
@@ -188,9 +183,6 @@ impl Game<'_> {
         let mut sequences = std::mem::take(&mut self.rand_sequences);
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
-        let source = Some(myriade_types::SpawnSource::Block(myriade_types::BlockPos::new(
-            key.0, key.1, key.2,
-        )));
         let mut uuids: Vec<(u32, Uuid)> = Vec::new();
         let mut ejected: Vec<(ItemStack, [f64; 3])> = Vec::new();
         let rides: Vec<(u32, u32)>;
@@ -202,7 +194,7 @@ impl Game<'_> {
             let loot = self.server_loot.get();
             let seed = self.level.seed;
             let mut spawn = |l: &GameLevel, _rng: &mut LevelRandom, r: &SpawnerSpawn| {
-                let added = l.game.plan_spawner_mob(l, r, source, &mut planned)?;
+                let added = l.game.plan_spawner_mob(l, r, &mut planned)?;
                 let uuid = match planned.last_mut() {
                     Some(Planned::Loaded(Tag::Compound(tag), _, _)) => {
                         let tag_uuid =

@@ -18,7 +18,9 @@ use horizon_world::{
     level::{Behaviours, LevelAccess},
     registry::BlockStateId,
 };
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
+use myriade_engine::{Result, containers::{BlockEntity, HOPPER_SLOTS}, items::{ItemStack, Items}, save};
+use crate::world::World;
 
 type Pos = (i32, i32, i32);
 
@@ -90,8 +92,6 @@ enum Kind {
     Bookshelf,
     /// `JukeboxBlockEntity`'s single slot: a playable disc only.
     Jukebox,
-    /// A mod block's block entity (`ModContainer`).
-    Mod,
     /// `ShulkerBoxBlockEntity`: a shulker box doesn't go through a face into one.
     Shulker,
     /// `ComposterBlock.getContainer` at this level (a `WorldlyContainerHolder`
@@ -104,8 +104,6 @@ enum Kind {
 struct View {
     parts: Vec<(Pos, usize)>,
     kind: Kind,
-    /// A mod block's container rules (`Kind::Mod`).
-    container: Option<Arc<ModContainer>>,
 }
 impl View {
     fn len(&self) -> usize {
@@ -121,7 +119,7 @@ impl View {
         None
     }
     /// `WorldlyContainer.getSlotsForFace` or every slot, zero-allocation iterator.
-    pub(super) fn slots_for_face_iter(&self, face: Option<Direction>) -> Slots<'_> {
+    pub(super) fn slots_for_face_iter(&self, face: Option<Direction>) -> Slots {
         match (self.kind, face) {
             (Kind::Furnace, Some(Direction::Down)) => Slots::Slice(&[2, 1]),
             (Kind::Furnace, Some(Direction::Up)) => Slots::Slice(&[0]),
@@ -132,10 +130,6 @@ impl View {
             (Kind::Composter(8), Some(Direction::Down)) => Slots::Slice(&[0]),
             (Kind::Composter(level), Some(Direction::Up)) if level < 7 => Slots::Slice(&[0]),
             (Kind::Composter(_), _) => Slots::Slice(&[]),
-            (Kind::Mod, Some(face)) => self
-                .container
-                .as_ref()
-                .map_or(Slots::Slice(&[]), |c| Slots::Mod(&c.faces[face as usize])),
             _ => Slots::Range(0..self.len()),
         }
     }
@@ -147,8 +141,8 @@ impl View {
             _ => 99,
         }
     }
-    pub(super) fn slots_to_add_iter(&self, face: Option<Direction>) -> Slots<'_> {
-        if matches!(self.kind, Kind::Furnace | Kind::Brewing | Kind::Mod) && face.is_some() {
+    pub(super) fn slots_to_add_iter(&self, face: Option<Direction>) -> Slots {
+        if matches!(self.kind, Kind::Furnace | Kind::Brewing) && face.is_some() {
             self.slots_for_face_iter(face)
         } else {
             Slots::Range(0..self.len())
@@ -160,24 +154,18 @@ impl View {
     }
 }
 
-pub(super) enum Slots<'a> {
+pub(super) enum Slots {
     Range(std::ops::Range<usize>),
     Slice(&'static [usize]),
-    Mod(&'a [usize]),
 }
 
-impl Iterator for Slots<'_> {
+impl Iterator for Slots {
     type Item = usize;
     #[inline]
     fn next(&mut self) -> Option<usize> {
         match self {
             Slots::Range(r) => r.next(),
             Slots::Slice(s) => {
-                let (&first, rest) = s.split_first()?;
-                *s = rest;
-                Some(first)
-            }
-            Slots::Mod(s) => {
                 let (&first, rest) = s.split_first()?;
                 *s = rest;
                 Some(first)
@@ -189,12 +177,11 @@ impl Iterator for Slots<'_> {
         let len = match self {
             Slots::Range(r) => r.len(),
             Slots::Slice(s) => s.len(),
-            Slots::Mod(s) => s.len(),
         };
         (len, Some(len))
     }
 }
-impl ExactSizeIterator for Slots<'_> {}
+impl ExactSizeIterator for Slots {}
 
 pub(super) fn dir_from_name(name: &str) -> Option<Direction> {
     Some(match name {
@@ -273,24 +260,9 @@ impl Containers<'_> {
             return Some(View {
                 parts: vec![(pos, usize::from(level != 7))],
                 kind: Kind::Composter(level),
-                container: None,
             });
         }
         let entity = self.world.block_entities.get(&pos)?;
-        // A mod's block entity is a container when its block says so. The one
-        // ticking now is out of the world (an empty id marks its place): what
-        // went into its place would be lost when it comes back.
-        if let BlockEntity::Mod(m) = entity {
-            if m.id().is_empty() {
-                return None;
-            }
-            let container = Arc::clone(self.world.block_entities.mod_container(state.0)?);
-            return Some(View {
-                parts: vec![(pos, container.slots)],
-                kind: Kind::Mod,
-                container: Some(container),
-            });
-        }
         // Non-container block entities (signs, banners, beacons, skulls, etc.,
         // or beehives/campfires/brushables) are not `Container`s
         // (HopperBlockEntity.getContainerAt), so a dropper drops in front of
@@ -350,7 +322,6 @@ impl Containers<'_> {
                     return Some(View {
                         parts,
                         kind,
-                        container: None,
                     });
                 }
             }
@@ -358,7 +329,6 @@ impl Containers<'_> {
         Some(View {
             parts: vec![(pos, size)],
             kind,
-            container: None,
         })
     }
     /// The saved decorated-pot slot as a container: `DecoratedPotBlockEntity`
@@ -375,7 +345,6 @@ impl Containers<'_> {
         Some(View {
             parts: vec![(pos, 1)],
             kind: Kind::Pot,
-            container: None,
         })
     }
     /// `HopperBlockEntity.getBlockContainer` at its insertion target only.
@@ -418,9 +387,6 @@ impl Containers<'_> {
     /// `Container.canPlaceItem` (+ `canPlaceItemThroughFace` for furnaces) with slot `slot`
     /// empty: the item rule of the slot, whatever it holds now.
     fn accepts(&self, view: &View, slot: usize, stack: &ItemStack) -> bool {
-        if let Some(c) = &view.container {
-            return c.inputs.contains(&slot);
-        }
         match view.kind {
             // ComposterBlock.InputContainer.canPlaceItemThroughFace; output never accepts.
             Kind::Composter(level) => {
@@ -486,7 +452,6 @@ impl Containers<'_> {
         let held = self.get(view, slot);
         let is_bucket = |s: &ItemStack| &*s.item == "minecraft:bucket";
         match view.kind {
-            _ if view.container.is_some() => true,
             Kind::Jukebox | Kind::Bookshelf => held.is_none(),
             Kind::Brewing => slot >= 3 || held.is_none(),
             Kind::Furnace => slot != 1 || !is_bucket(stack) || !held.is_some_and(is_bucket),
@@ -556,9 +521,6 @@ impl Containers<'_> {
         }
         if view.kind == Kind::Brewing {
             return slot != 3 || &*stack.item == "minecraft:glass_bottle";
-        }
-        if let Some(c) = &view.container {
-            return c.outputs.contains(&slot);
         }
         view.kind != Kind::Furnace
             || face != Direction::Down
@@ -692,7 +654,7 @@ pub(super) fn container_signal(level: &mut super::GameLevel<'_>, pos: BlockPos) 
         .or_else(|| c.saved_pot_view((pos.x, pos.y, pos.z)));
     if let Some(view) = &view {
         for &(key, _) in &view.parts {
-            level.unpack_loot(super::container_loot::LootTarget::Block(key), None);
+            level.unpack_loot(super::container_loot::LootTarget::Block(key), false);
         }
     }
     let c = Containers {
@@ -768,12 +730,6 @@ impl Game<'_> {
     fn slot_mut_at(&mut self, view: &View, slot: usize) -> Option<&mut Option<ItemStack>> {
         let (pos, i) = view.locate(slot)?;
         let entity = self.world.block_entities.get_mut(&pos)?;
-        // A mod's slots grow to its container's count when first used.
-        if let BlockEntity::Mod(m) = entity
-            && m.items.len() <= i
-        {
-            m.items.resize(view.len(), None);
-        }
         entity.slots_mut().get_mut(i)
     }
     /// `BlockEntity.setChanged` for every block entity of a container.
@@ -804,11 +760,6 @@ impl Game<'_> {
     pub(super) fn container_changed(&mut self, pos: Pos) {
         if pos.1 == super::minecarts::CART_KEY_Y {
             return;
-        }
-        if false
-            && let Some(level) = self.native_level_here()
-        {
-            let at = BlockPos::new(pos.0, pos.1, pos.2);
         }
         self.chiseled_bookshelf_synced(pos);
         if matches!(
@@ -1097,7 +1048,7 @@ impl Game<'_> {
         if self.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) || !enabled {
             return;
         }
-        self.unpack_loot(super::container_loot::LootTarget::Block(pos), None);
+        self.unpack_loot(super::container_loot::LootTarget::Block(pos), false);
         let c = self.containers();
         let mut changed = false;
         if !c.is_empty(&view) {
@@ -1170,7 +1121,7 @@ impl Game<'_> {
         let Some(view) = c.view(pos, false) else {
             return false;
         };
-        self.unpack_loot(super::container_loot::LootTarget::Block(pos), None);
+        self.unpack_loot(super::container_loot::LootTarget::Block(pos), false);
         let c = self.containers();
         let mut changed = false;
         if !c.is_empty(&view) {
@@ -1484,7 +1435,7 @@ impl Game<'_> {
     ) -> Option<R> {
         let is_cart = self.ecs.cart_kind(id).is_some();
         let mut items = if is_cart {
-            self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+            self.unpack_loot(super::container_loot::LootTarget::Cart(id), false);
             self.ecs.cart_items(id).unwrap_or_default()
         } else {
             self.ecs.boat_status(id)?;
@@ -1523,7 +1474,6 @@ impl Game<'_> {
         let view = View {
             parts: vec![(key, size)],
             kind: Kind::Generic,
-            container: None,
         };
         (view, open)
     }
@@ -1603,7 +1553,7 @@ impl Game<'_> {
         let Some(view) = self.containers().view(key, false) else {
             return Ok(());
         };
-        self.unpack_loot(super::container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(super::container_loot::LootTarget::Block(key), false);
         // DispenserBlockEntity.getRandomSlot
         let mut slot = None;
         let mut odds = 1;
@@ -1870,83 +1820,6 @@ mod item_column_tests {
 }
 
 #[cfg(test)]
-mod mod_container_tests {
-    use super::{Kind, ModContainer, View, room};
-    use myriade_engine::items::ItemStack;
-    use horizon_core::geometry::Direction;
-    use std::sync::Arc;
-
-    /// A mod's container reaches the slots its block names for each face;
-    /// without a face, every slot.
-    #[test]
-    fn mod_container_slots_by_face() {
-        let mut faces: [Vec<usize>; 6] = Default::default();
-        faces[Direction::Up as usize] = vec![0];
-        faces[Direction::Down as usize] = vec![2];
-        faces[Direction::North as usize] = vec![1];
-        let view = View {
-            parts: vec![((0, 0, 0), 3)],
-            kind: Kind::Mod,
-            container: Some(Arc::new(ModContainer {
-                slots: 3,
-                faces,
-                inputs: vec![0, 1],
-                outputs: vec![2],
-                menu: None,
-            })),
-        };
-        assert_eq!(
-            view.slots_for_face_iter(Some(Direction::Up))
-                .collect::<Vec<_>>(),
-            [0]
-        );
-        assert_eq!(
-            view.slots_for_face_iter(Some(Direction::Down))
-                .collect::<Vec<_>>(),
-            [2]
-        );
-        assert_eq!(
-            view.slots_for_face_iter(Some(Direction::North))
-                .collect::<Vec<_>>(),
-            [1]
-        );
-        assert!(
-            view.slots_for_face_iter(Some(Direction::East))
-                .next()
-                .is_none()
-        );
-        assert_eq!(
-            view.slots_for_face_iter(None).collect::<Vec<_>>(),
-            [0, 1, 2]
-        );
-    }
-
-    /// A slot takes no more than its container's limit and the item's: one book into a chiseled
-    /// bookshelf slot of 64 offered, a chest slot 64 and then the rest of 64.
-    #[test]
-    fn a_slot_takes_up_to_its_containers_limit() {
-        let books = |count| ItemStack {
-            item: "minecraft:book".into(),
-            count,
-            damage: 0,
-            extra: None,
-        };
-        let limit = |kind| {
-            let view = View {
-                parts: vec![((0, 0, 0), 6)],
-                kind,
-                container: None,
-            };
-            view.slot_limit().min(64)
-        };
-        assert_eq!(room(limit(Kind::Bookshelf), None, &books(64)), 1);
-        assert_eq!(room(limit(Kind::Jukebox), None, &books(64)), 1);
-        assert_eq!(room(limit(Kind::Generic), None, &books(64)), 64);
-        assert_eq!(room(limit(Kind::Generic), Some(&books(60)), &books(64)), 4);
-    }
-}
-
-#[cfg(test)]
 mod capacity_tests {
     use super::{Containers, Kind, View};
     use myriade_engine::{brewing::Brewing, containers::BlockEntity, items::ItemStack};
@@ -2018,7 +1891,6 @@ mod capacity_tests {
             let view = View {
                 parts: vec![((x, 64, 0), len)],
                 kind,
-                container: None,
             };
             let offered = ItemStack::new(offered, 1);
             assert_eq!(c.capacity(&view, 0, &offered), 1, "{block}");

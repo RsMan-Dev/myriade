@@ -490,7 +490,6 @@ fn reset_use_attack_strength(ticker: &mut u32, before: u32, after: u32) {
 #[cfg(test)]
 mod tests {
     use super::{eye_columns, reset_use_attack_strength};
-    use crate::game::api_values::TryIntoApi;
     use myriade_engine::pose::Pose;
     #[test]
     fn a_block_break_suppresses_its_positional_duplicate_but_not_an_entity_sound() {

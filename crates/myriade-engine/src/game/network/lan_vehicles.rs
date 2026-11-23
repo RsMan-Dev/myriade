@@ -124,18 +124,6 @@ impl Game<'_> {
         }
         // The rider's state is swapped in for the call, so the helpers reach
         // them; a vehicle nobody rides is told of with nobody swapped in.
-        for (rider, kind, from, to) in moved {
-            let Some((conn, uuid)) = rider else {
-                self.native_vehicle_moved(None, &kind, from, to);
-                continue;
-            };
-            let hook = |game: &mut Self| game.native_vehicle_moved(Some(uuid), &kind, from, to);
-            if self.lan_acting == Some(conn) {
-                hook(self);
-            } else {
-                self.as_guest(conn, hook);
-            }
-        }
     }
 
     /// The box of a boat, minecart, armor stand, item frame or painting, and
@@ -474,20 +462,7 @@ impl Game<'_> {
             subject: None,
         };
         let wanted = target.subtract(good);
-        // The vehicle's type name only if a listener asks for it (arismoko/horizon#2414: no
-        // string on a move nobody listens to).
-        let kind = || match boat {
-            Some(v) => std::borrow::Cow::Borrowed(self.ecs.kind(v).unwrap_or("")),
-            // Unreachable: the vehicle was a boat, or it returned.
-            None => std::borrow::Cow::Borrowed(""),
-        };
-        let mut gate = myriade_engine::move_gate::armed_with(
-            &self.loop_context,
-            id,
-            kind,
-            MoverType::Player,
-            wanted,
-        );
+        let mut gate = myriade_engine::move_gate::armed(MoverType::Player, wanted);
         let wanted = gate.delta();
         // A listener's decision that is not the request (arismoko/horizon#2414, ruling 5):
         // the driver is put back whatever the distance - the flag comes from

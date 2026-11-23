@@ -47,22 +47,13 @@ impl Game<'_> {
         self.ecs.set_velocity(e, Vec3::new(velocity[0], velocity[1], velocity[2]));
         Some(self.ecs_id_of(e))
     }
-    /// `Player.drop` (`Entity.spawnAtLocation` when `hook` is false: a death's scatter, which `item_toss` does not hear). The thrower
-    /// is kept on the stack; a mod's cancel removes it again.
-    pub(in crate::game) fn ecs_toss(&mut self, thrown: ItemStack, at: [f64; 3], v: [f64; 3], thrower: Option<[i32; 4]>, hook: bool) -> Option<u32> {
+    /// `Player.drop` (`Entity.spawnAtLocation` when `hook` is false: a death's scatter). The thrower
+    /// is kept on the stack.
+    pub(in crate::game) fn ecs_toss(&mut self, thrown: ItemStack, at: [f64; 3], v: [f64; 3], thrower: Option<[i32; 4]>, _hook: bool) -> Option<u32> {
         let id = self.ecs_drop_after(thrown, at, v, 40)?;
         let e = self.ecs.entity_of(id)?;
         if let Some(t) = thrower {
             self.ecs.set_thrower(e, t);
-        }
-        if hook && false && let Some(item) = self.native_item_handle(id) {
-            let player = self.native_acting_id();
-            let mut canceled = false;
-            self.native_item_toss(player, item, &mut canceled);
-            if canceled {
-                self.ecs.despawn(e);
-                return None;
-            }
         }
         Some(id)
     }
@@ -101,7 +92,7 @@ impl Game<'_> {
             let left_on_ground = self.ecs.item(id).map_or(0, |v| v.stack.count);
             let mut whole = stack.clone();
             whole.count = stack.count + left_on_ground;
-            let rest = self.native_pickup_insert(&whole);
+            let rest = self.add_stack_to_inventory(whole.clone()).filter(|_| !self.creative);
             if rest.as_ref().map_or(0, |r| r.count) == whole.count {
                 let back = rest.unwrap_or(whole);
                 if left_on_ground > 0 {
@@ -111,14 +102,9 @@ impl Game<'_> {
                 }
                 continue;
             }
-            // `item_picked_up_post` for a whole pickup, `item_picked_up_partial` for a part: what a mod leaves lies at the feet.
-            let kept = match rest {
-                None => self.native_pickup_post(id, &whole),
-                Some(rest) => self.native_pickup_partial(&whole, rest),
-            };
-            // What the listeners leave on the ground is not picked up.
+            let kept = rest;
             let kept_count = kept.as_ref().map_or(0, |k| k.count);
-            // A listener that kills the item leaves no take animation (the stack was on the ground, now gone).
+            // An item that is gone leaves no take animation.
             let killed = left_on_ground > 0 && self.ecs.item(id).is_none();
             match (kept, left_on_ground > 0) {
                 (Some(kept), true) => {
@@ -136,9 +122,6 @@ impl Game<'_> {
             }
             let got = whole.count - kept_count;
             self.award_stat("picked_up", &kind, got as i32);
-            if left_on_ground == 0 {
-                self.native_entity_left(id);
-            }
             if !killed {
                 self.add_pickup(Taken::Ecs { id, count: got as i32, at, kind: "item" }, Collector::Player);
             }
@@ -157,9 +140,6 @@ impl Game<'_> {
         let at = self.ecs.position(orb).unwrap_or(feet);
         let Some(points) = self.ecs_with(|ecs, mw| ecs.collect_orb(mw, orb)) else { return };
         self.xp_delay = 2;
-        if !self.ecs.exists(orb) {
-            self.native_entity_left(orb);
-        }
         self.add_pickup(Taken::Ecs { id: orb, count: 1, at, kind: "orb" }, Collector::Player);
         let mut random = myriade_engine::random_source::create();
         let pitch = (random.next_float() - random.next_float()) * 0.35 + 0.9;
@@ -170,17 +150,8 @@ impl Game<'_> {
         }
     }
     /// The end of life of an item of P's (`HostEvent::ItemExpiring`, sent before P removes it): the mods may extend it; else it goes.
-    pub(in crate::game) fn ecs_item_expiring(&mut self, e: Entity, stack: &ItemStack, at: [f64; 3]) {
-        let id = self.ecs_id_of(e);
-        let mut extra = 0;
-        self.native_item_expire(id, stack, &mut extra);
-        if extra > 0 {
-            self.ecs.extend_item_life(e, extra.min(32766) as u32);
-            return;
-        }
-        self.native_item_despawn(id, &stack.item, stack.count as i32, at);
+    pub(in crate::game) fn ecs_item_expiring(&mut self, e: Entity, _stack: &ItemStack, _at: [f64; 3]) {
         self.ecs.despawn(e);
-        self.native_entity_left(id);
     }
 }
 

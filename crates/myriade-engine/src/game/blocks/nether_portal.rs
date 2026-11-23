@@ -77,8 +77,7 @@ impl Plan {
 /// An entity on its way to a dimension that isn't loaded.
 #[derive(Debug)]
 enum TransferredArrivalState {
-    Entity(super::entity_initialization::TransferredEntityState),
-    VehicleTree(super::persist::TransferredVehicleTree),
+    VehicleTree(crate::game::persist::TransferredVehicleTree),
 }
 
 #[derive(Debug)]
@@ -680,7 +679,7 @@ impl Game<'_> {
                 host.hub.guests.iter().any(|guest| {
                     guest
                         .vehicle
-                        .is_some_and(|mount| self.vehicle_tree_contains_mount(id, mount))
+                        .is_some_and(|mount| self.ecs_root_vehicle(mount) == id)
                 })
             }) {
                 let cooldown = self.portals.entities.get(&id).map_or(0, |s| s.cooldown);
@@ -1168,7 +1167,7 @@ impl Game<'_> {
     pub(super) fn take_lone_traveller(
         &mut self,
         id: u32,
-    ) -> Option<(Tag, super::entity_initialization::TransferredEntityState)> {
+    ) -> Option<Tag> {
         use super::commands::Target;
         let target = self.level_entity(id as i32)?;
         if matches!(
@@ -1189,8 +1188,6 @@ impl Game<'_> {
                 | Target::Orb(_)
         ) {
             let mut tag = self.command_target_nbt(target)?;
-            super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
-            let state = self.take_transferred_entity_state(id);
             // Remove only the resident body: no death, drops, or discard effects.
             match target {
                 Target::Stand(_) => {
@@ -1229,7 +1226,7 @@ impl Game<'_> {
                 _ => unreachable!("lone traveller kind selected above"),
             }
             self.forget_entity(id);
-            return Some((tag, state));
+            return Some(tag);
         }
         enum List {
             Item,
@@ -1239,15 +1236,13 @@ impl Game<'_> {
         } else {
             return None;
         };
-        super::persist::write_attachments(&mut tag, id, &self.entity_attachments);
-        let state = self.take_transferred_entity_state(id);
         match list {
             List::Item => {
                 self.ecs_remove_item(id);
                 self.detach_entity(id);
             }
         }
-        Some((tag, state))
+        Some(tag)
     }
 
     fn send_through_portal(&mut self, id: u32, entry: BlockPos) {
@@ -1262,14 +1257,14 @@ impl Game<'_> {
                 return;
             }
             let tnt_used_portal = self.ecs.species(id) == Some("minecraft:tnt");
-            let Some((tag, state)) = self.take_lone_traveller(id) else {
+            let Some(tag) = self.take_lone_traveller(id) else {
                 return;
             };
             self.portals.arrivals.push(Arrival {
                 tnt_used_portal,
                 plan,
                 tag,
-                transferred: Some(TransferredArrivalState::Entity(state)),
+                transferred: None,
             });
             self.portals.dirty = true;
         } else if let Some((at, width, height)) = self.ecs_body(id) {
@@ -1381,7 +1376,7 @@ impl Game<'_> {
                 self.restore_vehicle_tree_state(tag, state);
                 continue;
             }
-            super::persist::mark_fresh(&mut tag);
+            crate::game::persist::mark_fresh(&mut tag);
             let immediate = matches!(
                 myriade_engine::entity_nbt::kind(&tag).as_deref(),
                 Some("minecraft:item" | "minecraft:tnt")
@@ -1392,12 +1387,8 @@ impl Game<'_> {
                 tag.into()
             };
             let key = ((at.x.floor() as i32) >> 4, (at.z.floor() as i32) >> 4);
-            if let Some(TransferredArrivalState::Entity(state)) = transferred {
-                self.spawn_teleported_entity(key, tag, Some(state));
-                continue;
-            }
             if immediate {
-                self.spawn_teleported_entity(key, tag, None);
+                self.spawn_teleported_entity(key, tag);
                 continue;
             }
             match self
@@ -1418,7 +1409,6 @@ impl Game<'_> {
         &mut self,
         key: (i32, i32),
         pending: PendingEntity,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
     ) {
         // The portal's runtime reason must reach admission before join callbacks;
         // saved NBT alone cannot request TNT's transient blast immunity.
@@ -1428,20 +1418,15 @@ impl Game<'_> {
             if kind.0.iter().copied().eq("minecraft:item".encode_utf16()));
         let is_tnt = matches!(tag.get("id"), Some(Tag::String(kind))
             if kind.0.iter().copied().eq("minecraft:tnt".encode_utf16()));
-        self.spawn_loaded_entity_reason(key, tag, transferred, reason);
+        self.spawn_loaded_entity_reason(key, tag, false, reason);
         if !is_item && !is_tnt {
             return;
         }
         // Construction and join callbacks can insert, cancel, or remove rows.
         // Resolve the surviving arrival by the resident UUID index after them.
-        let Some(entity) = uuid.and_then(|uuid| {
-            self.entity_by_uuid(myriade_types::EntityUuid(
-                myriade_engine::lan::playerdata::ints_uuid(uuid),
-            ))
-        }) else {
+        let Some(id) = uuid.and_then(|uuid| self.ecs_id_by_uuid(uuid)) else {
             return;
         };
-        let id = entity.id();
         if is_tnt {
             let location = self
                 .resident_entities

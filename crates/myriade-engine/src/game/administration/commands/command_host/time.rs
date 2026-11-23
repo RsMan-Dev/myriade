@@ -32,10 +32,8 @@ impl TimeHost for Game<'_> {
     fn reset_clock_partial(&mut self, clock: &str) {
         self.command_clock_state(clock).partial = 0.0;
     }
-    fn time_skip_canceled(&mut self, from: i64, to: i64) -> bool {
-        let mut cancel = false;
-        self.native_time_skip(self.dim.id(), from, to, "command", &mut cancel);
-        cancel
+    fn time_skip_canceled(&mut self, _from: i64, _to: i64) -> bool {
+        false
     }
     fn time_marker(&self, marker: &str, total: i64) -> Option<(i64, bool)> {
         let m = self.session.markers.get(marker).copied()?;

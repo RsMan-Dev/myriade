@@ -1,6 +1,5 @@
 //! What a server keeps of its operator's choices besides `server.properties`: the distances it
-//! serves, the packs and mods it runs, and its debug switches.
-use myriade_engine::mod_list::ModList;
+//! serves, the packs it runs, and its debug switches.
 use std::path::Path;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -13,8 +12,6 @@ pub struct Settings {
     pub entity_distance: f32,
     /// The resource packs served, in order.
     pub resource_packs: Vec<String>,
-    /// The Horizon mods turned on (`horizon-mods.txt`).
-    pub mods: ModList,
     /// Pregenerates the spawn area before the world opens.
     pub pregen: bool,
     /// Mobs stand still: no goals, no brains.
@@ -32,7 +29,6 @@ impl Default for Settings {
             simulation_distance: 12,
             entity_distance: 1.0,
             resource_packs: Vec::new(),
-            mods: ModList::default(),
             pregen: false,
             no_ai: false,
             agent_control: false,
@@ -42,8 +38,8 @@ impl Default for Settings {
 }
 
 impl Settings {
-    /// The defaults with the mods enabled in `dir`.
-    pub fn load(dir: &Path) -> Self {
-        Self { mods: ModList::load(dir), ..Self::default() }
+    /// The defaults: the server has no mod list.
+    pub fn load(_dir: &Path) -> Self {
+        Self::default()
     }
 }

@@ -102,9 +102,6 @@ impl Game<'_> {
         };
         let at: [i32; 3] = std::array::from_fn(|i| hit.pos[i] + hit.face[i]);
         let variant = self.painting_variants.of_stack(stack).map(|v| v.id.to_string());
-        if self.hanging_place_cancelled("minecraft:painting", at) {
-            return true;
-        }
         let me = Who::Player(self.own_entity_id() as u32);
         let mut next = self.next_entity;
         let hung = self.ecs_with(|ecs, mw| {

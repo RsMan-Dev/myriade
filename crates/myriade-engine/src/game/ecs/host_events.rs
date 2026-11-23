@@ -139,12 +139,12 @@ impl Game<'_> {
                 // The target change reached the mob handler through `apply`.
                 HostEvent::TargetChanged { .. } => {}
                 HostEvent::TargetAsk { entity, .. } => self.ecs_target_asked(entity),
-                HostEvent::TotemAsk { entity, off_hand, cause, attacker } => self.ecs_totem_asked(entity, off_hand, cause, attacker),
-                HostEvent::Spawned { entity, natural, .. } => self.ecs_spawned_event(entity, natural),
-                HostEvent::Tamed { entity, owner } => self.ecs_tamed_event(entity, owner),
-                // P applied the damage; the mods' `hurt_enemy` hears the stack the attacker holds (only emitted while one listens).
-                HostEvent::HitDealt { attacker, victim, .. } => self.ecs_hit_dealt(attacker, victim),
-                HostEvent::Unleashed { entity } => self.ecs_unleashed_event(entity),
+                HostEvent::TotemAsk { entity, .. } => self.ecs_totem_asked(entity),
+                HostEvent::Spawned { .. } => {}
+                HostEvent::Tamed { .. } => {}
+                // P applied the damage: nothing more to tell.
+                HostEvent::HitDealt { .. } => {}
+                HostEvent::Unleashed { .. } => {}
                 HostEvent::Swing { entity, off_hand } => self.ecs_swing_event(entity, off_hand),
                 HostEvent::HeldConsume { entity, stack, seed, silent } => self.ecs_held_consume_event(entity, stack, seed, silent),
                 HostEvent::HeldUsed { player, item } => self.ecs_held_used(player, item),

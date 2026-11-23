@@ -43,18 +43,6 @@ impl Game<'_> {
         if !self.is_rod(stack) {
             return false;
         }
-        // The mods hear a server player's cast or reel-in first.
-        if self.player.is_some()
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            // The hook's bite and catch states are the ECS's: only "out" and "none" are known here.
-            let state = if self.ecs_own_hook().is_some() { 3 } else { 0 };
-            let mut cancel = false;
-            self.native_player_fish(uuid, &name, state, &mut cancel);
-            if cancel {
-                return true;
-            }
-        }
         let Some(p) = self.player.as_ref() else {
             return false;
         };

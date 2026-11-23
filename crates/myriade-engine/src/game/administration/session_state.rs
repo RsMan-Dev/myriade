@@ -211,15 +211,27 @@ fn templates_under(root: &Path) -> Vec<String> {
     out
 }
 
+/// The entity type ids of a root's `entity-types.json`, namespaced and sorted (none when unreadable).
+fn entity_type_ids(root: &Path) -> Vec<String> {
+    let bytes = std::fs::read(root.join("entity-types.json")).unwrap_or_default();
+    let rows = serde_json::from_slice::<serde_json::Value>(&bytes).unwrap_or_default();
+    let mut ids: Vec<String> = rows
+        .as_object()
+        .into_iter()
+        .flatten()
+        .map(|(id, _)| myriade_engine::command::args::normalize(id))
+        .collect();
+    ids.sort();
+    ids
+}
+
 fn resource_ids(root: &Path) -> Arc<ResourceIds> {
     let mut cache = RESOURCE_IDS.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, ids)) = cache.iter().find(|(cached, _)| cached == root) {
         return ids.clone();
     }
     let data = root.join("data/minecraft");
-    let entity_types = crate::game::entity_type_rows::entity_type_rows(root)
-        .ids
-        .clone();
+    let entity_types = entity_type_ids(root);
     let (timelines, markers) = overworld_timelines(root);
     let ids = Arc::new(ResourceIds {
         recipes: json_ids_of_every_namespace(root, "recipe"),
@@ -450,9 +462,8 @@ impl Game<'_> {
             .map(|(k, _)| k.clone())
             .collect();
         self.sync_enchantment_registries();
-        self.session.registries.selector_tokens =
-            crate::game::native_entity_selectors::selector_tokens();
-        self.sync_stat_registries();
+        self.session.registries.selector_tokens = Vec::new();
+        self.session.registries.sync_damage_type_ids();
         self.sync_pack_tag_ids();
     }
     /// A server message: the console's log, the players' copy being sent by the caller.
@@ -686,7 +697,6 @@ impl Game<'_> {
                 &self.level.enabled_features,
             ),
         ));
-        self.restore_native_commands();
         self.session.clock = WorldClock::default();
         self.session.end_clock = WorldClock::default();
         self.session.command_clocks.clear();

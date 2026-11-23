@@ -18,9 +18,6 @@ impl Game<'_> {
             })
         });
         self.next_entity = next;
-        if id != 0 && self.native_hears_impacts() {
-            self.ecs.set_mod_gate(id, true);
-        }
         id
     }
 
@@ -98,11 +95,10 @@ impl Game<'_> {
                     self.ecs.arrow_taken(entity, true);
                     return;
                 }
-                let took = self.native_pickup_insert(&stack).is_none();
+                let took = self.add_stack_to_inventory(stack.clone()).filter(|_| !self.creative).is_none();
                 let got = if took { stack.count as i32 } else { 0 };
                 if got > 0 {
                     self.award_stat("picked_up", &stack.item, got);
-                    self.native_entity_left(id);
                     self.add_pickup(Taken::Ecs { id, count: got, at, kind: "arrow" }, Collector::Player);
                     let mut random = myriade_engine::random_source::create();
                     let pitch = (random.next_float() - random.next_float()) * 1.4 + 2.0;

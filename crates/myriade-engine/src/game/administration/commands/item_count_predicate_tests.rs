@@ -1,5 +1,4 @@
 use super::*;
-use crate::game::game_tests::tests::server_game;
 use horizon_core::position::BlockPos;
 
 #[test]

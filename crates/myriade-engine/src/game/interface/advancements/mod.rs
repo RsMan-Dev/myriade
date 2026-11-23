@@ -824,51 +824,19 @@ impl Game<'_> {
         }
     }
     /// After `ServerRecipeBook.addRecipes`: the toast and the
-    /// `recipe_unlocked` trigger of each recipe now known. Returns the
-    /// number of recipe displays taken back out because a mod refused their
-    /// discovery.
+    /// `recipe_unlocked` trigger of each recipe now known. Returns 0: no
+    /// recipe display is taken back.
     pub(super) fn recipe_unlocked(&mut self, unlocked: &[String]) -> usize {
-        let mut allowed = Vec::with_capacity(unlocked.len());
-        let mut refused = Vec::new();
-        let mut taken_back = 0;
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            for recipe in unlocked {
-                let mut cancel = false;
-                self.native_player_recipe_discovered(player, &name, recipe, &mut cancel);
-                if cancel {
-                    refused.push(recipe.clone());
-                } else {
-                    allowed.push(recipe.clone());
-                }
-            }
-            if !refused.is_empty() {
-                let removed = self
-                    .level
-                    .recipe_book
-                    .remove_recipes(&world_stations!(self).recipe_index, &refused);
-                taken_back = removed.len();
-                if self.lan_acting.is_some() && !removed.is_empty() {
-                    self.guest_packets.push(C::RecipeBookRemove(
-                        horizon_protocol::packets::recipes::RecipeBookRemove { ids: removed },
-                    ));
-                }
-            }
-        } else {
-            allowed.extend_from_slice(unlocked);
-        }
         if self.lan_acting.is_some() {
             // A network player's client gets them in ClientboundRecipeBookAddPacket.
-            self.adv.unlocked.extend_from_slice(&allowed);
+            self.adv.unlocked.extend_from_slice(unlocked);
         }
-        if !allowed.is_empty() {
-            self.invalidate_mod_book_placement_knowledge();
-        }
-        if allowed.is_empty() || self.no_player_here() {
-            return taken_back;
+        if unlocked.is_empty() || self.no_player_here() {
+            return 0;
         }
         self.load_advancements();
         let tree = self.adv.tree.clone();
-        for r in &allowed {
+        for r in unlocked {
             let list = tree.recipe_criteria(r);
             self.trigger_criteria(&tree, &list, |c, _| {
                 c["recipes"]
@@ -876,7 +844,7 @@ impl Game<'_> {
                     .is_some_and(|id| adv::full(id) == r.as_str())
             });
         }
-        taken_back
+        0
     }
     /// `ServerPlayer.awardRecipes`: fake players learn no recipes.
     pub(super) fn award_recipes(&mut self, recipes: &[String]) -> usize {
@@ -947,9 +915,6 @@ impl Game<'_> {
     fn award_definition(&mut self, a: &adv::Advancement) {
         if self.lan_acting_fake {
             return;
-        }
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_advancement_done(player, &name, &a.id);
         }
         let rewards = self.grant_rewards(a);
         if let Some(d) = &a.display {
@@ -1048,17 +1013,6 @@ impl Game<'_> {
             return;
         }
         self.adv.last_inventory = key;
-        // Native mods hear the change before any criterion is looked at, so
-        // they do with no `inventory_changed` advancement in the tree too
-        // (`native_player_inventory_changed`, API 579).
-        if true
-            && !self.no_player_here()
-            && false
-        {
-            let stacks = inventory_slots(&self.inventory, &self.armor, &self.offhand);
-            let player = self.native_acting_id();
-            self.native_player_inventory_changed(player, &stacks);
-        }
         let stacks: Vec<ItemView> = self
             .inventory
             .iter()

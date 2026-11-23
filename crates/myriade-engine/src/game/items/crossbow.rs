@@ -113,45 +113,16 @@ impl Game<'_> {
     /// it: a creative player without arrows has `hasInfiniteMaterials`' arrow.
     pub(super) fn get_projectile(&mut self, weapon: &ItemStack) -> Option<Ammo> {
         let slot = self.projectile_slot(&weapon.item);
-        let vanilla = match slot {
+        let stack = match slot {
             Some(i) => self.stack_in(i).cloned(),
             None => self.creative.then(|| ItemStack::new(ARROW, 1)),
         };
-        if !false {
-            return vanilla.map(|stack| Ammo { stack, slot });
-        }
-        let mut projectile = vanilla.clone();
-        let player = myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid());
-        let name = self.own_profile_name();
-        self.native_living_get_projectile(
-            Some(player),
-            &name,
-            None,
-            "minecraft:player",
-            weapon,
-            &mut projectile,
-        );
-        let slot = slot.filter(|_| projectile == vanilla);
-        projectile.map(|stack| Ammo { stack, slot })
+        stack.map(|stack| Ammo { stack, slot })
     }
     /// `AbstractSkeleton.performRangedAttack`'s `getProjectile`: the arrow
     /// `mob` shot becomes the replaced ammunition's (`ProjectileUtil.getMobArrow`).
-    pub(super) fn mob_bow_ammo(&mut self, mob: u32, weapon: &ItemStack, arrow: &mut Projectile) {
-        if !false {
-            return;
-        }
-        let Some(kind) = self.ecs_mob_kind(mob) else {
-            return;
-        };
-        let vanilla = Self::mob_vanilla_ammo(self.ecs_hand_stack(mob, true), self.ecs_hand_stack(mob, false), weapon, world_items!(self));
-        let mut projectile = Some(vanilla.clone());
-        self.native_living_get_projectile(None, "", Some(mob), kind, weapon, &mut projectile);
-        let Some(ammo) =
-            projectile.filter(|ammo| *ammo != vanilla && is_arrow(world_items!(self), ammo))
-        else {
-            return;
-        };
-        Self::arrow_from_ammo(&ammo, arrow);
+    pub(super) fn mob_bow_ammo(&mut self, _mob: u32, _weapon: &ItemStack, _arrow: &mut Projectile) {
+        // No mod changes the ammunition, so the arrow stays the mob's own.
     }
     /// `Monster.getProjectile`: the projectile `weapon` supports in the off
     /// hand, then the main hand (`getHeldProjectile`), else a new arrow.
@@ -190,16 +161,15 @@ impl Game<'_> {
     /// replaced ammunition is what the crossbow holds; none leaves it uncharged
     /// and returns false (`tryLoadProjectiles`).
     pub(super) fn mob_crossbow_ammo(&mut self, mob: u32, weapon: &ItemStack) -> bool {
-        let Some(kind) = self.ecs_mob_kind(mob) else {
+        if self.ecs_mob_kind(mob).is_none() {
             return false;
-        };
-        let mut projectile = Some(Self::mob_vanilla_ammo(
+        }
+        let projectile = Some(Self::mob_vanilla_ammo(
             self.ecs_hand_stack(mob, true),
             self.ecs_hand_stack(mob, false),
             weapon,
             world_items!(self),
         ));
-        self.native_living_get_projectile(None, "", Some(mob), kind, weapon, &mut projectile);
         // A crossbow takes arrows and firework rockets only.
         let projectile = projectile
             .filter(|ammo| is_arrow(world_items!(self), ammo) || &*ammo.item == FIREWORK_ROCKET);
@@ -382,12 +352,7 @@ impl Game<'_> {
                 let shot = self.arrow_shot_of(arrow.arrow.as_deref().expect("an arrow has its state"), effect);
                 let (pos, vel) = (arrow.position, arrow.velocity);
                 let owner = self.ecs_owner(Some(Who::Player));
-                let projectile = self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, Some(weapon.clone()));
-                let (player, name) = (
-                    myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                    self.acting_player_name().to_owned(),
-                );
-                self.native_entity_shoot_bow(player, &name, projectile, power as f32);
+                self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, Some(weapon.clone()));
             }
             // Ordinary arrows post from ArrowState on their first tick.
             let pitch = if index == 0 {

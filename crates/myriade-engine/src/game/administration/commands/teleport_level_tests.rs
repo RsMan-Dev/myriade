@@ -1,6 +1,5 @@
 //! A mod's `teleport_to_level` into another level, kind by kind
 //! (`Entity.teleportCrossDimension`): what each kind keeps, and a kind it cannot move.
-use crate::game::native_entity_refs::tests::with_game;
 use crate::game::{Dim, Game};
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;

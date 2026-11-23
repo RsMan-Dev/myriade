@@ -183,7 +183,7 @@ impl Game<'_> {
         let Some(tag) = saved
             .into_iter()
             .flat_map(|s| &s.block_entities)
-            .find(|tag| super::persist::block_entity_pos(tag) == [pos.x, pos.y, pos.z])
+            .find(|tag| crate::game::persist::block_entity_pos(tag) == [pos.x, pos.y, pos.z])
             .and_then(|tag| tag.get(CARRIED_KEY))
         else {
             return;

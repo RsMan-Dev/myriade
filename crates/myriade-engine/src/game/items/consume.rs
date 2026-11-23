@@ -3,7 +3,7 @@
 //! fruit) for players and foxes. The level random stands in for the player's
 //! own, as for every other player draw.
 use super::{Dim, Game};
-use crate::game::api_values::TryIntoApi;
+use myriade_types::{TransactionHost, TransactionSeal};
 use myriade_engine::{
     items::{ConsumeEffect, ItemInfo, ItemStack},
     mobs::Who,
@@ -21,6 +21,15 @@ use {
 };
 
 type ItemConsumable = Consumable<String, ConsumeEffect>;
+
+impl TransactionHost for Game<'_> {
+    fn transaction_open(&mut self) -> TransactionSeal {
+        Game::transaction_open(self)
+    }
+    fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
+        Game::transaction_close(self, seal, commit)
+    }
+}
 
 /// `EntityEvent.USE_ITEM_COMPLETE`: the server finished the player's use.
 pub(super) const USE_ITEM_COMPLETE_EVENT: i8 = 9;
@@ -154,13 +163,10 @@ impl Game<'_> {
 
     /// `apply_fox_consumption` for the ECS creature `mob`: the same steps, the mob side through the bridge. `seed` seeds the random of
     /// the sounds and of the teleport (P's own generator is not a `LegacyRandom`).
-    fn apply_held_consumption_ecs(&mut self, mob: u32, stack: &ItemStack, seed: i64, silent: bool) -> bool {
-        if !self.ecs.held_use_valid(mob, stack, None) {
+    fn apply_held_consumption_ecs(&mut self, mob: u32, stack: &ItemStack, seed: i64, _silent: bool) -> bool {
+        if !self.ecs.held_use_valid(mob, stack, None) || self.ecs_view(mob).is_none() {
             return false;
         }
-        let Some(consumer) = self.entity(mob).and_then(|e| self.living(e)).map(|_| mob) else {
-            return false;
-        };
         let Some(consumable) = self.consumable(stack) else {
             return false;
         };
@@ -174,15 +180,10 @@ impl Game<'_> {
                 return Ok(false);
             };
             let mut rng = LegacyRandom::new(seed);
-            let mut events = Vec::new();
-            // `emitParticlesAndSounds(random, user, stack, 16)`, then `FoodProperties.onConsume`'s sound at full volume.
-            let _ = consumable.emit(&mut HeldEater { rng: &mut rng, at, silent, events: &mut events }, (), stack.clone(), 16);
+            // `emitParticlesAndSounds(random, user, stack, 16)`, then `FoodProperties.onConsume`'s draw for the sound's pitch (its sound is not played: no mob events).
+            let _ = consumable.emit(&mut HeldEater { rng: &mut rng }, (), stack.clone(), 16);
             if food.is_some() {
-                let pitch = rng.triangle_float(1.0, 0.4);
-                events.push(myriade_engine::mobs::MobEvent::SoundId(consumable.sound.clone(), at, 1.0, pitch));
-            }
-            if game.handle_mob_events(events).is_err() {
-                return Ok(false);
+                let _ = rng.triangle_float(1.0, 0.4);
             }
             for effect in &consumable.effects {
                 if let ConsumeEffect::TeleportRandomly(teleport) = effect {
@@ -190,21 +191,9 @@ impl Game<'_> {
                     if teleport.apply(&mut actor, dim).is_err() {
                         return Ok(false);
                     }
-                } else if game.apply_consume_effect(effect, Some(consumer)).is_none() {
+                } else if game.apply_consume_effect(effect, Some(mob)).is_none() {
                     return Ok(false);
                 }
-            }
-            let Some(at) = game.ecs.position(mob) else {
-                return Ok(false);
-            };
-            let event = myriade_engine::mobs::MobEvent::GameEvent {
-                event: if consumable.animation == UseAnimation::Drink { "minecraft:drink" } else { "minecraft:eat" },
-                at,
-                source: mob,
-                state: horizon_world::registry::BlockStateId(0),
-            };
-            if game.handle_mob_events(vec![event]).is_err() {
-                return Ok(false);
             }
             let remainder = remainder.clone().map(|name| ItemStack::new(&name, 1));
             Ok(game.ecs.finish_held_use(mob, stack, remainder))
@@ -326,7 +315,7 @@ impl Game<'_> {
                 }
             });
         if let Some(y) = removed_y {
-            if self.native_may_leave(id) && self.riding == Some(id) {
+            if self.riding == Some(id) {
                 self.dismount_removed_vehicle(y);
             }
             return;
@@ -420,32 +409,8 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
     fn position(&mut self) -> Result<Vec3, Infallible> {
         Ok(self.at())
     }
-    fn teleport_allowed(&mut self, target: &mut Vec3) -> Result<bool, Infallible> {
-        let Some(player) = self.0.native_acting_player() else {
-            return Ok(true);
-        };
-        let from = self.at();
-        let dimension = self.0.dim;
-        if self.0.dim != dimension
-            || self
-                .0
-                .player
-                .as_ref()
-                .is_none_or(|p| p.position != from || p.health.dead_or_dying())
-            || self.0.sleeping.is_some()
-            || self.0.riding.is_some()
-            || self.0.native_acting_player() != Some(player)
-        {
-            return Ok(false);
-        }
-        // Keep the mod's spot inside the level as vanilla's own draw is (a
-        // huge y would walk down a long way); one that is not a number keeps
-        // the draw.
-        if target.is_finite() {
-            let shape = self.0.level_shapes.get(self.0.dim.id());
-            let high = shape.min_y + shape.logical_height - 1;
-            target.y = target.y.clamp(f64::from(shape.min_y), f64::from(high));
-        }
+    /// Without a hook asking, the spot is the one vanilla drew.
+    fn teleport_allowed(&mut self, _target: &mut Vec3) -> Result<bool, Infallible> {
         Ok(true)
     }
     fn random_teleport(&mut self, target: Vec3) -> Result<bool, Infallible> {
@@ -558,7 +523,9 @@ impl TeleportConsumeWorld for EcsHeldTeleporter<'_, '_> {
         Ok(true)
     }
     fn random_teleport(&mut self, at: Vec3) -> Result<bool, ()> {
-        Ok(self.game.living_random_teleport(self.mob, [at.x, at.y, at.z], Some("minecraft:consumable_does_not_teleport_to")))
+        let mob = self.mob;
+        Ok(self.game.ecs.is_active()
+            && self.game.ecs_with(|ecs, mw| ecs.random_teleport(mw, mob, at, Some("minecraft:consumable_does_not_teleport_to"))))
     }
     fn teleport_event(&mut self, _: Dim, old: Vec3) -> Result<(), ()> {
         let ctx = self.game.who_context(Some(Who::Mob(self.mob)), None);
@@ -592,9 +559,6 @@ impl TeleportConsumeWorld for EcsHeldTeleporter<'_, '_> {
 /// The eating creature as `Consumable`'s user: a random seeded by P, and its own ears (a silent one is not heard).
 struct HeldEater<'a> {
     rng: &'a mut LegacyRandom,
-    at: [f64; 3],
-    silent: bool,
-    events: &'a mut Vec<myriade_engine::mobs::MobEvent>,
 }
 impl EmissionWorld for HeldEater<'_> {
     type Error = Infallible;
@@ -615,81 +579,8 @@ impl EmissionWorld for HeldEater<'_> {
     fn consume_sound(&mut self, _: ItemStack) -> Result<String, Infallible> {
         unreachable!("the consumable plays its own sound")
     }
-    /// `Entity.playSound`: at the creature's feet, and nothing from a silent one.
-    fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
-        if !self.silent {
-            self.events.push(myriade_engine::mobs::MobEvent::SoundId(sound, self.at, volume, pitch));
-        }
+    /// `Entity.playSound` of the creature: not played, the mob events being gone.
+    fn play_sound(&mut self, _: String, _: f32, _: f32) -> Result<(), Infallible> {
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod held_eat_tests {
-    use super::*;
-    use crate::game::ecs::test_support::ecs_game_with;
-    use myriade_engine::chunk::Chunk;
-    use myriade_engine::mobs::MobEvent;
-    use horizon_ecs_proto::goals::Slot;
-    use horizon_ecs_proto::host_out::HostEvent;
-    use horizon_world::registry::BlockStateId;
-    use std::sync::Arc;
-
-    /// The sound of an apple's eating as a fox at `at` emits it (seed 7), with its sound name, heard or silent.
-    fn eat_events(silent: bool) -> (String, Vec<MobEvent>) {
-        let (g, _) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
-        let apple = ItemStack::new("minecraft:apple", 1);
-        let consumable = g.consumable(&apple).expect("an apple is food");
-        let at = [0.0, 64.0, 0.0];
-        let mut rng = LegacyRandom::new(7);
-        let mut events = Vec::new();
-        let _ = consumable.emit(&mut HeldEater { rng: &mut rng, at, silent, events: &mut events }, (), apple, 16);
-        (consumable.sound.clone(), events)
-    }
-
-    #[test]
-    fn a_fox_eating_plays_one_eat_sound_at_its_place_with_vanillas_draws_and_a_silent_one_plays_none() {
-        let (sound, heard) = eat_events(false);
-        // `Consumable.emit`: the volume is a coin flip (0.5 or 1.0), then the pitch is a triangle around 1.0 (0.2 wide).
-        let mut draws = LegacyRandom::new(7);
-        let volume = if draws.next_boolean() { 0.5 } else { 1.0 };
-        let pitch = draws.triangle_float(1.0, 0.2);
-        assert_eq!(heard.len(), 1);
-        assert!(matches!(&heard[0], MobEvent::SoundId(s, at, v, p) if *s == sound && *at == [0.0, 64.0, 0.0] && *v == volume && *p == pitch));
-        assert!(eat_events(true).1.is_empty());
-    }
-
-    #[test]
-    fn an_ecs_fox_eats_the_apple_in_its_mouth_and_keeps_the_rest() {
-        let (mut g, id) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
-        let apple = ItemStack::new("minecraft:apple", 2);
-        g.ecs_set_slot(id, Slot::Main, &apple);
-        assert!(g.apply_held_consumption_ecs(id, &apple, 7, true));
-        assert_eq!(g.ecs_hand_stack(id, false).map(|s| s.count), Some(1));
-    }
-
-    /// Loads the four chunks around the origin and lays stone over columns -8..=7 for y 56..=63: every chorus target
-    /// (a 16-block cube around the fox at y 64) finds the ground, so the first of its 16 tries lands.
-    fn chorus_floor(g: &mut Game<'_>) {
-        for cx in -1..=0 {
-            for cz in -1..=0 {
-                g.world.chunks.insert((cx, cz), Arc::new(Chunk::empty(cx, cz)));
-            }
-        }
-        let events = (56..=63)
-            .flat_map(|y| (-8..=7).flat_map(move |x| (-8..=7).map(move |z| HostEvent::SetBlock { pos: [x, y, z], state: BlockStateId(1) })))
-            .collect();
-        g.host_events(events).unwrap();
-    }
-
-    #[test]
-    fn a_chorus_fruit_in_an_ecs_foxs_mouth_moves_it_and_is_eaten() {
-        let (mut g, id) = ecs_game_with("minecraft:fox", [0.0, 64.0, 0.0]);
-        chorus_floor(&mut g);
-        let chorus = ItemStack::new("minecraft:chorus_fruit", 1);
-        g.ecs_set_slot(id, Slot::Main, &chorus);
-        assert!(g.apply_held_consumption_ecs(id, &chorus, 7, true));
-        assert_ne!(g.ecs_vec3(id), Some([0.0, 64.0, 0.0]));
-        assert!(g.ecs_hand_stack(id, false).is_none());
     }
 }

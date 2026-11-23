@@ -54,15 +54,6 @@ impl Game<'_> {
         Ok(pairs.iter().find(|(old, _)| *old == id).map(|&(_, new)| new))
     }
 
-    /// The mod attachments of the entities that changed id (`pairs`: old, new) follow them.
-    pub(in crate::game) fn move_attachments(&mut self, pairs: &[(u32, u32)]) {
-        for &(old, new) in pairs {
-            if let Some(map) = self.entity_attachments.remove(&old) {
-                self.entity_attachments.insert(new, map);
-            }
-        }
-    }
-
     /// Loads the saved form `tag` in `destination` (`old`: the ids it was saved from, in NBT order) and links the ids there; the level
     /// in place is the same after the call. The pairs (old id, new id) of the entities made.
     fn ecs_place_saved(&mut self, destination: Dim, tag: Tag, old: &[u32]) -> myriade_engine::Result<Vec<(u32, u32)>> {
@@ -72,7 +63,6 @@ impl Game<'_> {
             Tag::Compound(c) => self.ecs_load_tree(c, old),
             _ => Vec::new(),
         };
-        self.move_attachments(&pairs);
         self.enter_level(source)?;
         Ok(pairs)
     }

@@ -167,7 +167,7 @@ impl Game<'_> {
         name: &str,
         shown: &str,
     ) -> Option<()> {
-        let hidden = self.chat_hidden_from(message.sender, name, shown);
+        let hidden = Vec::new();
         let mut chat = Vec::new();
         let host = self.lan.as_mut()?;
         host.hub
@@ -273,8 +273,7 @@ impl Game<'_> {
             } else {
                 "emote_command"
             };
-            let (sender, name) = (host.hub.guests[i].uuid, host.hub.guests[i].name.clone());
-            let hidden = self.chat_hidden_from(sender, &name, text);
+            let hidden = Vec::new();
             let Some(host) = self.lan.as_mut() else {
                 return false;
             };

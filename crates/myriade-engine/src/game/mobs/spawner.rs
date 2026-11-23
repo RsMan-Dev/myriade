@@ -150,6 +150,11 @@ impl Game<'_> {
             match plan {
                 Planned::Finalized { kind, at, yaw, sheet, reason, special, key } => {
                     let finalize = special.map(|special| (special, sheet.group));
+                    let reason = if matches!(reason, SpawnReason::TrialSpawner) {
+                        horizon_ecs_proto::spawn_reason::SpawnReason::TrialSpawner
+                    } else {
+                        horizon_ecs_proto::spawn_reason::SpawnReason::Spawner
+                    };
                     if let Some((id, _)) = self.ecs_spawn_sheet(&kind, at, None, reason, finalize, &sheet) {
                         // The spawner's `moveTo(..., yaw)`: the template holds only the id, so the yaw is all it places.
                         if let Some(e) = self.ecs.entity_of(id) {

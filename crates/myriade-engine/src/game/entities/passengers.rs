@@ -25,6 +25,84 @@ impl Game<'_> {
         };
         self.start_riding_target(super::commands::Target::Mob(rider), vehicle, true)
     }
+    /// `Entity.startRiding` of a player or a mob onto `vehicle`: false when refused.
+    pub(super) fn start_riding_target(&mut self, rider: super::commands::Target, vehicle: super::commands::Target, force: bool) -> bool {
+        use super::commands::Target;
+        let vehicle_id = match vehicle {
+            Target::Mob(id) | Target::Boat(id) | Target::Cart(id) | Target::Stand(id) | Target::Other(id) => id,
+            _ => return false,
+        };
+        let vehicle_of = |game: &Self| match rider {
+            Target::Player => game.riding,
+            Target::Mob(id) => game.ecs_vehicle_of(id),
+            _ => None,
+        };
+        if !matches!(rider, Target::Player | Target::Mob(_)) || rider == vehicle || vehicle_of(self) == Some(vehicle_id) {
+            return false;
+        }
+        if matches!(rider, Target::Mob(id) if !self.ecs.exists(id)) {
+            return false;
+        }
+        let mut current = Some(vehicle_id);
+        for _ in 0..=64 {
+            let Some(id) = current else { break };
+            if rider == Target::Mob(id) {
+                return false;
+            }
+            current = self.ecs_vehicle_of(id);
+        }
+        if current.is_some() {
+            return false;
+        }
+        if !force {
+            match rider {
+                Target::Player if self.player.as_ref().is_some_and(|p| p.shift_key_down) => return false,
+                Target::Mob(id) if !self.ecs.entity_of(id).is_some_and(|e| self.ecs.boarding_ready(e)) => return false,
+                _ => {}
+            }
+        }
+        if vehicle_of(self).is_some() {
+            match rider {
+                Target::Player => self.stop_riding(),
+                Target::Mob(id) => self.ecs_dismount(id),
+                _ => return false,
+            }
+            if vehicle_of(self).is_some() {
+                return false;
+            }
+        }
+        match rider {
+            Target::Player => {
+                match vehicle {
+                    Target::Boat(_) => {}
+                    Target::Mob(id) => {
+                        self.ecs.clear_jump_charge(id);
+                        self.mount.jump_ticks = 0;
+                        self.mount.jump_scale = 0.0;
+                    }
+                    Target::Stand(id) | Target::Other(id) => {
+                        let Some(seat) = self.seat(id) else {
+                            return false;
+                        };
+                        self.board_seat(id, seat);
+                        return self.riding == Some(vehicle_id);
+                    }
+                    _ => {}
+                }
+                self.riding = Some(vehicle_id);
+                self.seat_acting_player(vehicle_id);
+                self.trigger_player("minecraft:started_riding");
+            }
+            Target::Mob(id) => {
+                if !self.ecs_mount(id, vehicle_id) {
+                    return false;
+                }
+                self.break_leash(id, true, false);
+            }
+            _ => return false,
+        }
+        vehicle_of(self) == Some(vehicle_id)
+    }
     /// `startRiding` of a mob from a brain event, which `riders::start_riding`
     /// decides (`canAddPassenger` and the boarding cooldown): false when the
     /// mob did not board.

@@ -4,7 +4,7 @@
 use super::Game;
 use myriade_engine::{
     items::ItemStack,
-    mobs::{Species, equine, llama, nautilus},
+    mobs::Species,
 };
 use horizon_core::nbt::Tag;
 
@@ -16,18 +16,34 @@ pub(in crate::game) const CHEST: usize = 710;
 const CHEST_SIZE: usize = 15;
 const COLUMNS: usize = 5;
 
+/// `AbstractHorse` without the llamas: the horses and donkeys and mules, undead horses included.
+pub(in crate::game) fn is_equine(species: Species) -> bool {
+    matches!(
+        species,
+        Species::Horse | Species::Donkey | Species::Mule | Species::SkeletonHorse | Species::ZombieHorse
+    )
+}
+/// `Llama` and `TraderLlama`.
+pub(in crate::game) fn is_llama(species: Species) -> bool {
+    matches!(species, Species::Llama | Species::TraderLlama)
+}
+/// `AbstractNautilus`: the nautilus and the zombie nautilus.
+pub(in crate::game) fn is_nautilus(species: Species) -> bool {
+    matches!(species, Species::Nautilus | Species::ZombieNautilus)
+}
+
 /// Whether the mount has a horse inventory (`AbstractHorse`, `AbstractNautilus`).
 pub(in crate::game) fn has_mount_menu(species: Species) -> bool {
-    equine::is_equine(species) || llama::is_llama(species) || nautilus::is_nautilus(species)
+    is_equine(species) || is_llama(species) || is_nautilus(species)
 }
 /// The saddle slot is active (`canUseSlot(SADDLE)` and `CAN_EQUIP_SADDLE`):
 /// not on llamas.
 fn shows_saddle(species: Species) -> bool {
-    !llama::is_llama(species)
+    !is_llama(species)
 }
 /// The body slot is active: horse armour, a llama's carpet, or nautilus armour.
 fn shows_body(species: Species) -> bool {
-    can_wear_horse_armor(species) || llama::is_llama(species) || nautilus::is_nautilus(species)
+    can_wear_horse_armor(species) || is_llama(species) || is_nautilus(species)
 }
 
 /// The open mount menu: copies of the mount's slots, written back on every change.
@@ -59,11 +75,11 @@ fn can_wear_horse_armor(species: Species) -> bool {
 }
 /// Whether `item` fits the body slot of the species (`isEquippableInSlot`).
 fn body_armor_fits(species: Species, item: &str) -> bool {
-    if llama::is_llama(species) {
+    if is_llama(species) {
         return item.ends_with("_carpet");
     }
     // EntityTypeTags.CAN_WEAR_NAUTILUS_ARMOR: the nautilus armours.
-    if nautilus::is_nautilus(species) {
+    if is_nautilus(species) {
         return item.ends_with("_nautilus_armor");
     }
     can_wear_horse_armor(species) && item.ends_with("_horse_armor")
@@ -195,11 +211,6 @@ impl Game<'_> {
             myriade_engine::item_sync::equip_sound(s, self.res.items())
                 .unwrap_or_else(|| "minecraft:item.armor.equip_generic".into())
         });
-        let slot = if saddle_put_on { "saddle" } else { "body" };
-        let sound = match (sound, put_on) {
-            (Some(sound), Some(stack)) => self.mod_equip_sound(stack, slot, Some(sound)),
-            (sound, _) => sound,
-        };
         let saddle_off = saddled.is_some() && saddle.is_none();
         let body_off = body.as_ref().is_some_and(|b| b.is_none() && body_id.is_some());
         let body_on = body.as_ref().is_some_and(|b| b.is_some() && body_id.is_none());

@@ -1,7 +1,6 @@
 //! `/data modify ... compute` (DataCommands.decorateModification's compute
 //! source, over LootContextSources).
 use super::*;
-use crate::game::game_tests::tests::server_game;
 
 /// A compute source stores the provider's value, in the loot context the
 /// `default` / `block` / `entity` decoration builds; a provider the argument

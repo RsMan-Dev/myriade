@@ -67,38 +67,9 @@ impl Game<'_> {
     /// `mod_mismatch` listener resolved it, unless `flag` (`--allowMissingMods`) or `server.toml`
     /// allows it; then the same list is a warning and the world opens.
     pub(super) fn check_missing_mods(&mut self, dir: &std::path::Path, flag: bool) -> Result<()> {
-        let allowed = flag || allowed_by_server_toml()?;
-        let missing = self.ask_missing_mods(dir);
-        if missing.is_empty() {
-            return Ok(());
-        }
-        if allowed {
-            let (lines, allowed) = in_english(|| {
-                let lines: Vec<String> = missing.iter().map(level_mods::describe).collect();
-                let allowed = myriade_engine::lang::tr(
-                    "horizon.missing_mods.server.allowed",
-                    &[&level_mods::ALLOW_FLAG],
-                );
-                (lines, allowed)
-            });
-            for line in &lines {
-                log("WARN", line);
-            }
-            log("WARN", &allowed);
-            return Ok(());
-        }
-        level_mods::forget_answer();
-        let mut lines = in_english(|| level_mods::refusal_lines(&missing));
-        let last = lines.pop().unwrap_or_default();
-        let heading = in_english(|| myriade_engine::lang::get("horizon.missing_mods.title"));
-        log("ERROR", &heading);
-        for line in &lines {
-            log("ERROR", line);
-        }
-        for line in last.lines() {
-            log("ERROR", line);
-        }
-        Err(MissingModsRefusal(last).into())
+        // No mod is loaded, so a world saved with one opens as any world.
+        let _ = (dir, flag);
+        Ok(())
     }
 }
 

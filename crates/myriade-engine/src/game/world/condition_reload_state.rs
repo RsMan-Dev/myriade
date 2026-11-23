@@ -4,6 +4,5 @@ pub(super) struct PreparedWorldReload {
     pub(super) advancements: Arc<myriade_engine::advancements::Tree>,
     pub(super) tables: Option<WorldTables>,
     pub(super) health: myriade_engine::health::HealthResources,
-    pub(super) parts: PreparedParts,
     pub(super) wire: Option<Arc<myriade_engine::lan::data::SyncData>>,
 }

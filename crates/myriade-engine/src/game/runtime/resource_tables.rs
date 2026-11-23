@@ -3,6 +3,16 @@
 use super::*;
 use myriade_engine::item_names::Names;
 
+/// The command registries' block table of `registry`: what the parser checks properties against.
+fn block_registries(
+    registry: &'static horizon_world::registry::BlockRegistry,
+) -> Arc<myriade_engine::command::args::Registries> {
+    Arc::new(myriade_engine::command::args::Registries {
+        blocks: (*crate::game::command_text::block_properties(registry)).clone(),
+        ..Default::default()
+    })
+}
+
 impl Resources {
     pub(super) fn rest(&self) -> &WorldRest {
         self.rest
@@ -97,7 +107,7 @@ impl PackResources {
     ) -> Self {
         Self {
             context: Arc::new(WorkerContext { assets: assets.clone(), biomes, light }),
-            block_registries: native_block_states::block_registries(assets.registry),
+            block_registries: block_registries(assets.registry),
             assets,
             source: root.source().clone(),
             data_source: root.data().clone(),

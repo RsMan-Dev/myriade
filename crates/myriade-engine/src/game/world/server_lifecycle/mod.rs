@@ -26,38 +26,20 @@ impl Game<'_> {
         if !startup_began {
             return result;
         }
-        let run_error = result.as_ref().err().map(ToString::to_string);
-        let shutdown = self.shutdown_started_server(crashed, run_error.as_deref());
+        let shutdown = self.shutdown_started_server(crashed);
         result.and(shutdown)
     }
 
     /// Vanilla's nested `stopServer` finally: a listener panic still reaches
     /// cleanup, storage release and `server_stopped`, and the error is kept.
-    fn shutdown_started_server(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
+    fn shutdown_started_server(&mut self, crashed: bool) -> Result<()> {
         let mut failure: Option<String> = None;
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_server_stopping())) {
-            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
-            self.keep_players_after_shutdown_panic();
-        }
-        if let Some(error) = run_error {
-            let error = error.to_owned();
-            if let Err(payload) = catch_unwind(AssertUnwindSafe(|| {
-                self.native_lifecycle_world_failed(&error);
-                self.native_lifecycle_close_failed(&error);
-            })) {
-                remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
-                self.keep_players_after_shutdown_panic();
-            }
-        }
         match catch_unwind(AssertUnwindSafe(|| {
             self.stop_dedicated(crashed)
         })) {
             Ok(Ok(())) => {}
             Ok(Err(error)) => {
                 let text = error.to_string();
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    self.native_lifecycle_close_failed(&text);
-                }));
                 log::error!("Exception stopping the server: {text}");
                 if failure.is_none() {
                     failure = Some(text);
@@ -65,10 +47,7 @@ impl Game<'_> {
             }
             Err(payload) => {
                 let message = shutdown_panic(payload.as_ref());
-                remember_shutdown(&mut failure, message.clone());
-                let _ = catch_unwind(AssertUnwindSafe(|| {
-                    self.native_lifecycle_close_failed(&message);
-                }));
+                remember_shutdown(&mut failure, message);
                 self.keep_players_after_shutdown_panic();
                 // A config/player callback may unwind before the stop path
                 // reaches its final save. Complete that same tail, not just
@@ -77,9 +56,6 @@ impl Game<'_> {
                     remember_shutdown(&mut failure, error.to_string());
                 }
             }
-        }
-        if let Err(payload) = catch_unwind(AssertUnwindSafe(|| self.native_server_stopped())) {
-            remember_shutdown(&mut failure, shutdown_panic(payload.as_ref()));
         }
         match failure {
             Some(message) => Err(message.into()),
@@ -146,8 +122,6 @@ impl Game<'_> {
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
     pub(super) fn finish_server_save(&mut self, crashed: bool) -> Result<()> {
-        // The mod diagnostics end even if an earlier callback panicked.
-        self.stop_mod_diagnostics();
         let mut result = match catch_unwind(AssertUnwindSafe(|| {
             if crashed {
                 Ok(())
@@ -204,14 +178,7 @@ impl Game<'_> {
                 }
             }
         }
-        if result.is_ok()
-            && let Err(payload) =
-                catch_unwind(AssertUnwindSafe(|| self.native_lifecycle_world_closed()))
-        {
-            result = Err(shutdown_panic(payload.as_ref()).into());
-        }
         self.session_lock = None;
-        super::cauldron_interactions::clear();
         self.clear_world_parts();
         self.world_adopted = false;
         result

@@ -51,7 +51,7 @@ impl Game<'_> {
         let id = myriade_engine::command::args::normalized(id);
         match registry {
             "minecraft:predicate" => self.fns.store.predicates.get(id.as_ref()),
-            _ => self.context_registry(registry)?.get(id.as_ref()),
+            _ => None,
         }
         .cloned()
     }

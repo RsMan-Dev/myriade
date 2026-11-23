@@ -1,8 +1,7 @@
 //! The hurt state of a creature by id (`P bridge/host_combat.rs`): damage window, `invulnerableTime`, attackers, combat tracker,
 //! fire, fuse, glowing, enderman teleports, one random seed; and the teams of the board (`P bridge/teams.rs`).
 use super::level::EcsLevel;
-use crate::mobs::combat::{Entry, Tracker};
-use crate::mobs::{Damage, DamageKind, MobWorld};
+use crate::mobs::MobWorld;
 use horizon_ecs_proto::{
     bridge::{host::EcsWorld, ids::id_of, teams},
     targeting::Who,
@@ -13,57 +12,6 @@ fn mob_who(w: &EcsWorld, who: Who) -> Option<crate::mobs::Who> {
         Who::Player(_) => Some(crate::mobs::Who::Player),
         Who::Entity(e) => id_of(w.world(), e).map(crate::mobs::Who::Mob),
     }
-}
-
-/// The damage kind of a damage type name the ECS carries (with or without the namespace); None for a name Horizon has no kind for.
-fn kind_of_name(name: &str) -> Option<DamageKind> {
-    use DamageKind as K;
-    Some(match name.strip_prefix("minecraft:").unwrap_or(name) {
-        "player_attack" => K::PlayerAttack,
-        "mace_smash" => K::MaceSmash,
-        "spear" => K::Spear,
-        "mob_attack" => K::MobAttack,
-        "mob_attack_no_aggro" => K::MobAttackNoAggro,
-        "arrow" => K::Arrow,
-        "thrown" => K::Thrown,
-        "fireball" => K::Fireball,
-        "explosion" | "player_explosion" => K::Explosion,
-        "fall" => K::Fall,
-        "fly_into_wall" => K::FlyIntoWall,
-        "falling_block" => K::FallingBlock,
-        "falling_stalactite" => K::FallingStalactite,
-        "on_fire" => K::OnFire,
-        "in_fire" => K::InFire,
-        "campfire" => K::Campfire,
-        "lava" => K::Lava,
-        "drown" => K::Drown,
-        "dry_out" => K::DryOut,
-        "magic" => K::Magic,
-        "indirect_magic" => K::IndirectMagic,
-        "sting" => K::Sting,
-        "cactus" => K::Cactus,
-        "sweet_berry_bush" => K::SweetBerryBush,
-        "generic" => K::Generic,
-        "in_wall" => K::InWall,
-        "thorns" => K::Thorns,
-        "sonic_boom" => K::SonicBoom,
-        "freeze" => K::Freeze,
-        "out_of_world" => K::OutOfWorld,
-        "cramming" => K::Cramming,
-        "falling_anvil" => K::FallingAnvil,
-        "fireworks" => K::Fireworks,
-        "generic_kill" => K::GenericKill,
-        "lightning_bolt" => K::LightningBolt,
-        "outside_border" => K::OutsideBorder,
-        "spit" => K::Spit,
-        "stalagmite" => K::Stalagmite,
-        "starve" => K::Starve,
-        "hot_floor" => K::HotFloor,
-        "wind_charge" => K::WindCharge,
-        "wither" => K::Wither,
-        "wither_skull" => K::WitherSkull,
-        _ => return None,
-    })
 }
 
 /// A hit waiting in the ECS's damage queue, by network id (the target is linked on the way out).
@@ -130,20 +78,6 @@ impl EcsLevel {
         if let Some(w) = self.ecs_mut() {
             w.set_love_cause(e, player);
         }
-    }
-    /// The combat tracker of `id` as the server's; None until its first hit. A hit whose type has no Horizon kind is left out.
-    pub fn combat_tracker(&self, id: u32) -> Option<Tracker> {
-        let w = self.ecs()?;
-        let log = w.combat_log(self.entity_of(id)?)?;
-        let mut t = Tracker::default();
-        for h in &log.entries {
-            let Some(kind) = kind_of_name(h.damage_type) else { continue };
-            let attacker = h.by.and_then(|b| mob_who(w, b));
-            let source = Damage { kind, attacker, from: None, attacker_species: None };
-            t.record(Entry { source, damage: h.amount, in_water: h.in_water, fall_distance: h.fall_distance }, 0);
-        }
-        t.in_combat = log.in_combat;
-        Some(t)
     }
     pub fn set_ignited(&mut self, id: u32) -> bool {
         let Some(e) = self.entity_of(id) else { return false };

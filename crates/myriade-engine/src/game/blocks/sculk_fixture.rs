@@ -307,7 +307,7 @@ impl Game<'_> {
     }
 
     fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
-        self.world = Game::world_for_mods(self.res.facts().air, 0);
+        self.world = crate::world::World::new(self.res.facts().air, 0);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         let layers = [
             self.fixture_state("minecraft:bedrock")?,
@@ -653,7 +653,7 @@ impl Game<'_> {
                         Some(Who::Mob(owner)),
                     );
                     p.velocity = Vec3::new(0.0, 0.0, 1.5);
-                    self.handle_mob_events(vec![myriade_engine::mobs::MobEvent::Projectile(p)])?;
+                    self.add_projectile(p);
                 }
                 "event" => {
                     let event = myriade_engine::sculk::intern(&words[1])
@@ -688,19 +688,12 @@ impl Game<'_> {
                     self.remember_mob_player_credit(id);
                 }
                 // Creeper.ignite: the next tick primes the fuse.
-                "ignite" | "ate" => {
+                "ignite" => {
                     let id = sources
                         .get(words[1][1..].parse::<usize>().unwrap_or(usize::MAX))
                         .copied()
                         .ok_or("no such mob")?;
-                    let mut events = Vec::new();
-                    if words[0] == "ignite" {
-                        self.ecs.set_ignited(id);
-                    } else {
-                        // Mob.ate.
-                        self.ecs.ate(id, &mut events);
-                    }
-                    self.handle_mob_events(events)?;
+                    self.ecs.set_ignited(id);
                 }
                 "set" => {
                     let n = |i: usize| words[i].parse::<i32>().unwrap_or(0);

@@ -27,7 +27,7 @@ impl Game<'_> {
     }
 
     fn sound_player_id(&self) -> u32 {
-        self.native_acting_entity()
+        self.lan_acting_entity.unwrap_or(self.own_entity_id() as u32)
     }
 
     /// The player in place can be a guest while `as_guest` runs. Its entity

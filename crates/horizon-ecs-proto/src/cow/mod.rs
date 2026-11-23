@@ -33,7 +33,7 @@ mod blocks_world;
 mod fluids;
 mod frame;
 mod health;
-mod herd;
+pub mod herd;
 mod index;
 mod motion;
 mod nav;

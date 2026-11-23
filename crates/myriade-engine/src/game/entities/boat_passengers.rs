@@ -128,6 +128,24 @@ impl Game<'_> {
         !self.boat_obstacles(u32::MAX, area).is_empty()
     }
 
+    /// Runs `action` with `target` marked as being destroyed: a reentrant removal of the same
+    /// object finds it marked and gets None. A panic in `action` unmarks it and goes on.
+    pub(super) fn with_destroying_vehicle<R>(
+        &mut self,
+        target: super::commands::Target,
+        action: impl FnOnce(&mut Self) -> R,
+    ) -> Option<R> {
+        if !self.persist.destroying_vehicles.insert(target) {
+            return None;
+        }
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
+        self.persist.destroying_vehicles.remove(&target);
+        match result {
+            Ok(value) => Some(value),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
     pub(super) fn kill_vehicle_object(&mut self, target: super::commands::Target) -> bool {
@@ -158,7 +176,7 @@ impl Game<'_> {
             }
             Target::Cart(_) => {
                 self.release_vehicle_container(id);
-                self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+                self.unpack_loot(super::container_loot::LootTarget::Cart(id), false);
                 self.ecs_with(|ecs, mw| ecs.kill_vehicle(mw, id));
             }
             _ => unreachable!(),
@@ -179,9 +197,12 @@ impl Game<'_> {
                 .seated_passengers(vehicle)
                 .iter()
                 .any(|&(_, rider, player)| player && rider == id)
-                && let Some(rider) = self.entity(id)
             {
-                self.entity_stop_riding(rider);
+                if self.riding == Some(vehicle) {
+                    self.stop_riding();
+                } else {
+                    self.dismount_mob(id);
+                }
             }
         }
     }

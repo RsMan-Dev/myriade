@@ -114,14 +114,9 @@ impl Game<'_> {
             self.using = None;
             return;
         };
-        let going_on = self.use_item_ticked(&stack, ticks);
-        // A mod's tick released it: nothing of this use is left to run.
-        if self.using != Some((slot, ticks)) {
-            return;
-        }
-        // a mod's tick ran the use out: finished now, or frozen until let go
-        // for an item used on release (CrossbowItem.useOnRelease).
-        if !going_on {
+        // the use ran out: finished now, or frozen until let go for an item
+        // used on release (CrossbowItem.useOnRelease).
+        if !self.use_item_ticked(ticks) {
             if &*stack.item != "minecraft:crossbow" {
                 self.complete_using_item(slot, &stack, &info);
             }
@@ -129,9 +124,7 @@ impl Game<'_> {
         }
         if self.blocks_attacks(&stack).is_some() {
             // ShieldItem: used for 72000 ticks, i.e. until released.
-            if self.item_on_use_tick(&stack, ticks) {
-                self.using = Some((slot, ticks + 1));
-            }
+            self.using = Some((slot, ticks + 1));
             return;
         }
         if self.tick_drinking(slot, ticks, &stack) {
@@ -190,10 +183,6 @@ impl Game<'_> {
             self.tick_bundle(slot, ticks, &stack, &info);
             return;
         }
-        if self.mod_use(&stack) {
-            self.tick_mod_use(slot, ticks, &stack);
-            return;
-        }
         let Some(consumable) = self.consumable(&stack) else {
             self.using = None;
             return;
@@ -205,9 +194,6 @@ impl Game<'_> {
         let remaining = self.use_duration - ticks as i32;
         if consumable.should_emit(remaining) {
             self.emit_consume(&consumable, &stack, 5);
-        }
-        if !self.item_on_use_tick(&stack, ticks) {
-            return;
         }
         match item_use::count_down(ticks, self.use_duration) {
             Some(ticks) => self.using = Some((slot, ticks)),
@@ -236,19 +222,14 @@ impl Game<'_> {
     }
     /// `LivingEntity.releaseUsingItem` (`Item.releaseUsing`) for `stack`,
     /// used for `ticks`, its hand acting: a bow or a trident lets go (not
-    /// when its hand changed), a spyglass stops scoping, and a mod's own
-    /// release follows. A mod's `Stop` may skip the release. `stopUsingItem`
-    /// ends the use after it.
+    /// when its hand changed), a spyglass stops scoping. `stopUsingItem` ends
+    /// the use after it.
     pub(super) fn release_used_item(&mut self, stack: &ItemStack, ticks: u32, hand_changed: bool) {
-        let canceled = !hand_changed && !self.use_item_stopped(stack, ticks);
-        let (release, _) = item_use::release_parts(canceled, hand_changed);
+        let (release, _) = item_use::release_parts(false, hand_changed);
         match &*stack.item {
             "minecraft:bow" if release => self.release_bow(stack, self.ticks_held(stack, ticks)),
             "minecraft:trident" if release => self.release_trident(self.ticks_held(stack, ticks)),
             _ => {}
-        }
-        if release {
-            self.mod_release_using(stack, ticks);
         }
         self.stop_using_item(stack);
     }

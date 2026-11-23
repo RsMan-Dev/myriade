@@ -62,8 +62,6 @@ use myriade_engine::random_source;
 use myriade_engine::hand_use::SwingAnimation;
 use myriade_types::Hand;
 use resource_loader::Loaded;
-use self::api_values::TryIntoApi;
-pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
 use myriade_engine::spans::{startup, time as span};
 use myriade_engine::{
     Result,
@@ -98,11 +96,6 @@ use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_ecs_proto::falling_block::FallSettings;
 pub(crate) use launch_options::Options;
 pub(crate) use server_settings::Settings;
-pub use native_claimed_items::{HeldItemSlot, ModEvent};
-pub use native_components::NativeComponentError;
-pub use native_configs::ConfigFile;
-pub use native_data_maps::DataMapType;
-pub use native_hooks::{PhantomSpawnResult, Shake, SleepProblem};
 use std::{
     cell::RefCell,
     collections::{HashMap, HashSet},
@@ -411,8 +404,6 @@ struct WorldTables {
     recipes: Recipes,
     stations: myriade_engine::stations::StationData,
     reload_sources: Option<Arc<myriade_engine::crafting::ResolvedSources>>,
-    /// The values of the data map types native mods registered (`native_data_map_types`).
-    data_maps: native_data_maps::DataMaps,
     /// The entity type, biome, structure and damage type tags with the packs'
     /// over the game's own, by registry (`TagLoader.loadTagsForExistingRegistries`):
     /// what the predicates' `#tag`s of those registries read.
@@ -420,9 +411,7 @@ struct WorldTables {
 }
 
 struct PreparedParts {
-    block_states: Arc<api_values::block_state::Index>,
     tags: HashMap<String, HashSet<myriade_types::BlockKey>>,
-    cauldrons: Arc<cauldron_interactions::Table>,
 }
 use condition_reload_state::PreparedWorldReload;
 
@@ -648,9 +637,6 @@ struct Game<'a> {
     lectern_pulses: Vec<((i32, i32, i32), i32)>,
     /// The world spawn search's origin chunk and fallback height, once known.
     spawn_origin: Option<((i32, i32), i32)>,
-    /// `native_create_spawn_position` was asked, and a mod chose the spawn.
-    spawn_hook_fired: bool,
-    spawn_hook_cancelled: bool,
     spawn_spiral: myriade_engine::world_spawn::ChunkSpiral,
     /// Chunks a respawn search waits for this tick, kept loading beside the
     /// player's own (taken by `update_world`).
@@ -826,26 +812,11 @@ struct Game<'a> {
     /// Block-entity positions retained between ticks for client effects.
     spawner_tick_positions: Vec<myriade_engine::block_entities::Pos>,
     trial_spawner_tick_positions: Vec<myriade_engine::block_entities::Pos>,
-    /// The `[[native.loop]]` slots' state, per published loop (`published_loops.rs`).
-    loop_states: published_loops::LoopStates,
     /// The control endpoint `horizon-server` talks to (`--control-socket`).
     control: Option<myriade_engine::control::Server>,
-    /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
-    recipe_tables: native_recipes::RecipeTables,
-    /// Native client mods' claimed items, unpolled events and key mappings (game/modding/native_claimed_items.rs).
-    native_input: native_claimed_items::ModInput,
-    /// The native lifecycle bookkeeping.
-    native_lifecycle: native_lifecycle::NativeLifecycle,
     resident_entities: resident_state::ResidentEntities,
-    /// The mobs lent to the hook calls running now, before they join a level
-    /// (game/modding/native_unspawned_mob.rs).
-    lent_mobs: RefCell<native_unspawned_mob::LentMobs>,
     /// Entities whose copies are held out of storage; their handles refuse until stored back.
     held_out: Vec<u32>,
-    /// Native mods' config files this game loaded (game/modding/native_configs.rs).
-    native_configs: native_configs::NativeConfigs,
-    /// Private custom-book connection and placement state.
-    native_net: native_net::NativeNet,
     /// Meshed sections waiting for an upload budget (Horizon settings).
     /// What happened, for `events` and `wait-for` (game/runtime/events.rs).
     events: events::Events,
@@ -854,9 +825,6 @@ struct Game<'a> {
     persist: persist::EntityMemory,
     /// Missing profession IDs already reported for this world session.
     missing_professions: HashSet<String>,
-    entity_initialization: entity_initialization::EntityInitialization,
-    /// Typed per-level membership follows dimensions, not the temporary world swap.
-    attachment_indexes: attachment_index::Indexes,
     /// Connected to a server: the world comes from the network (game/network/remote/mod.rs).
     /// The server session: registries, rules, clocks, difficulty (game/administration/session_state.rs).
     session: session_state::SessionState,
@@ -874,13 +842,9 @@ struct Game<'a> {
     /// `test_defs` holds the world's whole test instance registry
     /// (`snapshot_test_defs`), so a miss is final.
     test_defs_snapshot: bool,
-    /// `GameTestTicker.SINGLETON`: the game tests running on this server.
-    game_tests: game_tests::GameTests,
     /// The natural spawning policy mods set on each level (`LevelRef::set_spawn_limits`,
     /// `set_spawn_flags`); a level with none spawns as vanilla. Kept while the world is open.
     spawn_policies: HashMap<myriade_types::DimensionKey, spawn_level::SpawnPolicy>,
-    /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
-    passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
     previous_mode: Option<myriade_engine::command::args::GameMode>,
     /// The world was saved for the application ending (`save_for_exit`).
@@ -943,9 +907,6 @@ struct Game<'a> {
     /// have each chest open.
     lid_openers: HashMap<(i32, i32, i32), i32>,
     lan_acting: Option<u32>,
-    /// A mod asked for the command trees again (`native_refresh_commands`):
-    /// the next server tick asks every mod for its commands and resends them.
-    native_commands: native_server::NativeCommandState,
     /// The abilities of the server player whose turn it is (`as_guest`): their record's
     /// copy, which the turn reads and writes and `leave_guest` stores. None outside a turn.
     acting_abilities: Option<myriade_engine::lan::abilities::PlayerAbilities>,
@@ -964,8 +925,6 @@ struct Game<'a> {
     /// Crash teardown left the integrated server's owner unplaced, or lost the hub: the save keeps
     /// the owner's player file, stats and advancements as last saved (`save_game_metadata`).
     keep_owner_files: bool,
-    /// Live attachments and original snapshots retained during player replacement.
-    player_state: original_player::PlayerState,
     /// The block the acting player is breaking (`break_block`): its destroy
     /// event, and the ones before it, are the player's own (`Level.levelEvent`
     /// with the player excluded); the events after it are not.
@@ -991,8 +950,6 @@ struct Game<'a> {
     lan_acting_entity: Option<u32>,
     /// Whether the player currently swapped into the game is connectionless.
     lan_acting_fake: bool,
-    /// A fake player's `perform_action` in progress, and what it refused.
-    fake_action: std::sync::Arc<native_server::FakeAction>,
     /// Command feedback to forward to a guest.
     chat_capture: Option<Vec<myriade_engine::text::Text>>,
     /// Packets for the guest acting now, sent once its action returns.
@@ -1044,8 +1001,6 @@ struct Game<'a> {
     brushing: brush::Brushing,
     border: myriade_engine::worldborder::WorldBorder,
     adv: advancements::AdvState,
-    block_entity_tick_key: Option<block_entity_tick_items::Key>,
-    block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
 }
 use horizon_gameplay::dim::Dim;
 /// `Inventory.add` on a player's 36 slots (hotbar first) and off hand,
@@ -1474,8 +1429,6 @@ impl Game<'_> {
             };
             self.roll_block_loot(pos, state, Some(entity as u32), roll)
         });
-        let player = self.native_acting_id();
-        self.native_block_loot(pos, state, Some(player), held, None, &mut drops);
         drops
     }
     /// `Player.drop`: the statistics and a thrown item entity in front of the player.
@@ -1515,40 +1468,16 @@ impl Game<'_> {
             None => self.level.ensure_player_uuid(),
         }
     }
-    /// `Block.fallOn` for item `id`, which fell `distance` onto the block at `on`
-    /// (`Entity.checkFallDamage`): a mod block's `fall_on` Part hears it, through the same
-    /// `block_contact::fall` as a player's and a mob's landing. An item takes no fall damage.
-    /// Nothing is lent or built unless a Part of that block listens.
-    fn item_fall_on(&mut self, id: u32, on: horizon_core::position::BlockPos, distance: f64) {
-        let state = self.world.block(on.x, on.y, on.z);
-        if !myriade_engine::block_contact::fall_listens(state) {
-            return;
-        }
-        let mut lent = myriade_engine::health::LentLevel::take(&mut self.world);
-        // A native fall_on Part can unwind. Keep the persistent level carrier
-        // outside the callback's temporary views, and return its progressed state
-        // before propagating the original panic. This does not restore the item batch.
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let mut level = myriade_engine::health::DamageLevel::lent(
-                &self.world,
-                self.pack.assets.registry,
-                &mut lent,
-                Some(world_items!(self)),
-                Some(&self.pack.block_registries),
-                &self.damage_hooks,
-            );
-            let contact = myriade_engine::block_contact::Contact {
-                entity: id as i32,
-                kind: "minecraft:item",
-                state,
-                position: on,
-            };
-            let _ = myriade_engine::block_contact::fall(&mut level, contact, distance, 0.0);
-        }));
-        lent.give_back(&mut self.world);
-        if let Err(payload) = result {
-            std::panic::resume_unwind(payload);
-        }
+    /// The UUID of the acting player as the integer pair a mod's identity uses, as a `u128`.
+    pub(super) fn native_acting_id(&mut self) -> u128 {
+        myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid())
+    }
+    /// The acting player's UUID and entity id (the own entity unless a guest acts).
+    pub(super) fn native_clicker(&mut self) -> (u128, i32) {
+        let entity = self
+            .lan_acting_entity
+            .map_or_else(|| self.own_entity_id(), |id| id as i32);
+        (self.native_acting_id(), entity)
     }
     /// `Entity.doWaterSplashEffect` for a dropped item: the server plays
     /// `entity.generic.splash` (`Entity.playSound`), which the players hear.
@@ -1563,7 +1492,6 @@ impl Game<'_> {
         &mut self,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
-        self.ensure_stateful_entity_table();
         let darken = self.sky_darken();
         let (rain, thunder) = self.weather_levels(1.0);
         // Spectators ignore block triggers (Entity.isIgnoringBlockTriggers).
@@ -1728,21 +1656,19 @@ impl Game<'_> {
         }
         result
     }
-    pub(super) fn native_block_ignite_allowed(
-        &mut self,
-        pos: BlockPos,
-        cause: &'static str,
-    ) -> bool {
-        self.with_level(|_, level, _| level.allow_block_ignite(pos, cause))
+    /// No mod vetoes an ignition: it is allowed.
+    pub(super) fn native_block_ignite_allowed(&mut self, _pos: BlockPos, _cause: &'static str) -> bool {
+        true
     }
+    /// No mod vetoes a cauldron level change: it is allowed.
     pub(super) fn native_cauldron_level_change_allowed(
         &mut self,
-        pos: BlockPos,
-        from: i32,
-        to: i32,
-        reason: &'static str,
+        _pos: BlockPos,
+        _from: i32,
+        _to: i32,
+        _reason: &'static str,
     ) -> bool {
-        self.with_level(|_, level, _| level.allow_cauldron_level_change(pos, from, to, reason))
+        true
     }
     /// Level.setBlock(pos, state, UPDATE_ALL) with neighbour/shape updates.
     fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
@@ -1872,7 +1798,6 @@ impl Game<'_> {
         self.tickets.update(sources);
         let changes = self.tickets.take_changes();
         self.ecs_ticket_levels_changed(&changes);
-        self.run_chunk_ticket_level_updates(changes);
     }
     /// `ServerLevel.startTickingChunk`: a loaded chunk's saved ticks are
     /// scheduled from the game time at which it becomes a ticking chunk
@@ -1937,6 +1862,26 @@ impl Game<'_> {
         self.world.moving_piston_fallback = fallback;
         self.world.moving_pistons = current;
     }
+    /// `LevelEventHandler` 2001: the break sound of the block (none for air).
+    fn play_break_sound(&mut self, pos: [i32; 3], state: BlockStateId) {
+        if self.res.facts().is_air(state) {
+            return;
+        }
+        let sound = myriade_engine::block_sounds::sound_type(
+            &self.loop_context,
+            self.res.facts(),
+            BlockPos::new(pos[0], pos[1], pos[2]),
+            state,
+            None,
+            myriade_types::BlockSoundCause::Break,
+        );
+        self.audio.play(
+            &sound.break_sound,
+            Some(pos.map(|v| f64::from(v) + 0.5)),
+            (sound.volume + 1.0) / 2.0,
+            sound.pitch * 0.8,
+        );
+    }
     /// Side effects reported by the behaviour library, in vanilla order.
     fn process_level_events(&mut self) -> Result<()> {
         let events = std::mem::take(&mut self.level_events);
@@ -1952,8 +1897,7 @@ impl Game<'_> {
                     // LevelEventHandler: destroy particles and the block's
                     // break sound (none for air).
                     let state = BlockStateId(data as u32);
-                    let p = [pos.x, pos.y, pos.z];
-                    self.play_break_sound(p, state);
+                    self.play_break_sound([pos.x, pos.y, pos.z], state);
                 }
                 LevelEvent::LevelEvent {
                     id: 3006,
@@ -1969,15 +1913,7 @@ impl Game<'_> {
                 }
                 // LevelEventHandler 2019 and 2020: the crack on a face of the
                 // block being mined, with its hit sound for 2020.
-                LevelEvent::LevelEvent {
-                    id: id @ (2019 | 2020),
-                    pos,
-                    data,
-                    ..
-                } => {
-                    let face = horizon_core::geometry::Direction::ALL[data.clamp(0, 5) as usize];
-                    self.breaking_block_effects([pos.x, pos.y, pos.z], face.normal(), id == 2020);
-                }
+                LevelEvent::LevelEvent { id: 2019 | 2020, .. } => {}
                 LevelEvent::LevelEvent {
                     id: 3008,
                     pos,
@@ -1997,8 +1933,8 @@ impl Game<'_> {
                 }
 
 
-                LevelEvent::LevelEvent { id: 2003, pos, .. } => {
-                }
+                // LevelEventHandler 2003: the eye's particles only.
+                LevelEvent::LevelEvent { id: 2003, .. } => {}
 
                 LevelEvent::LevelEvent {
                     id: 1500,
@@ -2327,9 +2263,6 @@ impl Game<'_> {
     }
     /// Menus opened by PlayerEffect::OpenMenu.
     fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(myriade_types::FakeEffect::Menu) {
-            return;
-        }
         let name = self
             .res
             .facts()
@@ -2436,9 +2369,6 @@ impl Game<'_> {
             if first {
                 self.container_edge_sound(key, true);
             }
-        } else if self.open_mod_menu(key) {
-            // A mod block's container (`native_block_entity_container`).
-            self.container = Some(key);
         } else if self.open_station(pos, &name) {
             // Workstation menus: game/blocks/stations.rs.
         } else {
@@ -2517,26 +2447,18 @@ impl Game<'_> {
         {
             return Ok(false);
         }
-        // Native mods, once the game allowed the break: a canceled one keeps
-        // the block, and a guest's acknowledgement puts it back in its world.
-        let mut canceled = false;
-        let mut exp_to_drop = None;
-        self.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
-        if canceled {
-            return Ok(false);
-        }
         let broken = state;
         let facts = self.res.facts().get(state).clone();
         let held = self.held().cloned();
         let key = (pos[0], pos[1], pos[2]);
-        self.unpack_loot(container_loot::LootTarget::Block(key), None);
+        self.unpack_loot(container_loot::LootTarget::Block(key), false);
         let loot_entity = if self.creative {
             None
         } else {
             self.loot_block_entity(pos, &facts.name)
         };
-        let live = self.live_block_entity(key, &facts.name);
-        if let Some((entity, _)) = &live {
+        let live = self.world.block_entities.get(&key).cloned();
+        if let Some(entity) = &live {
             self.pending
                 .record_from(&self.world, pos, entity, &facts.name);
         } else if let Some(tag) = spill::saved_entity(&self.world, pos) {
@@ -2572,12 +2494,16 @@ impl Game<'_> {
                 // Block.dropResources: the item entities, then spawnAfterBreak's
                 // experience, with the mods' say between the two.
                 let breaker = Some(self.native_acting_id());
-                let dropped = self.player_block_dropped(
-                    (pos, state),
-                    (breaker, held.as_ref(), live),
-                    (stacks, exp_to_drop),
-                );
-                let canceled = dropped.canceled;
+                let dropped = self.with_level(|_, level, _| {
+                    level.block_dropped(
+                        BlockPos::new(pos[0], pos[1], pos[2]),
+                        state,
+                        breaker,
+                        held.as_ref(),
+                        stacks,
+                        None,
+                    )
+                });
                 if let Some(kept) = self.break_collect.as_mut() {
                     kept.extend(dropped.items.into_iter().map(|item| item.stack));
                     if dropped.experience > 0 {
@@ -2599,7 +2525,6 @@ impl Game<'_> {
                 // tool has silk touch (#prevents_infested_spawns) or blocks don't drop.
                 if facts.name.starts_with("minecraft:infested_")
                     && !silk
-                    && !canceled
                     && self
                         .session
                         .rules
@@ -2655,29 +2580,8 @@ impl Game<'_> {
     }
     /// The `ItemStack.interactLivingEntity` fallback in `Player.interactOn`,
     /// currently for native Mob entries after the entity's own action passed.
-    fn item_interact_mob(&mut self, target: Option<InteractTarget>) -> bool {
-        if self.spectator() || !false
-        {
-            return false;
-        }
-        let (entity, kind) = if self.ecs.is_active() {
-            let Some(id) = target.map(|t| t.id as u32).or_else(|| self.ecs_mob_hit().map(|h| h.0)) else {
-                return false;
-            };
-            let Some(k) = self.ecs.kind(id).filter(|_| self.mob_alive(id)) else {
-                return false;
-            };
-            (id as i32, myriade_engine::command::args::normalize(k))
-        } else {
-            // RESTE-SANS-ECS: no legacy mob list; `mob_interaction_target` is always None.
-            return false;
-        };
-        let Some(stack) = self.held().filter(|stack| stack.count > 0).cloned() else {
-            return false;
-        };
-        let mut result = None;
-        self.native_item_interact_mob(self.hand, entity, &kind, &stack, &mut result);
-        result.is_some_and(|answer| self.interaction_consumed(answer))
+    fn item_interact_mob(&mut self, _target: Option<InteractTarget>) -> bool {
+        false
     }
     /// `ItemStack.applyAfterUseComponentSideEffects`: a used stack with a
     /// `use_cooldown` component starts its entry (`UseCooldown.apply`). A
@@ -2693,22 +2597,7 @@ impl Game<'_> {
             return;
         };
         let group = myriade_engine::cooldowns::group(stack, default.as_ref());
-        let mut cancel = false;
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_item_cooldown(
-                player,
-                &name,
-                &stack.item,
-                component.ticks(),
-                &mut cancel,
-            );
-        }
-        if !cancel {
-            self.add_cooldown(group, component.ticks());
-        } else if self.lan_acting.is_some() {
-            // The guest's client started the cooldown itself; 0 ends it there.
-            self.guest_cooldowns.push((group, 0));
-        }
+        self.add_cooldown(group, component.ticks());
     }
     /// `ItemCooldowns.addCooldown` (a guest also gets the packet).
     pub(super) fn add_cooldown(&mut self, group: Arc<str>, ticks: i32) {
@@ -2841,7 +2730,7 @@ impl Game<'_> {
     /// landing player in place (`post_landing_vibration`).
     fn landing_block_updates(
         &mut self,
-        player: Option<u128>,
+        _player: Option<u128>,
         event: &myriade_engine::landing::FallEvent,
     ) -> Option<LandingVibration> {
         use myriade_engine::landing::FallEvent;
@@ -2906,12 +2795,6 @@ impl Game<'_> {
             }
             _ => return None,
         };
-        if self.landing_change_cancelled(player, position, from, to) {
-            self.world
-                .set(position.x, position.y, position.z, from)
-                .ok();
-            return None;
-        }
         if matches!(event, FallEvent::Destroy { .. }) {
             self.level_event_at(2001, [position.x, position.y, position.z], from.0 as i32);
         }
@@ -2941,31 +2824,6 @@ impl Game<'_> {
             .default_state("minecraft:air")
             .unwrap_or(BlockStateId(0))
     }
-    /// Whether a mod cancelled a landing's block change
-    /// (`native_entity_change_block_pre`): asked with the two blocks' names and
-    /// the player whose landing it was (`None` when no player did it).
-    fn landing_change_cancelled(
-        &mut self,
-        player: Option<u128>,
-        position: BlockPos,
-        from: BlockStateId,
-        to: BlockStateId,
-    ) -> bool {
-        if !false {
-            return false;
-        }
-        let mut cancel = false;
-        self.native_entity_change_block_pre(native_hooks::EntityChangeBlockPreCall {
-            player,
-            entity: None,
-            kind: "minecraft:player",
-            pos: [position.x, position.y, position.z],
-            from,
-            to,
-            cancel: &mut cancel,
-        });
-        cancel
-    }
     fn tick(&mut self) -> Result<()> {
         self.abort_open_transactions();
         self.update_interaction_ranges();
@@ -2975,7 +2833,6 @@ impl Game<'_> {
     /// world's entities and blocks, and the network hub.
     fn tick_world(&mut self, running: bool) -> Result<()> {
         // Entities added since the last tick join the level before it ticks.
-        span("mods_joins_flush", || self.native_joins_flush(false, 0));
         span("share_spawn_conditions", || self.share_spawn_conditions());
         myriade_engine::mobs::sulfur_cube::set_tnt_explodes(
             self.session
@@ -3003,7 +2860,6 @@ impl Game<'_> {
             sent = myriade_engine::spans::time("tick_blocks", || self.tick_blocks())?;
             // What the blocks spawned (a dispensed minecart, a lit TNT, a
             // placed boat) joins before the entities tick.
-            span("mods_joins_flush", || self.native_joins_flush(false, 0));
             span("lan_mark_synced", || self.lan_mark_synced());
             // `EntityTickList.forEach`: what joined before the entity pass
             // (function summons, dropped or dispensed items) ticks in it;
@@ -3039,8 +2895,6 @@ impl Game<'_> {
                 span("hoppers_catch_items", || self.hoppers_catch_items());
             }
             // Merged, burnt, despawned or picked up.
-            span("mods_leaves_flush", || self.native_leaves_flush());
-            span("mods_joins_flush", || self.native_joins_flush(false, 0));
         }
         myriade_engine::spans::time("spawn_loaded_entities", || self.spawn_loaded_entities());
         // The ride the player's file names, once the vehicle is in the world.
@@ -3048,19 +2902,14 @@ impl Game<'_> {
         if running {
             myriade_engine::spans::time("tick_mobs", || self.tick_mobs())?;
             // Dead, despawned or gone into a hive.
-            span("mods_leaves_flush", || self.native_leaves_flush());
-            span("mod_viewers", || self.tick_mod_container_viewers());
             myriade_engine::spans::time("tick_experience", || self.tick_experience());
             // Merged, despawned or picked up.
-            span("mods_leaves_flush", || self.native_leaves_flush());
             myriade_engine::spans::time("entity_portals", || {
                 self.find_entity_portals();
                 self.resolve_arrivals();
             });
         }
         // The rest of the tick's spawns join, and what left is told of.
-        span("mods_joins_flush", || self.native_joins_flush(false, 0));
-        span("mods_leaves_flush", || self.native_leaves_flush());
         // ServerLevel.tick broadcasts the changed blocks after the scheduled and
         // random ticks (`tick_blocks`), before the block events, the entities
         // and the block entities: what those change goes out with the next
@@ -3105,10 +2954,6 @@ impl Game<'_> {
         // block entity ticker (the bells, conduits and gateways above too): the
         // chunks loaded before this pass have their entities loaded from the next.
         self.world.entities_pending.clear();
-        if running {
-            // MinecraftServer.tickServer: GameTestTicker.SINGLETON.tick().
-            span("tick_game_tests", || self.tick_game_tests());
-        }
         // ServerBossEvent broadcasts, after this level's entities have ticked.
         span("publish_boss_bars", || self.publish_boss_bars());
         if running {
@@ -3210,8 +3055,8 @@ impl Game<'_> {
         None
     }
     /// `Player.isSweepAttack` with the player's speed as it is, then
-    /// `native_sweep_attack`, on either side: whether the hit on `target` sweeps.
-    pub(super) fn sweep_decision(&mut self, scale: f32, crit: bool, target: &str) -> bool {
+    /// Whether the hit sweeps, on either side (`Player.attack`'s sweep, no mod's say).
+    pub(super) fn sweep_decision(&mut self, scale: f32, crit: bool, _target: &str) -> bool {
         let Some(p) = self.player.as_ref() else {
             return false;
         };
@@ -3222,11 +3067,7 @@ impl Game<'_> {
                 .get("minecraft:swords")
                 .is_some_and(|tag| tag.contains(&*s.item))
         });
-        let vanilla = p.is_sweep_attack(scale, crit, sword);
-        let (mut sweeping, mut canceled) = (vanilla, false);
-        // `setCanceled` skips later mods and keeps the current `sweeping`.
-        self.native_sweep_attack(target, vanilla, &mut sweeping, &mut canceled);
-        sweeping
+        p.is_sweep_attack(scale, crit, sword)
     }
     /// `Player.attack`'s `isSweepAttack`, decided before the hit as vanilla does
     /// (`crit`: the hit on a living target is critical): where the sweep plays,
@@ -3285,7 +3126,6 @@ impl Game<'_> {
     }
     fn tick_mobs(&mut self) -> Result<()> {
         self.tick_ecs()?;
-        self.native_mobs_equipment();
         self.tick_equipment_attributes();
         self.position_rider();
         self.tick_player_stat_counters();
@@ -3323,18 +3163,13 @@ impl Game<'_> {
         // Saves and chunk readers share the same placeholder IDs.
         self.world_biomes = Some(biomes);
         self.world_biomes_base = self.world_biomes.clone();
-        myriade_engine::crash::set_detail(
-            "World",
-            format!("{} ({})", level.name, save_root.display()),
-        );
         self.end.set_locator(locator);
         self.share_spawn_conditions();
         self.score = Default::default();
-        let stack = self.open_world_datapacks(&level.enabled_features)?;
+        let stack = self.open_world_datapacks(&level.enabled_features).map_err(|e| e.to_string())?;
         let root = self.options.resources.clone();
         self.open_world_tables(&stack, &root)?;
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
-        self.resolve_parts()?;
         // A code-mod switch can have rebuilt the root since `Game::new`.
         self.structure_spawns = myriade_engine::mobs::spawn_place::StructureSpawns::load(&root);
         // Native tag reads use the lock to tell that the tag tables are ready.
@@ -3360,9 +3195,6 @@ impl Game<'_> {
         {
             self.read_raids();
         }
-        self.announce_data_bound(myriade_types::TagsUpdateCause::ServerDataLoad { reload: false });
-        self.announce_data_maps_updated(myriade_types::DataMapsUpdateCause::ServerReload);
-        self.sync_recipe_content();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.prefetch_advancement_tree(&stack);
         self.rand_sequences = rand_sequences;
@@ -3396,10 +3228,7 @@ impl Game<'_> {
                 });
             }
         }
-        let (yaw, pitch) = self
-            .options
-            .look
-            .unwrap_or((level.rotation[0], level.rotation[1]));
+        let (yaw, pitch) = (level.rotation[0], level.rotation[1]);
         self.yaw = yaw;
         self.pitch = pitch;
         self.selected = level.selected_slot.clamp(0, 8) as usize;
@@ -3417,7 +3246,6 @@ impl Game<'_> {
         self.pending_vehicle = level.root_vehicle;
         self.level = level;
         self.ecs = self.new_ecs_level(dim, self.level.seed);
-        self.check_mod_mismatch();
         self.world_adopted = true;
         // ServerRecipeBook.loadUntrusted: recipes the manager does not have are dropped.
         let index = &world_stations!(self).recipe_index;
@@ -3443,12 +3271,9 @@ impl Game<'_> {
             .as_ref()
             .map(respawn_anchor::RespawnConfig::from_saved);
         self.spawn_origin = None;
-        self.spawn_hook_fired = false;
-        self.spawn_hook_cancelled = false;
         self.spawn_spiral = Default::default();
         self.creatures.reset_trader();
         self.creatures.cat = Default::default();
-        self.creatures.custom_spawners.clear();
         self.portals = Default::default();
         self.experience = Experience {
             level: self.level.xp_level,
@@ -3479,10 +3304,9 @@ impl Game<'_> {
         self.session_lock = None;
         self.clear_world_parts();
         self.world_adopted = false;
-        myriade_engine::crash::clear_detail("World");
         self.bosses = Default::default();
         self.streaming.paused = true;
-        self.world = Game::world_for_mods(self.res.facts().air, 0);
+        self.world = World::new(self.res.facts().air, 0);
         self.player = None;
         self.sleeping = None;
         self.sleep_timer = 0;
@@ -3576,7 +3400,7 @@ impl Game<'_> {
         let id = self.world.block(pos[0], pos[1], pos[2]);
         let state = registry
             .state(id)
-            .filter(|s| cauldron_interactions::snapshot().contains_block(&s.name))
+            .filter(|s| myriade_engine::cauldron::interactions::Dispatcher::vanilla().contains_block(&s.name))
             .cloned()?;
         let above = self.world.block(pos[0], pos[1] + 1, pos[2]);
         let under_water = cauldrons::is_under_water(self.res.facts(), above);
@@ -3831,11 +3655,6 @@ impl Game<'_> {
             if self.bucket_use_refused(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let mut canceled = false;
-            self.native_fill_bucket(stack, hit.pos, &mut canceled);
-            if canceled {
-                return Ok(UseResult::Fail);
-            }
             if self.is_powder_snow(hit.pos) {
                 self.pick_up_powder_snow(hit.pos)?;
                 return Ok(UseResult::Success { swing: true });
@@ -3883,24 +3702,6 @@ impl Game<'_> {
                 return Ok(UseResult::Fail);
             }
             let target = self.bucket_target(content, &hit);
-            let mut canceled = false;
-            self.native_fill_bucket(stack, target, &mut canceled);
-            // `mayUseItemAt(blockPos2)`: a block that refuses the fluid passes
-            // it to the block beside, so a mod hears that block too (powder
-            // snow places like a block and never goes there).
-            let beside_too = content != BucketContent::Powder && hit.beside() != target;
-            if !canceled && beside_too {
-                self.native_fill_bucket(stack, hit.beside(), &mut canceled);
-            }
-            if canceled
-                || self.bucket_empty_cancelled(stack, target)
-                || beside_too && self.bucket_empty_cancelled(stack, hit.beside())
-            {
-                return Ok(UseResult::Fail);
-            }
-            if let Some(result) = self.player_empty_contents(stack, target, &hit) {
-                return Ok(result);
-            }
             let pos = BlockPos::new(target[0], target[1], target[2]);
             let [x, y, z] = hit.beside();
             let beside = Some(BlockPos::new(x, y, z));
@@ -4100,7 +3901,6 @@ impl Game<'_> {
         let Some(points) = self.xp_change(points) else {
             return;
         };
-        let old_level = self.experience.level;
         self.experience.add_points(points);
         while self.experience.progress < 0.0 {
             let xp = &self.experience;
@@ -4122,7 +3922,6 @@ impl Game<'_> {
             let xp = &mut self.experience;
             xp.progress /= myriade_engine::entities::Experience::needed(xp.level) as f32;
         }
-        self.native_player_level_changed(old_level);
     }
     /// A translated message for the player the game acts for: `overlay` is
     /// `sendOverlayMessage` (the action bar), else `sendSystemMessage` (chat).
@@ -4158,9 +3957,6 @@ impl Game<'_> {
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
     /// respawn point either way.
     fn try_sleep(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(myriade_types::FakeEffect::Sleep) {
-            return;
-        }
         let Some((position, yaw)) = self.player.as_ref().map(|p| (p.position, p.yaw)) else {
             return;
         };
@@ -4234,25 +4030,22 @@ impl Game<'_> {
                 .is_none_or(|c| (c.dim, c.pos) != (config.dim, config.pos));
             // `canSetSpawn` calls the setter every time, the same bed too (it
             // refreshes the angle).
-            let cancel = self.spawn_point_change(self.dim, Some(head), false);
-            if !cancel {
-                self.respawn_config = Some(config);
-                if moved {
-                    self.tell_sleeper("block.minecraft.set_spawn", "Respawn point set", false);
-                }
-                // The fallback becomes the world spawn: a guest's is none of its
-                // own, so it follows `setworldspawn`.
-                self.spawn = if self.lan_acting.is_some() {
-                    None
-                } else {
-                    self.level
-                        .world_spawn
-                        .map(|[x, y, z]| {
-                            Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5)
-                        })
-                        .or(self.spawn)
-                };
+            self.respawn_config = Some(config);
+            if moved {
+                self.tell_sleeper("block.minecraft.set_spawn", "Respawn point set", false);
             }
+            // The fallback becomes the world spawn: a guest's is none of its
+            // own, so it follows `setworldspawn`.
+            self.spawn = if self.lan_acting.is_some() {
+                None
+            } else {
+                self.level
+                    .world_spawn
+                    .map(|[x, y, z]| {
+                        Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5)
+                    })
+                    .or(self.spawn)
+            };
         }
         if problem.is_none() && !self.bed_can_sleep_now() {
             problem = Some("not_possible_now");
@@ -4262,7 +4055,7 @@ impl Game<'_> {
             && !self.creative
             && self.ecs.ids_near([position.x, position.y, position.z], 13.0).into_iter().any(|id| {
                 self.creature_species(id).is_some_and(|s| {
-                    myriade_engine::mobs::ai::is_monster(s)
+                    myriade_engine::mobs::drops::is_monster(s)
                         && (s != myriade_engine::mobs::Species::ZombifiedPiglin
                             || (self.ecs.is_angry(id) && self.ecs.ai_target(id).is_some()))
                 }) && self.ecs.alive(id)
@@ -4275,14 +4068,8 @@ impl Game<'_> {
         {
             problem = Some("not_safe");
         }
-        // NeoForge's CanPlayerSleepEvent: a mod may clear or replace the
-        // problem vanilla found, or add one.
-        let mut problem = problem.map(str::to_owned);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_can_player_sleep(player, &name, head, &mut problem);
-        }
         if let Some(problem) = problem {
-            match problem.as_str() {
+            match problem {
                 "too_far_away" => self.tell_sleeper(
                     "block.minecraft.bed.too_far_away",
                     "You may not rest now; the bed is too far away",
@@ -4303,7 +4090,7 @@ impl Game<'_> {
                     "You can sleep only at night or during thunderstorms",
                     true,
                 ),
-                // `other_problem` and any name a mod invents: refused without a message.
+                // `other_problem`: refused without a message.
                 _ => {}
             }
             return;
@@ -4320,13 +4107,6 @@ impl Game<'_> {
                 "No amount of rest can pass this night",
                 true,
             );
-        }
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            let mut cancel = false;
-            self.native_player_bed_enter(player, &name, head, &mut cancel);
-            if cancel {
-                return;
-            }
         }
         if self.lie_in_bed(head) {
             let bed = self.world.block(head[0], head[1], head[2]);
@@ -4374,9 +4154,6 @@ impl Game<'_> {
     }
     /// `Player.stopSleepInBed`: preserve the flags of the owning wake caller.
     fn wake_up(&mut self, wake_immediately: bool, update_level: bool) {
-        // PlayerWakeUpEvent: heard at the start of stopSleepInBed, still in bed;
-        // a listener may have woken the player, so the sleep is read after it.
-        self.native_acting_bed_leave(wake_immediately, update_level);
         let Some(head) = self.sleeping.take() else {
             return;
         };
@@ -4450,14 +4227,10 @@ impl Game<'_> {
                 .rules
                 .bool_at(myriade_engine::gamerules::vanilla::ADVANCE_TIME)
             {
-                // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs): None
-                // when a mod canceled, so `native_time_skip` is not asked, or no time fits.
-                if let Some((clock, t, target)) = self.sleep_finished_move() {
-                    let mut cancel = false;
-                    self.native_time_skip(self.dim.id(), t, target, "sleep", &mut cancel);
-                    if !cancel {
-                        self.set_command_clock_time(&clock, target);
-                    }
+                // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs):
+                // None when no time fits.
+                if let Some((clock, _, target)) = self.sleep_finished_move() {
+                    self.set_command_clock_time(&clock, target);
                 }
             }
             // Level.isRaining: the rain level is above 0.2.
@@ -4737,7 +4510,7 @@ impl<'a> Game<'a> {
             std::env::current_dir()?.join("saves"),
             myriade_engine::save::LevelShape::OVERWORLD,
         ));
-        let world = Game::world_for_mods(res.facts().air, 0);
+        let world = World::new(res.facts().air, 0);
         let inventory = vec![None; 36];
         let now = Instant::now();
         let resource_source = pack.source.clone();
@@ -4801,15 +4574,13 @@ impl<'a> Game<'a> {
             world_adopted: false,
             audio: Audio::default(),
             loop_context: Arc::new(res.core.item_data.context().loop_context(loop_side, [])),
-            damage_hooks: native_hooks::DAMAGE_HOOKS,
+            damage_hooks: myriade_engine::health::DamageHooks::NONE,
             next_entity: 0,
             ticked_entities_through: u32::MAX,
             contact_drops: 0..0,
             pickups: Default::default(),
             lectern_pulses: Vec::new(),
             spawn_origin: None,
-            spawn_hook_fired: false,
-            spawn_hook_cancelled: false,
             spawn_spiral: Default::default(),
             spawn_wait: Vec::new(),
             ecs: myriade_engine::ecs_bridge::EcsLevel::inert(),
@@ -4893,29 +4664,18 @@ impl<'a> Game<'a> {
             spawn_scratch: Default::default(),
             hoppers: HashMap::new(),
             transactions: Default::default(),
-            block_entity_tick_key: None,
-            block_entity_tick_items: None,
             mod_container_viewers: HashMap::new(),
             item_columns: None,
             pass_mobs: None,
             spawner_tick_positions: Vec::new(),
             trial_spawner_tick_positions: Vec::new(),
-            loop_states: Default::default(),
             control: None,
             events: Default::default(),
             tick_script: tick_script::TickScript::from_env(),
-            recipe_tables: Default::default(),
-            native_input: Default::default(),
-            native_lifecycle: Default::default(),
             resident_entities: Default::default(),
-            lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
-            native_configs: Default::default(),
-            native_net: Default::default(),
             persist: Default::default(),
             missing_professions: Default::default(),
-            entity_initialization: Default::default(),
-            attachment_indexes: Default::default(),
             lan: None,
             session: Default::default(),
             level_shapes: Default::default(),
@@ -4923,9 +4683,7 @@ impl<'a> Game<'a> {
             structure_templates: HashMap::new(),
             test_defs: std::cell::RefCell::new(HashMap::new()),
             test_defs_snapshot: false,
-            game_tests: game_tests::GameTests::default(),
             spawn_policies: HashMap::new(),
-            passages: Default::default(),
             previous_mode: None,
             saved_for_exit: false,
             pending_save: None,
@@ -4953,13 +4711,11 @@ impl<'a> Game<'a> {
             lid_openers: HashMap::new(),
             lan_acting: None,
             acting_abilities: None,
-            native_commands: Default::default(),
             lan_building_boxes: Default::default(),
             save_after_guest_turn: false,
             lan_guest_swaps: Vec::new(),
             lan_interrupted_turns: Vec::new(),
             keep_owner_files: false,
-            player_state: Default::default(),
             lan_break_pos: None,
             break_collect: None,
             guest_packets: Vec::new(),
@@ -4976,7 +4732,6 @@ impl<'a> Game<'a> {
             lan_acting_spawn_protection: None,
             lan_acting_entity: None,
             lan_acting_fake: false,
-            fake_action: Default::default(),
             chat_capture: None,
             admin_feedback: Vec::new(),
             console_broadcast: None,
@@ -5020,7 +4775,6 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
     if !dedicated::preflight(&mut options)? {
         return Ok(());
     }
-    native_hooks::install_block_contact_hooks();
     // Before any worker starts: on Linux they go behind the server thread
     // and the render thread.
     horizon_threads::put_helpers_behind();
@@ -5047,34 +4801,7 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
         return Err(error.into());
     }
     let early_settings = Settings::load(&std::env::current_dir()?);
-    mods::install_registration_data(&vanilla_root)?;
-    // The structure types those mods registered, handed to the engine before
-    // any world opens, as its StructureRegistry reads them.
-    if horizon_world::worldgen::structure::mod_types::install_mod_structure_types(
-        native_structure_types::installed_structure_types(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod structure types already installed; keeping the first table");
-    }
-    // The levels they registered, below the data packs of every world opened.
-    if horizon_world::worldgen::overrides::install_mod_dimensions(
-        native_dimensions::installed_dimensions(),
-    )
-    .is_err()
-    {
-        log::warn!("Mod dimensions already installed; keeping the first table");
-    }
-    // Their chunk generators and biome sources, which those levels' and the packs' stems name,
-    // and density function types, which the packs' density JSON names.
-    native_chunk_generator::install();
-    native_biome_source::install();
-    native_density_function::install();
-    mods::register_components(&vanilla_root)?;
-    mods::register_map_decoration_types();
     horizon_assets::item_model::register_special_model_types(Vec::new());
-    mods::register_enchantment_damage_effects();
-    mods::freeze_declarations()?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
     // Minecraft's constructor opens the narrator; a server has none.
@@ -5092,7 +4819,6 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
         &vanilla_root,
         &early_settings,
         started,
-        mods::LoadRole::startup(options.execution_role),
         &Progress::new(),
     )?;
     options.resources = loaded.root.clone();
@@ -5100,8 +4826,6 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
     let settings = early_settings;
     let mut game = Game::new(&resources, loaded.pack, options, settings)?;
     game.session.vanilla_root = vanilla_root;
-    game.start_mods();
-    game.refresh_loop_context()?;
     game.start_agent_control()?;
     if let Ok(spec) = std::env::var("HORIZON_SCULK_FIXTURE") {
         return game.run_component_harness(component_harness::ComponentHarness::Sculk(spec));
@@ -5110,7 +4834,6 @@ pub(crate) fn run_with(options: Options) -> Result<()> {
         return game.run_component_harness(component_harness::ComponentHarness::HotPaths(output));
     }
     let result = game.run_dedicated();
-    game.native_game_shutting_down();
     result
 }
 

@@ -373,9 +373,6 @@ impl Game<'_> {
             // The breath clouds tick in the ECS; the flame ends when its phase is left.
             self.ecs_with(|ecs, mw| ecs.end_flames(mw));
         }
-        // The spikes' crystals (placed above) join before they light a fire:
-        // a mod that cancels one keeps its fire out too.
-        self.native_joins_flush(false, 0);
         self.ecs_end_fire();
         self.tick_eyes();
         if self.dimension_type().has_ender_dragon_fight {
@@ -478,7 +475,6 @@ impl Game<'_> {
                     }
                 }
             }
-            self.native_portal_create("minecraft:the_end", origin);
             // Direction.WEST.toYRot().
             return Ok(Some((target, Some(90.0))));
         }
@@ -1090,8 +1086,6 @@ impl Game<'_> {
             let next = eye.position + eye.velocity;
             eye.velocity = EyeOfEnder::update_delta(eye.velocity, next, eye.target);
             eye.position = next;
-            // Its move is filed at once (told with the dragon's step), also for one about to go.
-            self.entity_section_step(eye.id, eye.previous.to_array(), next.to_array());
             eye.life += 1;
             if eye.life <= 80 {
                 return true;

@@ -89,8 +89,6 @@ impl Game<'_> {
         self.build_registries();
         self.session.registries.permission = 4;
         self.reset_entity_residency();
-        self.native_lifecycle
-            .begin_open(myriade_types::Authority::DedicatedServer);
         self.hot_ticks(&mut recorder)?;
         self.hot_commands(&mut recorder)?;
         self.hot_chunks(&mut recorder)

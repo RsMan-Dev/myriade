@@ -13,25 +13,16 @@ impl BrewingRemainder {
 }
 
 impl Game<'_> {
-    pub(super) fn brewing_fuel_remainder(&self, pos: (i32, i32, i32)) -> BrewingRemainder {
-        let answer = match self.world.block_entities.get(&pos) {
-            Some(BlockEntity::Brewing(b)) => b.items[4]
-                .as_ref()
-                .filter(|s| {
-                    b.fuel <= 0
-                        && false
-                        && myriade_engine::brewing::brewing_fuel(world_items!(self), s).is_some()
-                })
-                .map(|s| self.crafting_remainder(s)),
-            _ => None,
-        };
-        BrewingRemainder(answer)
+    pub(super) fn brewing_fuel_remainder(&self, _pos: (i32, i32, i32)) -> BrewingRemainder {
+        BrewingRemainder(None)
     }
 
     pub(super) fn brewing_ingredient_remainder(&self, pos: (i32, i32, i32)) -> Option<ItemStack> {
         match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Brewing(b)) => {
-                b.items[3].as_ref().and_then(|s| self.crafting_remainder(s))
+                b.items[3].as_ref().and_then(|s| {
+                    myriade_engine::crafting::CraftingRemainder::crafting_remainder(world_items!(self), s)
+                })
             }
             _ => None,
         }

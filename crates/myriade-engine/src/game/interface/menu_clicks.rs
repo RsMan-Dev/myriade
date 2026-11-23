@@ -275,7 +275,6 @@ impl Game<'_> {
                         (kind, size)
                     }
                     Some(BlockEntity::Brewing(_)) => (Kind::Brewing, 5),
-                    Some(BlockEntity::Mod(_)) => return false,
                     Some(BlockEntity::Furnace(f)) => (
                         Kind::Furnace(
                             match f.kind.recipe_type().trim_start_matches("minecraft:") {
@@ -505,7 +504,6 @@ impl Game<'_> {
         }
         let crafted = std::mem::take(&mut menu.crafted);
         let brewed = std::mem::take(&mut menu.brewed);
-        let brewed_potion_takes = std::mem::take(&mut menu.brewed_potion_takes);
         let equipped = std::mem::take(&mut menu.equipped);
         let item_crafted = std::mem::take(&mut menu.item_crafted);
         for (_, stack, _) in &item_crafted {
@@ -523,12 +521,6 @@ impl Game<'_> {
             self.offhand = menu.player_item(40).cloned();
         }
         if !predicting {
-            if !brewed_potion_takes.is_empty() {
-                let (player, entity_id) = (self.native_acting_id(), self.own_entity_id());
-                for stack in &brewed_potion_takes {
-                    self.native_player_brewed_potion(player, entity_id, stack);
-                }
-            }
             for stack in dropped {
                 self.player_drop(stack);
             }

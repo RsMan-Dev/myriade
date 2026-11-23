@@ -26,7 +26,7 @@ impl Game<'_> {
             return false;
         };
         let attacker = self.player.as_ref().map_or(0, |p| p.entity_id as u32);
-        let ((amount, scale, crit, magic), admitted) = self.melee_damage_with_admission(kind, true, Some(id));
+        let ((amount, scale, crit, magic), admitted) = self.melee_damage_with_admission(kind, true);
         // Player.onAttack: the hit starts the attack strength again, hurt or not.
         self.attack_ticks = 0;
         if !admitted {

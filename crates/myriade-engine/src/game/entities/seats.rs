@@ -113,9 +113,6 @@ impl Game<'_> {
         let Some(id) = self.riding else {
             return;
         };
-        if !self.native_may_leave(id) {
-            return;
-        }
         self.riding = None;
         let Some(seat) = self.seat(id) else {
             return;

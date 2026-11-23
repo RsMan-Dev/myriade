@@ -449,7 +449,7 @@ impl Game<'_> {
                 // The model stopped here: its projectile list is gone, so no record is produced.
                 let uuid = uuid_of(&op["uuid"])?;
                 self.op_as_guest(conn, |g| -> Result<Value> {
-                    let Some(crate::game::administration::commands::Target::Projectile(id)) = g.target_by_uuid(uuid) else {
+                    let Some(crate::game::commands::Target::Projectile(id)) = g.target_by_uuid(uuid) else {
                         return Err("projectile type: missing loaded projectile".into());
                     };
                     let actual = *g.persist.uuids.get(&id).ok_or("projectile type: missing actual UUID")?;
@@ -467,7 +467,7 @@ impl Game<'_> {
                 let uuid = uuid_of(&op["uuid"])?;
                 let index = op["index"].as_u64().ok_or("anger state: missing index")? as u8;
                 let state = self.op_as_guest(conn, |g| {
-                    let Some(crate::game::administration::commands::Target::Mob(id)) = g.target_by_uuid(uuid) else {
+                    let Some(crate::game::commands::Target::Mob(id)) = g.target_by_uuid(uuid) else {
                         return Err("anger state: UUID is not a loaded mob".into());
                     };
                     let actual = g.persist.uuids.get(&id).copied().ok_or("anger state: no saved UUID")?;
@@ -534,7 +534,7 @@ impl Game<'_> {
                 let uuid = uuid_of(&op["uuid"])?;
                 let map_id = op["id"].as_i64().ok_or("frame map: missing map id")? as i32;
                 let state = self.op_as_guest(conn, |g| {
-                    let Some(crate::game::administration::commands::Target::Frame(id)) = g.target_by_uuid(uuid) else {
+                    let Some(crate::game::commands::Target::Frame(id)) = g.target_by_uuid(uuid) else {
                         return Err("frame map: UUID is not a live frame".into());
                     };
                     let actual = *g.persist.uuids.get(&id).ok_or("frame map: no UUID")?;
@@ -565,7 +565,7 @@ impl Game<'_> {
                     Ok(json!({"id": map_id, "uuid": actual, "kind": frame.kind(), "pos": frame.pos,
                         "center": map.center, "scale": map.scale, "dimension": map.dimension,
                         "saved": record.is_some(), "saved_pos": pos, "saved_rotation": rotation,
-                        "decoration": map.decorations.iter().any(|d| d.key == crate::game::blocks::maps::Key::Frame(id as i32)),
+                        "decoration": map.decorations.iter().any(|d| d.key == crate::game::maps::Key::Frame(id as i32)),
                         "frame_records": records.len(),
                         "frame_decorations": map.decorations.iter().filter(|d| d.sprite == "map/decorations/frame").count()}))
                 })?;
@@ -734,7 +734,7 @@ impl Game<'_> {
                     }
                     g.save_stats();
                     let uuid = g.level.player_uuid.ok_or("merchant stats UUID")?;
-                    let path = crate::game::interface::stats::player_json(&g.world_root, "stats", uuid);
+                    let path = crate::game::stats::player_json(&g.world_root, "stats", uuid);
                     let raw = std::fs::read_to_string(path)?;
                     let saved: Value = serde_json::from_str(&raw)?;
                     let value = |ty: &str, key: &str| saved["stats"][ty][key].as_i64().unwrap_or(0);
@@ -761,7 +761,7 @@ impl Game<'_> {
                     let packet = match op["action"].as_str().unwrap_or("") {
                         "open" => {
                             let uuid = uuid_of(&op["uuid"])?;
-                            let Some(crate::game::administration::commands::Target::Mob(id)) = g.target_by_uuid(uuid) else {
+                            let Some(crate::game::commands::Target::Mob(id)) = g.target_by_uuid(uuid) else {
                                 return Err("merchant oracle: missing live mob".into());
                             };
                             S::Interact(play::Interact { id: id as i32, hand: 0, location: [0.0; 3], secondary: false })
@@ -826,7 +826,7 @@ impl Game<'_> {
             "boat_interact" => {
                 let uuid = uuid_of(&op["uuid"])?;
                 self.op_as_guest(conn, |g| -> Result<()> {
-                    let Some(crate::game::administration::commands::Target::Boat(id)) = g.target_by_uuid(uuid) else {
+                    let Some(crate::game::commands::Target::Boat(id)) = g.target_by_uuid(uuid) else {
                         return Err("boat click: missing live boat".into());
                     };
                     g.lan_guest_packet(
@@ -982,7 +982,7 @@ impl Game<'_> {
             "entity_inventory" => {
                 // The stacks of the entity whose UUID is `uuid` (a villager's inventory, read through the ECS bridge).
                 let uuid = uuid_of(&op["uuid"])?;
-                let Some(crate::game::administration::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
+                let Some(crate::game::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
                     return Err("entity inventory: no entity with that UUID".into());
                 };
                 Value::Array(self.ecs.inventory_stacks(id).iter().map(|s| json!({"item": &*s.item, "count": s.count})).collect())

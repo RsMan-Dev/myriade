@@ -25,7 +25,8 @@ impl Game<'_> {
     /// `AbstractMinecart`: `minecart_improvements` picks the smoother
     /// physics.
     pub(super) fn minecart_improvements(&self) -> bool {
-        self.enabled_feature_ids()
+        self.level
+            .enabled_features
             .iter()
             .any(|f| f == "minecraft:minecart_improvements")
     }
@@ -51,16 +52,12 @@ impl Game<'_> {
         if let Ok(player) = u32::try_from(self.own_entity_id()) {
             self.ecs.pilot_input(id, player, forward as f32, left as f32, self.yaw, self.pitch, 0.0, false, false, true);
         }
-        let step = section_steps::seat_rider(self, id);
-        section_steps::tell_player(self, step);
+        section_steps::seat_rider(self, id);
         true
     }
     /// `getDismountLocationForPassenger`: beside the cart's motion direction,
     /// else on top.
     pub(super) fn dismount_cart(&mut self, id: u32) {
-        if self.riding == Some(id) && !self.native_may_leave(id) {
-            return;
-        }
         self.riding = None;
         let Some(at) = self.ecs_view(id).map(|v| Vec3::new(v.position[0], v.position[1], v.position[2])) else {
             return;
@@ -69,12 +66,10 @@ impl Game<'_> {
             return;
         }
         let target = self.cart_player_dismount_target(id);
-        let from = self.player.as_ref().map(|player| player.position);
         if let Some(p) = self.player.as_mut() {
             p.position = target;
             p.velocity = Vec3::ZERO;
         }
-        section_steps::tell_player(self, from.map(|from| (from, target)));
     }
     /// Where the cart at `i` lets a player off.
     pub(super) fn cart_player_dismount_target(&self, id: u32) -> Vec3 {
@@ -138,7 +133,6 @@ impl Game<'_> {
             .modified
             .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
         self.apply_item_stack_config(super::commands::Target::Cart(id), kind.id(), stack, true);
-        self.native_vehicle_create(kind.id(), [at.x, at.y, at.z]);
         // MinecartItem.useOn: ENTITY_PLACE at the rail, by the player, with the block under it.
         let below = self.world.block(hit.pos[0], hit.pos[1] - 1, hit.pos[2]);
         self.post_block_game_event(
@@ -170,7 +164,7 @@ impl Game<'_> {
         edit: impl FnOnce(&mut Vec<Option<ItemStack>>) -> R,
     ) -> Option<R> {
         self.ecs.cart_kind(id)?;
-        self.unpack_loot(super::container_loot::LootTarget::Cart(id), None);
+        self.unpack_loot(super::container_loot::LootTarget::Cart(id), false);
         match self
             .world
             .block_entities
@@ -188,10 +182,7 @@ impl Game<'_> {
         }
     }
     fn unpack_cart_loot(&mut self, id: u32) {
-        self.unpack_loot(
-            super::container_loot::LootTarget::Cart(id),
-            self.native_acting_player(),
-        );
+        self.unpack_loot(super::container_loot::LootTarget::Cart(id), false);
     }
     /// `interact`: ride, open or fuel the cart under the crosshair, or the one
     /// a guest's interact packet named. A TNT cart has no interact of its own

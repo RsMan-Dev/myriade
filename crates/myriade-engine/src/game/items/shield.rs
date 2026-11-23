@@ -306,34 +306,21 @@ impl Game<'_> {
             0
         };
         if ticks > 0 {
-            if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-            {
-                self.native_player_shield_disable(player, &name, ticks);
-            }
             let used = self
                 .using
                 .and_then(|(slot, _)| self.stack_in(slot))
                 .cloned();
-            let item = used.as_ref().map(|stack| stack.item.clone());
-            let mut cancel = false;
-            if let (Some(player), Some(name), Some(item)) =
-                (self.lan_acting_uuid, self.lan_acting_name.clone(), item)
-            {
-                self.native_player_item_cooldown(player, &name, &item, ticks as i32, &mut cancel);
-            }
-            if !cancel {
-                self.shield_cooldown = ticks;
-                // ItemCooldowns.addCooldown(stack, ticks) on the shield's group: a guest is
-                // sent it (ServerItemCooldowns), which keeps the shield down on their screen,
-                // and the 0 that ends it.
-                if let Some(stack) = &used {
-                    let default = self
-                        .items()
-                        .get(&stack.item)
-                        .and_then(|i| i.use_cooldown.clone());
-                    let group = myriade_engine::cooldowns::group(stack, default.as_ref());
-                    self.add_cooldown(group, ticks as i32);
-                }
+            self.shield_cooldown = ticks;
+            // ItemCooldowns.addCooldown(stack, ticks) on the shield's group: a guest is
+            // sent it (ServerItemCooldowns), which keeps the shield down on their screen,
+            // and the 0 that ends it.
+            if let Some(stack) = &used {
+                let default = self
+                    .items()
+                    .get(&stack.item)
+                    .and_then(|i| i.use_cooldown.clone());
+                let group = myriade_engine::cooldowns::group(stack, default.as_ref());
+                self.add_cooldown(group, ticks as i32);
             }
             self.stop_active_item_use();
             if let Some(sound) = &component.disabled_sound {

@@ -29,7 +29,6 @@ impl Game<'_> {
     /// `MinecraftServer.onTickRateChanged`: mods hear of it, then a rate that
     /// asks for a shorter wait than the one already running shortens it.
     pub(super) fn on_tick_rate_changed(&mut self) {
-        self.native_server_tick_rate_changed();
         let interval = self.next_autosave_interval();
         if interval < self.ticks_until_autosave {
             self.ticks_until_autosave = interval;
@@ -37,13 +36,7 @@ impl Game<'_> {
     }
 
     pub(super) fn finish_player_autosaves(&mut self, wait: bool) -> Result<bool> {
-        let saved = self.player_autosaves.completed(wait);
-        if !saved.is_empty() {
-            let directory = myriade_engine::lan::playerdata::directory(&self.world_root);
-            for player in saved {
-                self.native_player_save_to_file(player.uuid, &player.name, &directory);
-            }
-        }
+        self.player_autosaves.completed(wait);
         self.player_autosaves.writes_finished()
     }
 
@@ -64,18 +57,13 @@ impl Game<'_> {
         self.sync_level();
         // Level::write can synchronously replace the integrated owner file.
         let _ = self.finish_player_autosaves(true);
-        let stored_owner = self.store_owner();
+        self.store_owner();
         if self.keep_owner_files {
             // Crash teardown: `sync_level` filled the player from whatever is in place, not
             // from the owner's last consistent state.
             self.level.write_keeping_player(&self.world_root)?;
         } else {
             self.level.write_without_player(&self.world_root)?;
-        }
-        // PlayerEvent.SaveToFile for the owner, once level.dat is written.
-        if let Some((uuid, name)) = stored_owner {
-            let directory = myriade_engine::lan::playerdata::directory(&self.world_root);
-            self.native_player_save_to_file(uuid, &name, &directory);
         }
         // PlayerList.saveAll: every placed player saves with the server, to
         // their own file (`PlayerDataStorage.save`); the owner is also in the
@@ -132,7 +120,6 @@ impl Game<'_> {
         self.save_parked_levels(wait)?;
         self.save_game_metadata()?;
         let _ = self.finish_player_autosaves(wait);
-        self.native_world_saved(wait);
         dedicated::events::record_server("saved", serde_json::json!({}));
         Ok(())
     }

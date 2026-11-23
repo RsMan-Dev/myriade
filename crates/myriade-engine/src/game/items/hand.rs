@@ -157,11 +157,8 @@ impl Game<'_> {
     pub(super) fn swing_hand(&mut self, hand: Hand, animation: SwingAnimation) {
         self.try_swing_hand(hand, animation);
     }
-    /// Returns false when the interaction policy or item vetoes the swing and its packet.
-    pub(super) fn try_swing_hand(&mut self, hand: Hand, _animation: SwingAnimation) -> bool {
-        if self.native_entity_swing_event(hand) {
-            return false;
-        }
+    /// Always true: without a mod, no item or policy vetoes the swing and its packet.
+    pub(super) fn try_swing_hand(&mut self, _hand: Hand, _animation: SwingAnimation) -> bool {
         self.swings_started += 1;
         true
     }
@@ -191,32 +188,18 @@ impl Game<'_> {
             .and_then(|stack| self.attack_range_component(stack));
         range.is_none_or(|r| attack_range_contains(&r, distance, self.creative))
     }
-    /// Whether the player's tool harvests the block `state` at `pos`, once vanilla's rule
-    /// answered `harvest`: the block's parts (`can_harvest_block`, NeoForge's
-    /// `IBlockExtension.canHarvestBlock`) answer first, then the global `player_harvest_check`
-    /// (`PlayerEvent.HarvestCheck`) hears the result.
-    pub(in crate::game) fn mod_harvest_check(
-        &mut self,
-        pos: [i32; 3],
-        state: horizon_world::registry::BlockStateId,
-        harvest: &mut bool,
-    ) {
-        let player = self.own_entity_id() as u32;
-        self.native_can_harvest_block(player, pos, state, harvest);
-    }
-    /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`, whose
-    /// end asks the mods' `native_player_break_speed`. Every dig's progress comes from
-    /// here: single player's, a host's for each guest, a remote client's own.
+    /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`. Every
+    /// dig's progress comes from here: single player's, a host's for each guest,
+    /// a remote client's own.
     pub(in crate::game) fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
         if facts.hardness == -1.0 {
             return 0.0;
         }
-        let mut harvest =
+        let harvest =
             !facts.requires_tool || self.items().correct_for_drops(self.held(), &facts.name);
         let hardness = facts.hardness;
-        self.mod_harvest_check(pos, state, &mut harvest);
         let block_break_speed = self.block_break_speed();
         let facts = self.res.facts().get(state);
         let tool_speed = self.items().mining_speed(self.held(), &facts.name);

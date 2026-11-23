@@ -13,10 +13,3 @@ pub(super) fn seat_rider(game: &mut Game<'_>, id: u32) -> Option<(Vec3, Vec3)> {
     Some((player_from, player.position))
 }
 
-pub(super) fn tell_player(game: &mut Game<'_>, step: Option<(Vec3, Vec3)>) {
-    if let Some((from, to)) = step
-        && let Ok(id) = u32::try_from(game.own_entity_id())
-    {
-        game.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
-    }
-}

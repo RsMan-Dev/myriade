@@ -1,5 +1,6 @@
 //! Shared server damage for dropped items.
 use super::{Game, commands::Target};
+use horizon_core::nbt::{JavaString, Tag};
 use myriade_engine::mobs::Who;
 
 impl Game<'_> {
@@ -26,7 +27,7 @@ impl Game<'_> {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
-                crate::game::native_entities::target_id(target).map_or(0, |id| id as i32)
+                crate::game::entity::target_id(target).map_or(0, |id| id as i32)
             }
             None => 0,
         };
@@ -84,5 +85,64 @@ impl Game<'_> {
             self.ecs_remove_item(id);
         }
         true
+    }
+}
+
+impl Game<'_> {
+    /// Whether a named causing entity is a creative player.
+    pub(in crate::game) fn creative_damage_source_id(&self, id: i32) -> bool {
+        id != 0
+            && ((id == self.own_entity_id() && self.creative)
+                || self.lan.as_ref().is_some_and(|host| {
+                    host.hub.guests.iter().any(|g| g.entity_id == id && g.creative())
+                }))
+    }
+    /// The `Invulnerable` flag and `invulnerable_time` window of entity `id`: the ECS entity's, else its saved data's.
+    pub(in crate::game) fn saved_invulnerability(&self, id: u32) -> (bool, i32) {
+        if self.ecs_has(id) {
+            return (self.ecs_flag(id, "Invulnerable") == Some(true), self.ecs.invulnerable_time(id).unwrap_or(0));
+        }
+        match self.persist.raw.get(&id) {
+            Some(Tag::Compound(map)) => (
+                matches!(map.get(&JavaString::from("Invulnerable")), Some(Tag::Byte(1))),
+                match map.get(&JavaString::from("invulnerable_time")) {
+                    Some(Tag::Int(ticks)) => *ticks,
+                    _ => 0,
+                },
+            ),
+            _ => (false, 0),
+        }
+    }
+    /// `Entity.isInvulnerableToBase` over a non-mob kind's saved flag and window: past only for
+    /// `#bypasses_invulnerability` damage and a creative player's hit (`isCreativePlayer`).
+    pub(in crate::game) fn saved_refuses_damage(&self, id: u32, damage_type: &str, creative_source: bool) -> bool {
+        let (flag, window) = self.saved_invulnerability(id);
+        if !flag && window <= 0 {
+            return false;
+        }
+        let registry = &self.health_resources.damage;
+        let bypass = registry
+            .id(damage_type)
+            .is_some_and(|kind| registry.in_tag(kind, "minecraft:bypasses_invulnerability"));
+        !(bypass || creative_source)
+    }
+    /// `DamageSource.isCreativePlayer`: the causing player's creative mode, the host's or a guest's.
+    pub(in crate::game) fn creative_source_of(&self, cause: Option<Target>) -> bool {
+        match cause {
+            Some(Target::Player) => self.creative,
+            Some(Target::Guest(conn)) => self.command_guest(conn).is_some_and(|g| g.creative()),
+            _ => false,
+        }
+    }
+    /// `ItemStack.canBeHurtBy`, shared by armour wear and detached stack reads.
+    pub(in crate::game) fn stack_can_be_hurt_by(&self, stack: &crate::items::ItemStack, name: &str) -> Option<bool> {
+        self.items().get(&stack.item)?;
+        let default = self
+            .res
+            .item_defaults()
+            .entries()
+            .get(stack.item.as_ref())
+            .and_then(|components| components.get("minecraft:damage_resistant"));
+        myriade_engine::item_damage::stack_can_be_hurt_by(default, &self.health_resources.damage, stack, name)
     }
 }

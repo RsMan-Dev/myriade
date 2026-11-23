@@ -11,6 +11,13 @@ pub(super) const FLOOR: i32 = 63;
 const HOT_REACH: f64 = 400.0;
 
 impl Game<'_> {
+    /// An empty level over `air` and `seed`, with no block entity on-load hook (vanilla's).
+    pub(in crate::game) fn world_for_mods(
+        air: horizon_world::registry::BlockStateId,
+        seed: i64,
+    ) -> crate::world::World {
+        crate::world::World::new(air, seed)
+    }
     /// The awake ECS entities of the benchmark's level, in the index's order.
     pub(super) fn hot_ecs_entities(&self) -> Vec<bevy_ecs::entity::Entity> {
         let near = Some(([0.0, f64::from(FLOOR), 0.0], HOT_REACH));

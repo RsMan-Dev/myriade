@@ -6,7 +6,7 @@
 use super::Game;
 use myriade_engine::{
     block_entity_anim::{
-        BellEntity, ConduitServer, EndGateway, Shulker, ShulkerStatus, Ticker,
+        BellEntity, BlockEntityAnims, ConduitServer, EndGateway, Shulker, ShulkerStatus, Ticker,
         closer_to_center_than,
     },
     collisions::{SceneCollisions, no_collision_empty},
@@ -16,6 +16,7 @@ use myriade_engine::{
     save::number,
 };
 use horizon_core::nbt::Tag;
+use horizon_world::registry::BlockStateId;
 use horizon_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
@@ -31,6 +32,67 @@ const PLAYER: u64 = u64::MAX;
 /// with the block entity, and a double chest counts for both halves).
 pub(super) fn openers_at(open: &[(i32, i32, i32)], key: (i32, i32, i32)) -> i32 {
     open.iter().filter(|&&at| at == key).count() as i32
+}
+
+impl Game<'_> {
+    /// The outline boxes of `state` at `pos` in world space, without a list
+    /// (`BlockState.getShape`: the declared shape, the lid of a shulker box and
+    /// the block's offset).
+    pub(in crate::game) fn outline_boxes_iter(
+        &self,
+        state: BlockStateId,
+        anims: &BlockEntityAnims,
+        pos: [i32; 3],
+        player_context: bool,
+    ) -> impl Iterator<Item = [f64; 6]> + '_ {
+        let declared = self.collision.cached_shapes().context_outline_shape(
+            state,
+            if player_context {
+                self.outline_context_kind()
+            } else {
+                horizon_world::collision_context::EntityContextKind::Other
+            },
+        );
+        let context = declared
+            .is_none()
+            .then(|| self.context_outline(pos, state, player_context, anims))
+            .flatten();
+        let f = self.res.facts().get(state);
+        let o = if f.outline_offset {
+            f.offset_at(pos[0], pos[2])
+        } else {
+            [0.0; 3]
+        };
+        let base = [
+            f64::from(pos[0]) + o[0],
+            f64::from(pos[1]) + o[1],
+            f64::from(pos[2]) + o[2],
+        ];
+        let boxes = if context.is_some() || declared.is_some() {
+            &[][..]
+        } else {
+            &f.outline[..]
+        };
+        context
+            .map(|b| std::array::from_fn(|i| f64::from(pos[i % 3]) + b[i]))
+            .into_iter()
+            .chain(
+                declared
+                    .into_iter()
+                    .flat_map(|shape| shape.boxes())
+                    .map(move |b| {
+                        let min = b.min_position();
+                        let max = b.max_position();
+                        let coords = [min.x, min.y, min.z, max.x, max.y, max.z];
+                        std::array::from_fn(|i| base[i % 3] + coords[i])
+                    }),
+            )
+            .chain(
+                boxes
+                    .iter()
+                    .map(move |b| std::array::from_fn(|i| base[i % 3] + b[i])),
+            )
+    }
 }
 
 /// `ContainerOpenersCounter.recheckOpeners`: the opener count a recount finds

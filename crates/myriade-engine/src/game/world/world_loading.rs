@@ -308,8 +308,7 @@ impl WorldRequest {
         )?;
         drop(streaming_step);
         streaming.radius = settings.view_distance;
-        let mut world = Game::world_for_mods(res.facts().air, level.seed);
-        world.attachments = save.load_attachments();
+        let mut world = World::new(res.facts().air, level.seed);
         world.shape = shape;
         world.fast_lava = horizon_world::dimension_type::DimensionFacts::of_level(
             horizon_core::LevelKey::parse(dim.id()).unwrap_or(horizon_core::LevelKey::OVERWORLD),
@@ -452,6 +451,17 @@ pub(super) fn preload_launch_world(
     }
 }
 
+/// The world's data packs: the folder's and the resources' ones, then the additional ones.
+fn data_repository(
+    world_root: &std::path::Path,
+    resources: &std::path::Path,
+    additional: &[Arc<myriade_engine::datapack::DataPack>],
+) -> Vec<myriade_engine::datapack::DataPack> {
+    let mut packs = myriade_engine::datapack::discover_with_features(world_root, resources);
+    packs.extend(additional.iter().map(|pack| (**pack).clone()));
+    packs
+}
+
 /// The game's biomes with the world's enabled packs over them, from the same
 /// pack list its worldgen is built from (`WorldgenOverrides` keeps only the
 /// biomes this table knows).
@@ -462,7 +472,7 @@ pub(super) fn packed_biomes(
     enabled_features: &[String],
     additional: &[Arc<myriade_engine::datapack::DataPack>],
 ) -> Arc<myriade_engine::biome::Biomes> {
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let packs = data_repository(world_root, resources, additional);
     let enabled = myriade_engine::datapack::enabled_ids(world_root, &packs, enabled_features);
     let enabled: Vec<_> = enabled
         .iter()
@@ -526,7 +536,7 @@ fn worldgen_overrides_of(
     horizon_world::worldgen::overrides::WorldgenOverrides,
     Vec<String>,
 ) {
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let packs = data_repository(world_root, resources, additional);
     let enabled = myriade_engine::datapack::enabled_ids(world_root, &packs, enabled_features);
     let enabled: Vec<_> = enabled
         .iter()
@@ -544,7 +554,7 @@ pub(super) fn level_shapes(
     biomes: &myriade_engine::biome::Biomes,
     additional: &[Arc<myriade_engine::datapack::DataPack>],
 ) -> myriade_engine::chunk::LevelShapes {
-    let packs = super::pack_finders::data_repository(world_root, resources, additional);
+    let packs = data_repository(world_root, resources, additional);
     let enabled_features = myriade_engine::save::Level::read(world_root)
         .map(|l| l.enabled_features)
         .unwrap_or_default();
@@ -781,7 +791,6 @@ pub(super) fn make_streaming(
         myriade_engine::save::dimension_dir(world_root, dim.id()),
         shape,
     );
-    save.enable_trusted_fluid_load();
     let save = Arc::new(save);
     if dim == Dim::End {
         // Migrate before any chunk reader can cache the old block entities. A side file it
@@ -920,9 +929,6 @@ pub(super) fn make_streaming(
             res.threads(),
         )
     } else {
-        if runtime.is_some() {
-            return Err(format!("{}: no generator builds this runtime level", dim.id()).into());
-        }
         // WorldOptions.generateStructures, from the world's settings.
         let structures =
             myriade_engine::save::WorldGen::read(world_root).is_none_or(|w| w.structures);
@@ -986,7 +992,10 @@ pub(super) fn make_streaming(
             res.threads(),
         )
     };
-    streaming.load_forced(save.load_forced_chunks());
+    // The saved `/forceload` tickets come back forced before the first plan.
+    for (x, z) in save.load_forced_chunks() {
+        streaming.set_forced(x, z, true);
+    }
     streaming.radius = settings.view_distance;
     let facts = horizon_world::dimension_type::DimensionFacts::of_builtin_level(
         horizon_core::LevelKey::builtin_or_overworld(dim.id()),

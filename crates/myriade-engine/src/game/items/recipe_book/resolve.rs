@@ -1,5 +1,5 @@
 //! Resource-backed resolution of mod recipe displays.
-use crate::game::{Game, api_values::TryIntoEngine};
+use crate::game::Game;
 use myriade_engine::items::ItemStack;
 use myriade_types::RecipeSlotDisplay as Slot;
 
@@ -21,7 +21,8 @@ impl<'a, 'w> Resolver<'a, 'w> {
                 .map(|_| ItemStack::new(id, 1))
                 .into_iter()
                 .collect(),
-            Slot::ItemStack(stack) => stack.try_into_engine(items).ok().into_iter().collect(),
+            // No conversion from the API's exact stack exists here: it shows nothing.
+            Slot::ItemStack(_) => Vec::new(),
             Slot::AnyFuel => items
                 .registry_order
                 .iter()

@@ -46,13 +46,6 @@ pub fn start(startup: Startup) {
     // The log's first line names the build, so a bug report that carries the log says which one it was.
     log::info!("Horizon {}", crash::version());
     crash::install(home.clone(), side);
-    if horizon_items::native_enchantment_hooks::install(
-        crate::enchantment_levels::get_enchantment_level,
-    )
-    .is_err()
-    {
-        log::warn!("The enchantment level hook is already installed; keeping the first");
-    }
     raise_open_file_limit();
     if let Err(error) = game::run_with(options) {
         // A bad command line is the caller's mistake, not a crash: no report.

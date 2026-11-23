@@ -10,32 +10,6 @@ impl Game<'_> {
         command: &str,
         signed: Option<Vec<(String, myriade_engine::lan::hub::chat::ChatMessage)>>,
     ) {
-        // The mods hear every command first, and may stop it.
-        let mut canceled = false;
-        let mut replies = Vec::new();
-        if let Some((uuid, name)) = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(conn))
-            .map(|g| (g.uuid, g.name.clone()))
-        {
-            self.native_player_command(uuid, &name, command, &mut canceled, &mut replies);
-        }
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        for line in replies {
-            host.hub.send_to(
-                conn,
-                &C::SystemChat(play::SystemChat {
-                    content: myriade_engine::lan::data::component_nbt(&line.component()),
-                    overlay: false,
-                }),
-            );
-        }
-        if canceled {
-            return;
-        }
         if self.guest_message_command(conn, command, signed.as_ref()) {
             return;
         }
@@ -73,23 +47,9 @@ impl Game<'_> {
             }
             return;
         }
-        // A native mod's command, for every player its level allows,
-        // whether the world allows commands or not (game/modding/native_server.rs).
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        if let Some(level) = self.native_commands.level(command)
-            && let Some(permission) = host.hub.guest(conn).map(|g| g.permission)
-            && permission >= level
-        {
-            host.commands.push(GuestCommand {
-                conn,
-                command: command.to_owned(),
-                permission,
-                quiet: false,
-            });
-            return;
-        }
         // A dedicated server leaves commands to the ops list (the guest's
         // permission level), and to `guest_commands`.
         if !host.settings.guest_commands {
@@ -154,9 +114,7 @@ impl Game<'_> {
         let swap = self.enter_guest(c.conn)?;
         self.chat_capture = Some(Vec::new());
         let level = std::mem::replace(&mut self.session.registries.permission, c.permission);
-        let (ok, value) = if self.perform_native_command(c.conn, c.permission, &c.command) {
-            (true, 1)
-        } else if c.quiet {
+        let (ok, value) = if c.quiet {
             self.run_command_quietly_value(&c.command)
         } else {
             self.run_command_value(&c.command)
@@ -310,13 +268,6 @@ impl Game<'_> {
         // is not offered either (Bukkit hides it; brigadier alone lists every child).
         let ((start, end), mut suggestions) =
             d.client_suggestions(&parse, command.len(), &self.session.registries);
-        self.native_tab_complete(
-            player_uuid,
-            &player_name,
-            command,
-            [start, end],
-            &mut suggestions,
-        );
         let reg = self.suggestion_registries();
         reg.permission = level;
         reg.sender = own_sender;

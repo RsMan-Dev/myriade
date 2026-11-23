@@ -23,8 +23,7 @@
 //! `LivingRef::set_health` keeps the player's synced float storage and unpublished update
 //! events, or the mob's health and sync dirtiness. This does not journal other health,
 //! damage, death or attribute operations.
-//! An entity added inside one goes at an abort, one removed is only marked until the root
-//! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
+//! An entity added inside one goes at an abort (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Game, machines::HopperState};
 use myriade_engine::{items::ItemStack, world::BlockEntityExtras};
 use myriade_types::{Transaction, TransactionLifecycle, TransactionSeal};
@@ -34,7 +33,6 @@ use std::collections::HashMap;
 pub(in crate::game) mod decision;
 #[path = "transactions/entities.rs"]
 mod entities;
-pub(in crate::game) use entities::Announcement;
 #[path = "transactions/scratch.rs"]
 mod scratch;
 
@@ -48,10 +46,6 @@ type ComposterRandoms =
 pub(super) struct OpenTransactions {
     levels: Vec<Level>,
     closing: Option<TransactionLifecycle>,
-    /// The root commits telling their joins and leaves, outermost first: a listener's command in
-    /// another level can commit a transaction there while this level's commit is told.
-    committing: Vec<entities::Committing>,
-    composter_epoch: Option<myriade_types::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
     #[cfg(test)]
@@ -213,21 +207,9 @@ struct KeptMenus {
 
 /// What a write tells the world, at the root commit.
 pub(super) enum After {
-    /// Reserved raw bytes publish only when their connection incarnation is still live.
-    Payload(super::payload_transport::Deferred),
-    Cauldron(super::cauldron_interactions::Effects),
     Composter(super::composter::Effects),
-    /// A mod's world pickup or placement of fluid, its block already set: what is left of it
-    /// (`Game::commit_fluid_write`).
-    FluidWrite(Box<super::world_fluids::WrittenFluid>),
-    /// A bucket's sound and fluid game event (`level_play_fluid_effects`).
-    FluidEffects(Box<super::world_fluids::FluidEffects>),
     /// `BlockEntity.setChanged`.
     Changed(Pos),
-    /// A provider's answer changed here (`level_invalidate_capabilities`): the capability
-    /// generation moves on.
-    Capabilities(Pos),
-
     /// `ServerLevel.destroyBlockProgress`: breaker id, position, stage. Sent once, at the root commit.
     BreakProgress(i32, [i32; 3], i32),
     /// The block's new state, set with its updates (`Level.setBlock`, `UPDATE_ALL`).
@@ -311,9 +293,6 @@ impl Game<'_> {
     }
     /// Opens a transaction and gives back its write and close tokens.
     fn open_storage_transaction(&mut self) -> (u64, u64) {
-        if let Some(scope) = &mut self.block_entity_tick_items {
-            scope.open_transaction();
-        }
         let (token, close_token) = (frame_token(), frame_token());
         if self.transactions.is_empty() {
             self.world.block_entities.defer_retirement();
@@ -328,9 +307,6 @@ impl Game<'_> {
         });
         #[cfg(test)]
         self.trace_storage_attempt("open".into());
-        if let Some(key) = &mut self.block_entity_tick_key {
-            key.unbalanced = true;
-        }
         (token, close_token)
     }
     /// Closes the transaction `seal` ends, first aborting every one opened inside it and left
@@ -414,12 +390,6 @@ impl Game<'_> {
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
-        if let Some(scope) = &mut self.block_entity_tick_items {
-            scope.close_transaction(commit);
-        }
-        if let Some(key) = &mut self.block_entity_tick_key {
-            key.unbalanced = self.transactions.len() != key.transaction_depth;
-        }
         debug_assert_eq!(
             level.dimension,
             Some(self.dim),
@@ -482,18 +452,13 @@ impl Game<'_> {
                 outer.after.extend(level.after);
                 // The nearest enclosing transaction of this level takes its entities back; a
                 // parent in another level can't, and with none in this level they are told now.
-                match (level.dimension)
+                if let Some(enclosing) = (level.dimension)
                     .and_then(|dim| entities::open_in(&mut self.transactions, dim))
                 {
-                    Some(enclosing) => enclosing.lifetimes.merge(lifetimes),
-                    None => self.commit_entity_journal(lifetimes, |_| {}),
+                    enclosing.lifetimes.merge(lifetimes);
                 }
             }
-            (true, None) => {
-                // The commit is in place before the effects run: a join one causes (a placed
-                // item's leftover spawning) never announces what the transaction added and removed.
-                self.commit_entity_journal(lifetimes, |game| game.root_commit(level));
-            }
+            (true, None) => self.root_commit(level),
             (false, _) => {
                 // The entities it added go first, so nothing is put back into one.
                 let arrivals = self.roll_back_entity_journal(lifetimes);
@@ -523,11 +488,6 @@ impl Game<'_> {
         &mut self,
         pos: [i32; 3],
     ) -> horizon_core::random::LegacyRandom {
-        let epoch = self.native_lifecycle.epoch();
-        if self.transactions.composter_epoch != epoch {
-            self.clear_composter_randoms();
-            self.transactions.composter_epoch = epoch;
-        }
         let chunk = (self.dim.key(), (pos[0] >> 4, pos[2] >> 4));
         let key = (pos[0], pos[1], pos[2]);
         let random = self
@@ -574,7 +534,6 @@ impl Game<'_> {
     }
 
     pub(super) fn clear_composter_randoms(&mut self) {
-        self.transactions.composter_epoch = None;
         self.transactions.composter_randoms.clear();
         for level in &mut self.transactions.levels {
             level.composter_randoms.clear();
@@ -720,25 +679,25 @@ impl Game<'_> {
         }
     }
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
-    pub(super) fn journal_menus(&mut self, player: myriade_types::PlayerRef) {
-        let Some(level) = self.transactions.last() else {
+    pub(super) fn journal_menus(&mut self, uuid: u128) {
+        if self.transactions.is_empty() {
             return;
-        };
-        let Some(super::native_server::PlayerRead::Guest(g)) = self.player_handle_read(player)
+        }
+        let Some(g) = self
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.holder_guest(uuid, self.dim.id()))
         else {
             return;
         };
         let conn = g.conn;
-        if level.menus.contains_key(&conn) {
-            return;
-        }
         let kept = KeptMenus {
             ender_items: g.ender_items.clone(),
             craft_grid: g.craft_grid.clone(),
             native_menu: g.native_menu.clone(),
         };
         if let Some(level) = self.transactions.last_mut() {
-            level.menus.insert(conn, kept);
+            level.menus.entry(conn).or_insert(kept);
         }
     }
     /// Keeps entity `id`'s inventory as it is, if a transaction is open and hasn't yet.
@@ -817,14 +776,8 @@ impl Game<'_> {
     }
     fn run_after(&mut self, after: After) {
         match after {
-            After::Payload(payload) => payload.publish(),
-            After::Cauldron(effects) => self.commit_cauldron_effects(effects),
             After::Composter(effects) => self.commit_composter_effects(effects),
-            After::FluidWrite(written) => self.commit_fluid_write(*written),
-            After::FluidEffects(effects) => self.commit_fluid_effects(*effects),
             After::Changed(pos) => self.container_changed(pos),
-            After::Capabilities(pos) => self.world.capability_generations.invalidate(pos),
-
             After::BreakProgress(breaker, pos, progress) => {
                 self.server_destroy_block_progress(breaker, pos, progress);
             }
@@ -896,10 +849,13 @@ impl Game<'_> {
                 equips,
                 who,
             } => {
-                // `equip_item_effects` rebuilt from the entity it names: the
-                // sculk context reads the mob as it is at the root commit.
+                // The sculk context is rebuilt from the entity it names: it reads the mob as it
+                // is at the root commit.
                 let ctx = self.who_context(Some(myriade_engine::mobs::Who::Mob(who)), None);
-                self.equip_item_effects(at, sound, equips, ctx);
+                if let Some(sound) = sound {
+                    self.audio.play(&sound, Some(at), 1.0, 1.0);
+                }
+                self.post_game_event(if equips { "minecraft:equip" } else { "minecraft:unequip" }, at, ctx);
             }
         }
     }
@@ -1130,6 +1086,64 @@ impl Game<'_> {
                 g.carried = kept.carried;
             });
         }
+    }
+}
+
+impl Game<'_> {
+    /// Runs `f` with the player `uuid`'s state in place: theirs already when they are the acting
+    /// player, else a guest's through `as_guest`. False when it didn't run: no such player here,
+    /// or dead.
+    pub(in crate::game) fn native_as_player(&mut self, uuid: u128, f: impl FnOnce(&mut Self)) -> bool {
+        if self.lan_acting_uuid != Some(uuid)
+            && let Some((conn, dead)) = self.lan.as_ref().and_then(|host| {
+                let guest = host.hub.holder_guest(uuid, self.dim.id())?;
+                Some((guest.conn, guest.dead))
+            })
+        {
+            return !dead && self.as_guest(conn, f).is_some();
+        }
+        if uuid == self.native_acting_id() {
+            if self.player.as_ref().is_none_or(|p| p.health.health() <= 0.0) {
+                return false;
+            }
+            f(self);
+            return true;
+        }
+        false
+    }
+
+    /// The inventory of entity `id` in the level in place, if it has one: a chest or hopper
+    /// minecart's, a chest boat's, or a chested mount's rows of three.
+    pub(in crate::game) fn edit_entity_slots<R>(
+        &mut self,
+        id: u32,
+        edit: impl FnOnce(&mut [Option<ItemStack>], [f64; 3]) -> R,
+    ) -> Option<R> {
+        let key = (i32::MAX - 15, crate::game::minecarts::CART_KEY_Y, id as i32);
+        let container = self.cart_genre(id).is_some_and(|k| k.slots() > 0);
+        let position = if container || self.boat_has_chest(id) == Some(true) {
+            self.ecs.position(id)?
+        } else if let Some(columns) = self
+            .mount_columns_of(id)
+            .filter(|_| self.cart_genre(id).is_none())
+        {
+            let size = columns * 3;
+            let (saddle, body, mut items) = self.mount_contents_of(id)?;
+            items.resize(size, None);
+            let position = self.ecs.position(id)?;
+            let r = edit(&mut items[..size], position);
+            self.mount_store_of(id, saddle, body, items);
+            return Some(r);
+        } else {
+            return None;
+        };
+        if container {
+            return self.edit_cart_slots(id, |slots| edit(slots, position));
+        }
+        if let Some(BlockEntity::Chest(open)) = self.world.block_entities.get_mut(&key) {
+            return Some(edit(open, position));
+        }
+        self.edit_vehicle_slots(id, |slots| edit(slots, position))
     }
 }
 

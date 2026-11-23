@@ -534,7 +534,7 @@ impl Game<'_> {
         }
     }
     fn boss_viewers(&self) -> Vec<Viewer> {
-        let mut out = Vec::new();
+        let mut out: Vec<Viewer> = Vec::new();
         if let Some(host) = &self.lan {
             for g in host
                 .hub

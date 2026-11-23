@@ -226,7 +226,7 @@ impl Game<'_> {
             before = 0;
         }
         let mut remaining = 20;
-        let maps = std::sync::Arc::clone(self.mob_map_snapshot());
+        let maps = myriade_engine::neoforge_mob_maps::NeoForgeMobMaps::vanilla();
         let stacks = self.ecs.inventory_stacks(id);
         'stacks: for stack in stacks.iter().rev() {
             if remaining <= 0 {

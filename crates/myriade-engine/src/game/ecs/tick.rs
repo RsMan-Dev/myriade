@@ -56,13 +56,11 @@ impl Game<'_> {
         ecs.set_conversion_watched(
             false || false,
         );
-        // A new target is held for the host only when a mod hears `living_change_target` (`ecs_target_asked`); else the brain takes it.
-        ecs.set_target_watched(false);
         // A death is held for the host only when a mod hears it (`ecs_death_event`); else P removes the entity itself.
         ecs.set_death_vetoable(false);
         // A lethal hit on a holder of a totem waits for the host only while a mod hears `living_use_totem` (`ecs_totem_asked`).
         ecs.set_totem_watched(false);
-        // `HitDealt` is emitted only while a mod hears `hurt_enemy` (`ecs_hit_dealt`).
+        // `HitDealt` is not emitted: no mod hears it.
         ecs.set_hit_watched(false);
         // Movement game events are posted only while a sculk block is loaded or a mod hears game events; the movement sounds always play.
         ecs.set_move_events(self.vibration_heard());
@@ -159,8 +157,6 @@ impl Game<'_> {
         ecs.set_trident_hit_bonus(self.trident_hit_bonus_fn());
         ecs.set_melee_gear(self.melee_gear_fn());
         ecs.set_item_resists_table(self.item_resists_fn());
-        let res = self.res.clone();
-        ecs.set_prototype_range_table(Box::new(move |item: &str| res.item_defaults().entries().get(item)?.get("minecraft:attack_range").and_then(default_tag)));
         ecs.set_item_modifiers_table(self.item_modifiers_fn());
         ecs
     }

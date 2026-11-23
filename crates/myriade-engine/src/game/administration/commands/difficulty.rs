@@ -29,7 +29,6 @@ impl Game<'_> {
     }
     /// `MinecraftServer.setDifficulty(difficulty, true)`.
     pub(in crate::game) fn set_difficulty_forced(&mut self, i: u8) {
-        let from = self.session.difficulty;
         self.session.difficulty = i;
         // The level data holds the world's difficulty: it survives the
         // reopen, so it follows the command.
@@ -43,10 +42,6 @@ impl Game<'_> {
                     difficulty: i32::from(i),
                     locked: self.level.difficulty_locked,
                 }));
-        }
-        if from != i {
-            let (from, to) = difficulty_names(from, i);
-            self.native_difficulty_changed(from, to);
         }
     }
 }

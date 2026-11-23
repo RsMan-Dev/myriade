@@ -164,9 +164,7 @@ impl CustomSpawnerLevel for Game<'_> {
     ) -> Option<u32> {
         Game::spawn_event_mob(self, kind, at, leader, reason)
     }
-    fn village_siege_cancelled(&mut self, player: u128, attempted: [f64; 3]) -> bool {
-        let mut canceled = false;
-        self.native_village_siege(self.dim.id(), player, attempted, &mut canceled);
-        canceled
+    fn village_siege_cancelled(&mut self, _player: u128, _attempted: [f64; 3]) -> bool {
+        false
     }
 }

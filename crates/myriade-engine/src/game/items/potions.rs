@@ -267,7 +267,7 @@ impl Game<'_> {
             }
         }
         // `WeavingMobEffect.onMobRemoved`: `canEntityGrief` for the dying mob.
-        if effects.contains(&"weaving") && (player || self.can_entity_grief(bearer)) {
+        if effects.contains(&"weaving") && (player || self.can_entity_grief(None)) {
             self.spawn_cobwebs_around(
                 [
                     feet.x.floor() as i32,
@@ -610,16 +610,11 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:entity.generic.drink", Some(eye), 0.5, pitch);
         }
-        // ItemStack.onUseTick: the item's own tick after the consumable's.
-        if !self.item_on_use_tick(stack, ticks - 1) {
-            return true;
-        }
         if i64::from(ticks) < i64::from(duration) {
             self.using = Some((slot, ticks));
             return true;
         }
         self.finish_drinking(slot, stack);
-        self.use_item_finished(stack);
         true
     }
     /// `PotionItem.finishUsingItem` (and `OminousBottleItem`'s) of `stack` in
@@ -670,24 +665,6 @@ impl Game<'_> {
         true
     }
     pub(super) fn apply_effect_action(&mut self, action: EffectAction) {
-        let action = match action {
-            EffectAction::Heal(mut amount) => {
-                if let Some(player) = self.player.as_ref() {
-                    let mut cancel = false;
-                    myriade_engine::hunger::native_living_heal(
-                        &self.loop_context,
-                        player.entity_id as u32,
-                        &mut amount,
-                        &mut cancel,
-                    );
-                    if cancel {
-                        return;
-                    }
-                }
-                EffectAction::Heal(amount)
-            }
-            action => action,
-        };
         let rules = self.world.health_rules;
         let Some(p) = self.player.as_mut() else {
             self.combat.forget_noted(false);
@@ -1175,29 +1152,15 @@ impl Game<'_> {
                 guest,
             };
             self.splash(&stack, at, mob, block, age, &owner, silent, motion);
-            if item != "minecraft:experience_bottle" {
-                self.native_potion_splash(&item, [at.x, at.y, at.z]);
-            }
         }
     }
     /// `AreaEffectCloud.readAdditionalSaveData`: loaded clouds join the same
     /// simulation as lingering potions, with their own timing and potion data.
     /// The caller retains their UUID and original compound for command queries.
     pub(super) fn load_potion_cloud(&mut self, tag: &Tag) -> Option<u32> {
-        self.load_potion_cloud_transferred(tag, None)
-    }
-    pub(super) fn load_potion_cloud_transferred(
-        &mut self,
-        tag: &Tag,
-        transferred: Option<super::entity_initialization::TransferredEntityState>,
-    ) -> Option<u32> {
         let Tag::Compound(c) = tag else { return None };
         let e = self.ecs_with(|ecs, mw| ecs.load_entity(mw, c))?;
-        let id = self.ecs_id_of(e);
-        if let Some(state) = transferred {
-            self.adopt_transferred_entity_state(id, state);
-        }
-        Some(id)
+        Some(self.ecs_id_of(e))
     }
     /// A lingering potion cloud in the ECS: `spawn_cloud` takes its spec whole (brews, flags, source, owner); P doses and ends it.
     pub(super) fn spawn_potion_cloud(&mut self, at: [f64; 3], spec: CloudSpec) -> u32 {
@@ -1397,7 +1360,6 @@ impl Game<'_> {
                 None => [-motion.x, -motion.y, -motion.z],
             };
             self.spawn_orbs_toward([at.x, at.y, at.z], roughly, value as u32);
-            self.native_exp_bottle([at.x, at.y, at.z], value as u32);
             return;
         }
         // Projectile.onHit calls onHitBlock first, then the potion's

@@ -1,6 +1,18 @@
 use super::*;
 use myriade_types::Hand;
 
+/// The level's result for a block's answer: an answer that used the action is a
+/// success, any other is a pass.
+fn level_result(answer: myriade_types::InteractionResult) -> horizon_world::level::InteractionResult {
+    use myriade_types::InteractionResult as Answer;
+    use horizon_world::level::InteractionResult as Level;
+    match answer {
+        Answer::Success | Answer::SuccessServer => Level::Success,
+        Answer::Consume => Level::Consume,
+        Answer::Fail | Answer::Pass | Answer::TryWithEmptyHand => Level::Pass,
+    }
+}
+
 impl Game<'_> {
     /// `Level.playSound(player, ...)`: a guest's client already predicted the
     /// fire-starter sound, so forward it to the other guests without leaving
@@ -28,54 +40,11 @@ impl Game<'_> {
         let sneaking = self.sneak_held;
         let hands_full = self.stack_in(self.selected).is_some() || self.offhand.is_some();
         let mut anchor_passed = false;
-        // Native mods, where ServerPlayerGameMode.useItemOn starts
-        // (RightClickBlock): a cancel answers for the block and the item, and
-        // its PASS goes on to Item.use, which a guest's UseItem asks for.
-        // A slow tick's line names the phase of a use that took it (#8669): the
-        // mods' hook, the block's own use, then the item's.
-        use myriade_types::InteractionResult as Answer;
         use myriade_types::TriState;
         let on_block = matches!(self.guest_use, Some(GuestUse::OnBlock(_)));
         let mut block_hit = block_hit;
-        let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
+        let (use_block, use_item) = (TriState::Default, TriState::Default);
         let block_phase = myriade_engine::spans::guard("use_block");
-        if let Some(hit) = block_hit {
-            let held = self.held().cloned();
-            let answer = myriade_engine::spans::time("use_mods", || {
-                self.right_click_block(hit, self.hand, held.as_ref())
-            });
-            match answer {
-                native_hooks::BlockClickAnswer::Go {
-                    use_block: block,
-                    use_item: item,
-                } => (use_block, use_item) = (block, item),
-                native_hooks::BlockClickAnswer::Canceled(answer)
-                    if answer.consumes_action() || answer == Answer::Fail =>
-                {
-                    if matches!(answer, Answer::Success | Answer::SuccessServer) {
-                        self.swing_arm();
-                    }
-                    self.use_failed = answer == Answer::Fail;
-                    return Ok(true);
-                }
-                native_hooks::BlockClickAnswer::Canceled(_) => {
-                    (use_block, use_item) = (TriState::False, TriState::False);
-                }
-            }
-        }
-        // ServerPlayerGameMode.useItemOn: the held item's onItemUseFirst, when RightClickBlock didn't deny the item, ahead of the sneak gate and every block behaviour. Any non-PASS answer ends this hand's block interaction.
-        if use_item.or(true)
-            && let Some(hit) = block_hit
-            && let Some(held) = self.held().cloned()
-            && let Some(answer) = self.item_use_first(hit, self.hand, &held)
-            && answer != Answer::Pass
-        {
-            if matches!(answer, Answer::Success | Answer::SuccessServer) {
-                self.swing_arm();
-            }
-            self.use_failed = answer == Answer::Fail;
-            return Ok(answer.consumes_action() || answer == Answer::Fail);
-        }
         // ServerPlayerGameMode.useItemOn: after the spectator and sneak gates, BlockState.useItemOn first. ITEM_USED_ON_BLOCK sees the stack from before it, whichever phase consumes.
         let held = self.held().cloned();
         let empty = ItemStack::new("minecraft:air", 0);
@@ -84,8 +53,7 @@ impl Game<'_> {
             && let Some(hit) = block_hit
         {
             let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-            let mut block_answer =
-                self.use_item_on_block(hit, self.hand, held.as_ref(), myriade_types::UsePhase::Block);
+            let mut block_answer = None;
             let mut chains_sign = false;
             if block_answer.is_none() {
                 // TntBlock.useItemOn belongs to the block phase, before
@@ -192,7 +160,7 @@ impl Game<'_> {
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use horizon_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
-                    Some(answer) => native_hooks::block_use_result(answer),
+                    Some(answer) => Some(level_result(answer)),
                     None => self.with_level(|b, level, ticks| {
                         b.block_use_item_on(level, ticks, state, block_hit, player, item.as_deref())
                     }),
@@ -220,7 +188,7 @@ impl Game<'_> {
                             self.use_chiseled_bookshelf(hit, state, None, UseBranch::WithoutItem)
                         });
                     let result = if let Some(answer) = answer {
-                        native_hooks::block_use_result(answer).unwrap_or(InteractionResult::Pass)
+                        level_result(answer)
                     } else {
                         empty_template_ran = true;
                         let player = self.use_context();
@@ -251,13 +219,6 @@ impl Game<'_> {
                     self.award_stat("used", &used.item, 1);
                     self.award_custom_stat("pot_flower", 1);
                     self.consume_held();
-                    if let (Some(player), Some(name)) =
-                        (self.lan_acting_uuid, self.lan_acting_name.clone())
-                    {
-                        self.native_player_flower_pot_manipulate(
-                            player, &name, hit.pos, &used.item,
-                        );
-                    }
                 }
                 // These effects belong to the vanilla method, not its Part replacement.
                 if empty_template_ran && result == horizon_world::level::InteractionResult::Success
@@ -345,51 +306,10 @@ impl Game<'_> {
             }
             block_hit = None;
         }
-        // Native mods, where ItemStack.useOn and Item.use start: the block aimed at had its turn, and the item is off cooldown. A guest's
-        // UseItemOn reaches only useOn, its UseItem only use.
-        if let Some(hit) = block_hit
-            && let Some(answer) = self.use_item_on_block(
-                hit,
-                self.hand,
-                stack.as_ref(),
-                myriade_types::UsePhase::ItemAfterBlock,
-            )
-        {
-            if answer.consumes_action() {
-                self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-                if matches!(answer, Answer::Success | Answer::SuccessServer) {
-                    self.swing_arm();
-                }
-                return Ok(true);
-            }
-            if answer == Answer::Fail {
-                self.use_failed = true;
-                return Ok(true);
-            }
-            if on_block {
-                return Ok(false);
-            }
-            block_hit = None;
-        }
         // An empty stack has no item Part or vanilla Item.useOn implementation.
         let (Some(stack), Some(info)) = (stack, info) else {
             return Ok(false);
         };
-        if let Some(hit) = block_hit
-            && let Some(answer) = self.item_on_interaction(hit, self.hand, &stack)
-        {
-            if self.interaction_consumed(answer) {
-                self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
-                return Ok(true);
-            }
-            if answer == Answer::Fail {
-                self.use_failed = true;
-                return Ok(true);
-            }
-        }
-        if let Some(used) = self.use_item_fallthrough(&stack, on_block) {
-            return Ok(used);
-        }
         // LeadItem.useOn follows the block and the item's override, including
         // when sneaking bypassed the block's useWithoutItem.
         if block_hit.is_some() && &*stack.item == "minecraft:lead" && self.interact_knot() {
@@ -450,12 +370,6 @@ impl Game<'_> {
         {
             return Ok(true);
         }
-        // a mod's item used over time: its Item.use, once a block item's
-        // useOn had its turn.
-        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.start_mod_use(&stack)
-        {
-            return Ok(true);
-        }
         if (!on_block && self.use_potion_item(&stack)?)
             || ((!on_block || (spawn_egg && block_hit.is_some())) && self.throw_item(&stack)?)
         {
@@ -507,11 +421,7 @@ impl Game<'_> {
             // BowItem.use: ArrowNockEvent, then FAIL without ammunition.
             let found_projectile = self.get_projectile(&stack).is_some();
             let has_ammo = found_projectile || self.creative;
-            let player = myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid());
-            let name = self.acting_player_name().to_owned();
-            let (hand, mut cancel) = (self.hand, false);
-            self.native_arrow_nock(player, &name, &stack, hand, has_ammo, &mut cancel);
-            if has_ammo && !cancel {
+            if has_ammo {
                 self.start_using_item();
             }
             return Ok(true);
@@ -590,11 +500,7 @@ impl Game<'_> {
             item: stack.item.to_string(),
             can_use_game_master_blocks: self.can_use_game_master_blocks(),
         };
-        let outcome = if self.player_place_canceled(&ctx) {
-            PlaceOutcome::Failed
-        } else {
-            self.with_level(|b, level, ticks| b.place_block(level, ticks, &ctx))
-        };
+        let outcome = self.with_level(|b, level, ticks| b.place_block(level, ticks, &ctx));
         let PlaceOutcome::Placed { pos, state } = outcome else {
             self.process_level_events()?;
             // BlockItem.useOn: a consumable that could not be placed is used,
@@ -634,8 +540,6 @@ impl Game<'_> {
                 _ => {}
             }
         }
-        let placer = self.native_acting_player();
-        self.block_item_placed(&stack, placer, pos, &ctx);
         // BlockItem.place's SUCCESS: the client swings with its own prediction.
         self.swing_arm_predicted();
         // BlockItem.place's sound is among the level events;
@@ -749,17 +653,11 @@ impl Game<'_> {
                 };
                 let b = horizon_core::position::BlockPos::containing(at);
                 let at = [b.x, b.y, b.z].map(|v| f64::from(v) + 0.5);
-                let level = self.level(self.dim.id())?;
-                let source = match mob {
-                    Some(living) => self.entity_sound_source(living.entity())?,
-                    None => myriade_types::SoundSource::Players,
-                };
-                self.native_queue_sound(level, sound, at, source, 1.0, 1.0, None)?;
+                self.play_block_use_sound(sound, at, 1.0);
                 true
             }
-            ConsumeEffect::Native { kind, data } => {
-                consume_effect_dispatch::dispatch(kind, || self.native_consume_effect(kind, data))
-            }
+            // A native effect is handled by no code here: it changes nothing.
+            ConsumeEffect::Native { .. } => false,
         })
     }
     /// BowItem.releaseUsing: power from charge time, arrows at power * 3, as
@@ -767,10 +665,8 @@ impl Game<'_> {
     /// `projectile_spread`.
     pub(super) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
         let ammo = self.get_projectile(stack);
-        let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
-        let mut canceled = false;
-        self.native_arrow_loose(stack, ammo.is_some(), &mut charge, &mut canceled);
-        let power = item_use::bow_release_power(ammo.is_some(), charge, canceled);
+        let charge = i32::try_from(ticks).unwrap_or(i32::MAX);
+        let power = item_use::bow_release_power(ammo.is_some(), charge, false);
         let (Some(power), Some(ammo)) = (power, ammo) else {
             return;
         };
@@ -846,12 +742,7 @@ impl Game<'_> {
             let shot = self.arrow_shot_of(arrow.arrow.as_deref().expect("an arrow has its state"), effect);
             let (pos, vel) = (arrow.position, arrow.velocity);
             let owner = self.ecs_owner(Some(myriade_engine::mobs::Who::Player));
-            let projectile = self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, weapon.clone());
-            let (player, name) = (
-                myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                self.acting_player_name().to_owned(),
-            );
-            self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
+            self.ecs_shoot_arrow([pos.x, pos.y, pos.z], [vel.x, vel.y, vel.z], owner, shot, weapon.clone());
             // ProjectileWeaponItem.shoot: one point of wear per arrow, and a
             // bow that breaks mid-volley shoots no more.
             let held = self.held().is_some();
@@ -929,6 +820,69 @@ impl Game<'_> {
             0.0,
         );
         pierce.floor().clamp(0.0, 127.0) as u8
+    }
+
+    /// One hand's block use, then its item's, for a click on a block: the block
+    /// first (`useItemOn`), then `use_hand` without it (`useItem`).
+    pub(super) fn use_target_then_item(&mut self, hit: &Hit) -> Result<bool> {
+        self.guest_use = Some(GuestUse::OnBlock(self.hand));
+        let result = self.with_block_use_original(self.hand, |g| {
+            let result = g.use_hand(Some(hit));
+            if matches!(result, Ok(true)) && !g.use_failed {
+                g.finish_block_use(hit.pos, g.hand);
+            }
+            result
+        });
+        self.guest_use = None;
+        if result? {
+            return Ok(true);
+        }
+        self.use_hand(None)
+    }
+
+    /// The game mode's item-phase trigger is separate from item-internal triggers.
+    fn finish_item_block_use(&mut self, hit: Option<&Hit>, original: &ItemStack) -> Result<bool> {
+        if let Some(hit) = hit {
+            self.trigger_block("minecraft:item_used_on_block", hit.pos, original);
+        }
+        Ok(true)
+    }
+
+    /// Runs one block use with an isolated original stack, restoring the outer
+    /// operation even when a listener unwinds.
+    pub(super) fn with_block_use_original<R>(
+        &mut self,
+        hand: Hand,
+        action: impl FnOnce(&mut Self) -> R,
+    ) -> R {
+        let original = self.with_hand(hand, |g| g.held().cloned());
+        let depth = self.block_use_original.len();
+        self.block_use_original.push((hand, original));
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
+        self.block_use_original.truncate(depth);
+        match result {
+            Ok(value) => value,
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    /// Completes a consuming block use with the stack held when it started, so
+    /// `ITEM_USED_ON_BLOCK` and the advancements see the stack vanilla passed.
+    pub(super) fn finish_block_use(&mut self, pos: [i32; 3], _hand: Hand) {
+        let stack = self
+            .block_use_original
+            .last_mut()
+            .and_then(|(_, stack)| stack.take())
+            .unwrap_or_else(|| ItemStack::new("minecraft:air", 0));
+        myriade_engine::spans::time("use_advancements", || {
+            self.trigger_any_block_use(pos, &stack);
+        });
+    }
+
+    /// `Block.newBlockEntity` for the state a placed item leaves. No constructor from a
+    /// state exists in the tree, so none is made.
+    pub(in crate::game) fn new_block_entity_for_state(&mut self, _state: horizon_world::registry::BlockStateId) -> Option<BlockEntity> {
+        None
     }
 }
 

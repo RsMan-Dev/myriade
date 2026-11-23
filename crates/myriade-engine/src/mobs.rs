@@ -1084,6 +1084,897 @@ impl PendingPushes {
         self.by_mob.entry(id).or_default().push(v);
     }
 }
+/// Events a mob tick asks the game to act on.
+#[derive(Clone, Debug)]
+pub enum MobEvent {
+    /// A player-directed event remembers the player selected at emission.
+    /// `None` is the server's own player; `Some` is a guest connection.
+    ForPlayer {
+        conn: Option<u32>,
+        event: Box<MobEvent>,
+    },
+    /// Squid.handleEntityEvent(19), resetting the remote tentacle cycle.
+    SquidCycle {
+        mob: u32,
+        at: [f64; 3],
+    },
+    /// Rabbit entity event 1, sent only when a ground jump actually happens.
+    RabbitHop {
+        mob: u32,
+        at: [f64; 3],
+    },
+    /// `LivingEntity.baseTick`'s drowning: entity event 67 for 8 `bubbles`, else that many particles.
+    Drown {
+        mob: u32,
+        at: [f64; 3],
+        bubbles: i32,
+    },
+    /// PowderSnowBlock.entityInside's snowflake with vanilla's sampled velocity.
+    PowderSnowParticle {
+        at: [f64; 3],
+        velocity: [f64; 3],
+    },
+    /// `Mob.burnUndead` in daylight on a mob wearing something in its
+    /// `sunProtectionSlot`: the item loses up to 1 durability (the game knows
+    /// the item data) instead of the mob catching fire.
+    SunProtectionWear {
+        mob: u32,
+    },
+    /// `Level.broadcastEntityEvent` for a mob: guests run its
+    /// `handleEntityEvent`.
+    EntityEvent {
+        mob: u32,
+        event: i8,
+        at: [f64; 3],
+    },
+    /// `ServerLevel.sendParticles`: drawn here and sent to the players within
+    /// 32 blocks, which spread and speed the way the client does for a count
+    /// (a count of 0 is one particle moving by speed times spread).
+    LevelParticles {
+        kind: &'static str,
+        at: [f64; 3],
+        spread: [f64; 3],
+        speed: f64,
+        count: u32,
+    },
+    /// `ServerLevel.sendParticles` of an `ItemParticleOption`: `count` crumbs of
+    /// `item`, drawn in this window.
+    ItemParticles {
+        item: &'static str,
+        at: [f64; 3],
+        spread: [f64; 3],
+        speed: f64,
+        count: u32,
+    },
+    Sound(&'static str, [f64; 3], f32, f32),
+    ProfessionWorkSound(Arc<str>, [f64; 3], f32, f32),
+    /// `level.playSound(null, mob, sound, source, volume, pitch)`: a sound
+    /// bound to mob `mob` (`ServerLevel.playSeededSound`'s entity overload),
+    /// in vanilla's `source`, from where the mob stands.
+    BoundSound {
+        mob: u32,
+        sound: &'static str,
+        source: myriade_types::SoundSource,
+        at: [f64; 3],
+        volume: f32,
+        pitch: f32,
+    },
+    /// `Entity.sendBubbleColumnParticles`: a mob at the top of the bubble column
+    /// block at `pos` (the splash and bubble particles over it).
+    BubbleColumnParticles {
+        pos: [i32; 3],
+    },
+    /// A `BlockParticleOption` of `state` drawn `count` times at `at`, each crumb
+    /// leaving at `speed`: the dust `LivingEntity.checkFallDamage` throws up from
+    /// the block a mob landed on, and the puffs `Breeze.emitGroundParticles`
+    /// leaves at a breeze's feet (which it draws at rest).
+    LandingDust {
+        state: horizon_world::registry::BlockStateId,
+        at: [f64; 3],
+        count: i32,
+        speed: f64,
+    },
+    /// `UseBonemeal`: villager `mob`'s bone meal on the crop at `pos`
+    /// (`BoneMealItem.growCrop`, then level event 1505 when it grew).
+    Bonemeal {
+        mob: u32,
+        pos: [i32; 3],
+    },
+    /// `RingBell`: the villager rings the meeting-point bell
+    /// (`BellBlock.attemptToRing`: the bell shakes, the sound and the game
+    /// event follow).
+    RingBell {
+        bell: [i32; 3],
+    },
+    /// `ChestBlockEntity.startOpen` / `stopOpen` by a copper golem: the
+    /// chest's opener count goes up or down (interaction range 3).
+    ChestOpen {
+        chest: [i32; 3],
+        open: bool,
+        /// The golem, the source of the container's game event.
+        mob: u32,
+    },
+    /// `BeeEnterHiveGoal.start`: the bee goes into its hive (the host stores
+    /// its tag with `BeehiveBlockEntity.addOccupant` and discards it).
+    EnterHive {
+        mob: u32,
+        hive: [i32; 3],
+    },
+    /// `LandOnOwnersShoulderGoal`: a tame parrot touched its owner and sits
+    /// on their shoulder (the host stores its tag and discards it).
+    ParrotToShoulder {
+        mob: u32,
+    },
+    /// `CopperGolem.turnToStatue`.
+    BecomeStatue {
+        mob: u32,
+    },
+    /// A copper golem took from or filled a chest slot.
+    ChestSlot {
+        chest: [i32; 3],
+        slot: usize,
+        stack: Option<crate::items::ItemStack>,
+    },
+    /// `InfestedMobEffect.onMobHurt`: the mob was hurt while infested and its
+    /// draws (`infested_silverfish`) spawn silverfish at `at`, half its height
+    /// up where it was hurt, each thrown with its velocity.
+    Infested {
+        at: [f64; 3],
+        velocities: Vec<Vec3>,
+    },
+    /// `LivingEntity.hurtArmor` (`doHurtEquipment`): a hit that landed on a mob
+    /// wearing body armour (a horse's) leaves the piece owing
+    /// `max(1, damage / 4)` durability. The host applies it: it is the one
+    /// that knows the item's maximum, whether it wears when hurt at all and
+    /// whether a fire hit leaves it alone (`ItemStack.canBeHurtBy`).
+    ArmorHurt {
+        mob: u32,
+        amount: f32,
+        source: crate::health::HurtSource<'static>,
+    },
+    /// `LivingEntity.updateFallFlying`: every 20 glide ticks the glider in
+    /// `slot` (the one `Util.getRandom` picked) takes one point of wear,
+    /// `ItemStack.hurtAndBreak(1, this, slot)`. The host applies it with the
+    /// item's maximum and Unbreaking.
+    GliderWear {
+        mob: u32,
+        slot: horizon_core::equipment_slot::EquipmentSlot,
+    },
+    /// `OfferFlowerGoal.stop`: the item goes to the target's antenna (saddle)
+    /// slot if it is empty, as a guaranteed drop.
+    Gift {
+        target: u32,
+        item: &'static str,
+    },
+    /// `AnimalMakeLove`: the partner remembers this mob as its breed target
+    /// and walks to it and looks at it.
+    BreedTarget {
+        mob: u32,
+        partner: u32,
+    },
+    /// `BehaviorUtils.lockGazeAndWalkToEachOther`'s other half: the partner
+    /// looks at this mob and walks to it.
+    LockGaze {
+        mob: u32,
+        partner: u32,
+    },
+    /// `AbstractSchoolingFish.startFollowing` on a fish a leader recruits:
+    /// it follows the leader, whose school grows by one.
+    StartFollowing {
+        fish: u32,
+        leader: u32,
+    },
+    /// `addFollower` / `removeFollower`: a leader's school grows or shrinks.
+    SchoolSize {
+        leader: u32,
+        by: i32,
+    },
+    /// A sound event id that is not a static string (variant sounds).
+    SoundId(String, [f64; 3], f32, f32),
+    /// `Level.playLocalSound`: a sound the client plays for itself, never
+    /// sent by a server (a breeze's whirl and idle sounds).
+    LocalSound(&'static str, [f64; 3], f32, f32),
+    /// A level event's sound (`levelEvent`/`globalLevelEvent`): the client
+    /// plays it with its own random pitch spread (`(a - b) * spread + 1`),
+    /// nothing is drawn from the mob.
+    LevelEventSound {
+        sound: &'static str,
+        at: [f64; 3],
+        volume: f32,
+        spread: f32,
+    },
+    /// `Level.gameEvent` from a mob's own movement (`GameEvent.STEP`): the
+    /// game's sculk layer tracks steps itself, the mob AI probe hears them
+    /// through the wardens (`warden::listen`).
+    GameEvent {
+        event: &'static str,
+        at: [f64; 3],
+        source: u32,
+        state: horizon_world::registry::BlockStateId,
+    },
+    /// `Level.gameEvent` from the block a mob landed on (`FarmlandBlock.turnToBaseBlock`'s
+    /// BLOCK_CHANGE from the mob that trampled it, `TurtleEggBlock.decreaseEggs`' and
+    /// `Level.destroyBlock`'s BLOCK_DESTROY with no source): the game posts it, a
+    /// sculk sensor, a calibrated sensor and a warden hear it.
+    LandingGameEvent {
+        event: &'static str,
+        at: [i32; 3],
+        /// The entity that caused the change, `None` for a destroyed egg.
+        source: Option<u32>,
+        state: horizon_world::registry::BlockStateId,
+    },
+    AttackPlayer(f32, [f64; 3]),
+    /// `Bee.doHurtTarget`: a sting that lands leaves its stinger and poisons.
+    Sting {
+        target: Who,
+        amount: f32,
+        poison_ticks: i32,
+        source: Damage,
+    },
+    /// A melee hit whose effect comes only if the hit lands (husk hunger,
+    /// cave spider poison, wither skeleton wither): a shield-blocked hit gives
+    /// nothing.
+    AttackPlayerWithEffect {
+        amount: f32,
+        from: [f64; 3],
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+    },
+    /// Damage of a given type to the player (guardian lasers, thorns).
+    DamagePlayer {
+        amount: f32,
+        from: [f64; 3],
+        kind: &'static str,
+    },
+    /// `ElderGuardian`'s curse on players within 50 blocks; a silent elder's
+    /// shows the apparition without the curse sound.
+    ElderCurse {
+        at: [f64; 3],
+        silent: bool,
+    },
+    /// `Entity.setDeltaMovement`: replace a target's velocity.
+    SetVelocity {
+        target: Who,
+        velocity: [f64; 3],
+    },
+    /// `Entity.remove(RemovalReason.KILLED)` of a mob that is no longer alive: it vanishes at once,
+    /// with no death animation (`ShootTongue.eatEntity`).
+    RemoveKilled {
+        target: u32,
+    },
+    /// `Entity.push`: add to a target's velocity.
+    Push {
+        target: Who,
+        velocity: [f64; 3],
+    },
+    /// `SonicBoom`: 10 damage to the target, then a push along `direction`
+    /// (the unit vector from the warden's chest to the target's eyes) only
+    /// if the hit landed, less the target's knockback resistance.
+    SonicBoom {
+        target: Who,
+        attacker: u32,
+        from: [f64; 3],
+        direction: [f64; 3],
+    },
+    /// `Shulker.onPeekAmountChange`: the opening lid of `shulker` moves every
+    /// entity it may push whose box meets `area` (the box the lid swept) by
+    /// `Entity.move(MoverType.SHULKER, delta)`.
+    LidPush {
+        shulker: u32,
+        area: Aabb,
+        delta: [f64; 3],
+    },
+    /// `EvokerWololoSpellGoal`: a blue sheep turns red.
+    Wololo {
+        mob: u32,
+    },
+    /// `EvokerFangs` rising at a point after `delay` ticks.
+    Fangs {
+        at: [f64; 3],
+        yaw: f32,
+        delay: i32,
+        owner: u32,
+    },
+    /// The mob the `Explode` right after this comes from
+    /// (`ServerExplosion.source`), and whether it is a charged creeper: the
+    /// exploding creeper is already out of the mob list when the game applies
+    /// the blast, so its victims' loot cannot look it up, nor the death
+    /// message its name (`name`, `getDisplayName`).
+    ExplosionSource {
+        mob: u32,
+        charged: bool,
+        name: crate::text::Text,
+        /// `Entity.isInWater` of the source: `BlockAttached.ignoreExplosion`.
+        in_water: bool,
+        /// Its entity type: a player the blast kills is still credited to it
+        /// (`getKillCredit` finds the source during its own explosion).
+        kind: String,
+    },
+    /// The centre, the radius and the kind of the mob blowing up (it may be
+    /// gone from the list by the time the blast is handled), and its `Silent`.
+    Explode([f64; 3], f32, Species, bool),
+    /// `Creeper.spawnLingeringCloud`, right after its `Explode`: an `AreaEffectCloud` at the
+    /// creeper with its active effects `(id, remaining ticks, amplifier)`, in their mixed colour.
+    LingeringCloud {
+        at: [f64; 3],
+        effects: Vec<(&'static str, i32, i32)>,
+        /// The effects among them added hidden (`hideParticles`).
+        hidden: Vec<&'static str>,
+        /// The effects among them that are ambient.
+        ambient: Vec<&'static str>,
+        color: u32,
+    },
+    /// Damage that bypasses `EnchantmentHelper.doPostAttackEffects` (roars,
+    /// beams, retaliation and hot-cube contact).
+    DamageMob {
+        target: u32,
+        amount: f32,
+        source: Damage,
+    },
+    /// An attack that runs post-attack effects when the hit lands.
+    AttackMob {
+        target: u32,
+        amount: f32,
+        source: Damage,
+    },
+    /// A melee hit on another mob whose effect rides the hit:
+    /// `CaveSpider`, `Husk` and `WitherSkeleton.doHurtTarget` add it inside
+    /// the `super.doHurtTarget` branch, to any `LivingEntity`, so a mob the
+    /// hit lands on gets it too.
+    AttackMobWithEffect {
+        target: u32,
+        amount: f32,
+        source: Damage,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+    },
+    /// `AbstractCubeMob.dealDamage` on the player (`playerTouch`): the hit,
+    /// then, only when `hurtServer` let it land, the cube's
+    /// `entity.slime.attack` with its pitch drawn from the cube's random.
+    CubeHurtPlayer {
+        cube: u32,
+        amount: f32,
+        from: [f64; 3],
+    },
+    /// `AbstractCubeMob.dealDamage` on a mob (an iron golem it touches): the
+    /// hit, then, only when `hurtServer` let it land, the cube's
+    /// `entity.slime.attack` with its pitch drawn from the cube's random.
+    CubeHurtMob {
+        cube: u32,
+        target: u32,
+        amount: f32,
+        source: Damage,
+    },
+    /// `Pufferfish.touch` on a mob (`Pufferfish.aiStep`): the hit, then, only
+    /// when `hurtServer` let it land, the fish's `entity.puffer_fish.sting`
+    /// and the poison it gives (`poison_ticks`, `60 * getPuffState()`).
+    PufferfishSting {
+        mob: u32,
+        target: u32,
+        amount: f32,
+        source: Damage,
+        poison_ticks: i32,
+    },
+    /// `LivingEntity.stabAttack`'s `target.stopRiding()`: a spear knocks the
+    /// target off its mount.
+    StabDismount {
+        target: Who,
+    },
+    /// `LivingEntity.knockback(power, x, z, source)`; a ram's blocked again first (`RamTarget.tick`).
+    Knockback {
+        target: Who,
+        power: f64,
+        x: f64,
+        z: f64,
+        source: Damage,
+        apply_blocking: Option<f32>,
+    },
+    /// Set another mob's attack target (HurtByTargetGoal alerts).
+    SetTarget {
+        mob: u32,
+        target: Who,
+    },
+    PiglinAlertTarget(undead::PiglinAlert),
+    /// `HoglinAi.broadcastAttackTarget`: receiver and source player connection.
+    HoglinAttackTarget {
+        mob: u32,
+        target: Who,
+        player: Option<u32>,
+    },
+    /// `StartHuntingHoglin` for a nearby adult piglin: it takes the hoglin as
+    /// its anger target (when it has none) and starts its `HUNTED_RECENTLY` wait.
+    HuntHoglin {
+        mob: u32,
+        target: u32,
+        ticks: i32,
+    },
+    /// `HoglinAi.broadcastRetreat` and `PiglinAi.broadcastRetreat` for one
+    /// adult that sees the broadcaster: it retreats from `from`, standing at
+    /// `at`, or from what it already avoids or attacks if that is nearer.
+    Retreat {
+        mob: u32,
+        from: Who,
+        at: [f64; 3],
+    },
+    /// `Entity.startRiding` from a mob's brain (`Mount.create`): `rider` boards
+    /// `vehicle` if `Piglin.startRiding` and `canRide` allow it.
+    StartRiding {
+        rider: u32,
+        vehicle: u32,
+    },
+    Projectile(crate::projectiles::Projectile),
+    /// An arrow `mob` shot with `weapon` (`AbstractSkeleton.performRangedAttack`):
+    /// the game asks for the ammunition (`getProjectile`) before it flies.
+    BowShot {
+        mob: u32,
+        weapon: crate::items::ItemStack,
+        arrow: crate::projectiles::Projectile,
+    },
+    /// `mob` finished charging `weapon` (`CrossbowItem.onUseTick`): the game
+    /// asks for the ammunition (`getProjectile`), and plays the end sound
+    /// at `at` only when the crossbow loaded.
+    CrossbowLoad {
+        mob: u32,
+        weapon: crate::items::ItemStack,
+        at: [f64; 3],
+        pitch: f32,
+    },
+    /// `arrow` shot from the `ammo` a mob's crossbow was charged with.
+    CrossbowShot {
+        ammo: crate::items::ItemStack,
+        arrow: crate::projectiles::Projectile,
+    },    /// Spawn a mob by type id at a position (conversions, splits).
+    SpawnKind {
+        kind: String,
+        at: [f64; 3],
+        setup: SpawnSetup,
+    },    DropItem {
+        mob: u32,
+        item: Arc<str>,
+        count: u32,
+        at: [f64; 3],
+    },
+    /// `Entity.spawnAtLocation` with the complete stack and its components.
+    DropStack {
+        mob: u32,
+        stack: crate::items::ItemStack,
+        at: [f64; 3],
+    },
+    /// `new ItemEntity(.., stack)` thrown by `mob` (`setThrower`): `Dolphin.ItemGoal.drop`.
+    ThrowItem {
+        mob: u32,
+        stack: crate::items::ItemStack,
+        at: [f64; 3],
+        motion: [f64; 3],
+        pickup_delay: u32,
+    },
+    /// `Goat.dropHorn`: a horn from goat `mob` (`Goat.createHorn` picks the
+    /// instrument from its UUID), thrown with `motion` as
+    /// `new ItemEntity(.., deltaX, deltaY, deltaZ)`.
+    DropGoatHorn {
+        mob: u32,
+        screaming: bool,
+        at: [f64; 3],
+        motion: [f64; 3],
+    },
+    /// `Mob.dropFromGiftLootTable`: a gift loot table's items dropped at `at`.
+    DropGift {
+        table: &'static str,
+        at: [f64; 3],
+    },
+    /// A leave-block goal's sampled candidate, before neighbor-shape updates.
+    EndermanPlaceBlock {
+        mob: u32,
+        pos: [i32; 3],
+        carried: horizon_world::registry::BlockStateId,
+        occupants: Vec<horizon_core::geometry::Aabb>,
+    },
+    SetBlock {
+        pos: [i32; 3],
+        state: horizon_world::registry::BlockStateId,
+    },
+    /// A mob placing a block (such as a snow golem's trail): `entity_place`
+    /// may refuse it. Enderman leave-block attempts use `EndermanPlaceBlock`.
+    PlaceBlock {
+        mob: u32,
+        pos: [i32; 3],
+        state: horizon_world::registry::BlockStateId,
+    },
+    /// `TurtleEggBlock.decreaseEggs` after a mob's step won its 1 in 100: the
+    /// break sound, then one egg fewer, or the block destroyed when it was
+    /// the last.
+    CrackTurtleEgg {
+        pos: [i32; 3],
+    },
+    /// `LivingEntity.startSleeping` / `stopSleeping`: the bed head at `pos`
+    /// gets `occupied` (`setBlockAndUpdate`; the foot follows it).
+    BedOccupied {
+        pos: [i32; 3],
+        occupied: bool,
+    },
+    /// `DoorBlock.setOpen` by a mob (`InteractWithDoor`): the door opens or
+    /// closes, both halves, with its sound and game event.
+    SetDoorOpen {
+        pos: [i32; 3],
+        open: bool,
+    },
+    /// `BreakDoorGoal.tick` at its end: the door is removed (`removeBlock`),
+    /// then level events 1021 and 2001 with the state that is left there.
+    BreakDoor {
+        mob: u32,
+        pos: [i32; 3],
+    },
+    /// `Level.destroyBlockProgress` for a mob's crack on a block (`-1`
+    /// clears it).
+    DestroyProgress {
+        mob: u32,
+        pos: [i32; 3],
+        progress: i32,
+    },
+    /// `Rabbit.RaidGardenGoal.tick`: the carrots at `pos` become `state` (`setBlock` with
+    /// flags 2); a crop that only lost an age shows the break particles of the state it had
+    /// (`levelEvent(2001, pos, old)`) and fires `BLOCK_CHANGE` for the rabbit.
+    CropRaided {
+        pos: [i32; 3],
+        state: horizon_world::registry::BlockStateId,
+        old: Option<horizon_world::registry::BlockStateId>,
+        mob: u32,
+    },
+    /// `Level.levelEvent`: the game plays and sends the event.
+    LevelEvent {
+        id: i32,
+        pos: [i32; 3],
+        data: i32,
+    },
+    /// `InfestedBlock.infestedStateByHost` (`infested`) or `hostStateByInfested`
+    /// for the block there, keeping its axis; `poof` is the silverfish that
+    /// hid in it (`spawnAnim`).
+    Infest {
+        pos: [i32; 3],
+        infested: bool,
+        poof: Option<u32>,
+    },
+    /// `Level.destroyBlock(pos, drop)`: the block gives way to its fluid's
+    /// block (air when it has none). Sheep eating grass becomes dirt via SetBlock.
+    BreakBlock {
+        pos: [i32; 3],
+        drop: bool,
+        /// The mob whose breaking this is, when it is one `LivingDestroyBlockEvent`
+        /// hears (a wither's, a ravager's, a silverfish's, a zombie's).
+        by: Option<u32>,
+        /// The entity `destroyBlock` names when that event doesn't hear of it (a
+        /// villager's harvest, a ravager's crop): it asks the mods nothing, and
+        /// its loot's `LootContextParams.THIS_ENTITY` is this one, as `by`'s is.
+        breaker: Option<u32>,
+    },
+    /// `EndermanTakeBlockGoal`: the enderman `mob` picks up the block `state` at
+    /// `pos` (it already holds it); the block turns to air unless a mod stops it
+    /// or it is no longer that block.
+    TakeBlock {
+        mob: u32,
+        pos: [i32; 3],
+        state: horizon_world::registry::BlockStateId,
+    },
+    /// What follows a `BreakBlock { by: Some(mob) }` of this batch: `effects` when
+    /// the game broke at least one of the mob's blocks, `otherwise` when a mod kept
+    /// them all (vanilla plays the break's sound and particles only on a destruction).
+    /// Only made while a mod is loaded; without one the effects are plain events.
+    IfBroke {
+        mob: u32,
+        effects: Vec<MobEvent>,
+        otherwise: Vec<MobEvent>,
+    },
+    /// The mob `mob` jumps (`jumpFromGround`'s flag, set after a ravager broke no leaves).
+    Jump {
+        mob: u32,
+    },
+    Particles {
+        kind: &'static str,
+        at: [f64; 3],
+        count: u32,
+    },
+    /// Client particles about a mob's box (`particles::around_self`) and the
+    /// entity event `event` that shows them, sent for mob `mob`.
+    AroundSelf {
+        mob: u32,
+        event: i8,
+        kind: &'static str,
+        feet: [f64; 3],
+        width: f64,
+        height: f64,
+        burst: crate::particles::Burst,
+    },
+    /// One particle exactly at `at`, moving at `velocity`.
+    ParticleAt {
+        kind: &'static str,
+        at: [f64; 3],
+        velocity: [f64; 3],
+    },
+    /// One `minecraft:entity_effect` particle at `at` in the colour `color`
+    /// (`ColorParticleOption.create(ENTITY_EFFECT, r, g, b)`), standing still.
+    ParticleColored {
+        at: [f64; 3],
+        color: [f32; 3],
+    },
+    Experience {
+        at: [f64; 3],
+        amount: u32,
+    },
+    /// Regeneration support after an axolotl-assisted kill, from the axolotl `mob`.
+    AxolotlSupportPlayer {
+        mob: u32,
+    },
+    /// A dolphin that was given a fish asks the game for the nearest
+    /// shipwreck or ocean ruin (`DolphinSwimToTreasureGoal.start`): the game
+    /// sets the dolphin's `extra.home` to it, or leaves it empty.
+    DolphinTreasure {
+        mob: u32,
+    },
+    /// Apply an effect to the player (witch potions, bee stings, cave spider poison).
+    EffectPlayer {
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+        /// `MobEffectInstance` ambient flag (the beacon-style translucent icon).
+        ambient: bool,
+    },
+    /// Apply an effect to another mob: `IllusionerBlindnessSpellGoal.performSpellCasting`
+    /// blinds whatever `LivingEntity` the illusioner targets, not only a player.
+    EffectMob {
+        target: u32,
+        effect: &'static str,
+        ticks: i32,
+        amplifier: i32,
+    },
+    /// Set an entity on fire for so many seconds.
+    Ignite(Who, i32),
+    /// `Zombie.doHurtTarget`'s burn: lit only if the attack event before it hurt.
+    ZombieIgnite(Who, i32),
+    /// Two animals bred: the game spawns the baby and resets the partner.
+    Breed {
+        parent: u32,
+        partner: u32,
+        /// Equine inheritance, drawn at `getBreedOffspring`'s goal moment,
+        /// before later same-tick healing and grazing rolls.
+        equine: Option<Box<equine::Offspring>>,
+        /// Whether the parent supplies the variant, if already drawn.
+        parent_variant: Option<bool>,
+        /// Wolf voice drawn before experience, unless baby-spawn approval defers inheritance.
+        wolf_voice: Option<u8>,
+        /// The parent-RNG experience decision, if already made.
+        experience: BreedExperience,
+    },
+    /// Replace a block by name (sheep turning grass to dirt), optionally with
+    /// the destroy effect.
+    SetBlockName {
+        mob: Option<u32>,
+        pos: [i32; 3],
+        name: &'static str,
+        effect: bool,
+        flags: i32,
+    },
+    /// A cat hisses (phantoms flee).
+    Hiss {
+        mob: u32,
+    },
+    /// A horse's rider tamed it.
+    Tamed {
+        mob: u32,
+    },
+    /// A horse throws its rider off.
+    Buck {
+        mob: u32,
+    },
+    /// `Entity.unRide`'s `ejectPassengers` before a move (a shulker's
+    /// teleport): whoever rides `mob` gets off where it stood, `from`.
+    EjectPassengers {
+        mob: u32,
+        from: Vec3,
+    },
+    /// A piglin's admiring is over: barter or keep the item.
+    FinishAdmiring {
+        mob: u32,
+    },
+    /// `IronGolem.doHurtTarget`: the hit, then, only when `hurtServer` let it
+    /// land, the target thrown up by `0.4f` scaled by
+    /// `max(0, 1 - KNOCKBACK_RESISTANCE)`.
+    IronGolemHit {
+        target: Who,
+        amount: f32,
+        source: Damage,
+    },
+    /// Damage the mob itself (snow golems melting).
+    HurtSelf {
+        mob: u32,
+        kind: DamageKind,
+        amount: f32,
+    },
+    /// Two villagers are close: swap gossip and share food and wares.
+    VillagerMeet {
+        mob: u32,
+        other: u32,
+    },
+    /// `Villager.customServerAiStep`: deliver the pending TRADE reputation
+    /// event for the actual player recorded by rewardTradeXp.
+    VillagerTrade {
+        mob: u32,
+        player: [i32; 4],
+    },
+    /// `AbstractVillager.getOffers` for a villager whose offers are not made
+    /// yet: the level rolls them (the brain has no trade data), so the
+    /// behaviour that asked reads them from the next tick on.
+    VillagerOffers {
+        mob: u32,
+    },
+    /// `Villager.restock` / `catchUpDemand`: refresh the trading player.
+    VillagerRestocked {
+        mob: u32,
+    },
+    /// Two villagers make a baby (`VillagerMakeLove.tryToGiveBirth`): the
+    /// parent has eaten and, with a bed for the child, rests; the partner
+    /// eats, and rests too if `child` holds the child's bed and type
+    /// (`None`: the biome's).
+    VillagerBirth {
+        parent: u32,
+        partner: u32,
+        child: Option<([i32; 3], Option<u8>)>,
+    },
+    /// `WorkAtComposter.useWorkstation`: a farmer at its composter makes
+    /// bread and composts seeds (the game applies it to the villager's
+    /// inventory and the block).
+    WorkAtComposter {
+        mob: u32,
+        pos: [i32; 3],
+    },
+    /// A villager asks whether enough neighbours want an iron golem.
+    GolemCheck {
+        mob: u32,
+        needed: usize,
+    },
+    /// A villager launches a firework rocket (celebrating a won raid).
+    Firework {
+        at: [f64; 3],
+        color: usize,
+        flight: u8,
+    },
+    /// A villager throws a hero's gift (a loot table) toward the player.
+    ThrowGift {
+        table: String,
+        from: [f64; 3],
+        to: [f64; 3],
+    },
+    /// A patrol leader hands its patrol target to a companion.
+    PatrolTarget {
+        mob: u32,
+        target: [i32; 3],
+    },
+    /// A raider is told to attack (`HoldGroundAttackGoal` shouting).
+    RaiderTarget {
+        mob: u32,
+        target: Who,
+        aggressive: bool,
+    },
+    /// Drop the loot of a gift table (chicken eggs, sniffer seeds) with the
+    /// mob as `this` (`LivingEntity.dropFromGiftLootTable`).
+    GiftLoot {
+        mob: u32,
+        table: &'static str,
+        at: [f64; 3],
+    },
+    /// `Chicken.aiStep`: the egg timer ran out. The `chicken_lay` gift table
+    /// drops at the chicken; only when it dropped something does the egg sound
+    /// play (at `pitch`) and `entity_place` reach listeners.
+    LayEgg {
+        mob: u32,
+        at: [f64; 3],
+        pitch: f32,
+    },
+    /// `Armadillo.customServerAiStep`: the armadillo sheds a scute.
+    ShedScute {
+        mob: u32,
+        at: [f64; 3],
+        pitch: f32,
+    },
+    /// A lead snaps or loses its holder: the lead drops when asked, at `at` or else the mob.
+    LeashBreak {
+        mob: u32,
+        drop: bool,
+        sound: bool,
+        at: Option<[f64; 3]>,
+    },
+    /// `Leashable.whenLeashedTo`: the holder is told a quad-leashed mob hangs
+    /// on it (`HappyGhast.notifyLeashHolder`).
+    NotifyLeashHolder {
+        holder: u32,
+    },
+    /// A zombie villager's cure is complete: the game turns it back into a villager.
+    CureZombieVillager {
+        mob: u32,
+    },
+    /// A vibration travelling to a listener (`VibrationParticleOption`).
+    Vibration {
+        from: [f64; 3],
+        to: [f64; 3],
+        ticks: i32,
+        /// `VibrationSystem.User.getPositionSource`: the listener itself.
+        source: horizon_protocol::entity_data::PositionSource,
+    },
+    /// The crumbs of the block under a digging or emerging warden.
+    DigParticles {
+        at: [f64; 3],
+    },
+    /// `Zombie.hurtServer`: a zombie hurt with a target in sight (its own,
+    /// else the attacker) may call a reinforcement against it on Hard.
+    Reinforcements {
+        mob: u32,
+        target: Who,
+    },
+    /// `LevelEvent.PARTICLES_DESTROY_BLOCK` (2001) at `pos` for the block at
+    /// `block`: a turtle's digging.
+    BlockBreakEffect {
+        pos: [i32; 3],
+        block: [i32; 3],
+    },
+    /// `Warden.applyDarknessAround`: darkness for survival players nearby.
+    Darkness {
+        at: [f64; 3],
+        radius: f64,
+    },
+    /// A creaking bound to the heart at `home` was hurt (`creakingHurt` when a player did it).
+    CreakingHurt {
+        home: [i32; 3],
+        by_player: bool,
+        id: u32,
+    },
+    /// `Creaking.tearDown`: crumbling particles around the creaking.
+    CreakingTearDown {
+        center: [f64; 3],
+        spread: [f64; 3],
+    },
+    /// `Panda.afterSneeze`: the grown pandas within 10 blocks start.
+    PandaSneezed {
+        mob: u32,
+    },
+    /// `Entity.propagateFallToPassengers`: the mob landed and what rides it
+    /// (a player or a mob) takes `causeFallDamage` of the same fall.
+    FallToPassengers {
+        mob: u32,
+        distance: f64,
+        modifier: f32,
+    },
+}
+impl MobEvent {
+    /// Whether this event acts on the `Who::Player` seen by the mob.
+    pub fn targets_player(&self) -> bool {
+        match self {
+            Self::AttackPlayer(..)
+            | Self::CubeHurtPlayer { .. }
+            | Self::AttackPlayerWithEffect { .. }
+            | Self::DamagePlayer { .. }
+            | Self::EffectPlayer { .. }
+            | Self::AxolotlSupportPlayer { .. }
+            | Self::ParrotToShoulder { .. } => true,
+            Self::SonicBoom { target, .. }
+            | Self::Push { target, .. }
+            | Self::Knockback { target, .. }
+            | Self::Sting { target, .. }
+            | Self::StabDismount { target }
+            | Self::Ignite(target, _)
+            | Self::ZombieIgnite(target, _)
+            | Self::IronGolemHit { target, .. } => *target == Who::Player,
+            Self::Projectile(projectile) => matches!(
+                &projectile.kind,
+                crate::projectiles::ProjectileKind::ShulkerBullet {
+                    target: Some(Who::Player),
+                    ..
+                }
+            ),
+            _ => false,
+        }
+    }
+}
 #[cfg(test)]
 mod pending_push_tests {
     use super::PendingPushes;

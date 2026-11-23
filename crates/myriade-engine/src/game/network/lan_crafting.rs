@@ -7,13 +7,10 @@
 use super::{Game, transactions::decision::MenuOwner};
 use myriade_engine::lan::recipes;
 use myriade_engine::{
-    containers::{BlockEntity, ModMenuType},
+    containers::BlockEntity,
     furnace::FurnaceCooking,
     items::ItemStack,
-    lan::{
-        guest::Guest,
-        menu::{ModCraft, Slots, linked_slot_count, read_links, write_links},
-    },
+    lan::{guest::Guest, menu::Slots},
     menu::{
         Env, Input, Kind, Menu,
         place::{PostPlace, TransferCheck, TransferError},
@@ -43,14 +40,10 @@ pub(super) struct GuestCrafting {
     pub(super) machine: MenuOwner<Option<(i32, Box<Menu>)>>,
 }
 
-/// The most containers `native_recipe_sources` adds to one placement.
-const MAX_RECIPE_SOURCES: usize = 64;
 /// `GuestPlay::recipe_checks`: what one viewer check adds, and from what the
 /// next goes unanswered: ten at once, then one a second.
 const RECIPE_CHECK_COST: u32 = 20;
 const RECIPE_CHECK_LIMIT: u32 = 200;
-/// The most containers `native_menu_links` links one menu's slots to.
-const MAX_MENU_LINKS: usize = 64;
 
 /// ServerboundContainerClickPacket's input.
 pub(super) fn input(id: i32) -> Input {
@@ -85,12 +78,9 @@ pub(super) fn load_player(menu: &mut Menu, g: &Guest) {
 }
 
 /// The vanilla menu engine's kind for a guest's menu over block entity `entity`, with the
-/// container's slots: a furnace's, a brewing stand's, a crafter's, or a content mod's menu type
-/// with its slots' rules. None for the others, whose clicks the hub runs.
-pub(super) fn machine_menu(
-    entity: &BlockEntity,
-    mod_type: Option<&'static myriade_engine::containers::ModMenuType>,
-) -> Option<(Kind, Vec<Option<ItemStack>>)> {
+/// container's slots: a furnace's, a brewing stand's or a crafter's. None for the others, whose
+/// clicks the hub runs.
+pub(super) fn machine_menu(entity: &BlockEntity) -> Option<(Kind, Vec<Option<ItemStack>>)> {
     Some(match entity {
         BlockEntity::Furnace(f) => {
             let recipe = match f.kind.recipe_type() {
@@ -102,12 +92,6 @@ pub(super) fn machine_menu(
         }
         BlockEntity::Brewing(b) => (Kind::Brewing, b.items.to_vec()),
         BlockEntity::Crafter(c) => (Kind::CrafterBlock, c.items.to_vec()),
-        BlockEntity::Mod(m) => {
-            let t = mod_type?;
-            let mut items = m.items.clone();
-            items.resize(t.slots, None);
-            (Kind::Mod(t), items)
-        }
         _ => return None,
     })
 }
@@ -162,9 +146,25 @@ impl Game<'_> {
             limited_crafting: self.limited_crafting(),
             can_equip: None,
             known_recipes: Some(&self.level.recipe_book),
-            slot_rules: Some(self),
+            slot_rules: None,
         }
     }
+
+    /// `Item.getCraftingRemainingItem` of the stack: the item left when one of its items is
+    /// used up; None when it leaves nothing.
+    pub(in crate::game) fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
+        myriade_engine::crafting::CraftingRemainder::crafting_remainder(self.items(), stack)
+            .filter(|value| value.count > 0)
+    }
+}
+
+impl myriade_engine::crafting::CraftingRemainder for Game<'_> {
+    fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
+        Game::crafting_remainder(self, stack)
+    }
+}
+
+impl Game<'_> {
 
     /// Runs `op` on the guest's menu with their inventory copied in and back.
     pub(super) fn guest_menu_op<R>(
@@ -422,14 +422,13 @@ impl Game<'_> {
         let Some(gi) = host.hub.guests.iter().position(|g| g.conn == conn) else {
             return false;
         };
-        let Some((pos, mod_type, hidden, menu_id)) = host.hub.guests[gi]
+        let Some((pos, hidden, menu_id)) = host.hub.guests[gi]
             .menu
             .as_ref()
             .filter(|m| p.container != 0 && m.window == p.container)
             .and_then(|m| match m.slots {
                 Slots::Block(pos) => Some((
                     pos,
-                    m.mod_type,
                     m.hidden.clone(),
                     host.hub.registry_name("minecraft:menu", m.kind)?.to_owned(),
                 )),
@@ -438,38 +437,13 @@ impl Game<'_> {
         else {
             return false;
         };
-        // A mod menu type's linked slots show their containers' slots
-        // (`native_menu_links`); those with nothing behind them are left out
-        // of the click, as a hidden slot is.
-        let linked = mod_type.and_then(|t| t.links).map(|l| {
-            let links = host.hub.guests[gi]
-                .menu
-                .as_ref()
-                .map(|m| m.links.clone())
-                .unwrap_or_default();
-            (l, links)
-        });
-        let mut hidden = hidden;
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links);
-            hidden.extend(l.slots().skip(bound));
-        }
-        let Some((kind, mut items)) = self
+        let Some((kind, items)) = self
             .world
             .block_entities
             .get(&pos)
-            .and_then(|entity| machine_menu(entity, mod_type))
+            .and_then(machine_menu)
         else {
             return false;
-        };
-        if let Some((l, links)) = &linked {
-            for (k, stack) in l.slots().zip(
-                read_links(&self.world, links, l.count)
-                    .into_iter()
-                    .chain(std::iter::repeat(None)),
-            ) {
-                items[k] = stack;
-            }
         };
         let furnace = matches!(kind, Kind::Furnace(_));
         // CrafterBlockEntity.containerData: the disabled slots, then triggered.
@@ -517,7 +491,6 @@ impl Game<'_> {
         }) else {
             return true;
         };
-        let mut linked_after = Vec::new();
         match self.world.block_entities.get_mut(&pos) {
             Some(BlockEntity::Furnace(f)) => {
                 for k in 0..3 {
@@ -530,25 +503,6 @@ impl Game<'_> {
             Some(BlockEntity::Brewing(b)) => {
                 for k in 0..5 {
                     b.items[k] = menu.slot(k).cloned();
-                }
-            }
-            // The mod's items past its menu's slots stay as they were.
-            Some(BlockEntity::Mod(m)) => {
-                let n = items.len();
-                if m.items.len() < n {
-                    m.items.resize(n, None);
-                }
-                let mut after = menu.container_items();
-                // Linked slots go back to their containers, never into the
-                // block entity.
-                if let Some((l, _)) = &linked {
-                    linked_after = l
-                        .slots()
-                        .filter_map(|k| after.get_mut(k).map(Option::take))
-                        .collect();
-                }
-                for (slot, stack) in m.items.iter_mut().zip(after) {
-                    *slot = stack;
                 }
             }
             // CrafterBlockEntity.setItem: filling a disabled slot enables it.
@@ -574,13 +528,6 @@ impl Game<'_> {
         // so the chunk is saved and comparators read the block again.
         if changed.iter().any(|&s| s < items.len()) {
             self.container_changed(pos);
-        }
-        if let Some((l, links)) = &linked {
-            let bound = linked_slot_count(&self.world, links).min(l.count);
-            linked_after.truncate(bound);
-            for at in write_links(&mut self.world, links, linked_after) {
-                self.container_changed(at);
-            }
         }
         if let Some(host) = self.lan.as_mut() {
             *host.menus.entry(conn).or_default().crafting.machine = Some((p.container, menu));
@@ -962,18 +909,11 @@ impl Game<'_> {
         let host = self.lan.as_mut()?;
         *host.menus.entry(conn).or_default().crafting.table = Some((window, 0, menu, pos));
         self.lan_send_table_content(conn);
-        self.player_menu_opening(conn);
         Some(window)
     }
 
-    /// A click on the guest's crafting table window; false for other windows. The table is out
-    /// of the guest's menus while the mods are asked about its result, so it is busy: a hook
-    /// can't open a station in its place.
+    /// A click on the guest's crafting table window; false for other windows.
     pub(super) fn lan_crafting_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
-        self.with_station_busy(conn, |game| game.lan_crafting_click_busy(conn, p))
-    }
-
-    fn lan_crafting_click_busy(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
         let Some(host) = self.lan.as_mut() else {
             return false;
         };
@@ -998,9 +938,7 @@ impl Game<'_> {
         };
         if let Some(gi) = gi
             && !host.hub.guests[gi].spectator()
-            && self
-                .portable_station_valid(&host.hub.guests[gi], window)
-                .unwrap_or_else(|| self.lan_table_valid(&host.hub.guests[gi], pos))
+            && self.lan_table_valid(&host.hub.guests[gi], pos)
         {
             let Some(mut changed) = self.guest_menu_op(gi, &mut menu, |menu, env| {
                 let before: Vec<_> = (0..menu.slot_count())
@@ -1070,12 +1008,9 @@ impl Game<'_> {
             .menus
             .iter()
             .filter_map(|(c, p)| p.crafting.table.as_ref().map(|t| (*c, t.0, t.3)))
-            .filter(|&(c, window, pos)| {
+            .filter(|&(c, _, pos)| {
                 host.hub.guests.iter().find(|g| g.conn == c).is_some_and(|g| {
-                    host.hub.here(g)
-                        && !self
-                            .portable_station_valid(g, window)
-                            .unwrap_or_else(|| self.lan_table_valid(g, pos))
+                    host.hub.here(g) && !self.lan_table_valid(g, pos)
                 })
             })
             .map(|(c, window, _)| (c, window))
@@ -1158,7 +1093,6 @@ impl Game<'_> {
             {
                 self.guest_carried_back(gi);
             }
-            self.player_menu_closing(conn);
         }
         closed
     }
@@ -1188,18 +1122,7 @@ impl Game<'_> {
                 .table
                 .take_if(|(w, ..)| window.is_none_or(|window| *w == window))
             {
-                Some((table, _, menu, _)) => {
-                    let mut grid: Vec<Option<ItemStack>> =
-                        (1..10).map(|s| menu.slot(s).cloned()).collect();
-                    // A mod's table with no block: the mods may keep its grid first, unless
-                    // the player left.
-                    if matches!(removal, MenuRemoval::Live) {
-                        self.portable_station_closing(conn, table, "minecraft:crafting", &mut grid);
-                    } else {
-                        self.portable_station_closed(conn, table);
-                    }
-                    grid.into_iter().flatten().collect()
-                }
+                Some((_, _, menu, _)) => (1..10).filter_map(|s| menu.slot(s).cloned()).collect(),
                 None => return false,
             }
         };

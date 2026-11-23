@@ -1,6 +1,5 @@
 //! The ECS world's entities by chunk: their NBT as a chunk saves it, and the chunk's load and unload as events of the world.
 //! Nothing here scans the entities: a chunk is asked by its key, and the world answers from its index.
-use crate::entity_nbt;
 use crate::game::Game;
 use crate::mobs::Who;
 use horizon_core::nbt::{Compound, Tag};
@@ -16,7 +15,6 @@ impl Game<'_> {
         self.save
             .load_entities(cx, cz)
             .into_iter()
-            .filter(|t| !entity_nbt::kind(t).is_some_and(|k| crate::game::general::quarantine_store_kind(&k)))
             .filter_map(|t| match t {
                 Tag::Compound(c) => Some(c),
                 _ => None,

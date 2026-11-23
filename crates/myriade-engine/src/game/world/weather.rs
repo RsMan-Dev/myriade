@@ -40,7 +40,10 @@ impl Game<'_> {
                 0.0,
             );
         }
-        self.sky_darken_in(&self.world, self.dim)
+        // Extra dimensions (data packs) take the overworld's environment: none has its own yet.
+        let (rain, thunder) = self.weather_levels(1.0);
+        let day_time = self.command_clock_time(&self.level_clock_name(self.dim));
+        myriade_engine::environment::sky_darken(self.res.environment(), day_time, rain, thunder)
     }
 
     /// Whether precipitation at a column is snow (Biome.coldEnoughToSnow:

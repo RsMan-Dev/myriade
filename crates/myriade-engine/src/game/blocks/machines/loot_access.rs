@@ -4,7 +4,7 @@ use super::*;
 impl Game<'_> {
     pub(super) fn unpack_inventory_slot(&mut self, view: &View, slot: usize) {
         if let Some((pos, _)) = view.locate(slot) {
-            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);
+            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), false);
         }
     }
     /// One pending lookup per visited half, without allocating a visited set.
@@ -17,7 +17,7 @@ impl Game<'_> {
         if let Some((pos, _)) = view.locate(slot)
             && prepared.replace(pos) != Some(pos)
         {
-            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), None);
+            self.unpack_loot(super::super::container_loot::LootTarget::Block(pos), false);
         }
     }
     /// `CompoundContainer.isEmpty` visits the other half only if needed.

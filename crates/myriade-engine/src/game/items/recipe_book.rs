@@ -50,10 +50,6 @@ impl Game<'_> {
         if self.station.is_some() {
             return None;
         }
-        // Explicitly assigned mod panels use their own identity and flags.
-        if self.native_screen_height().is_some() {
-            return None;
-        }
         match self.container_kind() {
             // The inventory's grid, or a crafting table's (`CraftingScreen`);
             // a server's other menus without a container have no book.
@@ -123,30 +119,20 @@ impl Game<'_> {
     /// the server's recipes arrived, or a new session began.
     pub(super) fn forget_book(&mut self) {
         self.recipe_ui.book = None;
-        self.recipe_tables.books = None;
-        self.invalidate_mod_book_placement_catalogues();
     }
     fn ensure_book(&mut self) {
         if self.recipe_ui.book.is_none() {
             let mut book = Book::build(self.recipes(), self.items());
-            book.set_display_ids(self.display_index());
+            book.set_display_ids(&self.stations().recipe_index);
             self.recipe_ui.book = Some(book);
         }
     }
-    /// Whether the open screen takes `native_place_recipe`: a crafting grid's
-    /// book (the inventory's or a crafting table's), or a mod menu type's
-    /// crafting grid.
+    /// Whether the open screen takes a book click: a crafting grid's book (the
+    /// inventory's or a crafting table's).
     pub(super) fn mod_recipe_screen(&self) -> bool {
-        (self.active_book() == Some(BookType::Crafting) || self.mod_crafting_open())
-            && !self.spectator()
+        self.active_book() == Some(BookType::Crafting) && !self.spectator()
     }
-    /// Whether the open menu is a mod menu type with a crafting grid.
-    fn mod_crafting_open(&self) -> bool {
-        self.local_mod_menu()
-            .and_then(|(menu, _)| myriade_engine::containers::mod_menu_type(menu))
-            .is_some_and(|t| t.crafting.is_some())
-    }
-    /// `native_place_recipe`: the book's click on the recipe with this display
+    /// The book's click on the recipe with this display
     /// id, refused as `handlePlaceRecipe` refuses it (no crafting screen,
     /// not in the player's book; an impossible one in `place_recipe`).
     pub(super) fn mod_place_recipe(&mut self, display_id: i32, all: bool) {
@@ -165,12 +151,6 @@ impl Game<'_> {
         self.recipe_ui.ghost.clear();
         self.place_book_recipe(BookType::Crafting, index, all);
     }
-    /// The content mod menu type and block of the menu this player has open when the game is
-    /// its own server (a solo world, a LAN host's own player): the block container's menu type.
-    fn local_mod_menu(&self) -> Option<(&'static str, [i32; 3])> {
-        let k = self.container?;
-        Some((self.mod_menu_at(k)?, [k.0, k.1, k.2]))
-    }
     /// The display ids of `recipe_id` that the server sent and this book
     /// numbers the same way (`Book::confirmed_ids`): the entries
     /// `transfer_viewer_recipe` and `transfer_recipe_check` find. A server
@@ -186,7 +166,7 @@ impl Game<'_> {
     /// A viewer's transfer of one set of ingredients.
     pub(super) fn transfer_viewer_recipe(&mut self, display_id: i32) {
         if !self.mod_recipe_screen()
-            || (self.creative && self.craft_size != 3 && !self.mod_crafting_open())
+            || (self.creative && self.craft_size != 3)
         {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;

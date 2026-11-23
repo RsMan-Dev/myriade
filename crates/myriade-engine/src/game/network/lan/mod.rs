@@ -5,7 +5,6 @@
 mod event_timings;
 #[cfg(test)]
 mod level_event_targets;
-mod mob_metadata;
 mod residency;
 pub(super) mod sync;
 mod viewed_areas;
@@ -14,7 +13,6 @@ use super::{
     Game,
     shield::OFFHAND_SLOT,
 };
-use crate::game::api_values::{TryIntoApi, TryIntoEngine};
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use myriade_engine::{
     Result,
@@ -109,16 +107,7 @@ impl Game<'_> {
         if std::mem::replace(&mut play.left_game, true) {
             return;
         }
-        let award = {
-            play.stats.custom("leave_game", 1);
-            return;
-        };
-        if let Some((ty, key, n)) = award
-            && let Some(play) = self.lan.as_mut().and_then(|host| host.play.get_mut(&conn))
-        {
-            play.stats
-                .add(ty.strip_prefix("minecraft:").unwrap_or(&ty), &key, n);
-        }
+        play.stats.custom("leave_game", 1);
     }
 
     /// `PlayerList.removeAll`: every player who joined leaves with the world.
@@ -162,7 +151,7 @@ pub(super) fn baby_index(species: Species) -> Option<u8> {
     match species {
         S::Piglin => Some(17),
         s if myriade_engine::mobs::finalize::ageable(s)
-            || myriade_engine::mobs::doors::is_zombie(s)
+            || matches!(s, S::Zombie | S::Husk | S::Drowned | S::ZombieVillager)
             || s == S::Zoglin =>
         {
             Some(16)
@@ -297,7 +286,6 @@ impl Game<'_> {
         let lan = Lan::start_with(sync.clone(), net)?;
         let mut hub = Hub::new(lan, sync, encoder, config, self.loop_context.clone());
         self.bind_guest_residency(&mut hub);
-        self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
         hub.flat_world = self.world_flat;
         hub.debug_world = self.world_debug;
@@ -332,7 +320,6 @@ impl Game<'_> {
 
     /// Closes the LAN: the guests are saved and sent away.
     pub(super) fn lan_close(&mut self, announce: bool) {
-        self.native_players_leaving();
         if self.lan.is_none() {
             return;
         }
@@ -432,8 +419,6 @@ impl Game<'_> {
             } else {
                 self.player_autosaves.save_after(guest, &self.world_root);
             }
-            let directory = playerdata::directory(&self.world_root);
-            self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
         }
         if let Some(host) = self.lan.as_ref() {
             self.save_guest_records(host, guest);
@@ -712,16 +697,11 @@ impl Game<'_> {
             .iter()
             .position(|g| g.uuid == uuid && g.placed)
         {
-            let live = Some(self.player_state.attachments.clone());
             // The warden spawn tracker is saved with the player (#16696).
             let warden = self.warden_tracker_tag();
             host.hub.guests.update(i, |g| {
                 let g = playerdata::with_warden(g, warden);
-                let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
                 playerdata::store(g, &mut self.level, vehicle);
-                if let Some(held) = held {
-                    g.attachments = held;
-                }
             });
             let g = &host.hub.guests[i];
             self.save_guest_records(&host, g);
@@ -968,31 +948,6 @@ impl Game<'_> {
                     host.hub.broadcast(&C::PlayerInfoUpdate(*update));
                 }
                 HostEvent::Joined(conn) => {
-                    // The mods may refuse the login before the player is placed.
-                    if let Some((uuid, name)) = self
-                        .lan
-                        .as_ref()
-                        .and_then(|host| host.hub.guest(conn))
-                        .map(|g| (g.uuid, g.name.clone()))
-                    {
-                        let mut cancel = false;
-                        let mut reason = None;
-                        self.native_player_login(uuid, &name, &mut cancel, &mut reason);
-                        if cancel {
-                            let reason = match reason {
-                                Some(text) => {
-                                    myriade_engine::lan::data::component_nbt(&text.component())
-                                }
-                                None => horizon_protocol::text::translatable(
-                                    "multiplayer.disconnect.generic",
-                                    &[],
-                                ),
-                            };
-                            let host = self.lan.as_mut()?;
-                            host.hub.kick(conn, reason);
-                            continue;
-                        }
-                    }
                     let host = self.lan.as_mut()?;
                     // PlayerList.placeNewPlayer: the name the user cache knew,
                     // before it learns this one, for a renamed player's join line.
@@ -1063,22 +1018,9 @@ impl Game<'_> {
                                 .with_color(myriade_engine::text::YELLOW),
                         );
                     }
-                    if let Some((uuid, name)) = self
-                        .lan
-                        .as_ref()
-                        .and_then(|host| host.hub.guest(conn))
-                        .filter(|g| g.placed)
-                        .map(|g| (g.uuid, g.name.clone()))
-                    {
-                        self.announce_login(uuid, &name);
-                    }
                 }
                 HostEvent::Left(mut guest) => {
                     if !guest.participates_online() {
-                        let mut host = self.lan.take()?;
-                        self.cleanup_fake_player(&mut host, &guest);
-                        self.lan = Some(host);
-                        self.native_guest_left(&guest);
                         continue;
                     }
                     // The menu they had open closes, in the level they were in
@@ -1088,13 +1030,9 @@ impl Game<'_> {
                         let theirs = super::Dim::from_id(&guest.dimension);
                         if self.enter_level(theirs).is_ok() {
                             let conn = guest.conn;
-                            let (uuid, name) = (guest.uuid, guest.name.clone());
-                            let reason = guest.left_reason.clone();
                             let host = self.lan.as_mut()?;
                             let at = host.hub.guests.len();
                             host.hub.guests.push(*guest);
-                            // Still placed, with their state in: a mod can act on them first.
-                            self.announce_player_leaving(conn, uuid, &name, &reason);
                             self.guest_disconnected(conn);
                             let Some(host) = self.lan.as_mut() else {
                                 unreachable!("LanHost dropped inside a tick; closes are deferred")
@@ -1116,84 +1054,15 @@ impl Game<'_> {
                     let host = self.lan.as_mut()?;
                     host.play.remove(&guest.conn);
                     host.forget_menus(guest.conn);
-                    self.clear_guest_book_connection(guest.conn);
-                    self.native_guest_left(&guest);
                 }
-                HostEvent::Flight { conn, flying } => {
-                    self.lan_flight_toggled(conn, flying);
-                }
-                HostEvent::Sneak { conn, sneaking } => {
-                    if !false {
-                        continue;
-                    }
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-                        let (uuid, name) = (g.uuid, g.name.clone());
-                        self.as_guest(conn, |game| {
-                            game.native_player_toggle_sneak(uuid, &name, sneaking);
-                        });
-                    }
-                }
-                HostEvent::Kicked {
-                    conn,
-                    player,
-                    name,
-                    reason,
-                } => {
-                    if !false {
-                        continue;
-                    }
-                    // The same poll can have removed the guest (their `Left`): the mods hear the
-                    // kick anyway, without the guest's state swapped in.
-                    if self
-                        .lan
-                        .as_ref()
-                        .is_some_and(|host| host.hub.guest(conn).is_some())
-                    {
-                        self.as_guest(conn, |game| {
-                            game.native_player_kicked(player, &name, &reason);
-                        });
-                    } else {
-                        self.native_player_kicked(player, &name, &reason);
-                    }
-                }
-                HostEvent::Pong { conn, id } => self.announce_player_pong(conn, id),
-                HostEvent::Input { conn, flags } => {
-                    if !false {
-                        continue;
-                    }
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-                        let (uuid, name) = (g.uuid, g.name.clone());
-                        self.as_guest(conn, |game| {
-                            game.native_player_input(uuid, &name, flags);
-                        });
-                    }
-                }
-                HostEvent::ClientInformation(conn, old, new) => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-                        let (uuid, entity_id, name) = (g.uuid, g.entity_id, g.name.clone());
-                        // The packet's raw ids become the enums once, here.
-                        let old = client_info(&old);
-                        let new = client_info(&new);
-                        self.native_client_information_updated(uuid, entity_id, &name, &old, &new);
-                    }
-                }
-                HostEvent::PlayerLoaded(conn) => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-                        let (uuid, name) = (g.uuid, g.name.clone());
-                        self.native_player_client_loaded_world(uuid, &name);
-                    }
-                }
-                HostEvent::RecipeBookSettings {
-                    conn,
-                    book,
-                    open,
-                    filtering,
-                } => {
-                    if let Some(g) = self.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
-                        let (uuid, name) = (g.uuid, g.name.clone());
-                        self.notify_vanilla_book_settings(uuid, &name, book, open, filtering);
-                    }
-                }
+                HostEvent::Flight { .. } => {}
+                HostEvent::Sneak { .. }
+                | HostEvent::Kicked { .. }
+                | HostEvent::Pong { .. }
+                | HostEvent::Input { .. }
+                | HostEvent::ClientInformation(..)
+                | HostEvent::PlayerLoaded(_)
+                | HostEvent::RecipeBookSettings { .. } => {}
                 HostEvent::Packet(conn, packet) => {
                     self.lan_guest_packet(conn, *packet);
                     if self
@@ -1224,12 +1093,9 @@ impl Game<'_> {
     /// sees the support (arismoko/horizon#4510). `tick_lan` then syncs the level; a paused
     /// tick that never calls this still drains inside `tick_lan`.
     pub(in crate::game) fn tick_lan_packets(&mut self) {
-        self.answer_status_pings();
         if self.level_pass.packets_drained {
             return;
         }
-        // The mods hear the handshakes the connection threads wait on before the tick's joins.
-        self.answer_handshakes();
         let Some(mut host) = self.lan.take() else {
             return;
         };
@@ -1267,7 +1133,6 @@ impl Game<'_> {
                     .rules
                     .bool_at(myriade_engine::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
-            Self::sync_hub_mod_flags(&mut host.hub);
             let pass = self.level_pass;
             let mut events = if pass.first {
                 myriade_engine::spans::time("lan_poll", || host.hub.poll(&mut ctx))
@@ -1292,16 +1157,6 @@ impl Game<'_> {
                 .lan
                 .take()
                 .expect("the hub is back after the quiet commands");
-        }
-        if !host.hub.native_advancement_grants.is_empty() {
-            self.lan = Some(host);
-            myriade_engine::spans::time("lan_advancement_grants", || {
-                self.run_native_advancement_grants()
-            });
-            host = self
-                .lan
-                .take()
-                .expect("the hub is back after the advancement grants");
         }
         host.states = entities;
         self.level_pass.packets_drained = true;
@@ -1373,19 +1228,9 @@ impl Game<'_> {
     /// A callback can spawn another entity, whose pairing is part of the same
     /// operation, as a nested ChunkMap.addEntity would be in vanilla.
     fn lan_flush_tracking(&mut self, mut host: LanHost) -> LanHost {
-        loop {
-            self.lan_pair_joined(&mut host);
-            host.hub.collect_tracking();
-            if host.hub.native_tracking.is_empty() {
-                return host;
-            }
-            self.lan = Some(host);
-            self.run_native_tracking();
-            host = self
-                .lan
-                .take()
-                .expect("the hub is back after the tracking events");
-        }
+        self.lan_pair_joined(&mut host);
+        host.hub.collect_tracking();
+        host
     }
 
     /// Pair late arrivals before a sound flush as well as at the end of the
@@ -1421,7 +1266,6 @@ impl Game<'_> {
         }
         // What the tick sends a guest goes to its connection at the end.
         let holding = lan::Holding::start();
-        self.register_native_commands();
         // The host's own commands' (and command blocks') players moving
         // to another level, and their broadcastToAdmins lines.
         if !self.level_teleports.is_empty() {
@@ -1583,7 +1427,6 @@ impl Game<'_> {
                 // (`tick_server`): the network is read once, before the first.
                 // Player packets may already have been drained before
                 // scheduled block ticks (`tick_lan_packets`).
-                Self::sync_hub_mod_flags(&mut host.hub);
                 let pass = self.level_pass;
                 // Even paused worlds completed their ordered input segments at
                 // entry, before world sync/physics or any scheduled work.
@@ -1615,22 +1458,8 @@ impl Game<'_> {
         if self.lan.as_ref().is_some_and(|host| !host.quiet.is_empty()) {
             self.run_quiet_commands();
         }
-        if self
-            .lan
-            .as_ref()
-            .is_some_and(|host| !host.hub.native_advancement_grants.is_empty())
-        {
-            self.run_native_advancement_grants();
-        }
         if let Some(host) = self.lan.as_mut() {
             host.hub.collect_tracking();
-        }
-        if self
-            .lan
-            .as_ref()
-            .is_some_and(|host| !host.hub.native_tracking.is_empty())
-        {
-            self.run_native_tracking();
         }
         // A blast from a guest's attack, and a mace's wind burst.
         self.flush_lan_explosions();
@@ -1645,7 +1474,6 @@ impl Game<'_> {
         self.tick_server_travel();
         self.lan_swings();
         self.lan_update_streaming();
-        self.lan_guest_poses();
         self.lan_update_waypoints();
         self.lan_sync_scoreboard();
         self.lan_sync_border();
@@ -1656,7 +1484,6 @@ impl Game<'_> {
         if let Some(host) = self.lan.as_ref() {
             lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
         }
-        self.flush_native_sounds();
         // `tick_server` resets the pass after all dimensions; outside a pass
         // the packet gate is per-tick.
         if self.level_pass.running.is_none() {
@@ -1696,8 +1523,6 @@ impl Game<'_> {
         }) else {
             return;
         };
-        self.initialize_server_player(uuid, conn);
-        self.native_player_load_from_file(uuid, &name, &playerdata::directory(&root));
         let Some(host) = self.lan.as_mut() else {
             return;
         };
@@ -1763,8 +1588,6 @@ impl Game<'_> {
             return;
         };
         self.load_guest_records(conn);
-        // Collect the recipient's recipe types and filter their command tree.
-        self.prepare_recipe_join(conn);
         // A level that will not open, its generator gone with a mod, is one the
         // world no longer has: left in it, the player would fail the next tick.
         if elsewhere && let Err(e) = self.enter_level(level) {
@@ -1811,7 +1634,6 @@ impl Game<'_> {
             return;
         };
         host.hub.place_new_player(conn, &mut ctx);
-        self.bind_player_attachments(conn, false);
         if elsewhere && let Err(e) = self.enter_level(back) {
             log::error!("could not reopen {}: {e}", back.id());
         }
@@ -1886,12 +1708,6 @@ impl Game<'_> {
             EquipmentSlot::Body => 65,
             EquipmentSlot::Saddle => 68,
         };
-        // The mods hear a server player's break (a creative player's gear takes no wear).
-        if !self.creative
-            && let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_destroy_item(uuid, &name, &stack.item, equipment_slot_name(slot));
-        }
         let Some(at) = self
             .player
             .as_ref()
@@ -2028,32 +1844,6 @@ impl Game<'_> {
             .collect();
     }
 
-    /// The bed at `head` as a sleeping model lies in it (`ints[1]`,
-    /// `villager::sleep_pose`): its `facing`.
-    /// `Entity.setPose` for the server's players: the mods hear each placed
-    /// guest's change of pose. Nothing is kept while no mod listens.
-    fn lan_guest_poses(&mut self) {
-        let Some(host) = self.lan.as_mut() else {
-            return;
-        };
-        if !false {
-            host.poses.clear();
-            return;
-        }
-        host.poses
-            .retain(|conn, _| host.hub.guest(*conn).is_some_and(|g| g.placed));
-        let mut changed = Vec::new();
-        for g in host.hub.guests.iter().filter(|g| g.placed) {
-            let to = g.pose();
-            let from = host.poses.insert(g.conn, to).unwrap_or_default();
-            if from != to {
-                changed.push((g.uuid, g.name.clone(), from, to));
-            }
-        }
-        for (uuid, name, from, to) in changed {
-            self.native_entity_pose_change(uuid, &name, from.name(), to.name());
-        }
-    }
 
 }
 

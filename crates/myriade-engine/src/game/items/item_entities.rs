@@ -37,18 +37,15 @@ macro_rules! item_refuses {
 
 impl Game<'_> {
     pub(super) fn tick_items(&mut self) {
-        let mut round = self.item_update_round();
-        self.tick_dropped_items(&mut round);
+        self.tick_dropped_items();
         horizon_threads::work::clear_work();
-        self.drain_entity_inside();
-        self.native_tick_post_batch(round);
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
     pub(super) fn joined_during_entity_pass(&self, id: u32) -> bool {
         id > self.ticked_entities_through || self.contact_drops.contains(&id)
     }
-    pub(super) fn tick_dropped_items(&mut self, _round: &mut native_ticks::TickRound) {
+    pub(super) fn tick_dropped_items(&mut self) {
         // The stacks tick, merge and expire in the ECS (P's `item`): the host only lets the player take those in reach, by position.
         if self.ecs.is_active()
             && let Some(p) = self.player.as_ref().filter(|p| !p.health.dead_or_dying() && !self.spectator())
@@ -118,7 +115,6 @@ impl Game<'_> {
             velocity = Vec3::new(-velocity.x, -velocity.y, -velocity.z);
         }
         self.ecs_orb_moving(value, [p.x, p.y, p.z], [velocity.x, velocity.y, velocity.z]);
-        self.native_joins_flush(false, 0);
     }
     /// The player's pickups of orbs: the ECS moves and merges them.
     pub(in crate::game) fn tick_experience(&mut self) {
@@ -139,7 +135,7 @@ impl Game<'_> {
     /// `at` (the eyes less 0.3): slots 0..36, armor feet to head (36..39),
     /// the off hand (40), each thrown in a random direction. The mods hear
     /// the drops (`native_living_drops`) before they join the level.
-    pub(super) fn drop_inventory(&mut self, at: [f64; 3], dying: &creatures::DyingDrops<'_>) {
+    pub(super) fn drop_inventory(&mut self, at: [f64; 3], _dying: &creatures::DyingDrops<'_>) {
         let mut stacks: Vec<ItemStack> = Vec::new();
         if !self
             .session
@@ -155,7 +151,7 @@ impl Game<'_> {
         }
         let stacks = stacks.into_iter().map(|stack| (stack, at, 0)).collect();
         let mut random = random_source::entity();
-        self.drop_death_items(dying, stacks, 40, |game| {
+        self.drop_death_items(stacks, 40, |game| {
             Some(myriade_engine::entities::drop_motion(
                 &mut random,
                 game.yaw,
@@ -274,9 +270,6 @@ impl Game<'_> {
             return false;
         }
         let spectator = self.spectator();
-        if !spectator && self.native_dropped_by_player_event(all) {
-            return true;
-        }
         let Some(thrown) = myriade_engine::items::take_held_drop(
             &mut self.inventory[self.selected],
             all,
@@ -335,11 +328,7 @@ impl Game<'_> {
             return self.ecs_toss(thrown, at, v, uuid, !randomly);
         }
         // Only `drop(.., false)` tosses ask `item_toss`: a death's scatter (`randomly`) does not.
-        let id = if randomly {
-            self.spawn_item(thrown, at, v, 40)?
-        } else {
-            self.toss_item(thrown, at, v, uuid)?
-        };
+        let id = self.spawn_item(thrown, at, v, 40)?;
         if let (Some(e), Some(who)) = (self.ecs.entity_of(id), uuid) {
             self.ecs.set_thrower(e, who);
         }

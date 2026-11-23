@@ -172,39 +172,7 @@ impl Game<'_> {
         if eligible.iter().all(Option::is_none) {
             return;
         }
-        // ArmorHurtEvent: once for the pieces that would wear, a server player's only.
-        let mut amounts = [amount; 4];
-        if false
-            && let (Some(uuid), Some(player)) = (self.lan_acting_uuid, self.lan_acting_entity)
-        {
-            let mut entries: Vec<myriade_types::ArmorHurt> = eligible
-                .iter()
-                .enumerate()
-                .filter_map(|(i, e)| {
-                    Some(myriade_types::ArmorHurt {
-                        slot: armor_slot(i),
-                        stack: e.as_ref()?.try_into_api().ok()?,
-                        damage: durability_damage(damage),
-                        new_damage: durability_damage(damage),
-                    })
-                })
-                .collect();
-            let mut cancel = false;
-            self.native_armor_hurt(
-                Some(uuid),
-                player,
-                "minecraft:player",
-                source,
-                &mut entries,
-                &mut cancel,
-            );
-            if cancel {
-                return;
-            }
-            for (i, amount) in amounts.iter_mut().enumerate() {
-                *amount = answered_wear(&entries, armor_slot(i), *amount);
-            }
-        }
+        let amounts = [amount; 4];
         // Each break is applied before the next slot's hook and RNG draw.
         for &index in slots {
             let Some(before) = eligible[index].take() else {

@@ -9,7 +9,6 @@ mod player_loot_entity;
 mod residency;
 pub(in crate::game) mod section_steps;
 mod world_view;
-use super::api_values::TryIntoApi;
 use super::level_sounds::LevelSound;
 use super::piston_push::Lid;
 use super::{Dim, Game, InteractTarget, view_vector};
@@ -20,7 +19,6 @@ use myriade_engine::{
     items::{ItemStack, Items},
     mobs::{
         Damage, DamageKind, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,
-        ai::{eating_sound, eating_sound_is_bound, feed_animal, takes_food},
         entity_sounds::full_id,
         spawning,
     },
@@ -161,9 +159,6 @@ impl<T> Drop for RemainingActions<'_, T> {
 /// Mob-system state owned by the game.
 #[derive(Default)]
 pub(super) struct Creatures {
-    /// The entities a family tells the mods ticked, kept between ticks
-    /// (game/modding/native_ticks.rs).
-    pub tick_buffer: Vec<(u32, super::native_ticks::TickKind)>,
     /// Wind bursts from a guest's turn, waiting for it to end (game/interface/wind.rs).
     pub wind_bursts: Vec<super::wind::Burst>,
     /// The wind charge whose burst is being handled, by entity id: which
@@ -489,32 +484,6 @@ impl Game<'_> {
         if wearable(self, &body, name).is_none() {
             return;
         }
-        // ArmorHurtEvent for a mob's body armor.
-        let mut amount = amount;
-        if false
-            && let Ok(body_snapshot) = body.try_into_api()
-        {
-            let kind = self.ecs.kind(id).unwrap_or_default().to_owned();
-            let mut entries = vec![myriade_types::ArmorHurt {
-                slot: EquipmentSlot::Body,
-                stack: body_snapshot,
-                damage: super::durability_damage(damage),
-                new_damage: super::durability_damage(damage),
-            }];
-            let mut cancel = false;
-            self.native_armor_hurt(None, id, &kind, source, &mut entries, &mut cancel);
-            if cancel {
-                return;
-            }
-            amount = super::answered_wear(&entries, EquipmentSlot::Body, amount);
-            if amount == 0 {
-                return;
-            }
-            // A mod may have swapped the piece: it is not worn by this hit.
-            if self.ecs.equipment_stack(id, EquipmentSlot::Body as usize) != Some(body.clone()) {
-                return;
-            }
-        }
         let (updated, broken) = self.damage_living_stack(&body, amount, id);
         if self.ecs.equipment_stack(id, EquipmentSlot::Body as usize).as_ref() != Some(&body) {
             return;
@@ -772,16 +741,7 @@ impl Game<'_> {
         attacker: Option<u128>,
         original: i32,
     ) -> i32 {
-        let (mut amount, mut cancel) = (original, false);
-        self.native_living_experience_drop(
-            entity,
-            kind,
-            attacker,
-            original,
-            &mut amount,
-            &mut cancel,
-        );
-        if cancel { 0 } else { amount.max(0) }
+        original.max(0)
     }
 
     /// Adds the items a dying entity dropped to the level, each at its own
@@ -911,12 +871,6 @@ impl Game<'_> {
         };
         let player = (p.owner == Some(Who::Player))
             .then(|| myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()));
-        let name = if player.is_some() {
-            self.acting_player_name().to_owned()
-        } else {
-            String::new()
-        };
-        self.native_projectile_launch(player, &name, id, p.entity_type());
         id
     }
     /// `MushroomCow.shear`'s `sendParticles(EXPLOSION, x, getY(0.5), z, 1, 0, 0, 0, 0)`:
@@ -1622,11 +1576,6 @@ impl Game<'_> {
                         );
                     }
                 }
-                // RESTE-SANS-ECS: the built Mob's own state (extra, ai, equipment) is not carried over; the ECS spawns the kind at its position.
-                MobEvent::Spawn(m) => {
-                    let at = [m.position.x, m.position.y, m.position.z];
-                    self.spawn_mob(&m.kind.id, at, false, SpawnSite::Raw);
-                }
                 MobEvent::SpawnKind { kind, at, setup } => {
                     if let Some(id) = self.spawn_mob(
                         &kind,
@@ -1643,8 +1592,6 @@ impl Game<'_> {
                         self.apply_setup(id, &setup);
                     }
                 }
-                // The ECS converts through `HostEvent::ConversionAsk`; the host conversion is gone.
-                MobEvent::Convert { .. } => {}
                 MobEvent::ThrowItem {
                     mob,
                     stack,
@@ -1659,7 +1606,6 @@ impl Game<'_> {
                     }
                 }
                 MobEvent::DropStack { mob, stack, at } => {
-                    self.native_entity_drop_item(mob, &stack.item, stack.count as i32, at);
                     self.spawn_item_own(stack, at, 10);
                 }
                 MobEvent::DropItem {
@@ -1668,7 +1614,6 @@ impl Game<'_> {
                     count,
                     at,
                 } => {
-                    self.native_entity_drop_item(mob, &item, count as i32, at);
                     // The ItemEntity constructor's motion, from the entity's
                     // own random (not the level's), so spawnAtLocation drops
                     // (a fox's berries, a panda's held food, a goat's horn)
@@ -1723,9 +1668,7 @@ impl Game<'_> {
                 } => {
                     self.enderman_place_block(mob, pos, carried, &occupants)?;
                 }
-                MobEvent::PlaceBlock { mob, pos, state } => {
-                    self.mob_place_block(mob, pos, state)?
-                }
+                MobEvent::PlaceBlock { pos, state, .. } => self.level_set(pos, state)?,
                 MobEvent::CropRaided {
                     pos,
                     state,
@@ -1786,7 +1729,6 @@ impl Game<'_> {
                     self.level_event_at(1021, pos, 0);
                     let left = self.world.block(pos[0], pos[1], pos[2]);
                     self.level_event_at(2001, pos, left.0 as i32);
-                    self.native_entity_break_door(mob, &kind, pos);
                 }
                 MobEvent::DestroyProgress { mob, pos, progress } => {
                     self.server_destroy_block_progress(mob as i32, pos, progress);
@@ -1813,37 +1755,7 @@ impl Game<'_> {
                         self.level_event_at(2001, pos, state.0 as i32);
                     }
                     if let Some(state) = self.pack.assets.registry.default_state(name) {
-                        let old_name = self
-                            .res
-                            .facts()
-                            .get(self.world.block(pos[0], pos[1], pos[2]))
-                            .name
-                            .clone();
-                        let mut cancel = false;
-                        if let Some(mob) = mob
-                            && let Some(kind) = self.ecs.kind(mob).map(str::to_owned)
-                        {
-                            let from = self.world.block(pos[0], pos[1], pos[2]);
-                            self.native_entity_change_block_pre(
-                                crate::game::native_hooks::EntityChangeBlockPreCall {
-                                    player: None,
-                                    entity: Some(mob),
-                                    kind: &kind,
-                                    pos,
-                                    from,
-                                    to: state,
-                                    cancel: &mut cancel,
-                                },
-                            );
-                        }
-                        if !cancel {
-                            self.level_set_with_flags(pos, state, flags)?;
-                            if let Some(mob) = mob
-                                && let Some(kind) = self.ecs.kind(mob).map(str::to_owned)
-                            {
-                                self.native_entity_change_block(mob, &kind, pos, &old_name, name);
-                            }
-                        }
+                        self.level_set_with_flags(pos, state, flags)?;
                     }
                 }
                 MobEvent::Infest {
@@ -1884,9 +1796,10 @@ impl Game<'_> {
                     }
                     if drop {
                         let entity = by.or(breaker);
-                        let mut drops = self.roll_block_loot(pos, old, entity, Default::default());
-                        self.native_block_loot(pos, old, None, None, None, &mut drops);
-                        let dropped = self.entity_block_dropped(pos, old, entity, drops);
+                        let drops = self.roll_block_loot(pos, old, entity, Default::default());
+                        let dropped = self.with_level(|_, level, _| {
+                            level.block_dropped(BlockPos::new(pos[0], pos[1], pos[2]), old, None, None, drops, None)
+                        });
                         let canceled = dropped.canceled;
                         self.spawn_block_drops(pos, dropped);
                         // InfestedBlock.spawnAfterBreak runs after the drops,
@@ -2616,11 +2529,6 @@ impl Game<'_> {
                 *self.held_mut() = None;
             }
         }
-        if kind == ProjectileKind::Egg
-            && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
-        {
-            self.native_player_egg_throw(player, &name);
-        }
         Ok(true)
     }
     /// `SpawnEggItem.use`: the SOURCE_ONLY ray must hit a liquid block.
@@ -2868,8 +2776,8 @@ fn mob_effect_instance(
 include!("mob_query_hooks.rs");
 
 impl Game<'_> {
-    /// `EventHooks.canEntityGrief(level, entity)`: the `mob_griefing` rule.
-    pub(super) fn can_entity_grief(&self) -> bool {
+    /// `EventHooks.canEntityGrief(level, entity)`: the `mob_griefing` rule; no mod answers for an entity.
+    pub(super) fn can_entity_grief(&self, _entity: Option<u32>) -> bool {
         self.session
             .rules
             .bool_at(myriade_engine::gamerules::vanilla::MOB_GRIEFING)

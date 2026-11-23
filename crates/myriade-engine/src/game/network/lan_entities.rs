@@ -31,8 +31,7 @@ impl Game<'_> {
     /// out are never taken back, so a stale handle never names a later entity.
     pub(super) fn entity_ids_exhausted(&mut self) -> bool {
         let exhausted = self.next_entity >= u32::MAX - ENTITY_ID_HEADROOM;
-        if exhausted && !self.native_lifecycle.ids_exhausted_told {
-            self.native_lifecycle.ids_exhausted_told = true;
+        if exhausted {
             log::error!(
                 "entity ids exhausted: {} of {} handed out; no entity spawns until the world reopens",
                 self.next_entity,
@@ -128,39 +127,6 @@ fn stand_poses(a: &myriade_engine::entities::ArmorStand) -> Vec<(u8, i32, Value)
 }
 
 impl Game<'_> {
-    /// The entities players started and stopped tracking since the last
-    /// tick, told to the mods in order with the hub in `self.lan` and
-    /// no player's state swapped in (`ServerEntity.addPairing` and
-    /// `removePairing`).
-    pub(super) fn run_native_tracking(&mut self) {
-        let batches = match self.lan.as_mut() {
-            Some(host) => std::mem::take(&mut host.hub.native_tracking),
-            None => return,
-        };
-        for batch in batches {
-            for e in batch.events {
-                let (id, kind) = (e.entity as u32, &*e.tracked.kind);
-                if e.start {
-                    self.native_player_start_tracking(
-                        batch.player,
-                        &batch.name,
-                        id,
-                        e.tracked.uuid,
-                        kind,
-                    );
-                } else {
-                    self.native_player_stop_tracking(
-                        batch.player,
-                        &batch.name,
-                        id,
-                        e.tracked.uuid,
-                        kind,
-                    );
-                }
-            }
-        }
-    }
-
     /// Who rides what (`Entity.getPassengers`): the players in their vehicles and
     /// mobs on mobs.
     pub(super) fn lan_riding(&mut self, guests: &[(u32, i32)], riding: &mut Riding) {

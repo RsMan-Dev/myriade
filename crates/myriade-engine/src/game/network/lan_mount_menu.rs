@@ -49,7 +49,6 @@ impl Game<'_> {
             sent: None,
         });
         self.lan_send_mount(conn);
-        self.player_menu_opening(conn);
     }
 
     /// `HorseInventoryMenu` over mount `mob`, with the player's inventory
@@ -196,9 +195,6 @@ impl Game<'_> {
             && let Some(carried) = host.hub.guests.update(gi, |g| g.carried.take())
         {
             self.lan_place_back(gi, vec![carried]);
-        }
-        if closed && window.is_some() {
-            self.player_menu_closing(conn);
         }
         closed
     }

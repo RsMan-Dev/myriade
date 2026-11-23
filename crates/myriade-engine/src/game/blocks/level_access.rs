@@ -21,210 +21,8 @@ impl LevelAccess for GameLevel<'_> {
     fn redstone_experiments(&self) -> bool {
         self.redstone_experiments
     }
-    fn place_sound_type(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        sounds: Arc<horizon_world::level::data::Sounds>,
-    ) -> Arc<horizon_world::level::data::Sounds> {
-        self.part_place_sound_type(pos, state, sounds)
-    }
-    fn allow_hopper_pickup_item(&self, pos: BlockPos, item: &str, count: u32) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
     fn has_native_block_entity(&self, state: BlockStateId) -> bool {
         self.world.block_entities.stateful_entity(state.0)
-    }
-    fn ensure_block_entity(&mut self, pos: BlockPos, state: BlockStateId) {
-        let key = (pos.x, pos.y, pos.z);
-        if !self.world.block_entities.stateful_entity(state.0)
-            || self.world.block_entities.get(&key).is_some()
-        {
-            return;
-        }
-        if let Some(entity) = self.new_block_entity_for_state(state) {
-            self.world.block_entities.insert(key, entity);
-        }
-    }
-    fn observe_block_changed(&self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
-    }
-    fn observes_block_state_change(&self, old: BlockStateId, new: BlockStateId) -> bool {
-        self.block_state_change_heard(old, new)
-    }
-    fn observe_block_state_change(&self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
-        self.block_state_change(pos, old, new, false);
-    }
-    fn neighbor_notify(&self, pos: BlockPos, skipped: Option<Direction>) -> bool {
-        if !false {
-            return false;
-        }
-        let mut cancel = false;
-        let state = self.block_state(pos);
-        cancel
-    }
-    fn affect_neighbors_after_removal(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        moved: bool,
-        updates: &mut Vec<horizon_core::neighbour_update::NeighbourUpdate>,
-    ) {
-    }
-    fn allow_spread(
-        &self,
-        kind: horizon_world::level::Spread,
-        from: BlockPos,
-        to: BlockPos,
-    ) -> bool {
-        let mut canceled = false;
-        let kind = match kind {
-            horizon_world::level::Spread::Fluid => "fluid",
-            horizon_world::level::Spread::Fire => "fire",
-        };
-        !canceled
-    }
-    fn fluid_place_block(
-        &self,
-        pos: BlockPos,
-        liquid_pos: BlockPos,
-        state: BlockStateId,
-    ) -> Option<BlockStateId> {
-        let mut new_state = state;
-        let mut cancel = false;
-        (!cancel).then_some(new_state)
-    }
-    fn allow_fluid_tick(&self, pos: BlockPos, fluid: &'static str) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn allow_fluid_level_change(
-        &self,
-        pos: BlockPos,
-        fluid: &'static str,
-        from: i32,
-        to: i32,
-    ) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn create_fluid_source(&self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
-        let mut can_convert = vanilla;
-call)
-        })
-    }
-    fn allow_block_ignite(&self, pos: BlockPos, cause: &'static str) -> bool {
-        self.block_ignite_allowed(pos, cause)
-    }
-    fn block_grow_feature<'a>(
-        &mut self,
-        pos: BlockPos,
-        feature: Option<&'a str>,
-    ) -> Option<std::borrow::Cow<'a, str>> {
-        if !false {
-            return feature.map(std::borrow::Cow::Borrowed);
-        }
-        let mut feature = feature.map(str::to_owned);
-        let mut cancel = false;
-        feature.filter(|_| !cancel).map(std::borrow::Cow::Owned)
-    }
-    fn crop_grow_pre(&mut self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
-        if !false {
-            return vanilla;
-        }
-        let mut result = myriade_types::TriState::Default;
-        result.or(vanilla)
-    }
-    fn crop_grow_post(&mut self, pos: BlockPos, original: BlockStateId) {
-    }
-    fn allow_block_burn(&self, pos: BlockPos) -> bool {
-        self.block_burn_allowed(pos)
-    }
-    fn allow_leaves_decay(&self, pos: BlockPos) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn has_water_ticket(&self, pos: BlockPos) -> bool {
-        self.world.water_tickets.contains([pos.x, pos.y, pos.z])
-    }
-    fn allow_moisture_change(&self, pos: BlockPos, from: i32, to: i32) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn observe_sponge_absorb(&self, pos: BlockPos) {
-    }
-    fn allow_block_fade(&self, pos: BlockPos, from: BlockStateId, to: BlockStateId) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn allow_block_form(&self, pos: BlockPos, from: BlockStateId, to: BlockStateId) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn note_block_change(
-        &self,
-        pos: BlockPos,
-        instrument: u8,
-        old: i32,
-        mut new: i32,
-    ) -> Option<i32> {
-        let mut cancel = false;
-        let context = myriade_types::NoteBlockChange {
-            dimension: self.dimension,
-            pos,
-            instrument: myriade_types::NoteInstrument::ALL[usize::from(instrument)],
-            old_note: old,
-        };
-        (!cancel).then_some(new)
-    }
-    fn note_block_play(
-        &self,
-        pos: BlockPos,
-        by_player: bool,
-        instrument: &mut u8,
-        note: &mut i32,
-    ) -> bool {
-        use myriade_types::NoteInstrument;
-        if !false {
-            return true;
-        }
-        let mut played_instrument = NoteInstrument::ALL[usize::from(*instrument)];
-        let mut played = *note;
-        let mut cancel = false;
-        let (player, player_entity_id) = if by_player {
-            (self.native_player, self.native_player_entity)
-        } else {
-            (None, None)
-        };
-        *instrument = played_instrument as u8;
-        // A note out of 0 to 24 keeps the block's own.
-        if (0..=24).contains(&played) {
-            *note = played;
-        }
-        !cancel
-    }
-    fn allow_portal_spawn(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        shape: &horizon_world::level::PortalShape,
-    ) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn allow_bell_ring(&self, pos: BlockPos) -> bool {
-        let mut cancel = false;
-        !cancel
-    }
-    fn allow_cauldron_level_change(
-        &self,
-        pos: BlockPos,
-        from: i32,
-        to: i32,
-        reason: &'static str,
-    ) -> bool {
-        let mut cancel = false;
-        !cancel
     }
     fn allow_piston_move(
         &self,
@@ -236,16 +34,6 @@ call)
     ) -> bool {
         self.piston_move_allowed(piston, direction, extending, push, destroy)
     }
-    fn on_destroyed_by_push_reaction(
-        &mut self,
-        ticks: &mut Ticks,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Direction,
-        fluid: FluidState,
-    ) {
-        self.destroyed_by_push_reaction(ticks, pos, state, direction, fluid);
-    }
     fn observe_piston_moved(
         &self,
         piston: BlockPos,
@@ -256,249 +44,17 @@ call)
     ) {
         self.piston_moved(piston, direction, extending, push, destroy);
     }
-    fn adjust_signal_source(&self, state: BlockStateId, vanilla: bool) -> bool {
-        let mut source = vanilla;
-        source
-    }
-    fn adjust_is_slime_block(&self, state: BlockStateId, vanilla: bool) -> bool {
-        self.part_is_slime_block(state, vanilla)
-    }
-    fn adjust_is_sticky_block(&self, state: BlockStateId, vanilla: bool) -> bool {
-        self.part_is_sticky_block(state, vanilla)
-    }
-    fn adjust_can_stick_to(&self, state: BlockStateId, other: BlockStateId, vanilla: bool) -> bool {
-        self.part_can_stick_to(state, other, vanilla)
-    }
-    fn has_weak_power_hook(&self) -> bool {
-        false
-    }
-    fn adjust_should_check_weak_power(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Direction,
-        vanilla: bool,
-    ) -> bool {
-        let mut check = vanilla;
-        check
-    }
-    fn has_rail_hook(&self) -> bool {
-        self.rail_hooked()
-    }
-    fn adjust_rail_direction(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        vanilla: horizon_world::level::RailShape,
-    ) -> horizon_world::level::RailShape {
-        self.part_rail_direction(pos, state, vanilla)
-    }
-    fn adjust_rail_can_make_slopes(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        vanilla: bool,
-    ) -> bool {
-        self.part_rail_can_make_slopes(pos, state, vanilla)
-    }
-    fn adjust_rail_flexible(&self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
-        self.part_rail_flexible(pos, state, vanilla)
-    }
-    fn adjust_rail_valid_shape(
-        &self,
-        state: BlockStateId,
-        shape: horizon_world::level::RailShape,
-        vanilla: bool,
-    ) -> bool {
-        self.part_rail_valid_shape(state, shape, vanilla)
-    }
-    fn has_redstone_wire_connection_hook(&self) -> bool {
-        false
-    }
-    fn adjust_should_redstone_wire_connect_to(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Option<Direction>,
-        vanilla: bool,
-    ) -> bool {
-        let mut connected = vanilla;
-        connected
-    }
-    fn adjust_remove_block(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        moved_by_piston: bool,
-        vanilla: BlockStateId,
-    ) -> BlockStateId {
-        self.removal_replacement(pos, state, moved_by_piston, vanilla)
-    }
-    fn has_connection_hook(&self) -> bool {
-        false
-            || false
-    }
-    fn adjust_can_be_connected_to(
-        &self,
-        kind: horizon_core::connection_kind::ConnectionKind,
-        pos: BlockPos,
-        state: BlockStateId,
-        connector: BlockStateId,
-        direction: Direction,
-        face_solid: bool,
-        vanilla: bool,
-    ) -> bool {
-        self.can_be_connected_to(kind, pos, state, connector, direction, face_solid, vanilla)
-    }
-    fn adjust_connects_to(
-        &self,
-        kind: horizon_core::connection_kind::ConnectionKind,
-        pos: BlockPos,
-        state: BlockStateId,
-        neighbour: BlockStateId,
-        direction: Direction,
-        face_solid: bool,
-        vanilla: bool,
-    ) -> bool {
-        let mut connected = vanilla;
-        connected
-    }
-    fn adjust_signal(
-        &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Direction,
-        direct: bool,
-        vanilla: i32,
-    ) -> i32 {
-        native_level_signals::adjust_signal(direction, vanilla, |face, signal| {
-        })
-    }
-    fn adjust_has_analog_output(&self, state: BlockStateId, vanilla: bool) -> bool {
-        let mut output = vanilla;
-        output
-    }
     fn adjust_analog_output(
         &self,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Direction,
+        _pos: BlockPos,
+        _state: BlockStateId,
+        _direction: Direction,
         vanilla: i32,
     ) -> i32 {
-        let mut output = vanilla;
-        output.clamp(0, 15)
-    }
-    #[inline]
-    fn template_suppressed(&self, state: BlockStateId) -> bool {
-        super::code_block_owners::suppressed(self.registry, state)
-    }
-    fn before_random_tick(
-        &mut self,
-        ticks: &mut Ticks,
-        pos: BlockPos,
-        state: &mut BlockStateId,
-        handled: &mut bool,
-    ) {
-        // Any block the hook writes moves the world's revision on.
-        let revision = self.world.revision;
-        if !*handled && self.world.revision != revision {
-            *state = self.block_state(pos);
-        }
-    }
-    fn before_tick_block(
-        &mut self,
-        ticks: &mut Ticks,
-        pos: BlockPos,
-        state: &mut BlockStateId,
-        handled: &mut bool,
-    ) {
-        // Any block the hook writes moves the world's revision on.
-        let revision = self.world.revision;
-        if !*handled && self.world.revision != revision {
-            *state = self.block_state(pos);
-        }
-    }
-    fn before_update_shape(
-        &self,
-        ticks: &mut Ticks,
-        pos: BlockPos,
-        state: BlockStateId,
-        direction: Direction,
-        neighbour_pos: BlockPos,
-        neighbour: BlockStateId,
-        new: &mut Option<BlockStateId>,
-    ) {
-    }
-    fn before_can_survive(&self, pos: BlockPos, state: BlockStateId, survives: &mut Option<bool>) {
-    }
-    fn before_can_sustain_plant(
-        &self,
-        state: BlockStateId,
-        ground: BlockStateId,
-        ground_pos: BlockPos,
-        sustains: &mut Option<bool>,
-    ) {
-    }
-    fn asks_is_fertile(&self) -> bool {
-        false
-    }
-    fn before_is_fertile(&self, state: BlockStateId, pos: BlockPos, fertile: &mut bool) {
-    }
-    fn before_may_place_on(
-        &self,
-        state: BlockStateId,
-        ground: BlockStateId,
-        ground_pos: BlockPos,
-        may: &mut Option<bool>,
-    ) {
+        vanilla.clamp(0, 15)
     }
     fn is_client_side(&self) -> bool {
         self.client_side
-    }
-    fn is_valid_bonemeal_target(&self, pos: BlockPos, state: BlockStateId) -> Option<bool> {
-        // Asked on both sides, as vanilla asks `isValidBonemealTarget`: a
-        // client predicts the use with it. Only a mod answers.
-        let mut valid = None;
-        valid
-    }
-    fn is_bonemeal_success(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
-        let mut success = false;
-        success
-    }
-    fn perform_bonemeal(&mut self, ticks: &mut Ticks, pos: BlockPos, state: BlockStateId) {
-    }
-    fn before_fire_odds(
-        &self,
-        state: BlockStateId,
-        pos: BlockPos,
-        face: Direction,
-        odds: &mut Option<(i32, i32)>,
-    ) {
-        self.answer_fire_odds(state, pos, face, odds);
-    }
-    fn before_is_fire_source(&self, state: BlockStateId, pos: BlockPos, source: &mut Option<bool>) {
-        self.answer_is_fire_source(state, pos, source);
-    }
-    fn before_ignited_by_lava(
-        &self,
-        state: BlockStateId,
-        pos: BlockPos,
-        face: Direction,
-        ignites: &mut Option<bool>,
-    ) {
-        self.answer_ignited_by_lava(state, pos, face, ignites);
-    }
-    fn on_caught_fire(
-        &mut self,
-        ticks: &mut Ticks,
-        state: BlockStateId,
-        pos: BlockPos,
-        face: Direction,
-    ) {
-        self.caught_fire(ticks, state, pos, face);
-    }
-    fn before_smoke_source(&self, state: BlockStateId, smoke: &mut Option<bool>) {
-        self.answer_smoke_source(state, smoke);
     }
     fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.world.world_surface(x, z, |s| self.facts.is_air(s))
@@ -590,17 +146,13 @@ call)
     fn block_entity_signal(
         &self,
         pos: BlockPos,
-        state: BlockStateId,
+        _state: BlockStateId,
         _direction: Direction,
     ) -> i32 {
-        native_level_signals::block_entity_signal(
-            self.world,
-            self.registry,
-            self.items,
-            self.lid_openers,
-            pos,
-            state,
-        )
+        if let Some(count) = self.lid_openers.get(&(pos.x, pos.y, pos.z)) {
+            return (*count).clamp(0, 15);
+        }
+        jukebox::jukebox_signals(self.world, self.items, pos).map_or(0, |(signal, _)| signal)
     }
     fn biome_name(&self, pos: BlockPos) -> Option<&str> {
         let chunk = self.world.chunks.get(&(pos.x >> 4, pos.z >> 4))?;
@@ -846,14 +398,6 @@ call)
             event => self.events.push(event),
         }
     }
-    fn has_mod_block_entity(&self, pos: BlockPos) -> bool {
-        // Asked on every block change: no lookup until a mod block entity exists.
-        self.world.block_entities.has_mods()
-            && matches!(
-                self.world.block_entities.get(&(pos.x, pos.y, pos.z)),
-                Some(BlockEntity::Mod(_))
-            )
-    }
     fn adjust_piston_carries_block_entity(
         &self,
         pos: BlockPos,
@@ -934,6 +478,36 @@ call)
         {
             sulfur.waiting_countdown = -1;
         }
+    }
+}
+
+impl GameLevel<'_> {
+    /// Whether a player's feet in the level keep the fire spreading around
+    /// them: the radius rule, -1 meaning everywhere, else the distance to a
+    /// player's feet under it.
+    pub(in crate::game) fn player_near_fire(&self, pos: BlockPos) -> bool {
+        let radius = self.rules.fire_spread_radius_around_player;
+        radius == -1
+            || self.fire_players.iter().any(|p| {
+                let d = [
+                    p[0] - f64::from(pos.x),
+                    p[1] - f64::from(pos.y),
+                    p[2] - f64::from(pos.z),
+                ];
+                d[0] * d[0] + d[1] * d[1] + d[2] * d[2] < f64::from(radius) * f64::from(radius)
+            })
+    }
+
+    /// The `INCREASED_FIRE_BURNOUT` environment attribute of the biome at `pos`.
+    pub(in crate::game) fn biome_burns_out_fire(&self, pos: BlockPos) -> bool {
+        self.world
+            .chunks
+            .get(&(pos.x >> 4, pos.z >> 4))
+            .is_some_and(|chunk| {
+                self.biomes
+                    .get(chunk.biome(pos.x, pos.y, pos.z))
+                    .increased_fire_burnout
+            })
     }
 }
 

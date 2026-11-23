@@ -5,16 +5,22 @@
 //! down (`try_sleep`) and freed in the level's tick once nobody sleeps in it
 //! any more, whichever way they got up: waking, the Leave Bed button, death,
 //! a broken bed, or leaving the game.
-use super::native_hooks::SleepProblem;
 use super::{Dim, Game};
 use myriade_engine::Result;
 use myriade_engine::bed_geometry::{SleepOn, pos_to_bed, shape_top, slept_on};
 use horizon_core::geometry::Vec3;
 use horizon_world::registry::BlockStateId;
 
+/// What `CanContinueSleepingEvent.getProblem` can hold for a sleeper.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum SleepProblem {
+    NotPossibleHere,
+    NotPossibleNow,
+}
+
 impl Game<'_> {
     /// `BedRule.canSleep` of the current dimension's bed rule.
-    pub(super) fn bed_can_sleep_now(&self) -> bool {
+    pub(in crate::game) fn bed_can_sleep_now(&self) -> bool {
         self.dimension_type()
             .bed_rule
             .can_sleep
@@ -23,7 +29,7 @@ impl Game<'_> {
     /// What `CanContinueSleepingEvent.getProblem` holds for a sleeper: its bed gone
     /// (`checkBedExists`), or for a player (`Player.tick`) a bed rule that no longer lets
     /// them sleep.
-    pub(super) fn sleep_problem(&self, bed_exists: bool, player: bool) -> Option<SleepProblem> {
+    pub(in crate::game) fn sleep_problem(&self, bed_exists: bool, player: bool) -> Option<SleepProblem> {
         if !bed_exists {
             Some(SleepProblem::NotPossibleHere)
         } else if player && !self.bed_can_sleep_now() {

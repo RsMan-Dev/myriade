@@ -23,9 +23,6 @@ impl Game<'_> {
     /// spectator (`handleContainerClick`) open here: storage, the furnaces,
     /// the brewing stand and the crafter.
     pub(super) fn spectator_open_menu(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(myriade_types::FakeEffect::Menu) {
-            return;
-        }
         let key = (pos[0], pos[1], pos[2]);
         let name = self
             .res

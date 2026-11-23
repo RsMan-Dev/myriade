@@ -49,7 +49,7 @@ impl Game<'_> {
                 }
             }
             // The contents and the boat's item are dropped by the ECS.
-            BoatHurtEvent::Broke { at, .. } => self.native_vehicle_destroy("boat", at),
+            BoatHurtEvent::Broke { .. } => {}
         }
     }
     /// A rider taking or leaving a seat: a player's riding state follows it.

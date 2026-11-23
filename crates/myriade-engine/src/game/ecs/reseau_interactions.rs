@@ -89,7 +89,7 @@ impl Game<'_> {
         let sent = self
             .as_guest_at(gi, conn, |g| {
                 let marked = g.player.as_mut().is_some_and(|p| std::mem::take(&mut p.health.sync_velocity));
-                let ((amount, _, _, _), admitted) = g.melee_damage_with_admission(kind, true, Some(mob));
+                let ((amount, _, _, _), admitted) = g.melee_damage_with_admission(kind, true);
                 g.attack_ticks = 0;
                 if admitted {
                     let source = g.player.as_ref().map_or(0, |p| p.entity_id as u32);
@@ -128,9 +128,6 @@ impl Game<'_> {
                     self.ecs.set_custom_name(uid, Some(name.clone()));
                     self.ecs.set_persistent(e);
                     self.consume_held();
-                    if let (Some(player), Some(player_name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-                        self.native_player_name_entity(player, &player_name, uid, &name);
-                    }
                 }
                 return Some(true);
             }
@@ -162,13 +159,6 @@ impl Game<'_> {
         // session but no screen, so a merchant never reaches it from here.
         if self.ecs.is_villager(uid).is_some() {
             return Some(self.interact_trader_ecs(uid, item).unwrap_or(false));
-        }
-        // `player_shear_entity`: shears on a creature that is ready for them. A mod may cancel (the interaction is used, nothing changes);
-        // the hook has `&mut self`, so the creature and the shears are found again before P shears.
-        if item == "minecraft:shears"
-            && let Some(done) = self.player_shear_ecs(uid, e, hand != 0, held.as_ref())
-        {
-            return Some(done);
         }
         Some(self.ecs_use_stack(e, conn, hand, held))
     }

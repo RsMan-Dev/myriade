@@ -112,7 +112,6 @@ impl Game<'_> {
             _ => 1.0,
         };
         Some(ItemFrame {
-            attachment_lifetime: Default::default(),
             join: self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)).map_or_else(Default::default, |j| j.0),
             id,
             pos,
@@ -138,7 +137,6 @@ impl Game<'_> {
         let Some(Tag::String(name)) = c.get(&JavaString::from("variant")) else { return None };
         let variant = self.painting_variants.get(&name.to_string_lossy())?;
         Some(Painting {
-            attachment_lifetime: Default::default(),
             join: self.ecs.ecs().and_then(|w| w.world().get::<horizon_ecs_proto::hanging::JoinedAt>(e)).map_or_else(Default::default, |j| j.0),
             id,
             pos,
@@ -155,7 +153,6 @@ impl Game<'_> {
             return false;
         };
         self.ecs.despawn(e);
-        self.native_entity_left(id);
         true
     }
     /// The block position of the hanging entity `id` in the ECS level.

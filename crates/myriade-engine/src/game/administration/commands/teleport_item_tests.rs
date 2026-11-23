@@ -1,4 +1,3 @@
-use crate::game::native_entity_refs::tests::with_game;
 use horizon_core::geometry::Vec3;
 
 #[test]

@@ -55,7 +55,7 @@ impl Game<'_> {
                 .residency
                 .identity()
                 .map(|identity| identity.id.get()),
-            _ => super::native_entities::target_id(target),
+            _ => super::entity::target_id(target),
         }
     }
 

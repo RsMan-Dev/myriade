@@ -23,16 +23,10 @@ impl Game<'_> {
             .map_or_else(|| self.res.suffocation(), |t| &t.suffocation)
     }
     pub(super) fn recipes(&self) -> &Recipes {
-        match &self.world_tables {
-            Some(t) => &t.recipes,
-            None => self.synced_recipes().unwrap_or_else(|| self.res.recipes()),
-        }
+        world_recipes!(self)
     }
     pub(super) fn stations(&self) -> &myriade_engine::stations::StationData {
-        match &self.world_tables {
-            Some(t) => &t.stations,
-            None => self.res.stations(),
-        }
+        world_stations!(self)
     }
 
     pub(super) fn pack_files(&self) -> horizon_world::loot::PackOverlay<'_> {
@@ -47,10 +41,6 @@ impl Game<'_> {
         reload: bool,
         root: &std::path::Path,
     ) -> Result<(Option<WorldTables>, myriade_engine::health::HealthResources)> {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server tables on their owning thread");
         let files = functions::overlay_files(stack, Vec::new());
         let conditions = horizon_world::conditions::LoadConditions::vanilla();
         let overlay = horizon_world::loot::PackOverlay {
@@ -73,7 +63,6 @@ impl Game<'_> {
             self.res.item_defaults(),
         )?;
         class_tags::install(&mut items, self.res.facts());
-        api_values::resolve_enchantment_registry(&items)?;
         // Item damage predicates use the same frozen registry as player hurt.
         Arc::make_mut(&mut items.enchantments).bind_damage_catalog(&health.damage);
         items.bind_component_damage_catalog(&health.damage);
@@ -96,17 +85,17 @@ impl Game<'_> {
             (&sources, &recipes),
         );
         self.prepare_professions(&items, &mut stations)?;
-        let registries = native_data_maps::WorldRegistries::new(
-            self.session
-                .registries
-                .by_registry
-                .iter()
-                .map(|(registry, entries)| (registry.as_str(), entries.ids.as_slice())),
-            None,
-            &items,
-            root,
-            &overlay,
-        );
+        // A registry whose pack tags don't load keeps the game's own tags.
+        let pack_tags = WorldTables::PACK_TAG_REGISTRIES
+            .into_iter()
+            .filter_map(|registry| match myriade_engine::items::load_tags(root, registry, &overlay) {
+                Ok(tags) => Some((registry, tags)),
+                Err(e) => {
+                    log::warn!("Horizon: the world's {registry} tags are not applied: {e}");
+                    None
+                }
+            })
+            .collect();
         let causes_suffocation = items
             .block_tags
             .get("minecraft:causes_suffocation")
@@ -118,24 +107,6 @@ impl Game<'_> {
             self.res.core.collision.clone(),
             &causes_suffocation,
         )?;
-        // A registry whose pack tags don't load keeps the game's own tags
-        // (`in_tag` falls back to them), rather than matching no tag at all.
-        let pack_tags: HashMap<_, _> = WorldTables::PACK_TAG_REGISTRIES
-            .into_iter()
-            .chain(myriade_engine::neoforge_mob_maps::MAPS.map(|definition| definition.directory))
-            .filter(|directory| *directory != "item")
-            .collect::<std::collections::BTreeSet<_>>()
-            .into_iter()
-            .filter_map(|registry| {
-                match myriade_engine::items::load_tags(root, registry, &overlay) {
-                    Ok(tags) => Some((registry, tags)),
-                    Err(e) => {
-                        log::warn!("Horizon: the world's {registry} tags are not applied: {e}");
-                        None
-                    }
-                }
-            })
-            .collect();
         // Items already decoded the root's command export. Block-state-only
         // command metadata is not the registry universe, and professions and
         // biomes belong to the live world candidate rather than that export.
@@ -147,42 +118,6 @@ impl Game<'_> {
                 .into());
             }
         }
-        let builtin = neoforge_mob_maps::load(
-            &overlay,
-            |directory| {
-                if directory == "item" {
-                    Some(&items.item_tags)
-                } else {
-                    pack_tags.get(directory)
-                }
-            },
-            |registry, id| match registry {
-                "minecraft:item" => items.items.contains_key(id),
-                "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
-                "minecraft:worldgen/biome" => self
-                    .world_biomes
-                    .as_ref()
-                    .unwrap_or_else(|| self.res.biomes())
-                    .contains(id),
-                "minecraft:entity_type" => {
-                    self.res.mob_types().contains_key(id)
-                        || items
-                            .component_registry
-                            .ids(registry)
-                            .binary_search_by(|known| known.as_str().cmp(id))
-                            .is_ok()
-                }
-                _ => items
-                    .component_registry
-                    .ids(registry)
-                    .binary_search_by(|known| known.as_str().cmp(id))
-                    .is_ok(),
-            },
-        )?;
-        let data_maps = native_data_maps::DataMaps::load(&[], &overlay, &registries)
-            .with_builtins(builtin)
-            ;
-        drop(registries);
         conditions.check_errors()?;
         Ok((
             Some(WorldTables {
@@ -193,7 +128,6 @@ impl Game<'_> {
                 recipes,
                 stations,
                 reload_sources: reload.then_some(sources),
-                data_maps,
                 pack_tags,
             }),
             health,
@@ -214,30 +148,8 @@ impl Game<'_> {
         self.ecs.set_melee_gear(self.melee_gear_fn());
         self.ecs.set_item_modifiers_table(self.item_modifiers_fn());
         self.health_resources = health;
-        self.data_map_registries = self
-            .world_tables
-            .as_ref()
-            .map_or_else(Vec::new, |t| t.data_maps.registries());
-        self.install_block_maps();
         self.install_profession_save_snapshots();
-        self.share_mob_maps();
-        myriade_engine::datapack_net::serve(None);
         Ok(())
-    }
-    /// Sends each joined Horizon client the snapshot of the set just published, built from the
-    /// offer owned by its connection. A refused replacement ends that connection with its reason.
-    fn send_datapack_snapshots(&mut self) {
-        let Some(host) = self.lan.as_ref() else {
-            return;
-        };
-        for guest in host
-            .hub
-            .guests
-            .iter()
-            .filter(|g| g.placed && g.participates_online() && g.brand == "horizon")
-        {
-            myriade_engine::datapack_net::reload_connection(&guest.sender);
-        }
     }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
@@ -249,7 +161,6 @@ impl Game<'_> {
             tables,
             advancements,
             health,
-            parts,
             wire,
         } = prepared;
         lan::sync::forget_server_sources();
@@ -273,33 +184,21 @@ impl Game<'_> {
         self.ecs.set_trident_hit_bonus(bonus);
         self.ecs.set_melee_gear(self.melee_gear_fn());
         self.ecs.set_item_modifiers_table(self.item_modifiers_fn());
-        self.data_map_registries = self
-            .world_tables
-            .as_ref()
-            .map_or_else(Vec::new, |t| t.data_maps.registries());
-        self.install_block_maps();
         self.install_profession_save_snapshots();
-        self.share_mob_maps();
         self.world.pois.clear();
         for world in self.levels.parked_worlds() {
             world.pois.clear();
         }
-        myriade_engine::datapack_net::serve(None);
-        self.send_datapack_snapshots();
-        self.refresh_recipe_property_context();
         self.structure_spawns = structure_spawns;
         self.server_items = None;
         self.refresh_infiniburn();
-        self.install_parts(parts);
+        self.install_parts();
         self.damage_tag_generation = self.damage_tag_generation.wrapping_add(1);
         self.forget_book();
         myriade_engine::structure_blocks::forget_loot_data();
         self.load_server_loot();
-        // Before the players are sent the reloaded data below.
-        self.sync_recipe_content();
         // PlayerList.reloadResources: the tags and recipes go to the players
-        // and their advancements reload. The synchronized registries (the
-        // dialogs, and the commands' ids of them) stay the hub's.
+        // and their advancements reload.
         lan::sync::install_wire_reload(
             &self.options.resources,
             &self.res.core.item_data,
@@ -313,8 +212,6 @@ impl Game<'_> {
         }
         self.adv.tree = advancements;
         self.adv.reset_tree();
-        self.announce_data_bound(myriade_types::TagsUpdateCause::ServerDataLoad { reload: true });
-        self.announce_data_maps_updated(myriade_types::DataMapsUpdateCause::ServerReload);
     }
 
     pub(in crate::game) fn join_world_rest(&mut self) -> Result<()> {
@@ -341,17 +238,6 @@ impl Game<'_> {
         self.server_loot.set(loot);
     }
 
-    pub(super) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
-        let registry = self.pack.assets.registry;
-        let tags = self.block_tag_sets(items);
-        let block_states = api_values::prepare_block_states(registry)?;
-        let cauldrons = self.prepare_cauldron_interactions(items)?;
-        Ok(PreparedParts {
-            cauldrons,
-            block_states,
-            tags,
-        })
-    }
     /// Reload the content tables with the world's packs, as
     /// `/reload` reloads a server's (`ReloadableServerResources`).
     pub(super) fn prepare_world_reload(
@@ -360,10 +246,6 @@ impl Game<'_> {
         root: &std::path::Path,
     ) -> Result<PreparedWorldReload> {
         let (tables, health) = self.stage_world_tables(stack, true, root)?;
-        let items = tables
-            .as_ref()
-            .map_or_else(|| self.res.items(), |tables| &tables.items);
-        let parts = self.prepare_parts(items)?;
         let overlay = pack_files(&tables);
         let kept = self
             .lan
@@ -403,24 +285,12 @@ impl Game<'_> {
             structure_spawns: myriade_engine::mobs::spawn_place::StructureSpawns::load(root),
             tables,
             health,
-            parts,
             wire,
         })
     }
 
-    /// Resolve the block and item answers against the tags this game plays with.
-    pub(super) fn resolve_parts(&self) -> Result<()> {
-        let prepared = self.prepare_parts(self.items())?;
-        self.install_parts(prepared);
-        Ok(())
-    }
-    pub(super) fn install_parts(&self, prepared: PreparedParts) {
-        cauldron_interactions::install(prepared.cauldrons);
-        native_worldgen_parts::publish(&prepared.block_states, self.pack.assets.registry);
-        api_values::install_block_states(prepared.block_states);
-        native_world_read::install_block_tags(prepared.tags);
+    pub(super) fn install_parts(&self) {
         self.resolve_block_paths();
-        self.resolve_piston_reactions();
         self.resolve_primary_items();
     }
     pub(super) fn resolve_block_paths(&self) {

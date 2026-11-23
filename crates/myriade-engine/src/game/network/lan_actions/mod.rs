@@ -29,9 +29,32 @@ use horizon_protocol::{
     text::literal,
 };
 use horizon_world::entity_move::EntityMoveWorld;
-use myriade_types::ActionRefused;
 use myriade_types::GameMode;
 use myriade_types::SoundSource;
 
-include!(concat!(env!("OUT_DIR"), "/lan_action_modules.rs"));
+/// Why an action of a guest is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActionRefused {
+    Stale,
+    OutOfReach,
+    Protected,
+    InvalidTarget,
+}
+
+mod attack_checks;
+mod commands;
+mod death_state;
+mod effects;
+mod guest_body;
+mod hub_click;
+mod interaction;
+mod menus;
+mod mining;
+mod movement;
+mod packets;
+mod pickups;
+mod respawn;
+mod sleep;
+mod tick;
+mod turns;
 include!("shared.rs");

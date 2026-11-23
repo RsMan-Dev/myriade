@@ -16,9 +16,6 @@ impl Game<'_> {
             })
         });
         self.next_entity = next;
-        if id != 0 && self.native_hears_impacts() {
-            self.ecs.set_mod_gate(id, true);
-        }
         (id != 0).then_some(id)
     }
     /// The owner a projectile records: the acting player (as `Who::Player`), or the ECS entity of a mob; None when unknown.

@@ -139,7 +139,6 @@ impl Game<'_> {
             });
         }
         self.lan_send_station(conn);
-        self.player_menu_opening(conn);
         Some(Some(window))
     }
 
@@ -164,7 +163,7 @@ impl Game<'_> {
         window: Option<i32>,
         op: impl FnOnce(&mut Menu, &myriade_engine::menu::Env),
     ) -> bool {
-        self.with_station_busy(conn, |game| game.lan_station_op_busy(conn, window, op))
+        self.lan_station_op_busy(conn, window, op)
     }
 
     fn lan_station_op_busy(
@@ -181,10 +180,6 @@ impl Game<'_> {
         else {
             return false;
         };
-        // A mod's station with no block works where the player stands now.
-        if let Some(pos) = self.portable_station_pos(conn, gs.window) {
-            gs.pos = pos;
-        }
         let guest = self
             .lan
             .as_ref()
@@ -397,9 +392,7 @@ impl Game<'_> {
         } else {
             let creative = gs.menu.creative;
             // A broken anvil closes the menu on the next stillValid check.
-            if !self.is_portable_station(conn, gs.window) {
-                self.anvil_used(gs.pos, creative);
-            }
+            self.anvil_used(gs.pos, creative);
         }
     }
 
@@ -639,7 +632,6 @@ impl Game<'_> {
                 }
             }
             if window.is_some() {
-                self.player_menu_closing(conn);
                 return true;
             }
         }
@@ -656,22 +648,8 @@ impl Game<'_> {
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
         else {
-            self.portable_station_closed(conn, gs.window);
             return true;
         };
-        // A mod's station with no block: the mods may keep its inputs first.
-        let mut gs = gs;
-        if let Some((menu_type, _, range)) = menu_of(gs.kind) {
-            let mut inputs: Vec<Option<ItemStack>> =
-                range.clone().map(|s| gs.menu.slot(s).cloned()).collect();
-            if self.portable_station_closing(conn, gs.window, menu_type, &mut inputs) {
-                for (slot, stack) in range.zip(inputs) {
-                    if stack.is_none() {
-                        gs.menu.load_slot(slot, None);
-                    }
-                }
-            }
-        }
         // AbstractContainerMenu.removed: the carried stack first, then the inputs.
         let mut back: Vec<ItemStack> = self
             .lan
@@ -692,9 +670,6 @@ impl Game<'_> {
         }
         if !back.is_empty() {
             self.lan_place_back(gi, back);
-        }
-        if window.is_some() {
-            self.player_menu_closing(conn);
         }
         true
     }
@@ -834,9 +809,7 @@ impl Game<'_> {
                 continue;
             };
             let (window, beacon, pos) = (gs.window, gs.kind == StationKind::Beacon, gs.pos);
-            let invalid = !self
-                .portable_station_valid(g, window)
-                .unwrap_or_else(|| self.lan_station_valid(g, gs));
+            let invalid = !self.lan_station_valid(g, gs);
             if invalid {
                 self.lan_station_closed(conn, Some(window));
                 if let Some(host) = self.lan.as_mut() {

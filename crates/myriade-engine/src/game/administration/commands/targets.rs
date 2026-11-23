@@ -146,3 +146,51 @@ pub(super) fn non_player_entity_id(t: Target) -> Option<i32> {
     };
     i32::try_from(id).ok()
 }
+
+impl Game<'_> {
+    /// `/kill` and the native discard drop a projectile from its list: the
+    /// `noPhysics` write stored for a shulker bullet leaves with it.
+    pub(in crate::game) fn remove_projectile(&mut self, id: u32) {
+        if let Some(e) = self.ecs.entity_of(id) {
+            self.ecs.despawn(e);
+        }
+        self.forget_entity(id);
+    }
+
+    /// A command drops an ominous item spawner: its stored `noPhysics` write
+    /// leaves with it.
+    pub(in crate::game) fn remove_ominous_spawner(&mut self, id: u32) {
+        self.remove_projectile(id);
+    }
+}
+
+/// The entity id a target is known by (none for a player or a guest).
+pub(super) fn target_id(t: Target) -> Option<u32> {
+    match t {
+        Target::Mob(id)
+        | Target::Item(id)
+        | Target::Orb(id)
+        | Target::Projectile(id)
+        | Target::Stand(id)
+        | Target::Frame(id)
+        | Target::Painting(id)
+        | Target::Boat(id)
+        | Target::Cart(id)
+        | Target::Other(id)
+        | Target::Fangs(id)
+        | Target::Crystal(id)
+        | Target::Dragon(id)
+        | Target::DragonPart(id)
+        | Target::Tnt(id)
+        | Target::Cushion(id)
+        | Target::Falling(id)
+        | Target::Rocket(id)
+        | Target::Trident(id)
+        | Target::Spawner(id)
+        | Target::Cloud(id)
+        | Target::Hook(id)
+        | Target::Knot(id)
+        | Target::General(id) => Some(id),
+        Target::Player | Target::Guest(_) => None,
+    }
+}

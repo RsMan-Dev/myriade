@@ -129,10 +129,7 @@ impl Game<'_> {
             .filter_map(|id| self.ecs.kind(id).map(|kind| (kind, false)))
             .collect();
         let peaceful = self.session.difficulty == 0;
-        let maps = self.world_tables.as_ref().map_or_else(
-            || myriade_engine::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref(),
-            |tables| tables.data_maps.mob_maps.as_ref(),
-        );
+        let maps = myriade_engine::neoforge_mob_maps::NeoForgeMobMaps::vanilla().as_ref();
         if let Some((sound, volume, pitch)) = myriade_engine::mobs::parrot::shoulder_sound(
             maps,
             &mut self.world.random,

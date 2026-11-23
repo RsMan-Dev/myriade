@@ -69,7 +69,6 @@ impl Game<'_> {
         if self.spectator() {
             return;
         }
-        self.native_on_equip(slot, new);
         let Some(at) = self.player.as_ref().map(|p| p.position) else {
             return;
         };
@@ -82,7 +81,7 @@ impl Game<'_> {
             ))
         });
         if let (Some(stack), Some((true, own))) = (new, &equippable) {
-            let sound = self.mod_equip_sound(stack, slot, own.clone());
+            let sound = own.clone();
             let sound = sound
                 .as_deref()
                 .unwrap_or("minecraft:item.armor.equip_generic");

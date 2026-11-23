@@ -19,15 +19,7 @@ impl Game<'_> {
             if let Some(GuestUse::OnBlock(hand)) = self.guest_use
                 && let Some(hit) = self.pick()
             {
-                self.with_hand(hand, |game| {
-                    let held = game.held().cloned();
-                    if matches!(
-                        game.right_click_block(&hit, hand, held.as_ref()),
-                        native_hooks::BlockClickAnswer::Go { .. }
-                    ) {
-                        game.spectator_open_menu(hit.pos);
-                    }
-                });
+                self.with_hand(hand, |game| game.spectator_open_menu(hit.pos));
             }
             return Ok(None);
         }
@@ -91,74 +83,8 @@ impl Game<'_> {
     /// `Player.interactOn` with the acting hand: whether it took the click. A
     /// guest's interact packet names its entity (`target`), which the helpers
     /// use as it is; the local player picks from the crosshair instead, the
-    /// way `Minecraft.hitResult` does. `native_entity_interact_specific` and
-    /// `native_interact_entity` hear it first; a claim swings the hand and
-    /// ends the click.
+    /// way `Minecraft.hitResult` does.
     pub(super) fn interact_entity(&mut self, target: Option<InteractTarget>) -> Result<bool> {
-        // Native mods, where Player.interactOn starts: before the entity's
-        // own interact and the item's interactLivingEntity. The entity is the
-        // one the packet named, or the one the crosshair picked.
-        let (named, distance) = match target {
-            Some(t) => (Some(t.id), None),
-            None => match self.pick_entity_hit_at() {
-                Some((distance, id)) => (id, Some(distance)),
-                None => (None, None),
-            },
-        };
-        // The mod hooks hear no natural fence knot (#13036): its click
-        // keeps the knot's own path below.
-        if let Some(id) = named
-            && let Some(entity) = self
-                .level_entity(id)
-                .filter(|t| !matches!(t, commands::Target::Knot(_)))
-        {
-            // The point clicked, measured from the entity's position: a
-            // guest's packet carries it, and the local player's is where the
-            // crosshair's ray met the entity (`EntityHitResult.getLocation()`).
-            let location = match target {
-                Some(t) => Some(t.location),
-                None => distance
-                    .zip(self.aim())
-                    .zip(self.target_position(entity))
-                    .map(|((d, (eye, dir)), at)| {
-                        std::array::from_fn(|k| eye[k] + dir[k] * d - at[k])
-                    }),
-            };
-            let kind = self.target_type(entity);
-            let stack = self.held().cloned();
-            let mut claimed = false;
-            if let Some(location) = location {
-                self.native_entity_interact_specific(
-                    id,
-                    &kind,
-                    stack.as_ref(),
-                    location,
-                    &mut claimed,
-                );
-            }
-            if claimed {
-                self.swing_arm();
-                return Ok(true);
-            }
-            let mut result = None;
-            let dimension = self.dim.id();
-            self.native_entity_interact(
-                dimension,
-                self.hand,
-                id,
-                &kind,
-                stack.as_ref(),
-                &mut result,
-            );
-            if let Some(answer) = result
-                && !matches!(
-                    answer,
-                    myriade_types::InteractionResult::Pass | myriade_types::InteractionResult::TryWithEmptyHand
-                )
-            {
-                return Ok(self.interaction_consumed(answer));
-            }
-        }
         Ok(self.interact_frame(target)
             || self.interact_armor_stand(target)
             || self.interact_cushion(target)
@@ -166,24 +92,6 @@ impl Game<'_> {
             || self.interact_cart(target)
             || self.interact_mob(target)?
             || self.item_interact_mob(target))
-    }
-
-    /// Asks the mods whether the acting guest may empty `stack` at `pos`
-    /// (`native_bucket_empty`): true when one cancelled it. A game's own
-    /// player is not asked.
-    pub(super) fn bucket_empty_cancelled(&mut self, stack: &ItemStack, pos: [i32; 3]) -> bool {
-        let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) else {
-            return false;
-        };
-        let mod_fluid = horizon_world::fluid::mod_fluid_of_bucket(&stack.item);
-        let fluid = match &*stack.item {
-            "minecraft:lava_bucket" => "minecraft:lava",
-            "minecraft:powder_snow_bucket" => "minecraft:powder_snow",
-            _ => mod_fluid.map_or("minecraft:water", |fluid| fluid.get().id.as_str()),
-        };
-        let mut cancel = false;
-        self.native_bucket_empty(uuid, &name, pos, fluid, &mut cancel);
-        cancel
     }
 
     /// The player as a block's `useItemOn` / `useWithoutItem` sees them.

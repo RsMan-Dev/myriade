@@ -3,7 +3,6 @@
 //! the structure's placement), over the game tests the registry holds.
 use super::{
     Game,
-    game_tests::Info,
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},
 };
@@ -201,7 +200,7 @@ impl Game<'_> {
             &self.pack.data_changes,
             self.cmds.vanilla_disabled,
             &self.level.enabled_features,
-            &super::pack_finders::data_packs(&self.mods),
+            &[],
         );
         let mut defs = std::collections::HashMap::new();
         for pack in stack.builtin.iter().chain(stack.enabled_packs()) {
@@ -350,7 +349,6 @@ impl Game<'_> {
                     self.save_test(pos);
                 }
                 EXPORT => self.export_test(pos),
-                RUN => self.run_test(pos),
                 _ => {}
             }
             self.mark_block_entity_updated(pos);
@@ -574,43 +572,6 @@ impl Game<'_> {
                 Text::literal("Test structure exporting is disabled").with_color(text::RED),
             );
         }
-    }
-
-    /// `runTest`: the checks, the structure's placement and the test.
-    fn run_test(&mut self, pos: Pos) {
-        let coordinates = [pos.0, pos.1, pos.2].map(|v| Text::literal(v.to_string()));
-        let Some(def) = self.test_holder(pos) else {
-            self.system_message(red("test_instance_block.error.no_test", &coordinates));
-            return;
-        };
-        if !self.place_test_structure(pos) {
-            self.system_message(red(
-                "test_instance_block.error.no_test_structure",
-                &coordinates,
-            ));
-            return;
-        }
-        self.clear_error_markers(pos);
-        // GameTestTicker.SINGLETON.clear(), FailedTestTracker.forgetFailedTests().
-        self.clear_game_tests();
-        self.game_tests.failed.clear();
-        let Some(block) = self.test_instance_at(pos) else {
-            return;
-        };
-        let key = block.data.test.clone().unwrap_or_default();
-        let rotation = block.data.rotation;
-        let key = if key.contains(':') {
-            key
-        } else {
-            format!("minecraft:{key}")
-        };
-        self.system_message(Text::translate(
-            "test_instance_block.starting",
-            &[Text::literal(key.clone())],
-        ));
-        let id = self.game_tests.next_id();
-        let info = Info::new(id, key, def, Some(pos), self.dim, rotation);
-        self.track_and_start_runner(vec![info], false, None, false);
     }
 }
 

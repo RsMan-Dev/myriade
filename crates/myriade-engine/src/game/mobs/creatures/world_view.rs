@@ -8,7 +8,7 @@ impl Game<'_> {
         let weather = self.can_have_weather();
         let player = self.player_view();
         MobWorld {
-            mob_maps: self.mob_maps(),
+            mob_maps: myriade_engine::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
             section_writer: None,
             professions: self.stations().professions.as_ref(),
             loop_context: &self.loop_context,

@@ -406,13 +406,8 @@ impl Game<'_> {
                 continue;
             };
             self.award_custom_stat("traded_with_villager", 1);
-            let kind = mob.and_then(|id| self.ecs.kind(id)).map(str::to_owned);
             if let Some(villager) = mob.and_then(|id| self.ecs_host_view(id)) {
                 self.trigger_trade(&villager, &offer.result);
-            }
-            // TradeWithVillagerEvent: on the server, in the player's turn.
-            if let (Some(id), Some(kind), Some(_)) = (mob, kind, self.lan_acting) {
-                self.native_trade_with_villager(id, &kind, offer);
             }
         }
     }

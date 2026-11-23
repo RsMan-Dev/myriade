@@ -93,7 +93,6 @@ impl Game<'_> {
                         {
                             self.audio.play(sound, Some(view.position), 1.0, 1.0);
                         }
-                        self.mod_effect_added(name, Some(id as i32), amplifier, new);
                         changed
                     }
                 }

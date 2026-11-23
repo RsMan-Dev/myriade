@@ -3,6 +3,14 @@ use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_world::move_gate::MoveGate;
 
+/// `ZombifiedPiglin.alertOthers` keeps the source's player identity.
+#[derive(Clone, Debug)]
+pub struct PiglinAlert {
+    pub mob: u32,
+    pub source: u32,
+    pub target: super::Who,
+}
+
 
 
 /// The target's isInWater, from the water at its feet.

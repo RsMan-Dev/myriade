@@ -25,17 +25,6 @@ pub(super) fn hanging_drop_position(center: [f64; 3], step: [i32; 3]) -> [f64; 3
     ]
 }
 impl Game<'_> {
-    /// Asks the mods whether the acting guest may place a hanging entity
-    /// of type `kind` at `pos` (`native_hanging_place`): true when one
-    /// cancelled it. A game's own player is not asked.
-    pub(super) fn hanging_place_cancelled(&mut self, kind: &str, pos: [i32; 3]) -> bool {
-        let (Some(uuid), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) else {
-            return false;
-        };
-        let mut cancel = false;
-        self.native_hanging_place(uuid, &name, kind, pos, &mut cancel);
-        cancel
-    }
     pub(super) fn block_distance(&self) -> Option<f64> {
         self.pick_unfiltered().map(|h| {
             let eye = self.aim().map(|(eye, _)| eye).unwrap_or_default();
@@ -61,10 +50,6 @@ impl Game<'_> {
         // placed on the top face of the highest block or under the lowest one.
         if !(myriade_engine::chunk::MIN_Y..myriade_engine::chunk::MIN_Y + myriade_engine::chunk::HEIGHT).contains(&pos[1]) {
             self.use_failed = true;
-            return true;
-        }
-        let kind = if glow { "minecraft:glow_item_frame" } else { "minecraft:item_frame" };
-        if self.hanging_place_cancelled(kind, pos) {
             return true;
         }
         let face = facing_of(hit.face);

@@ -40,7 +40,9 @@ impl Game<'_> {
                 let at = [f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5];
                 let state = self.world.block(x, y, z);
                 let place = myriade_types::BlockSoundCause::Place;
-                let name = self.block_sound_type([x, y, z], state, placer, place).place;
+                let pos = horizon_core::position::BlockPos::new(x, y, z);
+                let facts = self.res.facts();
+                let name = myriade_engine::block_sounds::sound_type(&self.loop_context, facts, pos, state, placer, place).place;
                 (at, name.trim_start_matches("minecraft:").to_owned())
             })
             .collect();

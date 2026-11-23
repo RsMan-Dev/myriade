@@ -159,6 +159,7 @@ pub fn to_mob_event(world: &World, ev: HostEvent) -> Option<MobEvent> {
         | HostEvent::HitDealt { .. }
         | HostEvent::Unleashed { .. }
         | HostEvent::TotemAsk { .. }
+        | HostEvent::TargetAsk { .. }
         | HostEvent::Swing { .. }
         | HostEvent::Hurt { .. }
         | HostEvent::DeathAnimation { .. }

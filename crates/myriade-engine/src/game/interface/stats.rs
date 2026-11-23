@@ -37,8 +37,8 @@ fn stat_registry(ty: &str) -> Option<&'static str> {
 }
 
 impl Game<'_> {
-    /// Resolve a hook's complete award before any statistic, scoreboard or packet is changed.
-    /// Only listener calls allocate; ordinary per-tick awards keep their borrowed identifiers.
+    /// Resolve the award of a statistic before any statistic, scoreboard or packet is changed.
+    /// No mod edits it: the award stands as given.
     pub(in crate::game) fn edited_stat_award(
         &mut self,
         player: u128,
@@ -47,21 +47,8 @@ impl Game<'_> {
         key: &str,
         n: i32,
     ) -> Option<(String, String, i32)> {
-        let mut new_ty = ty.to_owned();
-        let mut new_key = key.to_owned();
-        let mut amount = n;
-        let mut cancel = false;
-        self.native_player_stat_award(
-            player,
-            name,
-            &mut new_ty,
-            &mut new_key,
-            &mut amount,
-            &mut cancel,
-        );
-        if cancel {
-            return None;
-        }
+        let _ = (player, name);
+        let (new_ty, new_key, amount) = (ty.to_owned(), key.to_owned(), n);
         let valid = amount >= 0
             && stat_registry(&new_ty).is_some_and(|registry| {
                 let known = |registry: &str, id: &str| {
@@ -234,7 +221,7 @@ impl Game<'_> {
                     Species::Nautilus | Species::ZombieNautilus => {
                         self.award_custom_stat("nautilus_one_cm", total)
                     }
-                    sp if myriade_engine::mobs::equine::is_equine(sp) => {
+                    sp if super::mount_menu::is_equine(sp) || super::mount_menu::is_llama(sp) => {
                         self.award_custom_stat("horse_one_cm", total)
                     }
                     _ => {}

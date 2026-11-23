@@ -24,59 +24,6 @@ use horizon_ecs_proto::{
     targeting::Who,
 };
 use std::path::Path;
-use crate::mobs::entity_sounds::{Selection, Sounds};
-use horizon_ecs_proto::sound_slots::{self, Overrides, Slot};
-
-/// The sounds the mods declare per type (`MobType.sound_overrides`), as the slots the ECS reads: one table per load, shared by all entities.
-/// One row per type: the declared slots, and the species' own hurt voice where the declaration inherits it (`sounds[1]`). The death
-/// is left inherited: `Mob.die` plays no sound on the server (the client plays `getDeathSound` on the death event).
-fn mod_sound_table(types: &'static MobTypes) -> std::collections::HashMap<&'static str, Overrides> {
-    types
-        .types
-        .iter()
-        .map(|(id, t)| {
-            let mut o = overrides(&t.sound_overrides);
-            if o.hurt == Slot::Inherit && !t.sounds[1].is_empty() {
-                o.hurt = Slot::Id(t.sounds[1]);
-            }
-            (id.as_str(), o)
-        })
-        .collect()
-}
-
-fn overrides(s: &Sounds) -> Overrides {
-    let slot = |sel: &Selection| match *sel {
-        Selection::Inherit => Slot::Inherit,
-        Selection::Mute => Slot::Mute,
-        Selection::Id(id) => Slot::Id(id),
-    };
-    Overrides { ambient: slot(&s.ambient), hurt: slot(&s.hurt), death: slot(&s.death), step: slot(&s.step) }
-}
-
-#[cfg(test)]
-mod sound_table_tests {
-    use super::*;
-
-    #[test]
-    fn a_declared_slot_maps_to_its_id_or_mute_and_the_others_inherit() {
-        let row = serde_json::json!({ "sounds": { "hurt": "bird:hurt", "death": "none" } });
-        let s = Sounds::load("bird:call", &row).unwrap();
-        let o = overrides(&s);
-        assert_eq!(o.hurt, Slot::Id("bird:hurt"));
-        assert_eq!(o.death, Slot::Mute);
-        assert_eq!(o.ambient, Slot::Inherit, "an undeclared slot keeps the species' own");
-        assert_eq!(o.step, Slot::Inherit);
-    }
-
-    #[test]
-    fn a_vanilla_type_without_a_declared_hurt_plays_its_own_hurt_and_keeps_the_death_inherited() {
-        let (_, types, _) = myriade_engine::mobs::world::leaked_test_world_mut(true, |_, _| {}).expect("a prepared world");
-        let table = mod_sound_table(types);
-        let cow = types.types.get("minecraft:cow").expect("the cow type");
-        assert_eq!(table["minecraft:cow"].hurt, Slot::Id(cow.sounds[1]), "the species' own hurt voice");
-        assert_eq!(table["minecraft:cow"].death, Slot::Inherit, "the death voice is the client's");
-    }
-}
 
 /// The flags a saved mob carries that are components: the AI pause (`ai_paused`) and `CanPickUpLoot`.
 fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
@@ -136,11 +83,7 @@ impl EcsLevel {
         Self { inner: None, date: None, structures: ChunkStructures::default() }
     }
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &Path) -> Self {
-        let mut level = Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None, structures: ChunkStructures::default() };
-        if let Some(w) = level.world_mut() {
-            sound_slots::replace(w, mod_sound_table(types));
-        }
-        level
+        Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None, structures: ChunkStructures::default() }
     }
     /// The natural spawning of this level (`install_spawning`): the biome tables of `mw` with `seed`, the rules, and the structures' lists
     /// and source. Nothing when inert.
