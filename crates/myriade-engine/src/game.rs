@@ -55,57 +55,7 @@ fn pack_files(world_tables: &Option<WorldTables>) -> horizon_world::loot::PackOv
     }
 }
 include!(concat!(env!("OUT_DIR"), "/game_modules.rs"));
-/// Installs the dispatcher of each injection point a mod listens at as its function's entry,
-/// once the points are sealed. The prebuilt game's staging pass writes the call; a build without
-/// points has none to arm.
-macro_rules! arm_points {
-    () => {};
-}
-
-/// The game's side of the injection points (arismoko/horizon#589), whose slots and listeners live above the engine.
-#[doc(hidden)]
-pub mod points {
-    /// A `side = "both"` point's host, out of line: each point's listener call stays a few bytes.
-    /// Called only by the `#[point]`s the stage adds to its copy.
-    #[inline(never)]
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn host_side<'a>(game: &'a mut super::Game<'_>) -> mod_api::HostSide<'a> {
-        super::execution_role::host_side(game)
-    }
-
-    /// An engine value's `mod_api` mirror for a point record, through the boundary's conversion.
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn mirror_in<T: super::api_values::TryIntoApi + ?Sized>(
-        value: &T,
-    ) -> Option<T::Api> {
-        value.try_into_api().ok()
-    }
-
-    /// A listener's `mod_api` value as the engine's, validated as every mod value is; a value the
-    /// engine refuses leaves the engine's own in place.
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn mirror_out<A: super::api_values::TryIntoEngine<()>>(
-        value: &A,
-        point: &str,
-    ) -> Option<A::Engine> {
-        let engine = value.try_into_engine(&()).ok();
-        if engine.is_none() {
-            log::warn!(
-                "point {point}: a listener's value has no engine form; the engine's is kept"
-            );
-        }
-        engine
-    }
-
-    /// An engine value with no `mod_api` form at this call: its listeners are skipped this once.
-    #[cold]
-    #[allow(dead_code, reason = "used by the staged copy's points")]
-    pub(super) fn unconverted(point: &str) {
-        log::warn!("point {point}: a value has no API form; its listeners were skipped");
-    }
-}
 mod ecs;
-mod host;
 use hand::interact_location;
 pub(crate) use hit::Hit;
 use myriade_engine::random_source;
@@ -146,7 +96,6 @@ use horizon_core::{
 };
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_ecs_proto::falling_block::FallSettings;
-use horizon_mod_package::selection::{Argument, LaunchArguments};
 pub(crate) use launch_options::Options;
 pub(crate) use server_settings::Settings;
 pub use native_claimed_items::{HeldItemSlot, ModEvent};
@@ -180,29 +129,6 @@ use {
         registry::BlockStateId,
     },
 };
-
-/// The vanilla `state` a `transformer` table entry offers to `ability`: hoe and
-/// shovel tables have one action each; the axe's strip, scrape and wax-off lists
-/// are one untagged list in `BlockTransformers.bootstrap`, so its particle names it.
-fn vanilla_tool_state(
-    transformer: &str,
-    particle: &str,
-    ability: myriade_types::ToolAbility,
-    state: BlockStateId,
-) -> Option<BlockStateId> {
-    use myriade_types::ToolAbility::*;
-    let action = match transformer {
-        "minecraft:axe" => match particle {
-            "scrape" => AxeScrape,
-            "wax_off" => AxeWaxOff,
-            _ => AxeStrip,
-        },
-        "minecraft:shovel" => ShovelFlatten,
-        "minecraft:hoe" => HoeTill,
-        _ => return None,
-    };
-    (action == ability).then_some(state)
-}
 
 struct Mining {
     pos: [i32; 3],
@@ -251,7 +177,6 @@ struct GameLevel<'w> {
     cake_probe: bool,
     cake_requested: std::cell::Cell<bool>,
     cake_answer: Option<bool>,
-    api_level: Option<mod_api::LevelRef>,
     positions: piston_carry_state::PositionState<'w>,
     border: &'w horizon_core::geometry::border::BorderGeometry,
     world: &'w mut World,
@@ -328,7 +253,6 @@ struct GameLevel<'w> {
     loop_context: &'w horizon_world::native_load_context::LoopContext,
     native_particles: &'w mut Vec<lan_particles::QueuedParticle>,
     sound_seeds: Option<&'w myriade_engine::lan::hub::Hub>,
-    drop_entity: Option<mod_api::EntityRef>,
     /// The block a mod's machine breaks and the tool it breaks it with
     /// (`native_machine_destroy_block`): `Block.dropResources` rolls that
     /// block's loot with the tool instead of with none. Neighbours that pop
@@ -498,7 +422,6 @@ struct WorldTables {
 struct PreparedParts {
     block_states: Arc<api_values::block_state::Index>,
     tags: HashMap<String, HashSet<myriade_types::BlockKey>>,
-    parts: Option<mod_api::Parts>,
     cauldrons: Arc<cauldron_interactions::Table>,
 }
 use condition_reload_state::PreparedWorldReload;
@@ -518,8 +441,8 @@ impl WorldTables {
 pub(super) fn durability_damage(damage: f32) -> f32 {
     (damage / 4.0).max(1.0)
 }
-/// The durability damage a mod left for `slot` (`mod_api::ArmorHurt::new_damage`, cast to int
-/// as vanilla casts it); an entry it removed keeps vanilla's `fallback`.
+/// The durability damage `entries` give `slot`, cast to int as vanilla casts it; a slot with
+/// no entry keeps `fallback`.
 pub(super) fn answered_wear(
     entries: &[myriade_types::ArmorHurt],
     slot: horizon_core::equipment_slot::EquipmentSlot,
@@ -894,8 +817,6 @@ struct Game<'a> {
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The open `host.transaction`s, innermost last (`transactions.rs`).
     transactions: transactions::OpenTransactions,
-    /// Backing blocks whose contents notice is on the call stack, innermost last.
-    contents_changing: Vec<(mod_api::LevelRef, BlockPos)>,
     /// The players with each mod container open, by level (`tick_mod_container_viewers`).
     mod_container_viewers: HashMap<(&'static str, (i32, i32, i32)), u32>,
     /// Where item entities are, while the block entities tick (hoppers).
@@ -909,8 +830,6 @@ struct Game<'a> {
     loop_states: published_loops::LoopStates,
     /// The control endpoint `horizon-server` talks to (`--control-socket`).
     control: Option<myriade_engine::control::Server>,
-    /// Horizon mods (`game/modding/mods/mod.rs`), none running unless turned on.
-    mods: mods::ModsState,
     /// Every item and recipe, for mods (`game/modding/native_recipes.rs`), made once.
     recipe_tables: native_recipes::RecipeTables,
     /// Native client mods' claimed items, unpolled events and key mappings (game/modding/native_claimed_items.rs).
@@ -925,7 +844,6 @@ struct Game<'a> {
     held_out: Vec<u32>,
     /// Native mods' config files this game loaded (game/modding/native_configs.rs).
     native_configs: native_configs::NativeConfigs,
-    mod_phase: mod_api::__private::PhaseOwner,
     /// Private custom-book connection and placement state.
     native_net: native_net::NativeNet,
     /// Meshed sections waiting for an upload budget (Horizon settings).
@@ -936,7 +854,6 @@ struct Game<'a> {
     persist: persist::EntityMemory,
     /// Missing profession IDs already reported for this world session.
     missing_professions: HashSet<String>,
-    entity_attachments: FxHashMap<u32, horizon_mod_runtime::attachments::Attachments>,
     entity_initialization: entity_initialization::EntityInitialization,
     /// Typed per-level membership follows dimensions, not the temporary world swap.
     attachment_indexes: attachment_index::Indexes,
@@ -1113,8 +1030,6 @@ struct Game<'a> {
     server_lists: Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
     cmds: commands::extra::CommandExtras,
-    /// The retained server reload listeners of the last successful reload.
-    reload_resources: mod_api::RetainedListeners,
     combat: combat::CombatTracker,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
     guest_combat: std::collections::HashMap<u32, combat::CombatTracker>,
@@ -1131,7 +1046,6 @@ struct Game<'a> {
     adv: advancements::AdvState,
     block_entity_tick_key: Option<block_entity_tick_items::Key>,
     block_entity_tick_items: Option<Box<block_entity_tick_items::Scope>>,
-    wasm_dispatch_failures: std::rc::Rc<std::cell::Cell<u64>>,
 }
 use horizon_gameplay::dim::Dim;
 /// `Inventory.add` on a player's 36 slots (hotbar first) and off hand,
@@ -1743,7 +1657,6 @@ impl Game<'_> {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
             cake_answer: None,
-            api_level: self.level(self.dim.id()),
             command_block_transition: None,
             positions: piston_carry_state::PositionState {
                 gateways: &mut self.be_anims.gateway_servers,
@@ -1804,7 +1717,6 @@ impl Game<'_> {
             native_particles: &mut self.creatures.lan_particles,
             sound_seeds: self.lan.as_ref().map(|host| &host.hub),
             drop_tool: None,
-            drop_entity: None,
             drop_breaker_at: None,
             drop_into: None,
         };
@@ -3373,9 +3285,6 @@ impl Game<'_> {
     }
     fn tick_mobs(&mut self) -> Result<()> {
         self.tick_ecs()?;
-        if !self.entity_attachments.is_empty() {
-            self.prune_entity_attachments();
-        }
         self.native_mobs_equipment();
         self.tick_equipment_attributes();
         self.position_rider();
@@ -3592,7 +3501,6 @@ impl Game<'_> {
         self.riding = None;
         self.persist = Default::default();
         self.missing_professions.clear();
-        self.entity_attachments.clear();
         self.levels.clear();
     }
     /// Voxel traversal that also stops at fluid source blocks (bucket pick).
@@ -3775,51 +3683,11 @@ impl Game<'_> {
             )
         };
         let mapped = self.axe_mapped(&id, block);
-        if mod_api::__private::mods().is_empty() {
-            if let Some((new, ability)) = mapped {
-                return Some(Self::tool_ability_result(new, ability));
-            }
-            let (new, t) = vanilla?;
-            return Some(result(new, t));
+        if let Some((new, ability)) = mapped {
+            return Some(Self::tool_ability_result(new, ability));
         }
-        use myriade_types::ToolAbility::*;
-        let actions: &[_] = match id.as_str() {
-            "minecraft:axe" => &[AxeStrip, AxeScrape, AxeWaxOff],
-            "minecraft:shovel" => &[ShovelFlatten],
-            "minecraft:hoe" => &[HoeTill],
-            _ => return vanilla.map(|(new, t)| result(new, t)),
-        };
-        for &ability in actions {
-            let mut state = match mapped {
-                Some((new, from)) => (from == ability).then_some(new),
-                None => vanilla
-                    .as_ref()
-                    .and_then(|(state, t)| vanilla_tool_state(&id, &t.particle, ability, *state)),
-            };
-            let matches_vanilla = state.is_some() && mapped.is_none();
-            let mut cancel = false;
-            let tool = mod_api::ToolUse::from(mod_api::__private::built::ToolUse {
-                player,
-                hand,
-                pos,
-                face,
-                click: hit.point,
-                ability,
-                simulated,
-            });
-            self.mod_tool_modification(stack, block, &tool, &mut state, &mut cancel);
-            if cancel {
-                return None;
-            }
-            if let Some(new) = state {
-                if matches_vanilla {
-                    let (_, t) = vanilla?;
-                    return Some(result(new, t));
-                }
-                return Some(Self::tool_ability_result(new, ability));
-            }
-        }
-        None
+        let (new, t) = vanilla?;
+        Some(result(new, t))
     }
     /// `BlockTransformer.transformBlock` for a held axe, hoe or shovel.
     fn use_block_transformer(&mut self, stack: &ItemStack, hit: &Hit) -> Result<bool> {
@@ -4160,10 +4028,7 @@ impl Game<'_> {
                 hit.pos[2] + hit.face[2],
             ];
             if self.can_place_used_fire(target) {
-                // With mods, the fire goes in and `BaseFireBlock.onPlace`
-                // fills the frame, as vanilla's order is, so that
-                // `portal_spawn` is asked once, where vanilla asks it.
-                if !mod_api::__private::mods().is_empty() || !self.try_light_portal(target)? {
+                if !self.try_light_portal(target)? {
                     self.place_used_fire(target)?;
                 }
                 let sound = myriade_engine::items::fire_starter_sound(item == "fire_charge");
@@ -4857,19 +4722,8 @@ impl<'a> Game<'a> {
         options: Options,
         settings: Settings,
     ) -> Result<Self> {
-        let phase = match Self::mod_phase_for_construction() {
-            mod_api::__private::ModPhase::Packages if cfg!(test) => {
-                mod_api::__private::ModPhase::World
-            }
-            mod_api::__private::ModPhase::Packages => mod_api::__private::ModPhase::Setup,
-            phase => phase,
-        };
-        let mod_phase = mod_api::__private::PhaseOwner::new(phase);
-        // A scoped hook on this thread asks this game's parts.
-        mod_api::__private::mark_game_thread();
         let loop_side = options.execution_role.loop_side();
         let root = options.resources.clone();
-        let mod_sources = options.mods.clone();
         let registry = pack.assets.registry;
         // Until a world is opened the streamer is idle.
         let mut streaming = Streaming::new(
@@ -5041,9 +4895,6 @@ impl<'a> Game<'a> {
             transactions: Default::default(),
             block_entity_tick_key: None,
             block_entity_tick_items: None,
-            wasm_dispatch_failures:
-                horizon_mod_runtime::dispatch_failures::dispatch_failure_counter(),
-            contents_changing: Vec::new(),
             mod_container_viewers: HashMap::new(),
             item_columns: None,
             pass_mobs: None,
@@ -5053,7 +4904,6 @@ impl<'a> Game<'a> {
             control: None,
             events: Default::default(),
             tick_script: tick_script::TickScript::from_env(),
-            mods: mod_sources,
             recipe_tables: Default::default(),
             native_input: Default::default(),
             native_lifecycle: Default::default(),
@@ -5061,11 +4911,9 @@ impl<'a> Game<'a> {
             lent_mobs: Default::default(),
             held_out: Vec::with_capacity(4),
             native_configs: Default::default(),
-            mod_phase,
             native_net: Default::default(),
             persist: Default::default(),
             missing_professions: Default::default(),
-            entity_attachments: Default::default(),
             entity_initialization: Default::default(),
             attachment_indexes: Default::default(),
             lan: None,
@@ -5138,7 +4986,6 @@ impl<'a> Game<'a> {
             server_loot: Default::default(),
             server_items: None,
             cmds: Default::default(),
-            reload_resources: Default::default(),
             combat: Default::default(),
             guest_combat: Default::default(),
             mount: Default::default(),
@@ -5168,12 +5015,8 @@ impl<'a> Game<'a> {
 
 pub use launch_api::{UsageError, exit_code};
 
-pub(crate) fn run_with(
-    options: Options,
-    native: horizon_mod_package::runtime::Runtime,
-) -> Result<()> {
+pub(crate) fn run_with(options: Options) -> Result<()> {
     let mut options = Options::read(options)?;
-    options.mods.native = Arc::new(native);
     if !dedicated::preflight(&mut options)? {
         return Ok(());
     }
@@ -5204,25 +5047,7 @@ pub(crate) fn run_with(
         return Err(error.into());
     }
     let early_settings = Settings::load(&std::env::current_dir()?);
-    options
-        .mods
-        .capture_code_switches(&early_settings.mods.disabled);
-    options
-        .mods
-        .select(&std::env::current_dir()?, &early_settings.mods.enabled);
-    let mod_phase = mod_api::__private::PhaseOwner::new(mod_api::__private::ModPhase::Packages);
-    api_values::install_packages(options.mods.native.packages(), &options.mods.selected)?;
     mods::install_registration_data(&vanilla_root)?;
-    {
-        use mod_api::__private::game::RegistrationContextNew;
-        let context = mod_api::RegistrationContext::new();
-        let inventory: Vec<_> = context.mods().iter().cloned().collect();
-        crate::entry::initialize_code(&inventory);
-    }
-    horizon_engine_slots::seal().expect("engine registration seals once at startup");
-    arm_points!();
-    mod_phase.advance(mod_api::__private::ModPhase::Registration)?;
-    crate::game::part_admission::admit_parts(mod_api::__private::mods())?;
     // The structure types those mods registered, handed to the engine before
     // any world opens, as its StructureRegistry reads them.
     if horizon_world::worldgen::structure::mod_types::install_mod_structure_types(
@@ -5250,7 +5075,6 @@ pub(crate) fn run_with(
     horizon_assets::item_model::register_special_model_types(Vec::new());
     mods::register_enchantment_damage_effects();
     mods::freeze_declarations()?;
-    mod_phase.advance(mod_api::__private::ModPhase::Setup)?;
     // Minecraft.<init>: read the last start's flag, then mark this one as not
     // finished until onGameLoadFinished. A dedicated server has no options.txt.
     // Minecraft's constructor opens the narrator; a server has none.
@@ -5261,10 +5085,9 @@ pub(crate) fn run_with(
     // Snapshots of derived tables live in the game folder, never beside the
     // shared resources.
     Behaviours::set_cache_dir(std::env::current_dir()?.join(".horizon-cache"));
-    let selected_root = mods::content_root(&vanilla_root, &options.mods)?;
     let loaded = load_resources(
-        selected_root,
-        pack_finders::data_packs(&options.mods),
+        horizon_assets::resource_source::ResourceRoot::directory(vanilla_root.clone()),
+        Vec::new(),
         launch_world(&options),
         &vanilla_root,
         &early_settings,

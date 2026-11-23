@@ -33,7 +33,7 @@ impl Menu {
             (Some(other), true) => {
                 // tryTransfer: what fits, taken by the slot's rules.
                 let mut moved = 0;
-                if can_be_in_bundle(env.loop_context, &other) {
+                if can_be_in_bundle(&other) {
                     let room = contents.room_for(env.items, &other);
                     if let Some(mut taken) = self.safe_take(env, s, other.count, room) {
                         // `tryInsert` asks `canItemBeInBundle` again: the answer above.
@@ -51,7 +51,7 @@ impl Menu {
                     self.safe_insert(env, s, &mut remainder, count);
                     match remainder {
                         Some(mut rest) => {
-                            let fits = fits_inside_container_items(env.loop_context, &rest);
+                            let fits = fits_inside_container_items(&rest);
                             contents.try_insert(env.items, &mut rest, fits);
                         }
                         None => self.state.player_sounds.push(REMOVE_ONE),
@@ -79,7 +79,7 @@ impl Menu {
         match (self.state.carried.take(), primary) {
             (Some(mut other), true) => {
                 let moved = if allowed {
-                    let fits = fits_inside_container_items(env.loop_context, &other);
+                    let fits = fits_inside_container_items(&other);
                     contents.try_insert(env.items, &mut other, fits)
                 } else {
                     0

@@ -11,11 +11,11 @@ use myriade_types::DimensionKey;
 
 /// Assign a stored zero-id entity through its residency boundary exactly once.
 macro_rules! assign_resident_id {
-    ($list:expr, $index:expr, $entity:ident, $next:expr, $lifetime:expr) => {{
+    ($list:expr, $index:expr, $entity:ident, $next:expr) => {{
         let index = $index;
         if $list[index].id == 0 {
             let id = $list.update(index, |$entity| {
-                $crate::game::entity::assign_stored_id($next, &mut $entity.id, $lifetime)
+                $crate::game::entity::assign_stored_id($next, &mut $entity.id)
             });
             $list.id_assigned(index);
             id
@@ -27,10 +27,10 @@ macro_rules! assign_resident_id {
 pub(crate) use assign_resident_id;
 
 macro_rules! assign_resident_ids {
-    ($list:expr, $entity:ident, $next:expr, $lifetime:expr) => {
+    ($list:expr, $entity:ident, $next:expr) => {
         for index in 0..$list.len() {
             $crate::game::entity_residency::assign_resident_id!(
-                $list, index, $entity, $next, $lifetime
+                $list, index, $entity, $next
             );
         }
     };
@@ -61,31 +61,6 @@ macro_rules! bind_resident_list {
 }
 pub(crate) use bind_resident_list;
 
-/// Physical lifetime access, not a cached publication or a delivery promise.
-#[derive(Debug, PartialEq, Eq)]
-pub(super) enum SlotAccess<R> {
-    Done(R),
-    Taken,
-    Missing,
-    UnsupportedKind(Kind),
-}
-
-macro_rules! resident_lifetime_slot {
-    ($kind:ident, $list:expr, $join:expr, $visit:expr) => {{
-        let Some(index) = $list.locate($join) else {
-            return SlotAccess::Missing;
-        };
-        SlotAccess::Done($list.update(index, |entity| {
-            $visit(
-                horizon_mod_runtime::attachments::HasAttachmentLifetime::attachment_lifetime(
-                    entity,
-                ),
-            )
-        }))
-    }};
-}
-pub(crate) use resident_lifetime_slot;
-
 macro_rules! define_resident_access {
     (($this:ident) $($kind:ident => $target:ident: $($field:ident).+,)*) => {
         pub(super) fn bind_resident_owners(&mut $this, journal: &Journal, dimension: DimensionKey, track_saved_uuids: bool) {
@@ -93,17 +68,6 @@ macro_rules! define_resident_access {
                 $this.persist.uuids.bind(journal, dimension);
             }
             $($crate::game::entity_residency::bind_resident_list!($kind, $this$(.$field)+, journal, Owner { dimension, kind: Kind::$kind });)*
-        }
-        pub(super) fn with_resident_owner_slot<R>(
-            &mut $this,
-            at: Location,
-            visit: impl FnOnce(&mut horizon_mod_runtime::attachments::AttachmentLifetime) -> R,
-        ) -> $crate::game::entity_residency::SlotAccess<R> {
-            use $crate::game::entity_residency::SlotAccess;
-            match at.owner.kind {
-                $(Kind::$kind => $crate::game::entity_residency::resident_lifetime_slot!($kind, $this$(.$field)+, at.join, visit),)*
-                Kind::Mob | Kind::Player | Kind::Item | Kind::Orb | Kind::Hook | Kind::Projectile | Kind::Other | Kind::General | Kind::Fangs | Kind::Knot | Kind::Crystal | Kind::Cloud | Kind::Cushion | Kind::Spawner | Kind::Stand | Kind::Dragon | Kind::DragonPart => SlotAccess::UnsupportedKind(at.owner.kind),
-            }
         }
         pub(super) fn locate_resident_attachment_owner(&$this, at: Location) -> Option<SourceEntity<(Target, bool)>> {
             let source = match at.owner.kind {
@@ -135,15 +99,4 @@ pub(crate) use define_resident_access;
 
 impl Game<'_> {
     resident_owners!(define_resident_access, self);
-}
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::game::native_entity_refs::tests::with_game;
-    use myriade_engine::join_seq::residency::table::EntityLookup;
-    use horizon_core::position::BlockPos;
-
-
 }

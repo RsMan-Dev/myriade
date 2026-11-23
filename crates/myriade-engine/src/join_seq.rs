@@ -111,7 +111,7 @@ macro_rules! impl_joined {
 
 /// One kind's entity list, with explicit structural operations and immutable slice access.
 /// `DIRECT = false` closes mutable element access: state edits are scoped and
-/// whole-value replacement must carry the attachment slot through `store_back`.
+/// whole-value replacement goes through `store_back`.
 ///
 /// ```compile_fail
 /// use myriade_engine_lib::join_seq::JoinList;
@@ -169,7 +169,7 @@ macro_rules! impl_joined {
 /// ```
 /// Mutable access (`get_mut`, `IndexMut`, and edit callbacks) is state-only.
 /// Whole-value replacement silently changes membership without journal events.
-/// Bound owners must prohibit replacement or explicitly retire/install identities;
+/// Whole-value replacement must keep identities or explicitly retire/install them;
 /// Game bindings must audit and test every such call site before enabling emission.
 #[derive(Debug)]
 pub struct JoinList<T, const DIRECT: bool = true>(
@@ -846,32 +846,19 @@ impl<T> JoinList<T> {
     }
 }
 
-impl<T: horizon_mod_runtime::attachments::HasAttachmentLifetime, const DIRECT: bool>
-    JoinList<T, DIRECT>
-{
-    /// Remove an owner leaving this level, retiring its source registration now.
-    /// The retained token records whether arrival must rebind; it owns no live row.
-    pub fn remove_for_transfer(&mut self, index: usize) -> T {
-        self.written();
-        let mut entity = self.remove(index);
-        entity.attachment_lifetime().retire();
-        entity
-    }
-}
-
-impl<T: horizon_mod_runtime::attachments::HasAttachmentLifetime> JoinList<T, false> {
-    /// Audited state edit; debug assertions detect a changed bound registration.
+impl<T> JoinList<T, false> {
+    /// Audited state edit.
     pub fn update<R>(&mut self, index: usize, edit: impl FnOnce(&mut T) -> R) -> R {
         self.written();
-        checked_edit(&mut self.0[index], edit)
+        edit(&mut self.0[index])
     }
     pub fn for_each_mut(&mut self, mut edit: impl FnMut(&mut T)) {
         self.written();
         for entity in &mut self.0 {
-            checked_edit(entity, &mut edit);
+            edit(entity);
         }
     }
-    /// Store a tick clone without dropping the owner's lifetime slot.
+    /// Store a tick clone in the slot its join identifies.
     pub fn store_back(&mut self, index: usize, entity: T) -> bool
     where
         T: Joined,
@@ -884,39 +871,9 @@ impl<T: horizon_mod_runtime::attachments::HasAttachmentLifetime> JoinList<T, fal
         else {
             return false;
         };
-        store_back(&mut self.0[index], entity);
+        self.0[index] = entity;
         true
     }
-}
-
-fn checked_edit<T: horizon_mod_runtime::attachments::HasAttachmentLifetime, R>(
-    entity: &mut T,
-    edit: impl FnOnce(&mut T) -> R,
-) -> R {
-    #[cfg(debug_assertions)]
-    let before = entity.attachment_lifetime().registration();
-    let result = edit(entity);
-    #[cfg(debug_assertions)]
-    debug_assert!(
-        before.is_none_or(|old| entity
-            .attachment_lifetime()
-            .registration()
-            .is_some_and(|current| old.same_registration(&current))),
-        "entity edit overwrote its registration"
-    );
-    result
-}
-
-/// Carry lifetime authority from a stored owner into its unbound replacement.
-/// Return the previous state with an unbound slot, so a decoder replacement
-/// can retain runtime-only state without retiring the resident owner.
-pub fn store_back<T: horizon_mod_runtime::attachments::HasAttachmentLifetime>(
-    old: &mut T,
-    mut new: T,
-) -> T {
-    debug_assert!(!new.attachment_lifetime().is_bound());
-    std::mem::swap(old.attachment_lifetime(), new.attachment_lifetime());
-    std::mem::replace(old, new)
 }
 
 impl<T, const DIRECT: bool> Deref for JoinList<T, DIRECT> {
@@ -1247,9 +1204,9 @@ mod tests {
     #[test]
     fn restricted_state_edits_and_store_back_invalidate_stamps() {
         let mut list = JoinList::<_, false>::default();
-        list.push(Bound {
+        list.push(Entity {
             join: JoinSeq::UNJOINED,
-            lifetime: Default::default(),
+            value: 0,
         });
         let stamp = list.stamp();
         list.update(0, |_| ());
@@ -1303,13 +1260,11 @@ mod tests {
 
     #[test]
     fn store_back_uses_its_supplied_slot_without_searching() {
-        use horizon_mod_runtime::attachments::{AttachmentLifetime, HasAttachmentLifetime};
         use std::cell::Cell;
         #[derive(Clone, Default)]
         struct Counted {
             join: JoinSeq,
             reads: Cell<usize>,
-            lifetime: AttachmentLifetime,
         }
         impl Joined for Counted {
             fn join_seq(&self) -> JoinSeq {
@@ -1318,11 +1273,6 @@ mod tests {
             }
             fn set_join_seq(&mut self, join: JoinSeq) {
                 self.join = join;
-            }
-        }
-        impl HasAttachmentLifetime for Counted {
-            fn attachment_lifetime(&mut self) -> &mut AttachmentLifetime {
-                &mut self.lifetime
             }
         }
         let mut list: JoinList<_, false> = (0..16).map(|_| Counted::default()).collect();
@@ -1341,38 +1291,16 @@ mod tests {
         );
     }
 
-    #[derive(Clone)]
-    struct Bound {
-        join: JoinSeq,
-        lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
-    }
-    crate::impl_joined!(Bound);
-    impl horizon_mod_runtime::attachments::HasAttachmentLifetime for Bound {
-        fn attachment_lifetime(
-            &mut self,
-        ) -> &mut horizon_mod_runtime::attachments::AttachmentLifetime {
-            &mut self.lifetime
-        }
-    }
-
     #[test]
-    fn store_back_preserves_join_and_registration_after_reordering() {
-        use horizon_mod_runtime::attachments::{
-            AttachmentLifetime, Attachments, index::AttachmentIndex,
-        };
-        use std::sync::{Arc, Mutex};
-        let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-        let mut map = Attachments::default();
-        let lifetime = AttachmentLifetime::new(map.bind_index(&index, 1u32));
-        let registration = lifetime.registration().unwrap();
+    fn store_back_keeps_join_after_reordering() {
         let mut list = JoinList::<_, false>::default();
-        list.push(Bound {
+        list.push(Entity {
             join: JoinSeq::UNJOINED,
-            lifetime,
+            value: 0,
         });
-        list.push(Bound {
+        list.push(Entity {
             join: JoinSeq::UNJOINED,
-            lifetime: AttachmentLifetime::default(),
+            value: 1,
         });
         let join = list[0].join;
         let other = list[1].join;
@@ -1382,7 +1310,6 @@ mod tests {
         assert!(list.store_back(0, tick_clone));
         assert_eq!(list.locate(join), Some(1));
         assert_eq!(list[0].join, other);
-        assert!(registration.same_registration(&list[1].lifetime.registration().unwrap()));
         let mut gone = list.remove(1).clone();
         assert_eq!(list.locate(join), None);
         assert!(!list.store_back(0, gone.clone()));
@@ -1390,24 +1317,6 @@ mod tests {
         list.push(gone);
         assert_ne!(list[1].join, join);
         assert_eq!(list.locate(join), None);
-    }
-
-    #[cfg(debug_assertions)]
-    #[test]
-    #[should_panic(expected = "entity edit overwrote its registration")]
-    fn bound_update_rejects_whole_entity_overwrite() {
-        use horizon_mod_runtime::attachments::{
-            AttachmentLifetime, Attachments, index::AttachmentIndex,
-        };
-        use std::sync::{Arc, Mutex};
-        let index = Arc::new(Mutex::new(AttachmentIndex::default()));
-        let mut map = Attachments::default();
-        let mut list = JoinList::<_, false>::default();
-        list.push(Bound {
-            join: JoinSeq::UNJOINED,
-            lifetime: AttachmentLifetime::new(map.bind_index(&index, 1u32)),
-        });
-        list.update(0, |owner| *owner = owner.clone());
     }
 
     #[test]

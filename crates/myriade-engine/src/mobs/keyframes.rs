@@ -8,8 +8,7 @@ use myriade_types::Keyframe;
 
 use serde_json::Value;
 
-/// A vanilla animation as the game exports it: channels and their sampling are `mod_api`'s, the
-/// one code path the game and a mod's animations share.
+/// A vanilla animation as the game exports it: channels and their sampling, the one code path the game reads.
 #[derive(Clone, Debug)]
 pub struct Animation {
     pub length: f32,

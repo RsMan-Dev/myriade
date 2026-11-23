@@ -6,14 +6,12 @@ mod event_timings;
 #[cfg(test)]
 mod level_event_targets;
 mod mob_metadata;
-mod raw_inbox;
 mod residency;
 pub(super) mod sync;
 mod viewed_areas;
 
 use super::{
     Game,
-    native_living_effects::active_effect,
     shield::OFFHAND_SLOT,
 };
 use crate::game::api_values::{TryIntoApi, TryIntoEngine};
@@ -301,7 +299,6 @@ impl Game<'_> {
         self.bind_guest_residency(&mut hub);
         self.passages.record_on(&mut hub);
         hub.rule_registry = self.level.rule_registry.clone();
-        hub.sync_attachments = !mod_api::__private::mods().is_empty();
         hub.flat_world = self.world_flat;
         hub.debug_world = self.world_debug;
         let port = hub.lan.port;
@@ -836,7 +833,6 @@ impl Game<'_> {
                 g.entity_id as u32,
                 g.modified_effect_particles.as_ref(),
                 || g.effects.list.iter().map(EffectInstance::shown),
-                |i| active_effect(&g.effects.list[i]),
             ) && let Some(host) = self.lan.as_mut()
             {
                 host.hub
@@ -859,7 +855,6 @@ impl Game<'_> {
             id,
             kept.as_ref(),
             || effects.iter().map(EffectInstance::shown),
-            |i| active_effect(&effects[i]),
         );
         if let Some(update) = update {
             self.ecs.set_modified_swirls(id, update);
@@ -881,7 +876,6 @@ impl Game<'_> {
         entity: u32,
         kept: Option<&ModifiedEffectParticles>,
         effects: impl Fn() -> I,
-        active: impl Fn(usize) -> mod_api::ActiveEffect,
     ) -> Option<Option<ModifiedEffectParticles>> {
         if effects().next().is_none() {
             return kept.is_some().then_some(None);
@@ -889,26 +883,10 @@ impl Game<'_> {
         if kept.is_some_and(|k| k.computed_for(effects())) {
             return None;
         }
-        // Before the world has an epoch no handle can name the entity.
-        let living = (self.native_lifecycle.epoch())
-            .map(|epoch| mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, entity)));
-        let (particles, ambient) =
-            visible_effect_particles(effects().enumerate().filter_map(|(i, e)| {
-                let original = effect_particle(e.effect, e.ambient);
-                let mut particle = original.clone();
-                let mut visible = e.visible;
-                // An effect with no particle has no registry entry to name it by.
-                if let (Some(living), Some(original)) = (living, &original) {
-                    self.native_effect_particle_modification(
-                        living,
-                        &active(i),
-                        original,
-                        &mut particle,
-                        &mut visible,
-                    );
-                }
-                visible.then(|| (e.ambient, particle.or(original)))
-            }));
+        let (particles, ambient) = visible_effect_particles(effects().filter_map(|e| {
+            let original = effect_particle(e.effect, e.ambient);
+            e.visible.then(|| (e.ambient, original))
+        }));
         let meta = hub.particle_meta(&particles, ambient);
         Some(Some(ModifiedEffectParticles::new(effects(), meta)))
     }
@@ -949,7 +927,6 @@ impl Game<'_> {
             }
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
-                HostEvent::RawPayload(delivery) => self.receive_raw_delivery(delivery),
                 event @ (HostEvent::Chat { .. } | HostEvent::Warn(_) | HostEvent::Error(_)) => {
                     self.lan_log_event(event);
                 }
@@ -971,83 +948,19 @@ impl Game<'_> {
                     name,
                 } => {
                     let host = self.lan.as_ref()?;
-                    let Some((id, conn)) = host
+                    if !host
                         .hub
                         .guests
                         .iter()
-                        .find(|g| g.placed && g.participates_online() && g.uuid == message.sender)
-                        .map(|g| (g.entity_id, g.conn))
-                    else {
+                        .any(|g| g.placed && g.participates_online() && g.uuid == message.sender)
+                    {
                         continue;
-                    };
-                    let mut message = *message;
+                    }
+                    let message = *message;
                     let sender = message.sender;
                     let raw = message.content.clone();
-                    // `PlayerChatMessage.decoratedContent`: the text as a literal.
-                    let original = Text::untrusted(raw.clone());
-                    let mut text = original.clone();
-                    let mut cancel = false;
-                    let mut replies = Vec::new();
-                    let mut engine_replies = Vec::new();
-                    if false
-                        && let Ok(mut api_text) = text.try_into_api()
-                    {
-                        self.native_server_chat(mod_api::__private::ServerChatCall {
-                            player_id: id,
-                            player: sender,
-                            username: &name,
-                            raw_text: &raw,
-                            message: &mut api_text,
-                            replies: &mut replies,
-                            cancel: &mut cancel,
-                        });
-                        // Validate all fields before applying any event writes.
-                        let converted: std::result::Result<_, myriade_types::TextFormError> =
-                            (|| {
-                                Ok((
-                                    api_text.try_into_engine(&())?,
-                                    replies.try_into_engine(&())?,
-                                ))
-                            })();
-                        match converted {
-                            Ok((message, answers)) => {
-                                text = message;
-                                engine_replies = answers;
-                            }
-                            Err(_) => {
-                                cancel = false;
-                            }
-                        }
-                    }
-                    // The mods' replies reach the sender alone, as a
-                    // command's do, before the message (if any) goes out.
-                    if !engine_replies.is_empty() {
-                        let host = self.lan.as_ref()?;
-                        for line in engine_replies {
-                            host.hub.send_to(
-                                conn,
-                                &C::SystemChat(play::SystemChat {
-                                    content: myriade_engine::lan::data::component_nbt(
-                                        &line.component(),
-                                    ),
-                                    overlay: false,
-                                }),
-                            );
-                        }
-                    }
-                    // Canceled: stop before `detectRateSpam`.
-                    if cancel {
-                        continue;
-                    }
-                    let mut line = format!("<{name}> {raw}");
-                    if text != original {
-                        // `withUnsignedContent`: clients show the mod's text,
-                        // the signature still covers what was typed.
-                        message.unsigned_content =
-                            Some(myriade_engine::lan::data::component_nbt(&text.component()));
-                        line = format!("<{name}> {}", text.plain());
-                    }
-                    self.lan_broadcast_chat(&message, &bound, line, &name, &text.plain())?;
+                    let line = format!("<{name}> {raw}");
+                    self.lan_broadcast_chat(&message, &bound, line, &name, &raw)?;
                     self.lan_player_chatted(sender, &raw);
                 }
                 HostEvent::ChatSessionStarted(update) => {
@@ -1243,20 +1156,6 @@ impl Game<'_> {
                         self.native_player_kicked(player, &name, &reason);
                     }
                 }
-                HostEvent::PlayerMove(conn) => self.lan_player_move(conn),
-                HostEvent::PlayerMovePacket {
-                    conn,
-                    to,
-                    to_rotation,
-                    on_ground,
-                    has_position,
-                    has_rotation,
-                } => self.announce_player_move_packet(
-                    conn,
-                    to,
-                    to_rotation,
-                    (on_ground, has_position, has_rotation),
-                ),
                 HostEvent::Pong { conn, id } => self.announce_player_pong(conn, id),
                 HostEvent::Input { conn, flags } => {
                     if !false {
@@ -1380,7 +1279,9 @@ impl Game<'_> {
             }));
             events
         };
-        let Some(back) = self.drain_raw_turns(host, events, entities.as_slice(), spawn) else {
+        let Some(back) = myriade_engine::spans::time("lan_events", || {
+            self.lan_process_events(host, events, entities.as_slice(), spawn)
+        }) else {
             return;
         };
         host = back;
@@ -1401,14 +1302,6 @@ impl Game<'_> {
                 .lan
                 .take()
                 .expect("the hub is back after the advancement grants");
-        }
-        if !host.hub.native_menu_events.is_empty() {
-            self.lan = Some(host);
-            myriade_engine::spans::time("lan_menu_events", || self.run_native_menu_events());
-            host = self
-                .lan
-                .take()
-                .expect("the hub is back after the menu events");
         }
         host.states = entities;
         self.level_pass.packets_drained = true;
@@ -1474,7 +1367,6 @@ impl Game<'_> {
         let mut host = self.lan_flush_tracking(host);
         host.states_next_entity = None;
         self.lan = Some(host);
-        self.flush_attachment_sync();
     }
 
     /// Deliver start/stop callbacks before sounds and attachment snapshots.
@@ -1730,15 +1622,6 @@ impl Game<'_> {
         {
             self.run_native_advancement_grants();
         }
-        if self
-            .lan
-            .as_ref()
-            .is_some_and(|host| !host.hub.native_menu_events.is_empty())
-        {
-            self.run_native_menu_events();
-        }
-        self.run_chunk_watches();
-        self.flush_passages();
         if let Some(host) = self.lan.as_mut() {
             host.hub.collect_tracking();
         }
@@ -1770,7 +1653,6 @@ impl Game<'_> {
             host.hub.anticheat_ping();
         }
         drop(holding);
-        self.flush_attachment_sync();
         if let Some(host) = self.lan.as_ref() {
             lan::flush_all(host.hub.guests.iter().map(|g| &g.sender));
         }
@@ -2770,159 +2652,6 @@ mod tests {
         );
     }
 
-    /// `server_chat`'s replies reach the sender alone, as system chat, whether
-    /// or not the message goes out; a canceled message reaches nobody.
-    #[test]
-    #[ignore = "daily"]
-    fn server_chat_replies_reach_the_sender_alone() {
-        use super::super::native_entity_refs::tests::with_game;
-        use myriade_engine::lan::hub::{HostEvent, HubConfig, chat::ChatMessage};
-        use myriade_engine::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
-        use myriade_engine::text::Text;
-        use horizon_protocol::packets::{configuration::ClientInformation, play};
-        use mod_api::Flow;
-        use mod_api::Hooks;
-        use mod_api::ServerChatEvent;
-        use mod_api::ServerHost;
-        use std::sync::{Arc, atomic::AtomicI32, mpsc};
-
-        struct Replier;
-        #[mod_api::__subscriptions]
-        impl Hooks for Replier {
-            fn server_chat(
-                &self,
-                _host: &mut dyn ServerHost,
-                event: &mut ServerChatEvent<'_>,
-            ) -> Flow {
-                event
-                    .replies
-                    .push(myriade_types::Text::literal(format!("heard {}", event.raw_text)));
-                if event.raw_text == "secret" {
-                    Flow::Cancel
-                } else {
-                    Flow::Continue
-                }
-            }
-        }
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("replier", Box::new(Replier))].into();
-        mod_platform::testing::with_mods(mods, || {
-            with_game(|game| {
-                let settings = super::LanSettings {
-                    port: 0,
-                    guest_commands: false,
-                    force_game_mode: false,
-                };
-                let net = NetConfig {
-                    listen: false,
-                    announce: false,
-                    lod_distance: 0,
-                    ..NetConfig::lan(0, String::new(), 3)
-                };
-                let config = HubConfig {
-                    default_game_mode: 0,
-                    guest_commands: false,
-                    force_game_mode: false,
-                    hardcore: false,
-                    view_distance: 2,
-                    simulation_distance: 2,
-                    dimension: game.dim.id().to_owned(),
-                    allow_flight: true,
-                    seed: 0,
-                    max_players: 3,
-                    levels: game.level_shapes,
-                    level_seeds: game.levels.runtime.seeds(),
-                };
-                game.lan_host(settings, net, config).unwrap();
-                let mut join = |conn: u32| {
-                    let (tx, rx) = mpsc::channel();
-                    let mut guest = Guest::new(
-                        Joined {
-                            conn,
-                            uuid: conn as u128,
-                            name: format!("guest{conn}"),
-                            properties: Vec::new(),
-                            info: ClientInformation::new(8),
-                            brand: String::new(),
-                            sender: PlayerSender::new(tx, Arc::default()),
-                            latency: Arc::new(AtomicI32::new(0)),
-                            address: "127.0.0.1:1".parse().unwrap(),
-                            expected: false,
-                        },
-                        conn as i32,
-                        [0.5, 64.0, 0.5],
-                        2,
-                    );
-                    guest.placed = true;
-                    game.lan.as_mut().unwrap().hub.guests.push(guest);
-                    rx
-                };
-                let (sender, other) = (join(12), join(13));
-                // The chat packets each guest got, in order.
-                let received = |rx: &mpsc::Receiver<Out>| {
-                    let mut seen = Vec::new();
-                    while let Ok(out) = rx.try_recv() {
-                        let bodies = match out {
-                            Out::Packet(body) => vec![body],
-                            Out::Packets(bodies) => bodies,
-                            Out::Disconnect(_) => continue,
-                        };
-                        for body in bodies {
-                            let mut reader = horizon_protocol::buf::Reader::new(&body);
-                            let id = reader.varint().unwrap();
-                            match play::Clientbound::decode(id, reader.rest()) {
-                                Ok(play::Clientbound::SystemChat(chat)) => seen.push(format!(
-                                    "system {}",
-                                    myriade_engine::component::name_text(&chat.content).plain()
-                                )),
-                                Ok(play::Clientbound::PlayerChat(_)) => {
-                                    seen.push("player".to_owned())
-                                }
-                                _ => {}
-                            }
-                        }
-                    }
-                    seen
-                };
-                received(&sender);
-                received(&other);
-                let say = |game: &mut super::Game<'_>, content: &str| {
-                    let message = ChatMessage {
-                        sender: 12,
-                        index: 0,
-                        signature: None,
-                        content: content.to_owned(),
-                        timestamp: 0,
-                        salt: 0,
-                        last_seen: Vec::new(),
-                        unsigned_content: None,
-                    };
-                    let bound = play::ChatTypeBound {
-                        chat_type: 0,
-                        name: myriade_engine::lan::data::component_nbt(
-                            &Text::literal("guest12").component(),
-                        ),
-                        target: None,
-                    };
-                    let event = HostEvent::ChatSubmitted {
-                        message: Box::new(message),
-                        bound: Box::new(bound),
-                        name: "guest12".into(),
-                    };
-                    let host = game.lan.take().unwrap();
-                    game.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
-                };
-
-                say(game, "secret");
-                assert_eq!(received(&sender), ["system heard secret"]);
-                assert!(received(&other).is_empty());
-
-                say(game, "hello");
-                assert_eq!(received(&sender), ["system heard hello", "player"]);
-                assert_eq!(received(&other), ["player"]);
-            });
-        });
-    }
-
     /// A guest who left takes its menu owners with it: the hub's leave event (`HostEvent::Left`)
     /// removes them with the play state, and another guest's stay.
     #[test]
@@ -3257,89 +2986,6 @@ pub(crate) mod world_spawn_sync_tests {
                 sent[0].pitch
             );
         });
-    }
-}
-
-#[cfg(test)]
-mod owner_attachment_save_tests {
-    use super::*;
-    use horizon_core::nbt::Tag;
-    use horizon_mod_runtime::attachments::{
-        AttachmentCodec, AttachmentError, AttachmentType, Attachments,
-    };
-
-    static PROGRESS: AttachmentType<i32> = AttachmentType {
-        namespace: "test",
-        name: "progress",
-        default: || 0,
-        codec: Some(AttachmentCodec {
-            encode: |n: &i32| Ok([("n".into(), Tag::Int(*n))].into()),
-            decode: |c| match c.get(&"n".into()) {
-                Some(Tag::Int(n)) => Ok(*n),
-                _ => Err(AttachmentError::Decode),
-            },
-        }),
-        copy_on_death: true,
-        sync: false,
-    };
-
-    /// The live value as the named owner file would hold it.
-    fn saved_value(game: &Game<'_>) -> Option<i32> {
-        let Some(Tag::Compound(map)) = game.level.player_extra.as_ref() else {
-            return None;
-        };
-        let data = horizon_mod_runtime::attachments::attachment_compound(
-            map.get(&horizon_mod_runtime::attachments::ATTACHMENTS_KEY.into()),
-        )
-        .ok()
-        .flatten()?;
-        PROGRESS
-            .get_existing(
-                &mut Attachments::from_nbt(data.clone()),
-                horizon_mod_runtime::attachments::Holder::Level,
-            )
-            .ok()
-            .flatten()
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn an_autosave_writes_the_owners_live_attachments_to_the_file_it_loads() {
-        let mut resources = None;
-        let mut game = crate::game::game_tests::tests::server_game(&mut resources);
-        let _rx = super::world_spawn_sync_tests::host_for(&mut game);
-        let uuid = 1;
-        game.lan.as_mut().unwrap().owner = Some(Owner { uuid, saved: None });
-        // While the owner plays, its attachments are the game's, not the guest's.
-        PROGRESS
-            .set(
-                &mut game.player_state.attachments,
-                horizon_mod_runtime::attachments::Holder::Level,
-                7,
-            )
-            .unwrap();
-        assert!(game.store_owner().is_some());
-        assert_eq!(
-            saved_value(&game),
-            Some(7),
-            "the autosave stores the live value"
-        );
-        let host = game.lan.as_ref().unwrap();
-        let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
-        assert!(
-            g.attachments.to_nbt().is_empty(),
-            "the map stays their one owner"
-        );
-        // A later change is what the next autosave writes.
-        PROGRESS
-            .set(
-                &mut game.player_state.attachments,
-                horizon_mod_runtime::attachments::Holder::Level,
-                9,
-            )
-            .unwrap();
-        game.store_owner();
-        assert_eq!(saved_value(&game), Some(9));
     }
 }
 

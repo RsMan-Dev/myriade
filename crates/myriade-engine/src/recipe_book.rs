@@ -17,17 +17,12 @@ mod properties;
 pub use properties::ServerRecipeProperties;
 
 mod custom_books;
-pub mod menu_layout;
-mod mod_index;
-mod placement_codec;
-pub mod placement_sync;
 mod resource_id;
 pub mod settings_codec;
 pub mod settings_connection;
 pub mod settings_sync;
 pub mod slot_layout;
 pub use custom_books::{BookError, BookFlags, CustomBooks, read_saved};
-pub use mod_index::{DisplayLoadError, DisplayResources, ModBookIndex, ModBookPanel};
 
 /// `RecipeBookType`: the menus with a recipe book and their own settings.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -1090,8 +1085,7 @@ impl RecipeIndex {
         let mut recipes = std::collections::BTreeMap::new();
         let mut insert = |id: String, v: &serde_json::Value| {
             let kind = v["type"].as_str().unwrap_or_default();
-            let special = mod_api::__private::parts_installation::crafting_recipe(kind).is_some()
-                || kind.starts_with("minecraft:crafting_special_")
+            let special = kind.starts_with("minecraft:crafting_special_")
                 || kind == "minecraft:crafting_decorated_pot"
                 // A brewing recipe has no recipe book display of its own
                 // (`BrewingRecipe`), so it never takes display numbers.

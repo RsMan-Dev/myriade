@@ -23,11 +23,9 @@ use horizon_core::{
     biome::BiomeZoom,
     geometry::{Aabb, Axis, Vec3},
     position::BlockPos,
-    random::LegacyRandom,
 };
 use horizon_world::dimension_type::DimensionFacts;
 use horizon_ecs_proto::bridge::{host::Select, view};
-use horizon_ecs_proto::spawn_sheet::SpawnSheet;
 use myriade_types::SpawnCheck;
 use myriade_types::SpawnFlags;
 use myriade_types::SpawnLimits;
@@ -222,27 +220,8 @@ pub(super) trait LevelHost: Sized {
     /// The game's entities as box queries read them, listed before the grid is built.
     fn mob_boxes(&self) -> Vec<MobBox>;
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>);
-    /// `mob_spawn_placement_check` for the level's spawn at `at`; `vanilla` where nothing listens.
-    fn placement_check(
-        _: &Level<'_, Self>,
-        _: &str,
-        _: Reason,
-        _: [i32; 3],
-        vanilla: bool,
-    ) -> bool {
-        vanilla
-    }
-    /// `mob_spawn_position_check` for a spawn at `at`.
-    fn position_check(
-        _: &Level<'_, Self>,
-        _: &str,
-        _: Reason,
-        _: [f64; 3],
-        _: spawn_place::Pending,
-    ) -> SpawnCheck {
-        SpawnCheck::Default
-    }
 }
+
 impl LevelHost for &Game<'_> {
     fn mob_boxes(&self) -> Vec<MobBox> {
         self.ecs.mob_boxes()
@@ -254,87 +233,8 @@ impl LevelHost for &Game<'_> {
             entries.clear();
         }
     }
-    fn placement_check(
-        level: &Level<'_, Self>,
-        entity: &str,
-        reason: Reason,
-        at: [i32; 3],
-        vanilla: bool,
-    ) -> bool {
-        if !false {
-            return vanilla;
-        }
-        let mut result = SpawnCheck::Default;
-        level.game.native_mob_spawn_placement_check(
-            mod_api::__private::MobSpawnPlacementCheckCall {
-                dimension: level.game.dim.id(),
-                kind: entity,
-                reason,
-                pos: BlockPos::new(at[0], at[1], at[2]),
-                default_result: vanilla,
-                level: level.level_ref(),
-                spawner: level.spawner,
-                result: &mut result,
-            },
-        );
-        match result {
-            SpawnCheck::Succeed => true,
-            SpawnCheck::Fail => false,
-            _ => vanilla,
-        }
-    }
-    /// Vanilla creates the mob before its position checks, so with a listener
-    /// the mob a fresh spawn is about to create is created here, the way the
-    /// spawn creates it, lent to the listeners, and handed on to the spawn
-    /// ([`Level::take_checked`]); a refused check drops it
-    /// ([`NaturalLevel::position_refused`]). Creating it draws nothing from
-    /// the level's random. A site that does not create the mob fresh (a
-    /// spawner's entity data, chunk generation's packs) lends its kind and
-    /// position only. With no listener nothing is created.
-    fn position_check(
-        level: &Level<'_, Self>,
-        entity: &str,
-        reason: Reason,
-        at: [f64; 3],
-        pending: spawn_place::Pending,
-    ) -> SpawnCheck {
-        let mut result = SpawnCheck::Default;
-        if !false {
-            return result;
-        }
-        // An earlier check's mob that no spawn took is not this one.
-        level.checked.take();
-        let provisional = level.provisional.get();
-        let mut sheet = (pending.fresh && level.host.mob_types.contains_key(entity)).then(SpawnSheet::default);
-        let level_ref = level.level_ref();
-        level
-            .game
-            .lend_unspawned(entity, at, sheet.as_mut(), |handle, _| {
-                level.game.native_mob_spawn_position_check(
-                    mod_api::__private::MobSpawnPositionCheckCall {
-                        dimension: level.game.dim.id(),
-                        kind: entity,
-                        reason,
-                        pos: at,
-                        level: level_ref,
-                        spawner: level.spawner,
-                        mob: handle,
-                        result: &mut result,
-                    },
-                );
-            });
-        if let Some(sheet) = sheet {
-            *level.checked.borrow_mut() = Some(Checked {
-                kind: entity.to_owned(),
-                at,
-                yaw: pending.yaw,
-                sheet,
-                provisional,
-            });
-        }
-        result
-    }
 }
+
 /// The parts of the game a level reads, as plain shared borrows (all `Sync`).
 #[derive(Clone)]
 pub(super) struct SpawnHost<'g> {
@@ -388,20 +288,6 @@ pub(super) struct Level<'g, H> {
     /// The spawner block whose tick this pass is, told to the spawn checks;
     /// None for natural spawning and the other passes.
     pub(super) spawner: Option<myriade_types::Spawner>,
-    /// The mob a listened position check created and lent, which the spawn
-    /// that follows takes rather than creating it again ([`Checked`]).
-    checked: std::cell::RefCell<Option<Checked>>,
-}
-/// The sheet a listened `mob_spawn_position_check` lent, with the kind, place
-/// and yaw it was made for, held until the spawn takes it, and the provisional
-/// count before it: a refused check drops the sheet and gives the id back, so a
-/// refused attempt leaves the pass as an unlistened one would.
-struct Checked {
-    kind: String,
-    at: [f64; 3],
-    yaw: f32,
-    sheet: SpawnSheet,
-    provisional: u32,
 }
 /// An entity: its id, box, alive, and whether it is a living shulker.
 type MobBox = (u32, Aabb, bool, bool);
@@ -453,14 +339,8 @@ impl<H: LevelHost> Level<'_, H> {
         self.provisional.set(n + 1);
         u32::MAX - n
     }
-    /// The mob the position check of this spawn created, when one did and it
-    /// is the one asked for (`entity` at `position`, facing `yaw`): the spawn
-    /// goes on with it rather than creating it again.
-    pub(super) fn take_checked(&self, entity: &str, position: [f64; 3], yaw: f32) -> Option<SpawnSheet> {
-        let Checked { kind, at, yaw: checked_yaw, sheet, .. } = self.checked.take()?;
-        (kind == entity && at == position && checked_yaw == yaw).then_some(sheet)
-    }
 }
+
 impl Game<'_> {
     /// The tables a finalizeSpawn `Ctx` borrows: the variant registries, the
     /// enchantments and items its gear rolls need, and `EntityTypes.CAMEL_HUSK`'s
@@ -480,17 +360,9 @@ impl Game<'_> {
         }
     }
 }
-impl<'g, 'x, 'a> Level<'g, &'x Game<'a>> {
-    /// The handle of this pass's level, which the spawn checks are told.
-    fn level_ref(&self) -> mod_api::LevelRef {
-        self.game
-            .level_ref(self.game.lend_epoch(), self.game.dim.key())
-    }
-}
-
 impl<H: LevelHost> SpawnLevel for Level<'_, H> {
-    fn placement_check(&self, entity: &str, reason: Reason, at: [i32; 3], vanilla: bool) -> bool {
-        H::placement_check(self, entity, reason, at, vanilla)
+    fn placement_check(&self, _: &str, _: Reason, _: [i32; 3], vanilla: bool) -> bool {
+        vanilla
     }
     fn within_world_border(&self, x: i32, z: i32) -> bool {
         self.host
@@ -552,22 +424,8 @@ impl<H: LevelHost> SpawnLevel for Level<'_, H> {
     }
 }
 impl<H: LevelHost> NaturalLevel for Level<'_, H> {
-    fn spawn_hooks(&self) -> bool {
-        !mod_api::__private::mods().is_empty()
-    }
-    fn position_check(
-        &self,
-        entity: &str,
-        reason: Reason,
-        at: [f64; 3],
-        pending: spawn_place::Pending,
-    ) -> SpawnCheck {
-        H::position_check(self, entity, reason, at, pending)
-    }
-    fn position_refused(&self) {
-        if let Some(refused) = self.checked.take() {
-            self.provisional.set(refused.provisional);
-        }
+    fn position_check(&self, _: &str, _: Reason, _: [f64; 3], _: spawn_place::Pending) -> SpawnCheck {
+        SpawnCheck::Default
     }
     fn potential_spawns(&self, category: Category, pos: [i32; 3], entries: &mut Vec<SpawnEntry>) {
         self.game.potential_spawns(category, pos, entries);
@@ -824,7 +682,6 @@ impl<'a> Game<'a> {
             boxes: Default::default(),
             costed: spawn_cost_types(world_biomes!(self)),
             spawner: None,
-            checked: Default::default(),
         }
     }
     /// Every player in the level in place: the local player, and the LAN
@@ -907,20 +764,17 @@ impl<'a> Game<'a> {
     }
     /// `ChunkMap.collectSpawningChunks`: the natural spawn chunk tracker's
     /// chunks (within 8 chunks of a player, `getSpawnCandidateChunks`) that
-    /// are ticking and within 128 blocks of a non-spectator, or held by a mod
-    /// ticket that forces natural spawning (NeoForge's
-    /// `shouldForceNaturalSpawning`). Also returns how many chunks the tracker
+    /// are ticking and within 128 blocks of a non-spectator. Also returns how many chunks the tracker
     /// holds (`getNaturalSpawnChunkCount`).
     pub(super) fn spawning_chunks(
         &self,
         players: &[LevelPlayer],
         scratch: &mut SpawnScratch,
     ) -> i32 {
-        let tickets = self.streaming.mod_tickets();
         let levels = self.tickets.levels();
         scratch.collect(
             players,
-            |chunk| tickets.forces_natural_spawning(chunk),
+            |_| false,
             |(cx, cz)| levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.world, cx, cz),
         )
     }
@@ -1243,314 +1097,5 @@ mod tests {
             );
             assert_eq!(scratch.candidates, expected, "step {step}");
         }
-    }
-
-    /// Answers both spawn checks with one fixed result.
-    struct ChecksMod(SpawnCheck);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for ChecksMod {
-        fn mob_spawn_placement_check(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>,
-        ) {
-            *event.result = self.0;
-        }
-        fn mob_spawn_position_check(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
-        ) {
-            *event.result = self.0;
-        }
-    }
-
-    /// The placement check runs after vanilla's predicate (`default_result` is its answer), so
-    /// its draws are vanilla's whatever a mod answers. The position check replaces vanilla's two
-    /// checks: no listener and `Default` draw exactly as vanilla, `Succeed` and `Fail` draw nothing.
-    #[test]
-    #[ignore = "daily"]
-    fn spawn_checks_pin_the_random_draws_of_both_halves() {
-        use super::super::native_entity_refs::tests::with_game;
-        with_game(|game| {
-            let level = game.natural_level();
-            let placement = |random: &mut LegacyRandom| {
-                let ok = myriade_engine::mobs::spawn_rules::check_spawn_rules(
-                    "minecraft:sulfur_cube",
-                    Species::SulfurCube,
-                    &level,
-                    Reason::Natural,
-                    random,
-                    [8, 64, 8],
-                );
-                (ok, random.next_int())
-            };
-            let position = |random: &mut LegacyRandom| {
-                let ok = spawn_place::position_ok(
-                    &level,
-                    "minecraft:sulfur_cube",
-                    Reason::Natural,
-                    [8.5, 64.0, 8.5],
-                    spawn_place::Pending {
-                        yaw: 0.0,
-                        fresh: true,
-                    },
-                    || {
-                        random.next_int();
-                        false
-                    },
-                );
-                (ok, random.next_int())
-            };
-            let run = |answer: Option<SpawnCheck>| {
-                let go = || {
-                    (
-                        placement(&mut LegacyRandom::new(11)),
-                        position(&mut LegacyRandom::new(11)),
-                    )
-                };
-                match answer {
-                    None => go(),
-                    Some(a) => mod_platform::testing::with_mods(
-                        vec![mod_api::ModEntry::new(
-                            "spawn-checks",
-                            Box::new(ChecksMod(a)),
-                        )]
-                        .into(),
-                        go,
-                    ),
-                }
-            };
-            let mut seed = LegacyRandom::new(11);
-            let first = seed.next_int();
-            let second = seed.next_int();
-            let none = run(None);
-            assert!(none.0.0, "the sulfur cube's predicate has no conditions");
-            assert_eq!(none.1, (false, second), "vanilla's closure drew once");
-            assert_eq!(run(Some(SpawnCheck::Default)), none);
-            let succeed = run(Some(SpawnCheck::Succeed));
-            assert_eq!(
-                succeed.0,
-                (true, none.0.1),
-                "placement draws stay vanilla's"
-            );
-            assert_eq!(
-                succeed.1,
-                (true, first),
-                "Succeed skips the checks and their draws"
-            );
-            let fail = run(Some(SpawnCheck::Fail));
-            assert_eq!(fail.0, (false, none.0.1));
-            assert_eq!(fail.1, (false, first));
-        });
-    }
-
-    /// What a spawn-check listener heard: the hook, the kind, the level and the spawner, and on
-    /// the position check what the lent mob read (kind, position, whether its head slot is
-    /// empty).
-    #[derive(Clone, Debug, PartialEq)]
-    struct Heard {
-        hook: &'static str,
-        kind: String,
-        level: mod_api::LevelRef,
-        spawner: Option<myriade_types::Spawner>,
-        mob: Option<MobReads>,
-    }
-    type MobReads = (
-        Result<myriade_types::Identifier, myriade_types::UnspawnedMobError>,
-        Result<[f64; 3], myriade_types::UnspawnedMobError>,
-        Result<bool, myriade_types::UnspawnedMobError>,
-    );
-    type Log = std::sync::Arc<std::sync::Mutex<Vec<Heard>>>;
-    /// Records both spawn checks and answers the position check with `answer`, reading the lent
-    /// mob and changing nothing else.
-    struct ContextMod {
-        answer: SpawnCheck,
-        log: Log,
-    }
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for ContextMod {
-        fn mob_spawn_placement_check(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::MobSpawnPlacementCheckEvent<'_>,
-        ) {
-            self.log.lock().unwrap().push(Heard {
-                hook: "placement",
-                kind: event.kind.to_owned(),
-                level: event.level,
-                spawner: event.spawner,
-                mob: None,
-            });
-        }
-        fn mob_spawn_position_check(
-            &self,
-            host: &dyn mod_api::Host,
-            event: &mut mod_api::MobSpawnPositionCheckEvent<'_>,
-        ) {
-            let mob = event.mob;
-            let reads = (
-                mob.kind(host),
-                mob.position(host),
-                mob.equipment(host, myriade_types::EquipmentSlot::Head)
-                    .map(|e| e.is_none()),
-            );
-            self.log.lock().unwrap().push(Heard {
-                hook: "position",
-                kind: event.kind.to_owned(),
-                level: event.level,
-                spawner: event.spawner,
-                mob: Some(reads),
-            });
-            *event.result = self.answer;
-        }
-    }
-    /// Gives every natural monster position one entry: the sulfur cube, whose spawn predicate
-    /// has no conditions, in packs of four.
-    struct SulfurCubesOnly;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for SulfurCubesOnly {
-        fn potential_spawns(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::PotentialSpawnsEvent<'_>,
-        ) -> mod_api::Flow {
-            if event.category == "monster" {
-                *event.entries = vec![SpawnEntry {
-                    entity: SULFUR_CUBE.into(),
-                    weight: 1,
-                    min: 4,
-                    max: 4,
-                    constant: true,
-                }];
-            }
-            mod_api::Flow::Continue
-        }
-    }
-    const SULFUR_CUBE: &str = "minecraft:sulfur_cube";
-    /// Answers `finalize_spawn` the way a test asks.
-    #[derive(Clone, Copy)]
-    enum FinalizeAnswer {
-        Pass,
-        SkipFinalize,
-        StopSpawn,
-    }
-    struct FinalizeMod(FinalizeAnswer);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for FinalizeMod {
-        fn finalize_spawn(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::FinalizeSpawnEvent<'_>,
-        ) -> mod_api::Flow {
-            match self.0 {
-                FinalizeAnswer::Pass => {}
-                FinalizeAnswer::SkipFinalize => return mod_api::Flow::Cancel,
-                FinalizeAnswer::StopSpawn => event.spawn_cancelled = true,
-            }
-            mod_api::Flow::Continue
-        }
-    }
-
-    /// Counts the `finalize_spawn` events it hears.
-    struct CountFinalize(std::sync::Arc<std::sync::atomic::AtomicUsize>);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for CountFinalize {
-        fn finalize_spawn(
-            &self,
-            _: &dyn mod_api::Host,
-            _: &mut mod_api::FinalizeSpawnEvent<'_>,
-        ) -> mod_api::Flow {
-            self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            mod_api::Flow::Continue
-        }
-    }
-
-    /// A site vanilla makes without `finalizeSpawn` (an infested block's silverfish) is not
-    /// told; one it finalizes is.
-    #[test]
-    #[ignore = "daily"]
-    fn finalize_spawn_is_told_only_where_vanilla_finalizes() {
-        use super::super::creatures::SpawnSite;
-        use super::super::native_entity_refs::tests::with_game;
-        let heard = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
-        let mods = vec![mod_api::ModEntry::new(
-            "count-finalize",
-            Box::new(CountFinalize(heard.clone())),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                let at = [8.5, 64.0, 8.5];
-                let count = || heard.load(std::sync::atomic::Ordering::Relaxed);
-                assert!(
-                    game.spawn_mob("minecraft:silverfish", at, false, SpawnSite::Plain)
-                        .is_some()
-                );
-                assert_eq!(count(), 0, "a plain site is not told");
-                assert!(
-                    game.spawn_mob(
-                        "minecraft:silverfish",
-                        at,
-                        false,
-                        SpawnSite::Finalizing(Reason::Spawner)
-                    )
-                    .is_some()
-                );
-                assert_eq!(count(), 1, "a finalizing site is told once");
-            });
-        });
-    }
-
-    /// Records the kind and reason of every `finalize_spawn` event.
-    struct RecordFinalize(std::sync::Arc<std::sync::Mutex<Vec<(String, myriade_types::SpawnReason)>>>);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for RecordFinalize {
-        fn finalize_spawn(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::FinalizeSpawnEvent<'_>,
-        ) -> mod_api::Flow {
-            self.0
-                .lock()
-                .unwrap()
-                .push((event.kind.to_owned(), event.reason));
-            mod_api::Flow::Continue
-        }
-    }
-
-    /// `ZombieHorse.finalizeSpawn` finalizes its rider with the horse's own
-    /// `spawnReason`, a baby zombie's chicken with `JOCKEY`.
-    #[test]
-    #[ignore = "daily"]
-    fn jockeys_finalize_with_the_parents_reason() {
-        use super::super::creatures::SpawnSite;
-        use super::super::native_entity_refs::tests::with_game;
-        let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let mods = vec![mod_api::ModEntry::new(
-            "record-finalize",
-            Box::new(RecordFinalize(heard.clone())),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            with_game(|game| {
-                game.session.difficulty = 2;
-                let at = [8.5, 64.0, 8.5];
-                game.spawn_mob(
-                    "minecraft:zombie_horse",
-                    at,
-                    false,
-                    SpawnSite::Finalizing(Reason::Natural),
-                )
-                .unwrap();
-                let heard = heard.lock().unwrap();
-                let natural = Reason::Natural;
-                assert_eq!(
-                    *heard,
-                    [
-                        ("minecraft:zombie_horse".to_owned(), natural),
-                        ("minecraft:zombie".to_owned(), natural)
-                    ]
-                );
-            });
-        });
     }
 }

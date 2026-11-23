@@ -94,56 +94,22 @@ impl Game<'_> {
         let Some(host) = self.lan.as_mut() else {
             return;
         };
-        let (identity, bed, gone, uuid) = host.hub.guests.update(gi, |g| {
-            let was_deep = g.sleep_timer >= 100;
+        let (bed, gone) = host.hub.guests.update(gi, |g| {
             g.sleep_timer = crate::game::tick_sleep_timer(g.sleep_timer, g.bed.is_some());
-            let deep_sleep = !was_deep && g.sleep_timer >= 100 && g.bed.is_some();
-            let identity = deep_sleep.then(|| (g.uuid, g.name.clone()));
-            (identity, g.bed, g.dead || g.health <= 0.0, g.uuid)
+            (g.bed, g.dead || g.health <= 0.0)
         });
         if let Some(head) = bed {
             let block = self.world.block(head[0], head[1], head[2]);
             let bed_exists = self.res.facts().get(block).name.ends_with("_bed");
-            let modded = !mod_api::__private::mods().is_empty();
-            let name = if modded && !gone {
-                self.lan
-                    .as_ref()
-                    .map(|host| host.hub.guests[gi].name.clone())
-            } else {
-                None
-            };
             let mut keep_sleeping = !gone;
             let mut wake_immediately = gone;
             // Player.tick's bed-rule check precedes living-entity continuation.
             if keep_sleeping && bed_exists {
-                let problem = self.sleep_problem(true, true);
-                let mut may_continue = None;
-                if let Some(name) = name.as_deref() {
-                    self.native_can_continue_sleeping(
-                        uuid,
-                        name,
-                        "minecraft:player",
-                        head,
-                        problem,
-                        &mut may_continue,
-                    );
-                }
-                keep_sleeping = may_continue.unwrap_or(problem.is_none());
+                keep_sleeping = self.sleep_problem(true, true).is_none();
             }
             if keep_sleeping {
                 let problem = self.sleep_problem(bed_exists, false);
-                let mut may_continue = None;
-                if let Some(name) = name.as_deref() {
-                    self.native_can_continue_sleeping(
-                        uuid,
-                        name,
-                        "minecraft:player",
-                        head,
-                        problem,
-                        &mut may_continue,
-                    );
-                }
-                keep_sleeping = may_continue.unwrap_or(problem.is_none());
+                keep_sleeping = problem.is_none();
                 wake_immediately = !keep_sleeping;
             }
             if !keep_sleeping {
@@ -157,9 +123,6 @@ impl Game<'_> {
                     }
                 });
             }
-        }
-        if let Some((player, name)) = identity {
-            self.native_player_deep_sleep(player, &name);
         }
     }
 

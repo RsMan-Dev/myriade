@@ -86,14 +86,6 @@ impl Game<'_> {
             let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
             let mut block_answer =
                 self.use_item_on_block(hit, self.hand, held.as_ref(), myriade_types::UsePhase::Block);
-            if block_answer.is_none()
-                && false
-                && api_values::block_state::block_listens(mod_api::HookId::UseItemOn, state)
-                && let Ok(snapshot) = held.try_into_api()
-            {
-                let click = self.block_click(hit, self.hand, snapshot.as_ref());
-                self.native_use_item_on(state, &click, &mut block_answer);
-            }
             let mut chains_sign = false;
             if block_answer.is_none() {
                 // TntBlock.useItemOn belongs to the block phase, before
@@ -209,19 +201,7 @@ impl Game<'_> {
                 let (result, branch) = if let Some(result) = item_result {
                     (result, UseBranch::ItemOn)
                 } else if self.hand == Hand::Main {
-                    let mut empty_answer = None;
-                    if false
-                        && api_values::block_state::block_listens(
-                            mod_api::HookId::UseWithoutItem,
-                            state,
-                        )
-                        && let Ok(snapshot) = self.held().try_into_api()
-                    {
-                        let click = self.block_click(hit, self.hand, snapshot.as_ref());
-                        self.native_use_without_item(state, &click, &mut empty_answer);
-                    }
-                    if empty_answer.is_none()
-                        && self
+                    if self
                             .res
                             .behaviours()
                             .data(state)
@@ -231,20 +211,14 @@ impl Game<'_> {
                         self.trigger_default_block_use(hit.pos);
                         return Ok(true);
                     }
-                    let answer = empty_answer.or_else(|| {
-                        self.use_jukebox(hit.pos, state, None, UseBranch::WithoutItem)
-                            .or_else(|| {
-                                self.use_decorated_pot(hit.pos, state, None, UseBranch::WithoutItem)
-                            })
-                            .or_else(|| {
-                                self.use_chiseled_bookshelf(
-                                    hit,
-                                    state,
-                                    None,
-                                    UseBranch::WithoutItem,
-                                )
-                            })
-                    });
+                    let answer = self
+                        .use_jukebox(hit.pos, state, None, UseBranch::WithoutItem)
+                        .or_else(|| {
+                            self.use_decorated_pot(hit.pos, state, None, UseBranch::WithoutItem)
+                        })
+                        .or_else(|| {
+                            self.use_chiseled_bookshelf(hit, state, None, UseBranch::WithoutItem)
+                        });
                     let result = if let Some(answer) = answer {
                         native_hooks::block_use_result(answer).unwrap_or(InteractionResult::Pass)
                     } else {
@@ -697,9 +671,8 @@ impl Game<'_> {
 impl Game<'_> {
     pub(super) fn apply_consume_effect(
         &mut self,
-        consumed: &myriade_engine::items::ItemStack,
         effect: &myriade_engine::items::ConsumeEffect,
-        mob: Option<mod_api::LivingRef>,
+        mob: Option<u32>,
     ) -> Option<bool> {
         use myriade_engine::items::ConsumeEffect;
         Some(match effect {
@@ -710,12 +683,7 @@ impl Game<'_> {
                 // ApplyStatusEffectsConsumeEffect draws from the user's random,
                 // even at probability 1. The level random stands in for a player's.
                 let draw = match mob {
-                    Some(living) => {
-                        let commands::Target::Mob(id) = self.native_living_target(living)? else {
-                            return None;
-                        };
-                        self.ecs_next_float(id)?
-                    }
+                    Some(id) => self.ecs_next_float(id)?,
                     None => self.world.random.next_float(),
                 };
                 if draw >= *probability {
@@ -726,17 +694,15 @@ impl Game<'_> {
                     let Some(def) = myriade_engine::brewing::effect(&eff.id) else {
                         continue;
                     };
-                    if let Some(living) = mob {
-                        let effect = mod_api::ActiveEffect::new(
-                            mod_api::__private::effect_key_by_index(def.index)
-                                .expect("effects resolved at load"),
+                    if let Some(id) = mob {
+                        changed |= self.ecs_mob_add_effect(
+                            id,
+                            def.id,
                             eff.duration,
                             eff.amplifier,
-                            eff.ambient,
                             eff.show_particles,
-                            eff.show_icon,
+                            eff.ambient,
                         );
-                        changed |= self.living_add_effect(living, &effect);
                     } else {
                         let mut instance = myriade_engine::effects::EffectInstance::new(
                             def.id,
@@ -752,16 +718,15 @@ impl Game<'_> {
                 changed
             }
             ConsumeEffect::ClearAllEffects => match mob {
-                Some(living) => self.living_remove_all_effects(living),
+                Some(id) => self.ecs.retain_effects(id, &[]),
                 None => self.remove_player_effects(None),
             },
             ConsumeEffect::RemoveEffects(effects) => {
                 let mut changed = false;
                 for effect in effects {
                     changed |= match mob {
-                        Some(living) => myriade_engine::brewing::effect(effect)
-                            .and_then(|def| mod_api::__private::effect_key_by_index(def.index))
-                            .is_some_and(|key| self.living_remove_effect(living, key)),
+                        Some(id) => myriade_engine::brewing::effect(effect)
+                            .is_some_and(|def| self.ecs.remove_effect(id, def.index as i32)),
                         None => myriade_engine::brewing::effect(effect)
                             .is_some_and(|def| self.remove_player_effects(Some(def.index))),
                     };
@@ -772,14 +737,11 @@ impl Game<'_> {
                 if mob.is_some() {
                     return None;
                 }
-                self.teleport_randomly(teleport, consumed)
+                self.teleport_randomly(teleport)
             }
             ConsumeEffect::PlaySound(sound) => {
                 let at = match mob {
-                    Some(living) => {
-                        let commands::Target::Mob(id) = self.native_living_target(living)? else {
-                            return None;
-                        };
+                    Some(id) => {
                         let p = self.ecs_vec3(id)?;
                         horizon_core::geometry::Vec3::new(p[0], p[1], p[2])
                     }

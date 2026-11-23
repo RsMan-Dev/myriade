@@ -352,7 +352,7 @@ impl Game<'_> {
             return;
         };
         let kind = if chest { row.2 } else { row.1 };
-        let (damage, scale, _, magic) = self.melee_damage(kind, false, Some(id));
+        let (damage, scale, _, magic) = self.melee_damage(kind, false);
         let sweep = self.sweep_before_hit(kind, false);
         let attacker = self.own_entity_id() as u32;
         let source = myriade_engine::health::HurtSource {

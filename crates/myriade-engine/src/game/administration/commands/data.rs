@@ -209,7 +209,6 @@ impl Game<'_> {
                 let fence = self.natural_knot(id)?;
                 let uuid = *self.persist.uuids.get(&id)?;
                 let knot = super::OtherEntity {
-                    attachment_lifetime: Default::default(),
                     // A serialization view, not a second resident entity.
                     join: myriade_engine::join_seq::JoinSeq::UNJOINED,
                     id,

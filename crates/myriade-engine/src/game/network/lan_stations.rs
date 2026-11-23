@@ -94,12 +94,6 @@ impl Game<'_> {
         };
         let mut menu = Box::new(Menu::new(kind));
         menu.set_registry_id(Some(menu_type));
-        // Without a mod the take runs AnvilMenu.onTake's order in the click itself.
-        let hooked = !mod_api::__private::mods().is_empty();
-        menu.anvil_hook = kind == Kind::Anvil && hooked;
-        // Likewise GrindstoneMenu's result onTake.
-        menu.grind_hook = kind == Kind::Grindstone && hooked;
-        menu.item_smithed_hook = kind == Kind::Smithing && hooked;
         if kind == Kind::Enchanting {
             // Player.enchantmentSeed, made when first needed.
             let needs_seed = self
@@ -131,7 +125,7 @@ impl Game<'_> {
                     menu.set_slot(env, slot, stack);
                 }
             });
-            self.lan_station_created(gi, station_kind, pos, &mut menu, true, false);
+            self.lan_station_created(&mut menu, station_kind, true);
         }
         if let Some(host) = self.lan.as_mut() {
             *host.menus.entry(conn).or_default().station = Some(GuestStation {
@@ -149,59 +143,12 @@ impl Game<'_> {
         Some(Some(window))
     }
 
-    /// The mods' say on a station's result once createResult ran on guest `gi`'s `menu`:
-    /// `AnvilUpdateEvent`, `GrindstoneEvent.OnPlaceItem` and `PrepareSmithing`. After a
-    /// click that changed the inputs (`recomputed`) and not after a cancelled take, and on a
-    /// station a mod opened with inputs.
-    fn lan_station_created(
-        &mut self,
-        gi: usize,
-        kind: StationKind,
-        pos: [i32; 3],
-        menu: &mut Menu,
-        recomputed: bool,
-        cancelled: bool,
-    ) {
-        // AnvilUpdateEvent after createResult; a cancelled take's undo
-        // is no createResult.
-        let anvil_created =
-            kind == StationKind::Anvil && menu.anvil_created() && !cancelled;
-        if anvil_created
-            && false
-            && let Some(mut update) = menu.anvil_update()
-        {
-            let (uuid, entity_id) = self
-                .lan
-                .as_ref()
-                .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-                .unwrap_or((0, 0));
-            let mut cancel = false;
-            self.api_anvil_update(uuid, entity_id, pos, &mut update, &mut cancel);
-            menu.anvil_updated(update, cancel);
-        }
-        if recomputed && kind == StationKind::Grindstone && menu.grind_hook {
-            let (uuid, entity_id) = self
-                .lan
-                .as_ref()
-                .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-                .unwrap_or((0, 0));
-            let mut place = menu.grindstone_place();
-            let mut cancel = false;
-            self.api_grindstone_place(uuid, entity_id, pos, &mut place, &mut cancel);
-            menu.grindstone_placed(place, cancel);
-        }
+    /// The smithing result once createResult ran on a click that changed the
+    /// inputs, set again in the menu as it stands.
+    fn lan_station_created(&mut self, menu: &mut Menu, kind: StationKind, recomputed: bool) {
         if recomputed && kind == StationKind::Smithing {
-            let (uuid, name) = self
-                .lan
-                .as_ref()
-                .map(|host| {
-                    let guest = &host.hub.guests[gi];
-                    (guest.uuid, guest.name.clone())
-                })
-                .unwrap_or((0, String::new()));
-            let mut result = menu.slot(3).cloned();
-            self.native_prepare_smithing(uuid, &name, pos, &mut result);
             let env = self.menu_env();
+            let result = menu.slot(3).cloned();
             menu.set_slot(&env, 3, result);
         }
     }
@@ -267,64 +214,28 @@ impl Game<'_> {
                     gs.menu.anvil.name.clone(),
                 )
             });
-            let mut undo = None;
-            let hook = gs.menu.anvil_hook;
-            self.guest_menu_op(gi, &mut gs.menu, |menu, env| {
-                undo = hook.then(|| menu.anvil_undo());
-                op(menu, env);
-            });
-            // AnvilCraftEvent.Pre: the taken result's onTake waits for the mods.
-            let mut anvil_craft = gs.menu.anvil_craft.take();
-            let mut cancelled = false;
-            if let Some(craft) = &anvil_craft {
-                let (uuid, name) = self
-                    .lan
-                    .as_ref()
-                    .map(|host| {
-                        let guest = &host.hub.guests[gi];
-                        (guest.uuid, guest.name.clone())
-                    })
-                    .unwrap_or((0, String::new()));
-                let mut cancel = false;
-                self.api_anvil_craft_pre(uuid, &name, gs.pos, craft, &mut cancel);
-                if cancel && let Some(undo) = undo {
-                    // The take is refused: the result, inputs, cost, inventory
-                    // and cursor are as before the click (the resync below
-                    // tells the client).
-                    anvil_craft = None;
-                    cancelled = true;
-                    self.guest_menu_op(gi, &mut gs.menu, |menu, _| menu.anvil_cancel(undo));
-                } else {
-                    gs.menu.anvil_take(&self.menu_env());
-                    let dropped = std::mem::take(&mut gs.menu.dropped);
-                    self.drop_guest_items(gi, dropped);
-                }
+            self.guest_menu_op(gi, &mut gs.menu, op);
+            // AnvilCraftEvent.Pre has no listener: the taken result is final.
+            let anvil_craft = gs.menu.anvil_craft.take();
+            if anvil_craft.is_some() {
+                gs.menu.anvil_take(&self.menu_env());
+                let dropped = std::mem::take(&mut gs.menu.dropped);
+                self.drop_guest_items(gi, dropped);
             }
-            // GrindstoneEvent.OnTakeItem: the taken result's onTake waits for the mods.
             let mut ground_xp = None;
-            if let Some(mut take) = gs.menu.grind_take.take() {
-                let (uuid, entity_id) = self
-                    .lan
-                    .as_ref()
-                    .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-                    .unwrap_or((0, 0));
-                let mut cancel = false;
-                self.api_grindstone_take(uuid, entity_id, gs.pos, &mut take, &mut cancel);
-                cancelled |= cancel;
+            if let Some(take) = gs.menu.grind_take.take() {
                 let env = self.menu_env();
-                ground_xp = gs.menu.grindstone_taken(&env, take, cancel);
+                ground_xp = gs.menu.grindstone_taken(&env, take, false);
             }
-            // A cancelled take runs no createResult: the inputs are untouched.
-            let recomputed = !cancelled
-                && before.is_some_and(|(slots, cost, item_name)| {
-                    cost != gs.menu.data.first().copied()
-                        || item_name != gs.menu.anvil.name
-                        || slots
-                            .iter()
-                            .enumerate()
-                            .any(|(s, b)| gs.menu.slot(s) != b.as_ref())
-                });
-            self.lan_station_created(gi, gs.kind, gs.pos, &mut gs.menu, recomputed, cancelled);
+            let recomputed = before.is_some_and(|(slots, cost, item_name)| {
+                cost != gs.menu.data.first().copied()
+                    || item_name != gs.menu.anvil.name
+                    || slots
+                        .iter()
+                        .enumerate()
+                        .any(|(s, b)| gs.menu.slot(s) != b.as_ref())
+            });
+            self.lan_station_created(&mut gs.menu, gs.kind, recomputed);
             self.lan_station_sounds(&mut gs);
             if let Some(amount) = gs.menu.ground.take() {
                 self.grindstone_taken(gs.pos, amount);
@@ -332,18 +243,7 @@ impl Game<'_> {
             if let Some(xp) = ground_xp {
                 self.grindstone_award(gs.pos, xp.unsigned_abs());
             }
-            // ItemSmithedEvent comes before the rest of SmithingMenu.onTake.
-            let smithed = std::mem::take(&mut gs.menu.item_smithed);
-            if let Some((uuid, entity_id)) = self
-                .lan
-                .as_ref()
-                .map(|host| (host.hub.guests[gi].uuid, host.hub.guests[gi].entity_id))
-            {
-                for (inputs, result) in &smithed {
-                    self.native_player_item_smithed(uuid, entity_id, inputs, result);
-                }
-            }
-            self.lan_station_combined(conn, &mut gs, anvil_craft.as_ref());
+            self.lan_station_combined(conn, &mut gs);
             if let Some(button) = gs.menu.enchant_button.take() {
                 self.lan_enchant(gi, &mut gs, button);
             }
@@ -483,14 +383,8 @@ impl Game<'_> {
 
     /// The rest of a taken anvil or smithing result's `onTake`: the guest
     /// pays the levels, the anvil wears (level event 1030 or 1029), the
-    /// smithing table sounds (1044). An anvil's `craft` is then reported to
-    /// the mods (`AnvilCraftEvent.Post`).
-    fn lan_station_combined(
-        &mut self,
-        conn: u32,
-        gs: &mut GuestStation,
-        craft: Option<&AnvilCraft>,
-    ) {
+    /// smithing table sounds (1044).
+    fn lan_station_combined(&mut self, conn: u32, gs: &mut GuestStation) {
         let change = std::mem::take(&mut gs.menu.level_change);
         if change != 0 {
             self.as_guest(conn, |g| g.give_levels(change));
@@ -502,19 +396,9 @@ impl Game<'_> {
             self.level_event_at(1044, gs.pos, 0);
         } else {
             let creative = gs.menu.creative;
-            // A broken anvil closes the menu on the next stillValid check. An anvil a mod
-            // opened with no block wears none: its mod wears its item after the post hook.
+            // A broken anvil closes the menu on the next stillValid check.
             if !self.is_portable_station(conn, gs.window) {
                 self.anvil_used(gs.pos, creative);
-            }
-            if let Some(craft) = craft
-                && let Some((uuid, name)) = self
-                    .lan
-                    .as_ref()
-                    .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-                    .map(|guest| (guest.uuid, guest.name.clone()))
-            {
-                self.api_anvil_craft_post(uuid, &name, gs.pos, craft);
             }
         }
     }
@@ -522,87 +406,19 @@ impl Game<'_> {
     /// `EnchantmentMenu.slotsChanged` with a level: the costs and clues for
     /// the guest's seed and the bookshelves around the table.
     fn lan_enchant_offers(&mut self, gi: usize, gs: &mut GuestStation) {
-        let (seed, guest_uuid, guest_entity_id, guest_name) = self
+        let seed = self
             .lan
             .as_ref()
-            .map(|host| {
-                let guest = &host.hub.guests[gi];
-                (
-                    guest.xp_seed,
-                    guest.uuid,
-                    guest.entity_id,
-                    guest.name.clone(),
-                )
-            })
-            .unwrap_or((0, 0, 0, String::new()));
+            .map_or(0, |host| host.hub.guests[gi].xp_seed);
         let bookcases = self.count_bookshelves(gs.pos);
-        let offers = if mod_api::__private::mods().is_empty() {
-            myriade_engine::stations::enchant_offers(
-                &self.stations().enchantments,
-                self.items(),
-                seed,
-                bookcases,
-                gs.menu.slot(0),
-            )
-        } else {
-            // EnchantmentLevelSetEvent for each row as getEnchantmentCost drew
-            // it; the offers are then made with the levels the mods left.
-            let mut drawn = [None; 3];
-            myriade_engine::stations::enchant_offers_leveled(
-                &self.stations().enchantments,
-                self.items(),
-                seed,
-                bookcases,
-                gs.menu.slot(0),
-                |row, cost| *drawn[row].insert(cost),
-            );
-            let mut levels = drawn.map(|cost| cost.unwrap_or(0));
-            if let Some(item) = gs
-                .menu
-                .slot(0)
-                .and_then(|item| super::api_values::TryIntoApi::try_into_api(item).ok())
-            {
-                for (row, original) in drawn.iter().enumerate() {
-                    if let Some(original_level) = *original {
-                        let offer = myriade_types::EnchantmentRow {
-                            player: guest_uuid,
-                            player_entity_id: guest_entity_id,
-                            row: row as i32,
-                            power: bookcases,
-                            item: &item,
-                            original_level,
-                        };
-                        self.native_enchantment_level_set(gs.pos, &offer, &mut levels[row]);
-                    }
-                }
-            }
-            myriade_engine::stations::enchant_offers_leveled(
-                &self.stations().enchantments,
-                self.items(),
-                seed,
-                bookcases,
-                gs.menu.slot(0),
-                |row, _| levels[row],
-            )
-        };
-        let mut costs = offers.costs;
-        self.native_prepare_item_enchant(guest_uuid, &guest_name, gs.pos, &mut costs);
-        let mut clues = offers.clues;
-        for i in 0..3 {
-            // A cost a mod changed shows the clue of the list it will give.
-            if costs[i] != offers.costs[i]
-                && let Some(stack) = gs.menu.slot(0)
-            {
-                clues[i] = myriade_engine::stations::enchant_clue(
-                    &self.stations().enchantments,
-                    self.items(),
-                    seed,
-                    i,
-                    costs[i],
-                    stack,
-                );
-            }
-        }
+        let offers = myriade_engine::stations::enchant_offers(
+            &self.stations().enchantments,
+            self.items(),
+            seed,
+            bookcases,
+            gs.menu.slot(0),
+        );
+        let (costs, clues) = (offers.costs, offers.clues);
         for i in 0..3 {
             gs.menu.data[i] = costs[i];
             let clue = clues[i].as_ref();
@@ -625,42 +441,20 @@ impl Game<'_> {
         let Some(item) = gs.menu.slot(0).cloned() else {
             return;
         };
-        let Some((seed, creative, conn, uuid, entity_id, name)) = self.lan.as_ref().map(|host| {
+        let Some((seed, creative, conn)) = self.lan.as_ref().map(|host| {
             let g = &host.hub.guests[gi];
-            (
-                g.xp_seed,
-                g.creative(),
-                g.conn,
-                g.uuid,
-                g.entity_id,
-                g.name.clone(),
-            )
+            (g.xp_seed, g.creative(), g.conn)
         }) else {
             return;
         };
         let Some(enchanted) = self.table_enchant(seed, button, gs.menu.data[button], &item) else {
             return;
         };
-        let enchanted_for_hook = enchanted.clone();
         let need = button as i32 + 1;
-        // The enchantments the item got, for PlayerEnchantItemEvent.
-        let given = false.then(|| {
-            myriade_engine::stations::enchantment_list(
-                &self.stations().enchantments,
-                self.items(),
-                seed,
-                button,
-                gs.menu.data[button],
-                &item,
-            )
-        });
         // Player.onEnchantmentPerformed, and EnchantmentMenu's awardStat(ENCHANT_ITEM).
         self.as_guest(conn, |game| {
             game.enchantment_performed(need);
             game.award_custom_stat("enchant_item", 1);
-            if let Some(given) = &given {
-                game.native_player_enchant_item(uuid, entity_id, &enchanted, given);
-            }
             // CriteriaTriggers.ENCHANTED_ITEM, with the levels it cost.
             game.trigger_enchanted_item(&enchanted, need);
         });
@@ -690,7 +484,6 @@ impl Game<'_> {
             1.0,
             pitch,
         );
-        self.native_enchant_item(uuid, &name, gs.pos, &enchanted_for_hook, need);
     }
 
     /// `ServerGamePacketListenerImpl.handleRenameItem`: the guest's anvil
@@ -739,83 +532,15 @@ impl Game<'_> {
     /// `ServerGamePacketListenerImpl.handleContainerButtonClick`:
     /// `clickMenuButton`, then `broadcastChanges` when the menu took it.
     pub(super) fn lan_station_button(&mut self, conn: u32, window: i32, id: i32) {
-        // A mod container's menu: its mod's buttons (`native_menu_button`),
-        // as handleContainerButtonClick checks them: the open menu, not a
-        // spectator, still valid.
-        let mod_menu = self.lan.as_ref().and_then(|host| {
-            let g = host.hub.guest(conn)?;
-            let menu = g.menu.as_ref().filter(|m| m.window == window)?;
-            let pos = menu.pos?;
-            Some((
-                pos,
-                !g.spectator() && menu.still_valid(&host.hub.loop_context, &self.world, g),
-                g.carried.clone(),
-                g.uuid,
-                g.entity_id,
-            ))
-        });
-        if let Some((pos, valid, mut carried, uuid, entity_id)) = mod_menu
-            && self.mod_menu_at(pos).is_some()
-        {
-            if valid {
-                // The clicking player's cursor stack (`clickMenuButton`'s
-                // other half). Single player's own player is a guest of
-                // its own host too (`lan.rs:165`), so this one path covers
-                // both single player and a LAN guest.
-                let context = myriade_types::MenuButtonContext {
-                    player: uuid,
-                    player_entity_id: entity_id,
-                    pos: [pos.0, pos.1, pos.2],
-                    id,
-                };
-                // As that player: `native_acting_player` and `native_acting_id`
-                // answer for the one who pressed.
-                self.as_guest(conn, |game| game.mod_menu_button(context, &mut carried));
-                if let Some(host) = self.lan.as_mut()
-                    && host.hub.guest(conn).is_some_and(|g| g.carried != carried)
-                {
-                    let net = host.hub.stack(&carried);
-                    let _ = host.hub.update_guest(conn, |g| {
-                        g.carried = carried;
-                        g.send(&C::SetCursorItem(play::SetCursorItem { item: net }));
-                    });
-                }
-            }
-            return;
-        }
         // LecternMenu's page buttons and Take Book.
         if self.lan_lectern_op(conn, window, |menu, env| {
             menu.button(env, id);
         }) {
             return;
         }
-        let identity = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.hub.guest(conn))
-            .map(|g| (g.uuid, g.name.clone()));
-        let mut selected = false;
-        let kind = self
-            .lan
-            .as_ref()
-            .and_then(|host| host.menus.get(&conn))
-            .and_then(|p| p.station.as_ref())
-            .filter(|s| s.window == window)
-            .map(|s| s.kind);
         self.lan_station_op(conn, Some(window), |menu, env| {
-            selected = menu.button(env, id);
+            menu.button(env, id);
         });
-        if selected && let Some((player, name)) = identity {
-            match kind {
-                Some(StationKind::Loom) => {
-                    self.native_player_loom_pattern_select(player, &name, id);
-                }
-                Some(StationKind::Stonecutter) => {
-                    self.native_player_stonecutter_recipe_select(player, &name, id);
-                }
-                _ => {}
-            }
-        }
     }
 
     /// The whole station menu and its changed data slots for the client
@@ -1013,14 +738,13 @@ impl Game<'_> {
         else {
             return;
         };
-        let Some((player, name)) = self
+        if !self
             .lan
             .as_ref()
-            .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
-            .map(|g| (g.uuid, g.name.clone()))
-        else {
+            .is_some_and(|host| host.hub.guests.iter().any(|g| g.conn == conn))
+        {
             return;
-        };
+        }
         // An id the registry doesn't have fails the packet's codec.
         let mut powers: [Option<(i32, String)>; 2] = [None, None];
         for (k, id) in [primary, secondary].into_iter().enumerate() {
@@ -1064,14 +788,6 @@ impl Game<'_> {
         if updated != Some(true) {
             return;
         }
-        // Menu validation accepted these registry ids; convert once at the packet boundary.
-        let [primary_key, secondary_key] = powers.each_ref().map(|power| {
-            power.as_ref().map(|(_, id)| {
-                let def = myriade_engine::brewing::effect(id).expect("validated beacon effect");
-                mod_api::__private::effect_key_by_index(def.index)
-                    .expect("effects resolved at load")
-            })
-        });
         let [primary, secondary] = powers.map(|p| p.map(|(_, n)| n));
         let mut select_sound = false;
         if let Some(BlockEntity::Beacon(b)) =
@@ -1081,7 +797,6 @@ impl Game<'_> {
             b.secondary = secondary.clone();
             select_sound = !b.sections.is_empty();
         }
-        self.native_player_change_beacon_effect(player, &name, pos, primary_key, secondary_key);
         if select_sound {
             self.beacon_sound(pos, "minecraft:block.beacon.power_select");
         }

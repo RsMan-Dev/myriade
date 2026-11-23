@@ -196,16 +196,7 @@ impl Game<'_> {
             let mut drops = vec![item];
             let tool = self.stack_in(slot).cloned();
             let origin = pos.map(|c| f64::from(c) + 0.5);
-            let player = Some(self.native_acting_id());
-            self.native_use_drops(
-                "",
-                origin,
-                Some((pos, state)),
-                None,
-                player,
-                tool.as_ref(),
-                &mut drops,
-            );
+            let player = Some(myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()));
             for item in drops {
                 self.spawn_item(item, at, [0.0; 3], 0);
             }

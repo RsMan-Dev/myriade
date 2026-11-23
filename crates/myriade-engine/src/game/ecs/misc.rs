@@ -101,9 +101,7 @@ impl Game<'_> {
                 }
                 MiscEvent::DestroyAsk { breaker, pos, drop } => {
                     let id = self.ecs_id_of(breaker);
-                    if self.mob_may_destroy(id, pos)
-                        && let Err(error) = self.destroy_block_as(pos, drop, Some(id))
-                    {
+                    if let Err(error) = self.destroy_block_as(pos, drop, Some(id)) {
                         log::warn!("a creature's block break failed: {:?}", error.message);
                     }
                 }

@@ -17,12 +17,12 @@ pub(crate) struct Options {
     /// `--transfers SETTINGS`: a dedicated server takes a proxy's hand-over requests
     /// (`server.toml`'s `[transfer]`, which horizon-server passes; lan/arrivals.rs).
     pub(super) transfers: Option<myriade_engine::lan::arrivals::Settings>,
-    /// Content selection and the compiled native runtime shared with resource loaders.
-    pub(super) mods: mods::ModsState,
     /// What this Game executes; independent of its current server connection.
     pub(super) execution_role: execution_role::ExecutionRole,
     /// `--game-dir DIR`: the folder `read` makes the working directory (saves, packs...).
     pub(super) game_dir: Option<PathBuf>,
+    /// `--home DIR`: the logs and crash reports folder (`logging::set_game_home`).
+    pub(super) home: Option<PathBuf>,
     /// Control socket path (`--control-socket`).
     pub(super) control: Option<PathBuf>,
 }
@@ -35,6 +35,14 @@ impl Options {
             |_| myriade_engine::offline_name::generate(0),
             |dir| myriade_engine::offline_name::load_or_create(&dir),
         )
+    }
+    /// The game folder `--game-dir` names, if any.
+    pub(crate) fn game_dir(&self) -> Option<PathBuf> {
+        self.game_dir.clone()
+    }
+    /// The logs and crash reports folder `--home` names, if any.
+    pub(crate) fn home_dir(&self) -> Option<PathBuf> {
+        self.home.clone()
     }
     /// The command line, then what it asks of the process: the game folder.
     /// A bad command line is a [`launch_api::UsageError`] (exit code 2, no crash report).
@@ -51,18 +59,7 @@ impl Options {
     }
     /// The command line alone: no file is read and nothing changes. `None` for `--help` and
     /// `--launch-api`, which print and end the run.
-    #[cfg(test)]
-    pub(super) fn parse(args: impl Iterator<Item = String>) -> Result<Option<Self>> {
-        Self::from_launch(LaunchArguments::parse(
-            args,
-            &std::env::current_dir()?,
-            &myriade_engine::logging::game_home(),
-            std::env::var_os("HORIZON_HOME").as_deref(),
-        )?)
-    }
-    pub(super) fn from_launch(launch: LaunchArguments) -> Result<Option<Self>> {
-        let installation_side = launch.installation_side();
-        let LaunchArguments { context, rest } = launch;
+    pub(super) fn parse(mut args: impl Iterator<Item = String>) -> Result<Option<Self>> {
         let sibling = std::env::current_exe()?
             .parent()
             .ok_or("missing executable directory")?
@@ -80,39 +77,33 @@ impl Options {
                 .and_then(|v| v.parse().ok()),
             dedicated: Vec::new(),
             transfers: None,
-            mods: mods::ModsState {
-                installation_side,
-                overrides_dir: context.game_dir.join(horizon_mod_package::mod_list::DIR),
-                dev: context.dev_mods,
-                ..Default::default()
-            },
             execution_role: execution_role::ExecutionRole::DedicatedServer,
-            game_dir: Some(context.game_dir),
+            game_dir: None,
+            home: None,
             control: None,
         };
-        for argument in rest {
-            match argument {
-                Argument::Switch(arg) => match arg.as_str() {
-                    "--help" | "-h" => {
-                        println!(
-                            "Horizon — Minecraft Java Edition {} in Rust\n\n  --resources PATH        Prepared resources (horizon-prepare)\n  --world NAME            World folder under saves/ (default \"New World\")\n  --game-tests            Enable test-only mod content (or HORIZON_GAME_TESTS=1/true)\n  --control-socket PATH   Control socket path (the supervisor's endpoint file, *.json for TCP)\n  --game-dir DIR          Game folder: saves, server.properties, packs, mods (default: the working directory)\n  --home DIR              Logs and crash reports (default $HORIZON_HOME, else the platform data folder)\n  --pregen                Add Horizon's /pregen command (docs/pregeneration.md)\n  --launch-api            Print the Launch API version and options as JSON (docs/api/launch.md)",
-                            horizon_core::VANILLA_VERSION
-                        );
-                        return Ok(None);
-                    }
-                    "--launch-api" => {
-                        println!("{}", launch_api::reply(&myriade_engine::crash::version()));
-                        return Ok(None);
-                    }
-                    "--pregen" => o.pregen = true,
-                    "--game-tests" => {}
-                    _ => return Err(format!("{arg}: unknown option").into()),
-                },
-                Argument::Dedicated(args) => {
-                    o.dedicated = args;
-                    break;
+        while let Some(arg) = args.next() {
+            if arg == "--dedicated" {
+                o.dedicated = args.collect();
+                break;
+            }
+            match arg.as_str() {
+                "--help" | "-h" => {
+                    println!(
+                        "Horizon — Minecraft Java Edition {} in Rust\n\n  --resources PATH        Prepared resources (horizon-prepare)\n  --world NAME            World folder under saves/ (default \"New World\")\n  --game-tests            Enable test-only mod content (or HORIZON_GAME_TESTS=1/true)\n  --control-socket PATH   Control socket path (the supervisor's endpoint file, *.json for TCP)\n  --game-dir DIR          Game folder: saves, server.properties, packs (default: the working directory)\n  --home DIR              Logs and crash reports (default $HORIZON_HOME, else the platform data folder)\n  --pregen                Add Horizon's /pregen command (docs/pregeneration.md)\n  --launch-api            Print the Launch API version and options as JSON (docs/api/launch.md)",
+                        horizon_core::VANILLA_VERSION
+                    );
+                    return Ok(None);
                 }
-                Argument::Value(arg, value) => {
+                "--launch-api" => {
+                    println!("{}", launch_api::reply(&myriade_engine::crash::version()));
+                    return Ok(None);
+                }
+                "--pregen" => o.pregen = true,
+                "--game-tests" => {}
+                "--resources" | "--world" | "--control-socket" | "--transfers" | "--game-dir"
+                | "--home" => {
+                    let value = args.next().ok_or_else(|| format!("{arg}: missing value"))?;
                     // The error names the option, so the message says which one was refused.
                     let read = || -> Result<()> {
                         match arg.as_str() {
@@ -121,16 +112,19 @@ impl Options {
                             // harnesses, also takes a path (tools/bundle_tooltip_e2e.py).
                             "--world" => o.world = Some(value),
                             "--control-socket" => o.control = Some(value.into()),
-                            "--transfers" => {
-                                o.transfers =
-                                    Some(myriade_engine::lan::arrivals::Settings::parse(&value)?)
+                            "--game-dir" => o.game_dir = Some(value.into()),
+                            "--home" => o.home = Some(value.into()),
+                            _ => {
+                                o.transfers = Some(myriade_engine::lan::arrivals::Settings::parse(
+                                    &value,
+                                )?)
                             }
-                            _ => return Err("unknown option".into()),
                         }
                         Ok(())
                     };
                     read().map_err(|e| format!("{arg}: {e}"))?;
                 }
+                _ => return Err(format!("{arg}: unknown option").into()),
             }
         }
         Ok(Some(o))

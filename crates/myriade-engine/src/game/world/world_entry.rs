@@ -46,28 +46,17 @@ impl Game<'_> {
         stack: &functions::PackStack,
         reload: bool,
         root: &std::path::Path,
-    ) -> Result<(
-        Option<WorldTables>,
-        myriade_engine::health::HealthResources,
-        Option<mod_api::DatapackRegistrySet>,
-    )> {
+    ) -> Result<(Option<WorldTables>, myriade_engine::health::HealthResources)> {
         let phase = self.mod_phase.clone();
         let _reload = phase
             .reloading()
             .expect("server tables on their owning thread");
-        // The ask of this load, both here and on `/reload`: a native mod
-        // recomputes the pack files it contributes every time.
-        let mut contributed = Vec::new();
-        self.native_data_pack_files(&mut contributed);
-        let files = functions::overlay_files(stack, contributed);
-        let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
-        let conditions = self.registered_load_conditions(&inventory)?;
+        let files = functions::overlay_files(stack, Vec::new());
+        let conditions = horizon_world::conditions::LoadConditions::vanilla();
         let overlay = horizon_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
         };
-        let mut data_map_types = Vec::new();
-        self.native_data_map_types(&mut data_map_types);
         let base = if reload {
             &self.health_resources
         } else {
@@ -106,37 +95,14 @@ impl Game<'_> {
             self.res.item_defaults(),
             (&sources, &recipes),
         );
-        self.prepare_professions(root, &items, &mut stations)?;
-        // The world's loaded datapack registries are a mod-declared registry's
-        // authority for the data maps' id checks, as the command ids are for
-        // the registries they list.
-        // Resolve membership against the very generation that will be published.
-        // In particular, generation exhaustion refuses preparation before any state changes.
-        let mut datapack_candidate = self.datapack_candidate(stack, &conditions)?;
-        if let Some(candidate) = &mut datapack_candidate {
-            native_registry_entries::bind_datapack_tags(root, &overlay, candidate)?;
-        }
-        let datapack_registries = datapack_candidate
-            .map(
-                |candidate| match self.mods.datapack_registries.as_ref().filter(|_| reload) {
-                    Some(old) => old
-                        .reload(candidate)
-                        .map_err(|error| format!("datapack registry reload: {error:?}")),
-                    None => Ok(mod_api::DatapackRegistrySet::first(
-                        candidate,
-                        myriade_engine::datapack_net::next_session(),
-                    )),
-                },
-            )
-            .transpose()?;
-        let datapack_set = datapack_registries.as_ref();
+        self.prepare_professions(&items, &mut stations)?;
         let registries = native_data_maps::WorldRegistries::new(
             self.session
                 .registries
                 .by_registry
                 .iter()
                 .map(|(registry, entries)| (registry.as_str(), entries.ids.as_slice())),
-            datapack_set,
+            None,
             &items,
             root,
             &overlay,
@@ -213,15 +179,9 @@ impl Game<'_> {
                     .is_ok(),
             },
         )?;
-        let data_maps = native_data_maps::DataMaps::load(&data_map_types, &overlay, &registries)
+        let data_maps = native_data_maps::DataMaps::load(&[], &overlay, &registries)
             .with_builtins(builtin)
-            .with_biome_keys(mod_api::__private::BiomeKeys::new(
-                myriade_engine::datapack_net::next_session(),
-                self.world_biomes
-                    .as_ref()
-                    .unwrap_or_else(|| self.res.biomes())
-                    .registry_order(),
-            ));
+            ;
         drop(registries);
         conditions.check_errors()?;
         Ok((
@@ -237,63 +197,9 @@ impl Game<'_> {
                 pack_tags,
             }),
             health,
-            datapack_registries,
         ))
     }
-    /// The entries of the mods' datapack registries in the winning pack files: decoded with
-    /// each registry's schema and checked as one candidate, so a bad entry fails the load
-    /// before any table is published. `None` when no mod declared a registry: nothing is
-    /// scanned. A file whose `neoforge:conditions` fail is absent; the key is dropped before
-    /// the schema sees the file.
-    fn datapack_candidate(
-        &self,
-        stack: &functions::PackStack,
-        conditions: &horizon_world::conditions::LoadConditions,
-    ) -> Result<Option<mod_api::DatapackCandidate>> {
-        let declarations = mod_api::__private::datapack_registry_declarations();
-        if declarations.is_empty() {
-            return Ok(None);
-        }
-        let keys: Vec<(&str, &str)> = declarations
-            .iter()
-            .filter_map(|declaration| declaration.key.split_once(':'))
-            .collect();
-        // Content files come before the world's enabled packs, lowest priority first.
-        let packs: Vec<_> = std::iter::once(&stack.content)
-            .chain(stack.enabled_packs())
-            .collect();
-        let files: Vec<_> = myriade_engine::datapack::registry_files(
-            &packs,
-            &keys,
-            !conditions.has_registered(),
-            |path, pack, bytes| {
-                !super::condition_reload_state::registry_versions(
-                    vec![(pack.to_owned(), bytes.to_vec())],
-                    conditions,
-                    path,
-                )
-                .is_empty()
-            },
-        )
-        .map_err(|error| {
-            format!(
-                "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                error.registry, error.entry, error.pack, error.file, error.reason
-            )
-        })?
-        .into_iter()
-        .collect();
-        mod_api::DatapackCandidate::build(declarations, &files)
-            .map(Some)
-            .map_err(|error| {
-                format!(
-                    "datapack registry {} entry {} (pack {}, file {}): {:?}",
-                    error.registry, error.entry, error.pack, error.file, error.reason
-                )
-                .into()
-            })
-    }
-    /// A world open's tables, and the first generation of the registries the mods declared.
+    /// A world open's tables.
     pub(super) fn open_world_tables(
         &mut self,
         stack: &functions::PackStack,
@@ -301,14 +207,13 @@ impl Game<'_> {
     ) -> Result<()> {
         // A new world load: a saved base clamped into its bounds warns again (arismoko/horizon#3728).
         myriade_engine::living_attributes::LOAD_CLAMPS.begin_load();
-        let (tables, health, registries) = self.stage_world_tables(stack, false, root)?;
+        let (tables, health) = self.stage_world_tables(stack, false, root)?;
         self.world_tables = tables;
         let bonus = self.trident_hit_bonus_fn();
         self.ecs.set_trident_hit_bonus(bonus);
         self.ecs.set_melee_gear(self.melee_gear_fn());
         self.ecs.set_item_modifiers_table(self.item_modifiers_fn());
         self.health_resources = health;
-        self.mods.datapack_registries = registries.map(Arc::new);
         self.data_map_registries = self
             .world_tables
             .as_ref()
@@ -316,7 +221,7 @@ impl Game<'_> {
         self.install_block_maps();
         self.install_profession_save_snapshots();
         self.share_mob_maps();
-        myriade_engine::datapack_net::serve(self.mods.datapack_registries.clone());
+        myriade_engine::datapack_net::serve(None);
         Ok(())
     }
     /// Sends each joined Horizon client the snapshot of the set just published, built from the
@@ -346,7 +251,6 @@ impl Game<'_> {
             health,
             parts,
             wire,
-            datapack_registries,
         } = prepared;
         lan::sync::forget_server_sources();
         if let Some(tables) = &tables
@@ -363,7 +267,6 @@ impl Game<'_> {
                 sources.clone(),
             );
         }
-        self.mods.datapack_registries = datapack_registries.map(Arc::new);
         self.health_resources = health;
         self.world_tables = tables;
         let bonus = self.trident_hit_bonus_fn();
@@ -381,7 +284,7 @@ impl Game<'_> {
         for world in self.levels.parked_worlds() {
             world.pois.clear();
         }
-        myriade_engine::datapack_net::serve(self.mods.datapack_registries.clone());
+        myriade_engine::datapack_net::serve(None);
         self.send_datapack_snapshots();
         self.refresh_recipe_property_context();
         self.structure_spawns = structure_spawns;
@@ -430,86 +333,23 @@ impl Game<'_> {
     pub(super) fn load_server_loot(&mut self) {
         self.server_items = None;
         let overlay = pack_files(&self.world_tables);
-        let loot = if mod_api::__private::mods().is_empty() {
-            myriade_engine::structure_blocks::world_loot_data(
-                &self.options.resources,
-                &overlay,
-                self.res.item_defaults(),
-            )
-        } else {
-            match horizon_world::loot::LootData::load(
-                &self.options.resources,
-                &overlay,
-                self.res.item_defaults(),
-            ) {
-                Ok(mut loot) => {
-                    let context = match lan::sync::server_data_load(
-                        &self.options.resources,
-                        &self.res.core.item_data,
-                    ) {
-                        Ok(context) => context,
-                        Err(error) => {
-                            log::warn!("Horizon: server loot inventory unavailable: {error}");
-                            self.server_loot.set(None);
-                            return;
-                        }
-                    };
-                    if let Err(error) = loot.apply_native_table_loads(&context) {
-                        log::warn!("Horizon: native loot tables refused: {error}");
-                        self.server_loot.set(None);
-                        return;
-                    }
-                    Some(Arc::new(loot))
-                }
-                Err(e) => {
-                    log::warn!("Horizon: server loot tables unavailable: {e}");
-                    None
-                }
-            }
-        };
-        if !mod_api::__private::mods().is_empty()
-            && let Some(loot) = &loot
-        {
-            let mut items = self.items().clone();
-            items.set_loot_tables(loot.tables().clone());
-            self.server_items = Some(Arc::new(items));
-        }
+        let loot = myriade_engine::structure_blocks::world_loot_data(
+            &self.options.resources,
+            &overlay,
+            self.res.item_defaults(),
+        );
         self.server_loot.set(loot);
     }
 
     pub(super) fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
         let registry = self.pack.assets.registry;
-        let block_tags = &items.block_tags;
         let tags = self.block_tag_sets(items);
-        let parts = mod_api::__private::prepare_parts(
-            block_tags,
-            &items.item_tags,
-            mod_api::__private::KnownIds {
-                block: &|id| registry.default_state(id).is_some(),
-                item: &|id| items.items.contains_key(id),
-            },
-        )
-        .map_err(|refused| match refused {
-            mod_api::__private::ResolvePartsError::ItemKeys(errors) => format!(
-                "Mod item keys refused:\n{}",
-                errors
-                    .into_iter()
-                    .map(|e| format!("mod {} requested unknown item {}", e.mod_id, e.id))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ),
-            mod_api::__private::ResolvePartsError::Parts(errors) => {
-                format!("Mod parts refused:\n{}", errors.join("\n"))
-            }
-            _ => "Mod parts refused".to_owned(),
-        })?;
         let block_states = api_values::prepare_block_states(registry)?;
         let cauldrons = self.prepare_cauldron_interactions(items)?;
         Ok(PreparedParts {
             cauldrons,
             block_states,
             tags,
-            parts,
         })
     }
     /// Reload the content tables with the world's packs, as
@@ -519,7 +359,7 @@ impl Game<'_> {
         stack: &functions::PackStack,
         root: &std::path::Path,
     ) -> Result<PreparedWorldReload> {
-        let (tables, health, datapack_registries) = self.stage_world_tables(stack, true, root)?;
+        let (tables, health) = self.stage_world_tables(stack, true, root)?;
         let items = tables
             .as_ref()
             .map_or_else(|| self.res.items(), |tables| &tables.items);
@@ -565,56 +405,27 @@ impl Game<'_> {
             health,
             parts,
             wire,
-            datapack_registries,
         })
     }
 
-    /// Resolve the mods' parts against the tags this game plays with (`/reload` again): mods
-    /// that attach parts to a block or item it doesn't have are an error.
+    /// Resolve the block and item answers against the tags this game plays with.
     pub(super) fn resolve_parts(&self) -> Result<()> {
         let prepared = self.prepare_parts(self.items())?;
         self.install_parts(prepared);
         Ok(())
     }
-    /// Ask the parts of each block `isPathfindable` once per state and type, and of each item
-    /// `isPrimaryItemFor` once per enchantment: the answers depend on nothing else, so path
-    /// finding, spawning and enchantment selection read them with no dispatch. A server also
-    /// publishes its parts for its world generation.
     pub(super) fn install_parts(&self, prepared: PreparedParts) {
         cauldron_interactions::install(prepared.cauldrons);
-        native_worldgen_parts::publish(
-            prepared.parts.as_ref(),
-            &prepared.block_states,
-            self.pack.assets.registry,
-        );
+        native_worldgen_parts::publish(&prepared.block_states, self.pack.assets.registry);
         api_values::install_block_states(prepared.block_states);
         native_world_read::install_block_tags(prepared.tags);
-        mod_api::__private::install_resolved_parts(prepared.parts);
         self.resolve_block_paths();
         self.resolve_piston_reactions();
         self.resolve_primary_items();
     }
     pub(super) fn resolve_block_paths(&self) {
         use myriade_engine::mobs::data::PartAnswers;
-        use mod_api::HookId;
-        use myriade_types::PathComputationType;
         let data = self.res.mob_data();
-        let pathfindable =
-            Self::resolve_per_state(HookId::IsPathfindable, data.states.len(), |state| {
-                PathComputationType::ALL
-                    .into_iter()
-                    .filter(|&kind| {
-                        let mut pathfindable = data.block_pathfindable(state, kind);
-                        self.native_is_pathfindable(state, kind, &mut pathfindable);
-                        pathfindable
-                    })
-                    .fold(0, |bits, kind| bits | PartAnswers::pathfindable_bit(kind))
-            });
-        data.resolve_parts(
-            self.res.facts(),
-            &PartAnswers {
-                pathfindable: pathfindable.as_deref(),
-            },
-        );
+        data.resolve_parts(self.res.facts(), &PartAnswers { pathfindable: None });
     }
 }

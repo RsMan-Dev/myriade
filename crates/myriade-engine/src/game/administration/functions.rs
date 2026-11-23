@@ -19,7 +19,7 @@ use myriade_engine::{
     text::{self, Text},
 };
 use horizon_core::nbt::Tag;
-use mod_api::__private::reload::ReloadStageError;
+use myriade_types::ReloadStageError;
 use std::sync::Arc;
 
 /// A `TimerQueue` event.
@@ -237,15 +237,6 @@ impl Game<'_> {
         run_load: bool,
         enabled_features: &[String],
     ) -> Result<PackStack, ReloadStageError> {
-        myriade_engine::mod_content::check_jars(
-            &self.options.resources,
-            &myriade_engine::logging::game_home().join("jars"),
-        )
-        .map_err(|error| {
-            ReloadStageError::OriginalJars(
-                crate::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
-            )
-        })?;
         let next_root = self
             .stage_condition_inventory()
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
@@ -1555,129 +1546,6 @@ mod tests {
         });
     }
 
-    /// arismoko/horizon#4449: the mods' commands are in the tree before functions load, from the first world open
-    /// on, so a plain line and a macro line naming one both load and run; an unknown command is
-    /// refused as before, and a command the mods stop registering is refused after a reload.
-    #[test]
-    #[ignore = "daily"]
-    fn functions_name_mod_commands_from_the_first_world_open() {
-        use std::sync::{
-            Arc,
-            atomic::{AtomicBool, AtomicU32, Ordering},
-        };
-        struct Commands {
-            offered: Arc<AtomicBool>,
-            ran: Arc<AtomicU32>,
-        }
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Commands {
-            fn register_commands(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::RegisterCommandsEvent<'_>,
-            ) {
-                if self.offered.load(Ordering::Relaxed) {
-                    event
-                        .commands
-                        .push(myriade_types::Command::new("fnmod [n:integer]"));
-                }
-            }
-            fn run_mod_command(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                _: &mut mod_api::RunModCommandEvent<'_>,
-            ) -> mod_api::Flow {
-                self.ran.fetch_add(1, Ordering::Relaxed);
-                mod_api::Flow::Cancel
-            }
-        }
-        let offered = Arc::new(AtomicBool::new(true));
-        let ran = Arc::new(AtomicU32::new(0));
-        let mods = vec![mod_api::ModEntry::new(
-            "fnmod",
-            Box::new(Commands {
-                offered: offered.clone(),
-                ran: ran.clone(),
-            }),
-        )];
-        mod_platform::testing::with_mods(mods.into(), || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                let scratch = tempfile::tempdir().unwrap();
-                let folder = "functions-name-mod-commands";
-                let world = scratch.path().join(folder);
-                let pack = world.join("datapacks/fnmod");
-                let functions = pack.join("data/fnmod/function");
-                std::fs::create_dir_all(&functions).unwrap();
-                let f = horizon_core::version::DATA_PACK_FORMAT;
-                std::fs::write(
-                    pack.join("pack.mcmeta"),
-                    serde_json::json!({"pack":{
-                        "description":"Mod commands in functions", "pack_format":f.0,
-                        "min_format":[f.0,f.1], "max_format":[f.0,f.1]
-                    }})
-                    .to_string(),
-                )
-                .unwrap();
-                for (name, line) in [
-                    ("plain", "fnmod 1"),
-                    ("macro", "$fnmod $(n)"),
-                    ("unknown", "nosuchmodcommand"),
-                ] {
-                    std::fs::write(functions.join(format!("{name}.mcfunction")), line).unwrap();
-                }
-                let mut request = crate::game::world_loading::WorldRequest::new(
-                    folder,
-                    None,
-                    Some(3042),
-                    true,
-                    None,
-                    game.level.rule_registry.clone(),
-                )
-                .unwrap();
-                request.save_root = world;
-                game.load_world(request).unwrap();
-                let store = &game.fns.store;
-                assert!(
-                    store.functions.contains_key("fnmod:plain"),
-                    "{:?}",
-                    store.errors
-                );
-                assert!(
-                    store.functions.contains_key("fnmod:macro"),
-                    "{:?}",
-                    store.errors
-                );
-                assert!(!store.functions.contains_key("fnmod:unknown"));
-                let refusal = |game: &Game<'_>, id: &str| {
-                    game.fns
-                        .store
-                        .errors
-                        .iter()
-                        .find(|(f, _)| f == id)
-                        .map(|(_, e)| e.clone())
-                };
-                assert!(
-                    refusal(game, "fnmod:unknown")
-                        .unwrap()
-                        .starts_with("Invalid command \"nosuchmodcommand\": ")
-                );
-                game.session.registries.permission = 4;
-                assert!(game.run_command("function fnmod:plain"));
-                assert!(game.run_command("function fnmod:macro {n:3}"));
-                assert_eq!(ran.load(Ordering::Relaxed), 2);
-                offered.store(false, Ordering::Relaxed);
-                let features = game.level.enabled_features.clone();
-                game.reload_datapacks(false, &features).unwrap();
-                assert!(!game.fns.store.functions.contains_key("fnmod:plain"));
-                assert!(
-                    refusal(game, "fnmod:plain")
-                        .unwrap()
-                        .starts_with("Invalid command \"fnmod 1\": ")
-                );
-            });
-        });
-    }
-
     #[test]
     #[ignore = "daily"]
     fn prepared_function_calls_keep_causality_and_fallback_boundaries() {
@@ -2180,103 +2048,6 @@ mod tests {
             assert!(game.exec.functions.is_empty());
         });
         assert!(ran, "the prepared-resource fixture must run this case");
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn refused_item_key_reload_keeps_previous_world_generation() {
-        use mod_api::Hooks;
-        use mod_api::ModEntry;
-        use mod_api::Registrar;
-        use mod_api::RegistrationContext;
-
-        struct MissingItem;
-        #[mod_api::__subscriptions]
-        impl Hooks for MissingItem {
-            fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
-                registrar.block_key("minecraft:stone");
-                registrar.item_key("reload_test:missing");
-            }
-        }
-
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let root =
-                std::env::temp_dir().join(format!("reload-atomicity-{}", std::process::id()));
-            let pack = root.join("datapacks/candidate");
-            let tags = pack.join("data/reload_test/tags/block");
-            std::fs::create_dir_all(&tags).unwrap();
-            std::fs::write(pack.join("pack.mcmeta"), serde_json::to_vec(&serde_json::json!({
-                "pack": {"description": "atomic reload", "min_format": horizon_core::version::DATA_PACK_FORMAT, "max_format": horizon_core::version::DATA_PACK_FORMAT}
-            })).unwrap()).unwrap();
-            std::fs::write(
-                tags.join("candidate.json"),
-                br#"{"values":["minecraft:stone"]}"#,
-            )
-            .unwrap();
-            game.world_root = root.clone();
-            game.set_allow_commands(true);
-            // Establish the live pack generation before injecting a refused candidate.
-            // Mod declarations are load-bound; replacing them cannot be used to test
-            // a subsequent successful reload of the same live worker registry.
-            game.reload_datapacks(true, &[]).unwrap();
-            assert!(game.items().block_tags["reload_test:candidate"].contains("minecraft:stone"));
-            assert!(game.run_command("datapack disable \"file/candidate\""));
-            assert!(game.run_command("datapack enable \"file/candidate\""));
-            let live_stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
-            assert_eq!(
-                super::super::native_world_read::block_in_tag(live_stone, "reload_test:candidate"),
-                Some(true)
-            );
-            crate::game::api_values::install_parts(&[ModEntry::new(
-                "reload_test",
-                Box::new(MissingItem),
-            )])
-            .unwrap();
-            // Resolve candidate metadata without rebinding the live worker registry.
-            let (registry, _) =
-                horizon_world::level::data::load_registry_with_flags(&game.options.resources)
-                    .unwrap();
-            crate::game::api_values::resolve_block_definitions(&registry).unwrap();
-            let stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
-            let old_tag =
-                super::super::native_world_read::block_in_tag(stone, "reload_test:candidate");
-            let old_context = game.loop_context.clone();
-            let old_root = game.options.resources.clone();
-            let old_data = game.pack.data_source.clone();
-            let old_tables = game.world_tables.as_ref().map(|tables| tables as *const _);
-            let old_generation = game.damage_tag_generation;
-            let old_enabled = game.fns.enabled.clone();
-            let error = game.reload_datapacks(true, &[]).err().unwrap();
-            assert!(error.to_string().contains("reload_test:missing"));
-            assert_eq!(game.options.resources, old_root);
-            assert!(game.pack.data_source.same_generation(&old_data));
-            assert!(Arc::ptr_eq(&game.loop_context, &old_context));
-            assert_eq!(
-                old_tables,
-                game.world_tables.as_ref().map(|tables| tables as *const _)
-            );
-            assert_eq!(game.damage_tag_generation, old_generation);
-            assert_eq!(game.fns.enabled, old_enabled);
-            assert_eq!(
-                super::super::native_world_read::block_in_tag(stone, "reload_test:candidate"),
-                old_tag
-            );
-            game.save_datapack_settings();
-            let settings = std::fs::read(root.join("datapacks.json")).unwrap();
-            let enabled = game.fns.enabled.clone();
-            let context = game.loop_context.clone();
-            let generation = game.damage_tag_generation;
-            assert!(!game.run_command("datapack disable \"file/candidate\""));
-            assert_eq!(game.fns.enabled, enabled);
-            assert_eq!(
-                std::fs::read(root.join("datapacks.json")).unwrap(),
-                settings
-            );
-            assert!(Arc::ptr_eq(&game.loop_context, &context));
-            assert_eq!(game.damage_tag_generation, generation);
-            assert!(game.items().block_tags["reload_test:candidate"].contains("minecraft:stone"));
-            let _ = std::fs::remove_dir_all(root);
-        });
     }
 
     #[test]

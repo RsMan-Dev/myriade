@@ -3,9 +3,6 @@ use super::*;
 pub(super) struct ResidentEntities {
     pub table: Box<RefCell<myriade_engine::join_seq::residency::table::EntityTable>>,
     pub local_player: myriade_engine::join_seq::residency::member::Member,
-    /// The game's general entity rows (arismoko/horizon#792), beside the rest this store
-    /// already keeps for the resident table's lookups.
-    pub general: super::general::GeneralStore,
 }
 
 impl Default for ResidentEntities {
@@ -15,7 +12,6 @@ impl Default for ResidentEntities {
                 myriade_engine::join_seq::residency::table::EntityTable::new(Default::default()),
             )),
             local_player: Default::default(),
-            general: Default::default(),
         }
     }
 }

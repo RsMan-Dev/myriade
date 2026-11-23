@@ -507,7 +507,6 @@ impl Game<'_> {
                 "minecraft:overworld"
             };
             let corner = exit.min_corner;
-            self.native_portal_create(dim, [corner.x, corner.y, corner.z]);
             // A portal built for the entity: the ticket goes on the chunk it
             // arrives in (`TeleportTransition.PLACE_PORTAL_TICKET`).
             let (at, _) = self.arrival(plan, exit);
@@ -1139,8 +1138,7 @@ impl Game<'_> {
         if let Some(o) = self.ecs.orb(id) {
             return Some((o.position, 0.5, 0.5));
         }
-        let entity = self.entity(id)?;
-        let target = self.native_entity_target(entity)?;
+        let target = self.level_entity(id as i32)?;
         if matches!(
             target,
             super::commands::Target::Stand(_)
@@ -1156,7 +1154,7 @@ impl Game<'_> {
                 | super::commands::Target::Cloud(_)
         ) {
             let at = self.target_position(target)?;
-            let [width, height] = self.entity_dimensions(entity)?;
+            let [width, height] = self.registered_entity_dimensions(&self.target_type(target))?;
             return Some((Vec3::new(at[0], at[1], at[2]), width as f32, height as f32));
         }
         None
@@ -1172,8 +1170,7 @@ impl Game<'_> {
         id: u32,
     ) -> Option<(Tag, super::entity_initialization::TransferredEntityState)> {
         use super::commands::Target;
-        let entity = self.entity(id)?;
-        let target = self.native_entity_target(entity)?;
+        let target = self.level_entity(id as i32)?;
         if matches!(
             target,
             Target::Stand(_)
@@ -1305,7 +1302,6 @@ impl Game<'_> {
             {
                 c.insert("PortalCooldown".into(), Tag::Int(cooldown));
             }
-            self.native_entity_portal(self.dim.id(), id, [entry.x, entry.y, entry.z]);
         }
     }
     /// The chunks of the arrivals still waiting to land in `dim`, for the
@@ -1382,10 +1378,7 @@ impl Game<'_> {
             // ServerLevel.addDuringTeleport: a fresh add, not loaded from disk.
             if let Some(TransferredArrivalState::VehicleTree(state)) = transferred {
                 let key = Self::chunk_of(at);
-                if self.restore_vehicle_tree_state(tag, state).is_some() {
-                    self.native_joins_flush(false, 0);
-                    self.native_entities_load(self.dim.id(), [key.0, key.1], 1);
-                }
+                self.restore_vehicle_tree_state(tag, state);
                 continue;
             }
             super::persist::mark_fresh(&mut tag);
@@ -1401,12 +1394,10 @@ impl Game<'_> {
             let key = ((at.x.floor() as i32) >> 4, (at.z.floor() as i32) >> 4);
             if let Some(TransferredArrivalState::Entity(state)) = transferred {
                 self.spawn_teleported_entity(key, tag, Some(state));
-                self.native_entities_load(self.dim.id(), [key.0, key.1], 1);
                 continue;
             }
             if immediate {
                 self.spawn_teleported_entity(key, tag, None);
-                self.native_entities_load(self.dim.id(), [key.0, key.1], 1);
                 continue;
             }
             match self
@@ -1514,171 +1505,6 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
-    fn portal_capture_preserves_rejected_objects_and_reverses_admission() {
-        with_gate(|game, _, _| {
-            game.options.execution_role =
-                super::super::execution_role::ExecutionRole::DedicatedServer;
-            game.options.game_dir = Some(
-                std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
-                    .join("portal-tree"),
-            );
-            game.build_registries();
-            game.set_allow_commands(true);
-            game.world.chunks.insert(
-                (0, 0),
-                std::sync::Arc::new(myriade_engine::chunk::Chunk::empty(0, 0)),
-            );
-            assert!(game.run_command(r#"summon minecraft:pig 0 64 0 {UUID:[I;0,0,0,175],Tags:["portal_root"],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,175],Passengers:[{id:"minecraft:pig",UUID:[I;0,0,0,176]}]}]}"#));
-            let root = game
-                .ecs
-                .species_ids("minecraft:pig")
-                .into_iter()
-                .find(|&m| {
-                    game.persist_raw(m).is_some_and(|t| {
-                        myriade_engine::entity_nbt::uuid(t) == Some([0, 0, 0, 175])
-                    })
-                })
-                .unwrap();
-            let child = game.mob_passenger_ids(root)[0];
-            let leaf = game.mob_passenger_ids(child)[0];
-            game.tickets.add_portal((0, 0));
-            game.update_chunk_tickets();
-            assert!(game.entity_ticking_area()(0, 0));
-            game.set_portal_cooldown(leaf);
-            let cooldown = game.portals.entities[&leaf].cooldown;
-            game.handle_entity_portals();
-            assert_eq!(game.portals.entities[&leaf].cooldown, cooldown);
-            game.send_through_portal(root, BlockPos::new(0, 64, 0));
-            assert!(game.ecs.entity_of(root).is_none());
-            assert!(game.ecs.entity_of(child).is_none());
-            assert!(game.ecs.entity_of(leaf).is_none());
-            // Land the queued payload through the real arrival transform/adoption path.
-            game.portals.arrivals[0].plan =
-                Plan::end_portal(Dim::Overworld, BlockPos::new(0, 64, 0), 0.9, 0.9);
-            assert_eq!(game.dim, Dim::Overworld);
-            game.enter_level(Dim::End).unwrap();
-            assert_eq!(game.dim, Dim::End);
-            let target = game.portals.arrivals[0].plan.approximate;
-            for z in (target.z >> 4) - 1..=(target.z >> 4) + 1 {
-                for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
-                    game.streaming
-                        .insert_remote(&mut game.world, myriade_engine::chunk::Chunk::empty(x, z));
-                }
-            }
-            game.resolve_arrivals();
-            assert!(game.portals.arrivals.is_empty());
-            let new_root = *game
-                .ecs
-                .species_ids("minecraft:pig")
-                .iter()
-                .find(|&&m| game.ecs_vehicle_of(m).is_none())
-                .unwrap();
-            let new_child = game.mob_passenger_ids(new_root)[0];
-            let new_leaf = game.mob_passenger_ids(new_child)[0];
-            assert!(game.ecs.entity_of(new_child).is_some());
-            assert_eq!(game.portals.entities[&new_root].cooldown, ENTITY_DELAY);
-            assert!(
-                game.persist_raw(new_root)
-                    .unwrap()
-                    .get("horizon:fresh_add")
-                    .is_none()
-            );
-        });
-    }
-
-    /// Cancels the travel of the entity whose id `spare` holds, and logs each
-    /// (entity, dimension, cause) it is asked.
-    struct Gate {
-        spare: Arc<AtomicU32>,
-        heard: Arc<Mutex<Vec<(u32, String, String)>>>,
-        discard: bool,
-    }
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Gate {
-        fn entity_mount(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            e: &mut mod_api::EntityMountEvent<'_>,
-        ) -> mod_api::Flow {
-            if self.spare.load(Ordering::Relaxed) == 1004
-                && !e.mounting
-                && e.entity == 102
-                && let Some(sibling) = host.entity(103)
-            {
-                assert!(sibling.discard(host));
-            }
-            mod_api::Flow::Continue
-        }
-
-        fn entity_travel_to_dimension(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            e: &mut mod_api::EntityTravelToDimensionEvent,
-        ) -> mod_api::Flow {
-            self.heard.lock().unwrap().push((
-                e.entity.id(),
-                e.dimension.to_string(),
-                e.cause.to_string(),
-            ));
-            let attack = self.spare.load(Ordering::Relaxed);
-            if attack == 1001
-                && e.entity.id() == 102
-                && self
-                    .heard
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .filter(|e| e.0 == 102)
-                    .count()
-                    == 1
-            {
-                let root = mod_api::EntityRef::new(e.entity.epoch(), 101);
-                assert!(root.start_riding(host, e.entity, true));
-            }
-            if attack == 1002 && e.entity.id() == 102 {
-                assert!(mod_api::EntityRef::new(e.entity.epoch(), 103).discard(host));
-            }
-            if self.discard {
-                assert!(e.entity.discard(host));
-                return mod_api::Flow::Continue;
-            }
-            if e.entity.id() == self.spare.load(Ordering::Relaxed) {
-                mod_api::Flow::Cancel
-            } else {
-                mod_api::Flow::Continue
-            }
-        }
-    }
-
-    /// Runs `test` with a `Gate` installed, on a server with guests 12 and 13.
-    fn with_gate(test: impl FnOnce(&mut Game<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>)) {
-        with_gate_mode(false, test);
-    }
-
-    fn with_gate_mode(
-        discard: bool,
-        test: impl FnOnce(&mut Game<'_>, &AtomicU32, &Mutex<Vec<(u32, String, String)>>),
-    ) {
-        let spare = Arc::new(AtomicU32::new(0));
-        let heard = Arc::default();
-        let mods = vec![mod_api::ModEntry::new(
-            "gate",
-            Box::new(Gate {
-                spare: Arc::clone(&spare),
-                heard: Arc::clone(&heard),
-                discard,
-            }),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            crate::game::native_guest_turn_tests::with_guests(|game| {
-                test(game, &spare, &heard);
-            });
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
     fn portal_cooldown_follows_the_class_then_the_first_passenger() {
         crate::game::native_guest_turn_tests::with_guests(|game| {
             game.ecs_with(|ecs, mw| ecs.spawn_boat_id(mw, "oak", false, [0.0; 3], 0.0, &mut || 101));
@@ -1763,189 +1589,6 @@ mod tests {
             assert_eq!(tag.get("PortalCooldown"), Some(&Tag::Int(cooldown)));
             assert_eq!(myriade_engine::entity_nbt::position(&tag), Some(Vec3::ZERO));
         }
-    }
-
-    /// `EntityTravelToDimensionEvent` for server players: both are asked with
-    /// their own id, the target level and the cause; the spared one stays, the
-    /// other may go.
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_cancels_one_players_travel_and_allows_the_other() {
-        with_gate(|game, spare, heard| {
-            // Guests 12 and 13 are entities 12 and 13.
-            spare.store(12, Ordering::Relaxed);
-            assert!(!game.server_player_travel_allowed(12, Dim::Nether, TravelCause::NetherPortal));
-            assert!(game.server_player_travel_allowed(13, Dim::End, TravelCause::EndPortal));
-            assert_eq!(
-                *heard.lock().unwrap(),
-                [
-                    (
-                        12,
-                        "minecraft:the_nether".to_owned(),
-                        "nether_portal".to_owned()
-                    ),
-                    (13, "minecraft:the_end".to_owned(), "end_portal".to_owned()),
-                ]
-            );
-        });
-    }
-
-    /// The same for two dropped items at a Nether portal: the spared one is
-    /// still in the level and waits for no arrival, the other has left it for
-    /// one.
-    #[test]
-    #[ignore = "daily"]
-    fn a_mod_cancels_one_items_portal_trip_and_allows_the_other() {
-        with_gate(|game, spare, heard| {
-            let stone = || myriade_engine::items::ItemStack::new("minecraft:stone", 1);
-            game.spawn_item(stone(), [0.5, 64.0, 0.5], [0.0; 3], 0);
-            game.spawn_item(stone(), [2.5, 64.0, 0.5], [0.0; 3], 0);
-            let ids: Vec<u32> = game.ecs.item_views().iter().map(|d| d.id).collect();
-            assert_eq!(ids.len(), 2);
-            spare.store(ids[0], Ordering::Relaxed);
-            for id in &ids {
-                game.send_through_portal(*id, BlockPos::new(0, 64, 0));
-            }
-            let left: Vec<u32> = game.ecs.item_views().iter().map(|d| d.id).collect();
-            assert_eq!(left, [ids[0]]);
-            assert_eq!(game.portals.arrivals.len(), 1);
-            assert_eq!(game.portals.arrivals[0].plan.dim, Dim::Nether);
-            assert_eq!(
-                game.portals.arrivals[0].tag.get("PortalCooldown"),
-                Some(&Tag::Int(300))
-            );
-            let nether = || "minecraft:the_nether".to_owned();
-            let cause = || "nether_portal".to_owned();
-            assert_eq!(
-                *heard.lock().unwrap(),
-                [(ids[0], nether(), cause()), (ids[1], nether(), cause())]
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn discarded_item_does_not_travel() {
-        with_gate_mode(true, |game, _, heard| {
-            game.spawn_item(
-                myriade_engine::items::ItemStack::new("minecraft:stone", 1),
-                [0.5, 64.0, 0.5],
-                [0.0; 3],
-                0,
-            );
-            let id = game.ecs.item_ids()[0];
-            game.send_through_portal(id, BlockPos::new(0, 64, 0));
-            assert!(game.portals.arrivals.is_empty());
-            assert_eq!(heard.lock().unwrap().len(), 1);
-            assert!(game.level_entity(id as i32).is_none());
-            assert_eq!(game.persist.removals.len(), 1);
-            game.native_removals_flush();
-            assert!(game.ecs.item_ids().is_empty());
-            assert!(game.persist.removals.is_empty());
-            game.native_removals_flush();
-            assert!(game.ecs.item_ids().is_empty());
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn discarded_mob_and_tnt_do_not_travel() {
-        with_gate_mode(true, |game, _, heard| {
-            place_test_mob(game, 101, "minecraft:cow", [0.5, 64.0, 0.5]);
-            game.spawn_primed_tnt(BlockPos::new(2, 64, 0), false, None, None);
-            let tnt = *game.ecs.species_ids("minecraft:tnt").last().unwrap();
-            for id in [101, tnt] {
-                game.send_through_portal(id, BlockPos::new(0, 64, 0));
-                assert!(game.level_entity(id as i32).is_none());
-            }
-            assert!(game.portals.arrivals.is_empty());
-            assert_eq!(heard.lock().unwrap().len(), 2);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn refused_mob_passenger_stays_behind() {
-        with_gate(|game, spare, heard| {
-            for id in [101, 102, 103] {
-                place_test_mob(game, id, "minecraft:cow", [0.5, 64.0, 0.5]);
-            }
-            for rider in [102, 103] {
-                game.ecs_mount(rider, 101);
-            }
-            spare.store(102, Ordering::Relaxed);
-            game.send_through_portal(101, BlockPos::new(0, 64, 0));
-            assert_eq!(game.portals.arrivals.len(), 1);
-            assert!(game.ecs.entity_of(101).is_none());
-            assert!(game.ecs.entity_of(103).is_none());
-            assert!(game.ecs.entity_of(102).is_some());
-            assert_eq!(game.ecs_vehicle_of(102), None);
-            assert_eq!(
-                heard
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .map(|e| e.0)
-                    .collect::<Vec<_>>(),
-                [101, 102, 103]
-            );
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn passenger_callbacks_cannot_revisit_ancestors_or_discarded_siblings() {
-        for attack in [1004, 1001, 1002] {
-            with_gate(|game, spare, heard| {
-                for id in [101, 102, 103] {
-                    place_test_mob(game, id, "minecraft:camel", [0.5, 64.0, 0.5]);
-                }
-                for rider in [102, 103] {
-                    game.ecs_mount(rider, 101);
-                }
-                spare.store(attack, Ordering::Relaxed);
-                assert!(game.entity_may_travel(101, Dim::Nether, TravelCause::Teleport));
-                let ids: Vec<_> = heard.lock().unwrap().iter().map(|e| e.0).collect();
-                assert_eq!(
-                    ids,
-                    if attack == 1001 {
-                        vec![101, 102, 103]
-                    } else {
-                        vec![101, 102]
-                    }
-                );
-                assert!(
-                    !(game.ecs_vehicle_of(101) == Some(102) && game.ecs_vehicle_of(102) == Some(101))
-                );
-            });
-        }
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mixed_passengers_follow_boarding_not_connection_order() {
-        with_gate(|game, _, heard| {
-            for id in [101, 102] {
-                place_test_mob(game, id, "minecraft:happy_ghast", [0.5, 64.0, 0.5]);
-            }
-            game.ecs_mount(102, 101);
-            for (conn, order) in [(12, 30), (13, 10)] {
-                game.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                    g.vehicle = Some(101);
-                    g.vehicle_order = order;
-                });
-            }
-            assert!(game.entity_may_travel(101, Dim::Nether, TravelCause::Teleport));
-            assert_eq!(
-                heard
-                    .lock()
-                    .unwrap()
-                    .iter()
-                    .map(|e| e.0)
-                    .collect::<Vec<_>>(),
-                [101, 13, 102, 12]
-            );
-        });
     }
 
     #[test]

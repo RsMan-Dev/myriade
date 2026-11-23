@@ -1,5 +1,4 @@
-//! Content sound slots retain dynamic vanilla selection when inherited.
-use horizon_mod_package::content::entity_sounds::{EntitySounds, SoundOverride};
+//! Sound slots retain dynamic vanilla selection when inherited.
 use std::borrow::Cow;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -25,27 +24,6 @@ pub struct Sounds {
     pub hurt: Selection,
     pub death: Selection,
     pub step: Selection,
-}
-impl Sounds {
-    pub fn load(entity: &str, row: &serde_json::Value) -> crate::Result<Self> {
-        let sounds: EntitySounds = match row.get("sounds") {
-            None => EntitySounds::default(),
-            Some(value) => serde_json::from_value(value.clone())
-                .map_err(|error| format!("{entity}: sounds: {error}"))?,
-        };
-        sounds.validate(entity)?;
-        let resolve = |slot| match slot {
-            None => Selection::Inherit,
-            Some(SoundOverride::Mute(_)) => Selection::Mute,
-            Some(SoundOverride::Id(id)) => Selection::Id(intern_full_id(&id)),
-        };
-        Ok(Self {
-            ambient: resolve(sounds.ambient),
-            hurt: resolve(sounds.hurt),
-            death: resolve(sounds.death),
-            step: resolve(sounds.step),
-        })
-    }
 }
 /// Namespace normalization at audio/network boundaries. Full ids are borrowed unchanged.
 pub fn full_id(id: &str) -> Cow<'_, str> {

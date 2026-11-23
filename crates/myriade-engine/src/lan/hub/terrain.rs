@@ -2,16 +2,13 @@ use super::{Chunk, Hub};
 use crate::{
     fast_hash::{FxHashMap, FxHashSet},
     lan::{
-        chunk_watch,
-        terrain_view::{self, Column, EncodeContext, Pos, Ready, Rules},
+        terrain_view::{self, Column, EncodeContext, Pos, Ready, Rules, TerrainView, TerrainViewError},
         viewed_levels::send::Runs,
     },
     world::World,
 };
 use horizon_protocol::packets::play::{self, Clientbound as C};
 use myriade_types::BlockState;
-use mod_api::TerrainView;
-use mod_api::TerrainViewError;
 use std::sync::Arc;
 
 #[derive(Default)]
@@ -272,7 +269,6 @@ impl Hub {
                 for (x, z) in forget {
                     g.sent_chunks.remove(&(x, z));
                     g.far_sent_chunks.remove(&(x, z));
-                    chunk_watch::unwatch(&mut self.chunk_watches, g, (x, z));
                     g.send(&C::ForgetLevelChunk(play::ForgetLevelChunk { pos: [x, z] }));
                     g.center = None;
                 }

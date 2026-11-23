@@ -1,8 +1,6 @@
-//! The enchanting power around an enchanting table (`EnchantmentMenu.slotsChanged`): the
-//! bookshelves and the blocks whose parts answer `enchant_power_bonus`.
+//! The enchanting power around an enchanting table (`EnchantmentMenu.slotsChanged`): the bookshelves.
 use super::Game;
 use myriade_engine::stations::bookshelf_offsets;
-use horizon_core::position::BlockPos;
 use horizon_world::registry::BlockStateId;
 
 impl Game<'_> {
@@ -11,7 +9,6 @@ impl Game<'_> {
     /// each block's `getEnchantPowerBonus`, truncated as NeoForge's `(int) power`. The offers cap
     /// it at 15.
     pub(super) fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
-        let table = BlockPos::new(pos[0], pos[1], pos[2]);
         let power: f32 = bookshelf_offsets()
             .into_iter()
             .filter(|o| {
@@ -22,9 +19,8 @@ impl Game<'_> {
                 ))
             })
             .map(|o| {
-                let at = BlockPos::new(pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]);
-                let state = self.world.block(at.x, at.y, at.z);
-                self.enchant_power(state, at, table)
+                let state = self.world.block(pos[0] + o[0], pos[1] + o[1], pos[2] + o[2]);
+                self.enchant_power(state)
             })
             .sum();
         // A negative sum would make vanilla's `nextInt(bookcases + 1)` throw.
@@ -38,23 +34,9 @@ impl Game<'_> {
             .is_some_and(|tag| tag.contains(&*self.res.facts().get(state).name))
     }
 
-    /// Shared enchant-power answer: block parts may override the provider-tag default;
-    /// both offers and the client particle-table rebuild use this answer.
-    pub(in crate::game) fn enchant_power(
-        &self,
-        state: BlockStateId,
-        pos: BlockPos,
-        table: BlockPos,
-    ) -> f32 {
-        let own = self
-            .items()
-            .default_enchant_power(&self.res.facts().get(state).name);
-        if !super::api_values::block_state::block_listens(mod_api::HookId::EnchantPowerBonus, state)
-        {
-            return own;
-        }
-        let mut power = own;
-        self.native_enchant_power_bonus(state, pos, table, &mut power);
-        if power.is_finite() { power } else { own }
+    /// Enchant power of the block in `state`: the provider-tag default.
+    pub(in crate::game) fn enchant_power(&self, state: BlockStateId) -> f32 {
+        self.items()
+            .default_enchant_power(&self.res.facts().get(state).name)
     }
 }

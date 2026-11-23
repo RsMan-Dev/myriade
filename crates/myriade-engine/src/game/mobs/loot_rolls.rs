@@ -1,51 +1,8 @@
-//! Loot rolls with a mod listening to `enchanted_entity_loot`.
+//! The loot rolls of `/loot ... kill`.
 
 use super::Game;
 use super::commands::Target;
-use super::creatures::death_hurt_source;
-use myriade_engine::items::{ItemStack, Items};
-use myriade_engine::mobs::drops::{DeathRolls, roll_asked};
-use myriade_engine::random_sequences::RandomSequences;
-use horizon_core::random::LegacyRandom;
-use myriade_types::HurtSource;
-use mod_api::EntityRef;
-use mod_api::LivingRef;
-
-/// A table's rolls with a mod listening to `enchanted_entity_loot`: the
-/// randoms stay in the game, where the listener's host reaches them.
-pub(in crate::game) struct ListenedRolls<'g, 'a, 'h> {
-    game: &'g mut Game<'a>,
-    entity: LivingRef,
-    source: &'h HurtSource<'h>,
-    /// `LootContextParams.ATTACKING_ENTITY`.
-    attacker: Option<EntityRef>,
-}
-
-impl DeathRolls for ListenedRolls<'_, '_, '_> {
-    fn sequences(&mut self) -> &mut RandomSequences {
-        &mut self.game.rand_sequences
-    }
-    fn level_random(&mut self) -> &mut LegacyRandom {
-        &mut self.game.world.random
-    }
-    fn asks_enchanted_level(&self) -> bool {
-        true
-    }
-    fn enchanted_level(&mut self, enchantment: &str, level: i32) -> i32 {
-        let Ok(id) = myriade_types::Identifier::parse(enchantment) else {
-            return level;
-        };
-        let mut asked = level.max(0) as u32;
-        self.game.native_enchanted_entity_loot(
-            self.entity,
-            self.source,
-            self.attacker,
-            &id,
-            &mut asked,
-        );
-        i32::try_from(asked).unwrap_or(i32::MAX)
-    }
-}
+use myriade_engine::items::ItemStack;
 
 /// `/loot ... kill`'s roll (`LootCommand.dropKillLoot`).
 pub(in crate::game) struct KillRoll<'a> {
@@ -53,8 +10,6 @@ pub(in crate::game) struct KillRoll<'a> {
     pub(in crate::game) kind: &'a str,
     pub(in crate::game) table: &'a str,
     pub(in crate::game) target: Target,
-    /// `LootContextParams.ATTACKING_ENTITY`: the command's source.
-    pub(in crate::game) killer: Option<Target>,
     /// `LootContextParams.LAST_DAMAGE_PLAYER` is set.
     pub(in crate::game) by_player: bool,
     pub(in crate::game) held: Option<&'a ItemStack>,
@@ -62,31 +17,17 @@ pub(in crate::game) struct KillRoll<'a> {
 }
 
 impl Game<'_> {
-    /// The entity `/loot ... kill` names, with a mod to ask: `EnchantedEntityLootEvent`
-    /// needs a `LivingEntity`, and a table of any other entity is not asked about.
-    fn listened_kill_target(&self, target: Target) -> Option<LivingRef> {
-        if !false {
-            return None;
-        }
-        let (Target::Mob(_) | Target::Stand(_) | Target::Dragon(_) | Target::Guest(_)) = target
-        else {
-            return None;
-        };
-        self.effect_living_ref(Some(self.network_entity_id(target)?))
-    }
     /// The drops of `/loot ... kill`, from the table's random sequence, else
-    /// the level random. It reads levels as a death does, and a mod listening
-    /// to `enchanted_entity_loot` is asked: the damage is `magic()`, as
-    /// vanilla's, whose source names nobody, so the attacker is the command's.
+    /// the level random.
     pub(in crate::game) fn roll_kill_loot(&mut self, kill: KillRoll<'_>) -> Vec<ItemStack> {
         let KillRoll {
             kind,
             table,
             target,
-            killer,
             by_player,
             held,
             keep_empty,
+            ..
         } = kill;
         // LootCommand.dropKillLoot supplies the selected live mob as THIS_ENTITY.
         let live_target = match target {
@@ -105,15 +46,9 @@ impl Game<'_> {
                 .is_some_and(|data| data.entity_matches(predicate, Some(entity)))
         };
         let live_target = live_target.as_ref().filter(|_| loot.is_some());
-        // The listeners get the game, so the roll holds its own share of the items.
-        let listened = self
-            .server_items
-            .clone()
-            .zip(self.listened_kill_target(target));
         let sequence = world_items!(self).loot_sequence(table);
-        let Some((items, entity)) = listened else {
-            let items = world_items!(self);
-            return match sequence {
+        let items = world_items!(self);
+        match sequence {
                 Some(id) => {
                     let random = self.rand_sequences.get(&id, self.level.seed);
                     if let Some(target) = live_target {
@@ -145,48 +80,6 @@ impl Game<'_> {
                         )
                     }
                 }
-            };
-        };
-        let epoch = entity.entity().epoch();
-        let attacker = killer
-            .and_then(|t| self.network_entity_id(t))
-            .map(|id| EntityRef::new(epoch, id as u32));
-        let seed = self.level.seed;
-        let source = death_hurt_source("minecraft:magic", 0);
-        let mut rolls = ListenedRolls {
-            game: self,
-            entity,
-            source: &source,
-            attacker,
-        };
-        let items: &Items = &items;
-        match sequence {
-            Some(id) => roll_asked(
-                &mut rolls,
-                |r| r.sequences().get(&id, seed),
-                |random, ask| {
-                    if let Some(target) = live_target {
-                        items.entity_drops_asked_with_target(
-                            kind, by_player, held, target, &matcher, random, ask, keep_empty,
-                        )
-                    } else {
-                        items.entity_drops_asked(kind, by_player, held, random, ask, keep_empty)
-                    }
-                },
-            ),
-            None => roll_asked(
-                &mut rolls,
-                |r| r.level_random(),
-                |random, ask| {
-                    if let Some(target) = live_target {
-                        items.entity_drops_asked_with_target(
-                            kind, by_player, held, target, &matcher, random, ask, keep_empty,
-                        )
-                    } else {
-                        items.entity_drops_asked(kind, by_player, held, random, ask, keep_empty)
-                    }
-                },
-            ),
         }
     }
 }

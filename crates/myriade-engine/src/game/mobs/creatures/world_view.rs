@@ -70,31 +70,11 @@ impl Game<'_> {
             teams: std::sync::Arc::new(self.mob_teams()),
             items: Some(self.items()),
             lid_openers: &self.lid_openers,
-            mod_effects: {
-                Some(self)
-            },
-            mob_hooks: ([
-                mod_api::HookId::EndermanAnger,
-                mod_api::HookId::EntityMobGriefing,
-                mod_api::HookId::LivingVisibility,
-                mod_api::HookId::LivingChangeTarget,
-            ]
-            .into_iter()
-            .any(|_| false)
-                || [
-                    mod_api::HookId::CanEntityDestroy,
-                    mod_api::HookId::BlockPathType,
-                    mod_api::HookId::AdjacentBlockPathType,
-                ]
-                .into_iter()
-                .any(mod_api::__private::has_scoped_hook))
-            .then_some(self as &dyn myriade_engine::mobs::MobHooks),
-            asks_animal_tame: true
-                && false,
-            asks_living_destroy_block: true
-                && false,
-            asks_baby_spawn: true
-                && false,
+            mod_effects: None,
+            mob_hooks: None,
+            asks_animal_tame: false,
+            asks_living_destroy_block: false,
+            asks_baby_spawn: false,
             // A warden's away suspects are UUIDs: on the server side, where the
             // entity UUIDs live, they resolve back to the mobs that are here.
             who_lookup: {

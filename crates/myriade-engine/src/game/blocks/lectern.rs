@@ -69,12 +69,6 @@ impl Game<'_> {
             self.container_changed(key);
             if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
             {
-                self.native_player_lectern_page_change(
-                    player,
-                    &name,
-                    [key.0, key.1, key.2],
-                    menu.data[0],
-                );
             }
         }
     }
@@ -105,13 +99,6 @@ impl Game<'_> {
             if writable
                 && let (Some(player), Some(name)) = (g.lan_acting_uuid, g.lan_acting_name.clone())
             {
-                g.native_player_edit_book(
-                    player,
-                    &name,
-                    p.pages.len() as i32,
-                    p.title.is_some(),
-                    &mut cancel,
-                );
             }
             if cancel {
                 return true;
@@ -212,9 +199,6 @@ impl Game<'_> {
         self.audio
             .play("minecraft:item.book.put", Some(at), 1.0, 1.0);
         self.container_changed(key);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_insert_lectern_book(player, &name, pos, &book.item);
-        }
         true
     }
 

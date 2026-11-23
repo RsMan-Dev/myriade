@@ -4,7 +4,6 @@
 use super::{Dim, Game};
 use myriade_types::ClockAdjustment;
 use myriade_types::Identifier;
-use mod_api::LevelRef;
 
 /// Vanilla's wake-up time marker, where sleeping through the night moves the clock
 /// (`ClockTimeMarkers.WAKE_UP_FROM_SLEEP`).
@@ -61,47 +60,17 @@ impl Game<'_> {
         self.session.markers.get(&id).copied()
     }
 
-    /// The host read `level_clock_marker_time`: when the level's own clock next reaches `marker`
-    /// after its time now, as `/time set <marker>` moves it. None for a marker that clock does not
-    /// define (every clock but the Overworld's today), a time past `i64::MAX`, and as for
-    /// `level_clock_time`.
-    pub(in crate::game) fn level_clock_marker_time(
-        &self,
-        level: LevelRef,
-        marker: &Identifier,
-    ) -> Option<i64> {
-        let now = self.level_clock_time(level)?;
-        let clock = self.level_clock_name(Dim::from_id(level.dimension_id()));
-        self.clock_marker(&clock, marker)?.resolve(now)
-    }
-
-    /// The level's clock, its time now and where sleeping moves it, after the mods; None when a
-    /// mod canceled the move, or when no time fits (the clock is at the end of its range).
+    /// The level's clock, its time now and where sleeping moves it: vanilla's morning, or the
+    /// marker's time when it resolves; None when no time fits (the clock is at the end of its range).
     pub(super) fn sleep_finished_move(&mut self) -> Option<(String, i64, i64)> {
         let clock = self.level_clock_name(self.dim);
         let current = self.command_clock_time(&clock);
         let morning = vanilla_morning(current);
-        let vanilla =
+        let adjustment =
             ClockAdjustment::Marker(Identifier::parse(WAKE_UP_FROM_SLEEP).expect("a valid id"));
-        let mut adjustment = vanilla.clone();
-        let mut cancel = false;
-        let dimension = self.dim.id();
-        // `new_time` is the morning, or the time now when no morning fits.
-        let shown = morning.unwrap_or(current);
-        self.native_sleep_finished_time(dimension, current, shown, &mut adjustment, &mut cancel);
-        if cancel {
-            return None;
-        }
-        let target = match wake_time(current, &adjustment, |id| self.clock_marker(&clock, id)) {
-            Ok(time) => Some(time),
-            Err(why) => {
-                // Vanilla's own marker on a clock without it is the plain morning, no news.
-                if adjustment != vanilla {
-                    log::warn!("sleep_finished_time: {adjustment:?} refused ({why:?})");
-                }
-                morning
-            }
-        };
+        let target = wake_time(current, &adjustment, |id| self.clock_marker(&clock, id))
+            .ok()
+            .or(morning);
         target.map(|target| (clock, current, target))
     }
 }
@@ -244,64 +213,5 @@ mod tests {
         // The last morning that fits.
         let last = end - end.rem_euclid(24_000);
         assert_eq!(vanilla_morning(last - 1), Some(last));
-    }
-
-    /// What a second listener reads: the first moves the clock 1000 ticks on, the second sees
-    /// that and sends it to noon instead, and the game resolves the last word once.
-    #[test]
-    #[ignore = "daily"]
-    fn a_later_listener_reads_and_replaces_the_earlier_adjustment() {
-        use std::sync::{Arc, Mutex};
-        struct First;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for First {
-            fn sleep_finished_time(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::SleepFinishedTimeEvent<'_>,
-            ) -> mod_api::Flow {
-                *event.adjustment = ClockAdjustment::Relative(1_000);
-                mod_api::Flow::Continue
-            }
-        }
-        struct Second(Arc<Mutex<Option<ClockAdjustment>>>);
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Second {
-            fn sleep_finished_time(
-                &self,
-                _: &mut dyn mod_api::ServerHost,
-                event: &mut mod_api::SleepFinishedTimeEvent<'_>,
-            ) -> mod_api::Flow {
-                *self.0.lock().unwrap() = Some(event.adjustment.clone());
-                *event.adjustment = marker("minecraft:noon");
-                mod_api::Flow::Continue
-            }
-        }
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let noon = TimeMarker {
-                ticks: 6_000,
-                period: Some(24_000),
-                show: false,
-            };
-            game.session.markers.insert("minecraft:noon".into(), noon);
-            let clock = game.level_clock_name(game.dim);
-            assert_eq!(clock, OVERWORLD_CLOCK);
-            game.set_command_clock_time(&clock, NOW);
-            let seen = Arc::new(Mutex::new(None));
-            let mods = vec![
-                mod_api::ModEntry::new("first", Box::new(First) as Box<dyn mod_api::Hooks>),
-                mod_api::ModEntry::new(
-                    "second",
-                    Box::new(Second(seen.clone())) as Box<dyn mod_api::Hooks>,
-                ),
-            ]
-            .into();
-            let moved = mod_platform::testing::with_mods(mods, || game.sleep_finished_move());
-            assert_eq!(
-                *seen.lock().unwrap(),
-                Some(ClockAdjustment::Relative(1_000))
-            );
-            assert_eq!(moved, Some((OVERWORLD_CLOCK.to_owned(), NOW, 30_000)));
-        });
     }
 }

@@ -5,7 +5,7 @@ use horizon_core::{
     json_nbt,
     nbt::{self, Tag},
 };
-use mod_api::text::{
+use myriade_types::{
     Text, TextClick, TextContent, TextFormError, TextHover, TextNbtSource, TextObject, TextProfile,
     TextProfileProperty, TextRelation, TextStyle,
 };
@@ -1472,7 +1472,7 @@ mod text_capture_tests {
         });
     }
     use myriade_data::text::Text as EngineText;
-    use mod_api::text::{TextContent as C, TextHover};
+    use myriade_types::{TextContent as C, TextHover};
     use serde_json::json;
 
     #[test]
@@ -1621,7 +1621,7 @@ mod text_encoding_tests {
         profile
     }
     use super::TryIntoEngine;
-    use mod_api::text::{Text, TextClick, TextContent as C, TextHover, TextNbtSource, TextObject};
+    use myriade_types::{Text, TextClick, TextContent as C, TextHover, TextNbtSource, TextObject};
     use serde_json::json;
 
     #[test]

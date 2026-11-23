@@ -1,7 +1,6 @@
 //! What `horizon-server` asks the dedicated server on its control endpoint (`--control-socket`, docs/server.md
 //! section 2): `server-status` answers with the tick rate, the tick times `/tick query` reports, the players
-//! (including their positions) and the loaded chunks; `server-mods` answers with the canonical loaded package
-//! inventory; `console <line>` runs a console command and answers with the lines it logged;
+//! (including their positions) and the loaded chunks; `console <line>` runs a console command and answers with the lines it logged;
 //! `server-events <since>` answers the typed events after that number (events.rs); `management <connection>
 //! <json>` edits the lists as vanilla's management protocol does (management.rs).
 //! `run_as <player> <command>` runs a command as a connected player and answers its result, success and the
@@ -55,7 +54,6 @@ impl Game<'_> {
             self.note_stopping(state.lists.lock().unwrap().stop);
             let reply = match request.line.trim().split_once(' ') {
                 _ if request.line.trim() == "server-status" => self.server_status(state),
-                _ if request.line.trim() == "server-mods" => server_mods(),
                 // `the control socket's memory command`: what holds the server's memory (memory.rs).
                 _ if request.line.trim() == "memory" => self.memory_value(),
                 // A proxy reading whether it may send players here (transfer.rs).
@@ -377,15 +375,6 @@ fn box_corners(a: [i32; 3], b: [i32; 3]) -> Option<([i32; 3], [i32; 3])> {
     (volume <= BOX_LIMIT).then_some((lo, hi))
 }
 
-/// Reads the same package inventory as registration and the runtime Host.
-fn server_mods() -> Value {
-    let mods: Vec<_> = mod_api::__private::loaded_mods()
-        .iter()
-        .map(|package| json!({ "id": package.id(), "version": package.version() }))
-        .collect();
-    json!({ "mods": mods })
-}
-
 fn player_status(
     name: &str,
     uuid: u128,
@@ -406,7 +395,7 @@ fn player_status(
 
 #[cfg(test)]
 mod tests {
-    use super::{BOX_LIMIT, box_corners, coords, player_status, run_as_reply, server_mods};
+    use super::{BOX_LIMIT, box_corners, coords, player_status, run_as_reply};
     use serde_json::json;
 
     #[test]
@@ -434,22 +423,6 @@ mod tests {
         assert_eq!(box_corners([0, 0, 0], [15, 15, 15]), Some(([0, 0, 0], [15, 15, 15])));
         assert_eq!(box_corners([0, 0, 0], [15, 15, 16]), None);
         assert_eq!(BOX_LIMIT, 4096);
-    }
-
-    #[test]
-    fn server_mods_uses_canonical_inventory_order() {
-        mod_platform::__private::with_test_packages(&["second", "first"], || {
-            assert_eq!(
-                server_mods(),
-                json!({"mods": [
-                    {"id": "second", "version": "1"},
-                    {"id": "first", "version": "1"},
-                ]})
-            );
-        });
-        mod_platform::__private::with_test_packages(&[], || {
-            assert_eq!(server_mods(), json!({"mods": []}));
-        });
     }
 
     #[test]

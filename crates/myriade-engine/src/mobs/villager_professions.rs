@@ -134,144 +134,13 @@ impl ResolvedProfessions {
 }
 
 impl ResolvedProfessions {
-    /// Resolve a complete candidate without touching the active table. The caller installs
-    /// this value together with its POI and trade resources only after all preparation succeeds.
-    pub fn prepare(
-        mut declarations: Vec<(String, myriade_types::ProfessionDefinition)>,
-        mut exists: impl FnMut(&str, &myriade_types::Identifier) -> bool,
-    ) -> Result<Self, Vec<mod_api::ProfessionRegistrationError>> {
-        use mod_api::ProfessionRegistrationError as E;
-        use std::collections::BTreeMap;
-        declarations
-            .sort_by_key(|(owner, definition)| (definition.key.0.to_string(), owner.clone()));
-        let mut errors = Vec::new();
-        let seed = Self::vanilla();
-        let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let mut pois: BTreeMap<String, Vec<myriade_types::ProfessionKey>> = BTreeMap::new();
-        for (owner, definition) in &declarations {
-            owners
-                .entry(definition.key.0.to_string())
-                .or_default()
-                .push(owner.clone());
-            if definition.key.0.namespace() == "minecraft" {
-                errors.push(E::ReservedProfession {
-                    key: definition.key.clone(),
-                });
-            }
-            for poi in definition.held_poi.iter().chain(&definition.acquirable_poi) {
-                if !exists("poi", &poi.0) {
-                    errors.push(E::UnknownPoi { key: poi.clone() });
-                }
-            }
-            for poi in &definition.acquirable_poi {
-                let entries = pois.entry(poi.0.to_string()).or_default();
-                if !entries.contains(&definition.key) {
-                    entries.push(definition.key.clone());
-                }
-            }
-            let mut levels = [false; 5];
-            for (level, key) in &definition.trades {
-                if !(1..=5).contains(level)
-                    || std::mem::replace(
-                        &mut levels[usize::from(level.saturating_sub(1)).min(4)],
-                        true,
-                    )
-                {
-                    errors.push(E::InvalidTradeLevel {
-                        key: definition.key.clone(),
-                        level: *level,
-                    });
-                }
-                if !exists("trade_set", &key.0) {
-                    errors.push(E::UnknownTradeSet { key: key.clone() });
-                }
-            }
-            for key in &definition.requested_items {
-                if !exists("item", key) {
-                    errors.push(E::UnknownItem { key: key.clone() });
-                }
-            }
-            for key in &definition.secondary_blocks {
-                if !exists("block", key) {
-                    errors.push(E::UnknownBlock { key: key.clone() });
-                }
-            }
-            if let Some(key) = &definition.work_sound
-                && !exists("sound", key)
-            {
-                errors.push(E::UnknownSound { key: key.clone() });
-            }
-        }
-        for (_, definition) in &declarations {
-            for workstation in &definition.workstations {
-                if !pois.contains_key(&workstation.poi.0.to_string()) {
-                    errors.push(E::UnacquirablePoi {
-                        key: workstation.poi.clone(),
-                    });
-                }
-            }
-        }
-        for (key, mut owners) in owners {
-            if owners.len() > 1 {
-                owners.sort();
-                errors.push(E::DuplicateProfession {
-                    key: myriade_types::ProfessionKey(
-                        myriade_types::Identifier::parse(&key).expect("validated identifier"),
-                    ),
-                    owners,
-                });
-            }
-        }
-        for (poi, mut professions) in pois {
-            if let Some(index) =
-                horizon_world::poi::PoiType::from_id(&poi).and_then(|poi| seed.by_poi(poi))
-            {
-                professions.push(myriade_types::ProfessionKey(
-                    myriade_types::Identifier::parse(&format!("minecraft:{}", seed.get(index).id))
-                        .expect("vanilla identity"),
-                ));
-            }
-            if professions.len() > 1 {
-                professions.sort_by_key(|p| p.0.to_string());
-                errors.push(E::OverlappingPoi {
-                    poi: myriade_types::PoiKey(
-                        myriade_types::Identifier::parse(&poi).expect("validated identifier"),
-                    ),
-                    professions,
-                });
-            }
-        }
-        if !errors.is_empty() {
-            return Err(errors);
-        }
-        let mut candidate = seed;
-        for (_, definition) in declarations {
-            let index = candidate.entries.len();
-            candidate
-                .by_name
-                .insert(definition.key.0.to_string(), index);
-            for poi in &definition.acquirable_poi {
-                candidate.custom_poi.insert(poi.0.to_string(), index);
-            }
-            candidate.entries.push(Profession {
-                id: definition.key.0.to_string(),
-                trade_set: None,
-                render_index: 0,
-                secondary_blocks: Default::default(),
-                requested: vec![],
-                sound: None,
-                held_names: Default::default(),
-                acquire_names: Default::default(),
-                trade_keys: Default::default(),
-                held: None,
-                acquirable: None,
-                definition: Some(definition),
-            });
-        }
+    /// The vanilla table, compiled: the candidate every load publishes.
+    pub fn prepare() -> Self {
+        let mut candidate = Self::vanilla();
         for p in &mut candidate.entries {
             p.compile();
         }
-        Ok(candidate)
+        candidate
     }
 
     /// Resolve a qualified saved identity in this load, without numeric truncation.
@@ -300,37 +169,6 @@ impl ResolvedProfessions {
         self.custom_poi.get(poi).copied()
     }
 }
-
-/// A resource owner's active immutable table. Preparation never mutates this holder;
-/// swapping it belongs to the same root commit as the dependent POI and trade tables.
-#[derive(Debug)]
-pub struct ProfessionRegistry {
-    active: std::sync::Arc<ResolvedProfessions>,
-}
-impl Default for ProfessionRegistry {
-    fn default() -> Self {
-        Self {
-            active: std::sync::Arc::new(ResolvedProfessions::vanilla()),
-        }
-    }
-}
-impl ProfessionRegistry {
-    /// The complete active table for the owning resource load.
-    pub fn active(&self) -> &std::sync::Arc<ResolvedProfessions> {
-        &self.active
-    }
-
-    /// Publish a successfully prepared candidate, retaining the old table on refusal.
-    /// The owning resource transaction calls this only when its dependent tables commit.
-    pub fn publish(
-        &mut self,
-        candidate: Result<ResolvedProfessions, Vec<mod_api::ProfessionRegistrationError>>,
-    ) -> Result<(), Vec<mod_api::ProfessionRegistrationError>> {
-        self.active = std::sync::Arc::new(candidate?);
-        Ok(())
-    }
-}
-
 
 fn vanilla_definition(
     id: &str,

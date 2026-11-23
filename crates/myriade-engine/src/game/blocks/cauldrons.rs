@@ -12,6 +12,7 @@ impl Game<'_> {
     /// `CauldronInteractions` for the held item aimed at a cauldron.
     pub(super) fn use_on_cauldron(&mut self, pos: [i32; 3]) -> Result<bool> {
         use myriade_engine::cauldron::{self, Outcome};
+        use myriade_engine::lan::playerdata::ints_uuid;
         let registry = self.pack.assets.registry;
         let Some((state, under_water)) = self.cauldron_at(pos) else {
             return Ok(false);
@@ -23,17 +24,14 @@ impl Game<'_> {
         // `Stats.ITEM_USED.get(itemInHand.getItem())`: the item the hand held
         // before the interaction swaps it.
         let used_item = held.item.clone();
-        let table = cauldron_interactions::snapshot();
+        let table = cauldron::interactions::Dispatcher::vanilla();
         let items = self.items();
         let entry = table.select(&state.name, &held.item, removes_dye, |tag| {
             items.item_in_tag(tag, &held.item)
         });
-        if let Some(cauldron::interactions::Entry::Mod(callback)) = &entry {
-            return Ok(self.use_mod_cauldron(pos, under_water, callback, &table));
-        }
 
         let slot = self.held_slot();
-        let player = self.native_acting_id();
+        let player = ints_uuid(self.acting_player_uuid());
         if self.transactions.is_empty() {
             use transactions::DeferredEffect;
             let mut hand = powder_snow::HeldSlot {
@@ -84,7 +82,7 @@ impl Game<'_> {
             }
             return Ok(true);
         }
-        let outcome = mod_api::run_transaction(self, |game, _| {
+        let outcome = myriade_types::run_transaction(self, |game, _| {
             use transactions::DeferredEffect;
             game.journal_player(player);
             let mut hand = powder_snow::HeldSlot {

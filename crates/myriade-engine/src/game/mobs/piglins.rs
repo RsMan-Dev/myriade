@@ -40,27 +40,18 @@ impl Game<'_> {
     }
     /// `PiglinAi.isWearingSafeArmor` for the acting player: a stack in an armour
     /// slot (feet, legs, chest, head, `EquipmentSlotGroup.ARMOR`'s order) in
-    /// `#minecraft:piglin_safe_armor`, once the parts of its item answered
-    /// (`ItemPart::makes_piglins_neutral`). An item with no part for it costs one
-    /// table lookup.
+    /// `#minecraft:piglin_safe_armor`.
     pub(super) fn wearing_gold(&self) -> bool {
         let tag = self
             .res
             .items()
             .item_tags
             .get("minecraft:piglin_safe_armor");
-        self.armor.iter().rev().flatten().any(|s| {
-            let mut neutral = tag.is_some_and(|t| t.contains(&*s.item));
-            if false
-                && let Some(epoch) = self.native_lifecycle.epoch()
-                && let Some(p) = self.player.as_ref()
-            {
-                let wearer =
-                    mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, p.entity_id as u32));
-                self.native_makes_piglins_neutral(s, wearer, &mut neutral);
-            }
-            neutral
-        })
+        self.armor
+            .iter()
+            .rev()
+            .flatten()
+            .any(|s| tag.is_some_and(|t| t.contains(&*s.item)))
     }
     /// `PiglinAi.angerNearbyPiglins`: the ECS's guards take the alert
     /// (`alert_guards`), with their own sight and idle checks.

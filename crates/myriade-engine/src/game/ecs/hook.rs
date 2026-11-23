@@ -72,7 +72,6 @@ impl Game<'_> {
         let (Some(fisher), Some(owner)) = (self.ecs_fisher(), self.player.as_ref().map(|p| p.position)) else {
             return 0;
         };
-        let hook_id = self.ecs_own_hook().unwrap_or(0);
         let Some(r) = self.ecs_with(|ecs, mw| ecs.reel_hook(mw, EcsWho::Player(fisher))) else {
             return 0;
         };
@@ -98,14 +97,14 @@ impl Game<'_> {
             None => {}
         }
         if r.caught {
-            rod_damage = self.ecs_catch(rod, &r, (owner, hook_id), at, rod_damage);
+            rod_damage = self.ecs_catch(rod, &r, owner, at, rod_damage);
         }
         rod_damage.max(0) as u32
     }
 
     /// The catch of a reel: the mods hear it first, then the loot falls at the hook with its experience and statistics.
     /// Returns the rod's damage, which a mod may change or cancel the rewards with.
-    fn ecs_catch(&mut self, rod: &ItemStack, r: &Retrieve, (owner, hook_id): (Vec3, u32), at: [f64; 3], mut rod_damage: i32) -> i32 {
+    fn ecs_catch(&mut self, rod: &ItemStack, r: &Retrieve, owner: Vec3, at: [f64; 3], rod_damage: i32) -> i32 {
         let biome = self.biome_name_at(r.at);
         let Some(loot) = self.server_loot.get() else {
             return rod_damage;
@@ -126,7 +125,7 @@ impl Game<'_> {
             biome.as_deref(),
             r.open_water,
         );
-        let mut caught: Vec<ItemStack> = items
+        let caught: Vec<ItemStack> = items
             .into_iter()
             .map(|stack| {
                 let mut item = ItemStack {
@@ -148,18 +147,6 @@ impl Game<'_> {
                 item
             })
             .collect();
-        // ItemFishedEvent may change the catch, rod damage, or cancel rewards.
-        if let Some(player) = self.lan_acting_uuid
-            && false
-        {
-            let fished = mod_api::ItemFished::from(mod_api::__private::built::ItemFished { hook: hook_id, position: at });
-            let mut cancel = false;
-            let entity_id = self.own_entity_id();
-            self.native_item_fished(player, entity_id, &fished, &mut caught, &mut rod_damage, &mut cancel);
-            if cancel {
-                return rod_damage;
-            }
-        }
         // CriteriaTriggers.FISHING_ROD_HOOKED: the hook itself is the entity.
         let bobber = EntityView {
             kind: "minecraft:fishing_bobber".into(),

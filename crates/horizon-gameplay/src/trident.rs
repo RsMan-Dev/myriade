@@ -8,8 +8,6 @@ use horizon_core::{
 };
 
 pub struct ThrownTrident {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`myriade_engine::join_seq`); set by the list.
     pub join: myriade_engine::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
@@ -162,7 +160,6 @@ impl ThrownTrident {
     /// A trident a server sent (`handleAddEntity`): placed and moved by it.
     pub fn remote(id: u32, position: Vec3, yaw: f32, pitch: f32) -> Self {
         Self {
-            attachment_lifetime: Default::default(),
             join: Default::default(),
             id,
             stack: ItemStack::new("minecraft:trident", 1),
@@ -406,7 +403,6 @@ pub fn segment_box(from: Vec3, d: Vec3, b: Aabb) -> Option<f64> {
     (t0 <= t1).then_some(t0)
 }
 myriade_engine::impl_joined!(ThrownTrident);
-horizon_mod_runtime::impl_attachment_lifetime!(ThrownTrident);
 impl myriade_engine::entity_rules::EntityRules for ThrownTrident {}
 
 #[cfg(test)]

@@ -1,10 +1,9 @@
 //! What the server's receiving paths share with the game: the events they pass on
 //! (`Event`), the bounded ingress queue, the writer that sends a server's packets,
 //! and the language its components resolve with.
+pub mod byte_channel;
 pub mod ingress;
 pub(crate) mod queued_writer;
-
-pub use queued_writer::PreparedPayload;
 
 use horizon_protocol::{
     packets::{configuration as cfg, play},
@@ -34,8 +33,6 @@ pub enum Event {
         name: String,
     },
     Packet(Box<play::Clientbound>),
-    /// Registered application bytes, owned until the receiving root transaction ends.
-    RawPayload(Box<crate::raw_payloads::Incoming>),
     /// A packet that failed to decode (skipped, like vanilla's skippable packets).
     DecodeError(String),
     /// The server sent us back to configuration (`ClientboundStartConfigurationPacket`):
@@ -110,8 +107,6 @@ impl Event {
             Self::Packet(packet) => {
                 size_of::<play::Clientbound>().saturating_add(packet.as_ref().owned_heap_bytes())
             }
-            Self::RawPayload(incoming) => size_of::<crate::raw_payloads::Incoming>()
-                .saturating_add(incoming.owned_heap_bytes()),
             Self::PackPush(packet) => packet.owned_heap_bytes(),
             Self::ShowDialog(tag) => tag.owned_heap_bytes(),
             Self::Transfer { host, port: _ } => host.capacity(),

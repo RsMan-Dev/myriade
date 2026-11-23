@@ -11,7 +11,6 @@ use myriade_engine::{
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
 use horizon_protocol::packets::play::Clientbound as C;
-use myriade_types::ProgressType;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -738,42 +737,11 @@ impl Game<'_> {
             let a = &tree.list[ai];
             let was = self.adv.progress.done(a);
             let criterion = &a.criteria[ci].name;
-            if self.adv.progress.grant(&a.id, criterion, &date) {
-                self.advancement_progress(a, criterion, ProgressType::Grant);
-            }
+            self.adv.progress.grant(&a.id, criterion, &date);
             self.progress_changed(ai);
             if !was && self.adv.progress.done(a) {
                 self.award(ai);
             }
-        }
-    }
-    /// `PlayerAdvancements.award` / `revoke` after a criterion's progress changed.
-    fn advancement_progress(
-        &mut self,
-        advancement: &adv::Advancement,
-        criterion: &str,
-        progress_type: ProgressType,
-    ) {
-        if !false {
-            return;
-        }
-        if let (Some(uuid), Some(entity_id), Some(name)) = (
-            self.lan_acting_uuid,
-            self.lan_acting_entity,
-            self.lan_acting_name.clone(),
-        ) {
-            let progress = progress_snapshot(advancement, &self.adv.progress);
-            self.native_player_advancement_progress(
-                mod_api::__private::PlayerAdvancementProgressCall {
-                    player: uuid,
-                    player_entity_id: entity_id as i32,
-                    name: &name,
-                    advancement: &advancement.id,
-                    criterion,
-                    progress_type,
-                    progress: &progress,
-                },
-            );
         }
     }
     /// Lend the hub each guest turn's actual advancement storage, without
@@ -2114,7 +2082,6 @@ impl Game<'_> {
             let was = self.adv.progress.done(a);
             if self.adv.progress.grant(&a.id, c, &date) {
                 changed = true;
-                self.advancement_progress(a, c, ProgressType::Grant);
                 self.progress_changed(index);
                 if !was && self.adv.progress.done(a) {
                     self.award(index);
@@ -2142,13 +2109,9 @@ impl Game<'_> {
             }
         }
     }
-    /// `PlayerAdvancements.revoke(holder, criterion)`: the progress change and
-    /// the hook for it.
+    /// `PlayerAdvancements.revoke(holder, criterion)`: the progress change.
     fn revoke_criterion(&mut self, advancement: &adv::Advancement, criterion: &str) -> bool {
         let revoked = self.adv.progress.revoke(&advancement.id, criterion);
-        if revoked {
-            self.advancement_progress(advancement, criterion, ProgressType::Revoke);
-        }
         revoked
     }
 }

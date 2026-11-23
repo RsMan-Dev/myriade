@@ -120,43 +120,6 @@ fn span_cost_nanos() -> f64 {
     per
 }
 
-impl super::super::mods::ModsState {
-    pub(in crate::game) fn perf_metadata<'a>(
-        &self,
-        packages: impl Iterator<Item = &'a mod_api::PackageInfo>,
-    ) -> Vec<horizon_perf_format::v1::Mod> {
-        use horizon_perf_format::v1::{Mod, ModKind};
-        packages
-            .map(|package| {
-                let native = self
-                    .native
-                    .built()
-                    .iter()
-                    .any(|candidate| candidate.id == package.id());
-                Mod {
-                    id: package.id().to_owned(),
-                    version: package.version().to_owned(),
-                    kind: match package.kind() {
-                        mod_api::PackageKind::Content => ModKind::Content,
-                        mod_api::PackageKind::Code if native => ModKind::Native,
-                        mod_api::PackageKind::Code
-                            if self.selected.iter().any(|selected| {
-                                selected.package.manifest.id == package.id()
-                                    && selected.package.manifest.wasm.is_some()
-                            }) =>
-                        {
-                            ModKind::Wasm
-                        }
-                        _ => ModKind::Unspecified,
-                    } as i32,
-                    // AdjacentManifest does not expose a compiled crate name.
-                    crate_name: String::new(),
-                }
-            })
-            .collect()
-    }
-}
-
 impl Game<'_> {
     /// Starts a report: the recording the game side needs and the capture beside it.
     pub(super) fn record_report(
@@ -200,12 +163,6 @@ impl Game<'_> {
             .collect()
     }
 
-    /// The canonical loaded inventory, with code targets resolved from the native runtime.
-    pub(in crate::game) fn perf_mods(&self) -> Vec<horizon_perf_format::v1::Mod> {
-        self.mods
-            .perf_metadata(mod_api::__private::loaded_mods().iter())
-    }
-
     /// What a capture of `plan` records of the server as it starts: the typed allowlists, the world and the connections.
     fn capture_options(
         &self,
@@ -222,7 +179,7 @@ impl Game<'_> {
                 max_players as u32,
                 compression,
             )),
-            mods: self.perf_mods(),
+            mods: Vec::new(),
             game_rules: Some(server_perf::game_rules(&self.session.rules)),
             horizon_options: Some(horizon),
             players: self.lan.as_ref().map_or(0, |h| {

@@ -31,7 +31,6 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn allow_hopper_pickup_item(&self, pos: BlockPos, item: &str, count: u32) -> bool {
         let mut cancel = false;
-        self.native_hopper_pickup_item(self.dimension, pos, item, count, &mut cancel);
         !cancel
     }
     fn has_native_block_entity(&self, state: BlockStateId) -> bool {
@@ -49,7 +48,6 @@ impl LevelAccess for GameLevel<'_> {
         }
     }
     fn observe_block_changed(&self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
-        self.native_block_changed(self.dimension, pos, old, new);
     }
     fn observes_block_state_change(&self, old: BlockStateId, new: BlockStateId) -> bool {
         self.block_state_change_heard(old, new)
@@ -63,24 +61,7 @@ impl LevelAccess for GameLevel<'_> {
         }
         let mut cancel = false;
         let state = self.block_state(pos);
-        self.native_neighbor_notify(self.dimension, pos, state, skipped, &mut cancel);
         cancel
-    }
-    fn observe_neighbor_changed(
-        &self,
-        ticks: &mut Ticks,
-        pos: BlockPos,
-        state: BlockStateId,
-        changed: horizon_world::level::BlockId,
-        moved: bool,
-    ) {
-        if api_values::block_state::block_listens(mod_api::HookId::NeighborChanged, state) {
-            use api_values::TryIntoApi;
-            let Ok(changed) = self.behaviours.table.default_state(changed).try_into_api() else {
-                return;
-            };
-            self.native_neighbor_changed(ticks, self.dimension, pos, state, changed.block(), moved);
-        }
     }
     fn affect_neighbors_after_removal(
         &self,
@@ -89,7 +70,6 @@ impl LevelAccess for GameLevel<'_> {
         moved: bool,
         updates: &mut Vec<horizon_core::neighbour_update::NeighbourUpdate>,
     ) {
-        self.native_affect_neighbors_after_removal(self.dimension, pos, state, moved, updates);
     }
     fn allow_spread(
         &self,
@@ -102,7 +82,6 @@ impl LevelAccess for GameLevel<'_> {
             horizon_world::level::Spread::Fluid => "fluid",
             horizon_world::level::Spread::Fire => "fire",
         };
-        self.native_block_spread(self.dimension, kind, from, to, &mut canceled);
         !canceled
     }
     fn fluid_place_block(
@@ -113,19 +92,10 @@ impl LevelAccess for GameLevel<'_> {
     ) -> Option<BlockStateId> {
         let mut new_state = state;
         let mut cancel = false;
-        self.native_fluid_place_block(
-            self.dimension,
-            pos,
-            liquid_pos,
-            state,
-            &mut new_state,
-            &mut cancel,
-        );
         (!cancel).then_some(new_state)
     }
     fn allow_fluid_tick(&self, pos: BlockPos, fluid: &'static str) -> bool {
         let mut cancel = false;
-        self.native_fluid_tick(self.dimension, pos, fluid, &mut cancel);
         !cancel
     }
     fn allow_fluid_level_change(
@@ -136,22 +106,11 @@ impl LevelAccess for GameLevel<'_> {
         to: i32,
     ) -> bool {
         let mut cancel = false;
-        self.native_fluid_level_change(self.dimension, pos, fluid, from, to, &mut cancel);
         !cancel
     }
     fn create_fluid_source(&self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
         let mut can_convert = vanilla;
-        self.native_create_fluid_source(self.dimension, pos, state, &mut can_convert);
-        can_convert
-    }
-    fn mod_fluid_rules(
-        &self,
-        pos: BlockPos,
-        fluid: horizon_world::fluid::ModFluid,
-        registered: horizon_world::fluid::ModFluidRules,
-    ) -> horizon_world::fluid::ModFluidRules {
-        Self::answered_fluid_rules(self.dimension, pos, fluid, registered, |call| {
-            self.native_fluid_rules(call)
+call)
         })
     }
     fn allow_block_ignite(&self, pos: BlockPos, cause: &'static str) -> bool {
@@ -167,7 +126,6 @@ impl LevelAccess for GameLevel<'_> {
         }
         let mut feature = feature.map(str::to_owned);
         let mut cancel = false;
-        self.native_block_grow_feature(self.dimension, pos, &mut feature, &mut cancel);
         feature.filter(|_| !cancel).map(std::borrow::Cow::Owned)
     }
     fn crop_grow_pre(&mut self, pos: BlockPos, state: BlockStateId, vanilla: bool) -> bool {
@@ -175,7 +133,6 @@ impl LevelAccess for GameLevel<'_> {
             return vanilla;
         }
         let mut result = myriade_types::TriState::Default;
-        self.native_crop_grow_pre(self.dimension, pos, state, &mut result);
         result.or(vanilla)
     }
     fn crop_grow_post(&mut self, pos: BlockPos, original: BlockStateId) {
@@ -185,7 +142,6 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn allow_leaves_decay(&self, pos: BlockPos) -> bool {
         let mut cancel = false;
-        self.native_leaves_decay(self.dimension, pos, &mut cancel);
         !cancel
     }
     fn has_water_ticket(&self, pos: BlockPos) -> bool {
@@ -193,20 +149,16 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn allow_moisture_change(&self, pos: BlockPos, from: i32, to: i32) -> bool {
         let mut cancel = false;
-        self.native_moisture_change(self.dimension, pos, from, to, &mut cancel);
         !cancel
     }
     fn observe_sponge_absorb(&self, pos: BlockPos) {
-        self.native_sponge_absorb(self.dimension, pos);
     }
     fn allow_block_fade(&self, pos: BlockPos, from: BlockStateId, to: BlockStateId) -> bool {
         let mut cancel = false;
-        self.native_block_fade(self.dimension, pos, from, to, &mut cancel);
         !cancel
     }
     fn allow_block_form(&self, pos: BlockPos, from: BlockStateId, to: BlockStateId) -> bool {
         let mut cancel = false;
-        self.native_block_form(self.dimension, pos, from, to, &mut cancel);
         !cancel
     }
     fn note_block_change(
@@ -223,7 +175,6 @@ impl LevelAccess for GameLevel<'_> {
             instrument: myriade_types::NoteInstrument::ALL[usize::from(instrument)],
             old_note: old,
         };
-        self.native_note_block_change(&context, &mut new, &mut cancel);
         (!cancel).then_some(new)
     }
     fn note_block_play(
@@ -245,15 +196,6 @@ impl LevelAccess for GameLevel<'_> {
         } else {
             (None, None)
         };
-        self.native_note_block_play(mod_api::__private::NoteBlockPlayCall {
-            dimension: self.dimension,
-            player,
-            player_entity_id,
-            pos,
-            instrument: &mut played_instrument,
-            note: &mut played,
-            cancel: &mut cancel,
-        });
         *instrument = played_instrument as u8;
         // A note out of 0 to 24 keeps the block's own.
         if (0..=24).contains(&played) {
@@ -272,7 +214,6 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn allow_bell_ring(&self, pos: BlockPos) -> bool {
         let mut cancel = false;
-        self.native_bell_ring(self.dimension, self.native_player, pos, &mut cancel);
         !cancel
     }
     fn allow_cauldron_level_change(
@@ -283,15 +224,6 @@ impl LevelAccess for GameLevel<'_> {
         reason: &'static str,
     ) -> bool {
         let mut cancel = false;
-        self.native_cauldron_level_changed(mod_api::__private::CauldronLevelChangedCall {
-            dimension: self.dimension,
-            player: self.native_player,
-            pos,
-            from_level: from,
-            to_level: to,
-            reason,
-            cancel: &mut cancel,
-        });
         !cancel
     }
     fn allow_piston_move(
@@ -326,7 +258,6 @@ impl LevelAccess for GameLevel<'_> {
     }
     fn adjust_signal_source(&self, state: BlockStateId, vanilla: bool) -> bool {
         let mut source = vanilla;
-        self.native_is_signal_source(state, &mut source);
         source
     }
     fn adjust_is_slime_block(&self, state: BlockStateId, vanilla: bool) -> bool {
@@ -349,7 +280,6 @@ impl LevelAccess for GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut check = vanilla;
-        self.native_should_check_weak_power(self.dimension, pos, state, direction, &mut check);
         check
     }
     fn has_rail_hook(&self) -> bool {
@@ -393,13 +323,6 @@ impl LevelAccess for GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut connected = vanilla;
-        self.native_should_redstone_wire_connect_to(
-            self.dimension,
-            pos,
-            state,
-            direction,
-            &mut connected,
-        );
         connected
     }
     fn adjust_remove_block(
@@ -438,16 +361,6 @@ impl LevelAccess for GameLevel<'_> {
         vanilla: bool,
     ) -> bool {
         let mut connected = vanilla;
-        self.native_connects_to(native_hooks::ConnectsToCall {
-            dimension: self.dimension,
-            pos,
-            state,
-            kind,
-            neighbour,
-            direction,
-            face_solid,
-            connected: &mut connected,
-        });
         connected
     }
     fn adjust_signal(
@@ -459,12 +372,10 @@ impl LevelAccess for GameLevel<'_> {
         vanilla: i32,
     ) -> i32 {
         native_level_signals::adjust_signal(direction, vanilla, |face, signal| {
-            self.native_block_signal(self.dimension, pos, state, face, direct, signal);
         })
     }
     fn adjust_has_analog_output(&self, state: BlockStateId, vanilla: bool) -> bool {
         let mut output = vanilla;
-        self.native_has_analog_output(state, &mut output);
         output
     }
     fn adjust_analog_output(
@@ -475,7 +386,6 @@ impl LevelAccess for GameLevel<'_> {
         vanilla: i32,
     ) -> i32 {
         let mut output = vanilla;
-        self.native_analog_output(self.dimension, pos, state, direction, &mut output);
         output.clamp(0, 15)
     }
     #[inline]
@@ -491,7 +401,6 @@ impl LevelAccess for GameLevel<'_> {
     ) {
         // Any block the hook writes moves the world's revision on.
         let revision = self.world.revision;
-        self.native_random_tick(ticks, self.dimension, pos, *state, handled);
         if !*handled && self.world.revision != revision {
             *state = self.block_state(pos);
         }
@@ -505,7 +414,6 @@ impl LevelAccess for GameLevel<'_> {
     ) {
         // Any block the hook writes moves the world's revision on.
         let revision = self.world.revision;
-        self.native_tick_block(ticks, self.dimension, pos, *state, handled);
         if !*handled && self.world.revision != revision {
             *state = self.block_state(pos);
         }
@@ -520,33 +428,8 @@ impl LevelAccess for GameLevel<'_> {
         neighbour: BlockStateId,
         new: &mut Option<BlockStateId>,
     ) {
-        self.native_update_shape(
-            ticks,
-            native_hooks::UpdateShapeCall {
-                dimension: self.dimension,
-                pos,
-                state,
-                direction,
-                neighbour_pos,
-                neighbour,
-                new,
-            },
-        );
-    }
-    #[allow(clippy::option_option)]
-    fn before_state_for_placement(
-        &self,
-        state: BlockStateId,
-        context: &PlacementContext,
-        fluid: FluidState,
-        answer: &mut Option<Option<BlockStateId>>,
-    ) {
-        if let Some(fluid) = native_world_read::api_fluid_state(fluid) {
-            self.native_state_for_placement(self.dimension, state, context, fluid, answer);
-        }
     }
     fn before_can_survive(&self, pos: BlockPos, state: BlockStateId, survives: &mut Option<bool>) {
-        self.native_can_survive(self.dimension, pos, state, survives);
     }
     fn before_can_sustain_plant(
         &self,
@@ -555,28 +438,11 @@ impl LevelAccess for GameLevel<'_> {
         ground_pos: BlockPos,
         sustains: &mut Option<bool>,
     ) {
-        self.native_can_sustain_plant(self.dimension, state, ground, ground_pos, sustains);
     }
     fn asks_is_fertile(&self) -> bool {
         false
     }
     fn before_is_fertile(&self, state: BlockStateId, pos: BlockPos, fertile: &mut bool) {
-        self.native_is_fertile(self.dimension, state, pos, fertile);
-    }
-    fn asks_can_be_hydrated(&self, state: BlockStateId) -> bool {
-        crate::game::api_values::block_state::block_listens(mod_api::HookId::CanBeHydrated, state)
-    }
-    fn before_can_be_hydrated(
-        &self,
-        state: BlockStateId,
-        pos: BlockPos,
-        fluid: FluidState,
-        fluid_pos: BlockPos,
-        hydrates: &mut Option<bool>,
-    ) {
-        if let Some(fluid) = native_world_read::api_fluid_state(fluid) {
-            self.native_can_be_hydrated(self.dimension, state, pos, fluid, fluid_pos, hydrates);
-        }
     }
     fn before_may_place_on(
         &self,
@@ -585,7 +451,6 @@ impl LevelAccess for GameLevel<'_> {
         ground_pos: BlockPos,
         may: &mut Option<bool>,
     ) {
-        self.native_may_place_on(self.dimension, state, ground, ground_pos, may);
     }
     fn is_client_side(&self) -> bool {
         self.client_side
@@ -594,16 +459,13 @@ impl LevelAccess for GameLevel<'_> {
         // Asked on both sides, as vanilla asks `isValidBonemealTarget`: a
         // client predicts the use with it. Only a mod answers.
         let mut valid = None;
-        self.native_is_valid_bonemeal_target(self.dimension, pos, state, &mut valid);
         valid
     }
     fn is_bonemeal_success(&mut self, pos: BlockPos, state: BlockStateId) -> bool {
         let mut success = false;
-        self.native_is_bonemeal_success(self.dimension, pos, state, &mut success);
         success
     }
     fn perform_bonemeal(&mut self, ticks: &mut Ticks, pos: BlockPos, state: BlockStateId) {
-        self.native_perform_bonemeal(ticks, self.dimension, pos, state);
     }
     fn before_fire_odds(
         &self,

@@ -1,0 +1,145 @@
+use crate::*;
+use serde_json::Value;
+use std::collections::HashSet;
+
+/// Items a mod adds to one of the recipe property sets: the items a furnace,
+/// blast furnace, smoker, campfire, smithing table slot or brewing stand slot
+/// accepts (`RecipeManager.RECIPE_PROPERTY_SETS`), or a mod-created menu input
+/// set. New keys must belong to a namespace owned by the listener's manifest;
+/// later listeners may extend sets created by earlier listeners.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecipePropertyAddition {
+    /// The set's key, such as `minecraft:furnace_input` or `mymod:pot_input`.
+    pub set: String,
+    /// The item ids to add.
+    pub items: Vec<String>,
+}
+
+impl RecipePropertyAddition {
+    /// `items` added to the set named `set`.
+    pub fn new(set: impl Into<String>, items: Vec<String>) -> Self {
+        Self {
+            set: set.into(),
+            items,
+        }
+    }
+}
+
+/// A set of accepted items (expanded from an item, list or tag), and the
+/// items in its `HolderSet` order (`Ingredient.display`'s `TagSlotDisplay`).
+/// Optional metadata is boxed so nested ingredient reads fit the guest stack budget.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Ingredient {
+    /// Full candidate set; non-simple predicates test the concrete stack.
+    pub items: HashSet<String>,
+    /// Default-stack display/simple-match order; non-simple kinds may have none.
+    pub order: Vec<String>,
+    /// A mod's own kind, for matching at craft time: the kind and its
+    /// NBT compound, as the load-time hook saw them (`ingredient_test`).
+    pub custom: Option<(String, horizon_core::nbt::Compound)>,
+    /// NeoForge's shapes, with their children parsed: matching a concrete
+    /// stack asks each child its own `test` (a mod's kind among them),
+    /// as on NeoForge — the flat list above only names items.
+    pub children: Option<(Shape, Vec<Self>)>,
+    /// A concrete-stack built-in predicate.
+    pub rule: Option<Box<IngredientRule>>,
+    /// Explicit slot display, independent of membership.
+    pub display: Option<Box<horizon_core::nbt::Compound>>,
+}
+
+/// Built-in predicates evaluated against the concrete stack.
+#[derive(Clone, Debug, PartialEq, )]
+pub enum IngredientRule {
+    /// Exact component patch, with explicit absence requirements.
+    Components {
+        patch: horizon_core::nbt::Compound,
+        removed: Vec<String>,
+        strict: bool,
+    },
+}
+
+/// How a shape's children combine at match time.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Shape {
+    /// Any child matching the stack is enough.
+    Compound,
+    /// Every child must match it.
+    Intersection,
+    /// The first child must, and the second must not.
+    Difference,
+    /// Matching follows the base; presentation uses a separate slot display.
+    CustomDisplay,
+}
+
+impl Ingredient {
+    /// The items of a list, in order.
+    pub fn of(items: Vec<String>) -> Self {
+        Self {
+            items: items.iter().cloned().collect(),
+            order: items,
+            custom: None,
+            children: None,
+            rule: None,
+            display: None,
+        }
+    }
+}
+
+/// A recipe in force (`RecipeManager.getAllRecipesFor`), whatever its type
+/// (vanilla's or a mod's own): its typed parts, and its file for whatever a
+/// mod's own type keeps there. `json` is the data-pack file's JSON, read by a
+/// mod at reload; host parsing helpers accept JSON text. Plain data.
+///
+/// A recipe the game could not parse (an ingredient it cannot read, no
+/// result) is not in force and is not listed.
+///
+/// `ingredients` and `results` are filled from the game's own parse of the
+/// shaped, shapeless and cooking types: a shaped recipe's pattern cells row
+/// by row (empty cells left out), a shapeless recipe's list, a cooking
+/// recipe's `ingredient`, and the result as `results[0]`. Stonecutting,
+/// smithing and special crafting recipes instead expose their typed [`RecipeRule`]
+/// in `rule`, keeping these two lists empty. Dynamic outputs are rules/templates,
+/// not fixed stacks; use [`LevelRef::recipe_for`] to match and assemble a crafting grid.
+/// A mod's own type leaves these fields empty and keeps its `json`.
+#[derive(Clone, Debug)]
+pub struct Recipe {
+    /// `<namespace>:<path>`, its place under `data/<namespace>/recipe/`.
+    pub id: String,
+    /// The recipe type, `minecraft:smelting` or `mymod:crusher`.
+    pub kind: String,
+    /// The recipe book group, empty for none.
+    pub group: String,
+    /// What it takes, as above.
+    pub ingredients: Vec<Ingredient>,
+    /// What it makes, as above.
+    pub results: Vec<ItemStack>,
+    /// Ticks a cooking recipe (`smelting`, `blasting`, `smoking`,
+    /// `campfire_cooking`) takes, its file's `cookingtime`; `None` for any
+    /// other type.
+    pub cooking_time: Option<u32>,
+    /// Experience a cooking recipe gives, `None` for any other type.
+    pub experience: Option<f32>,
+    /// Parsed stonecutting, smithing or special crafting rule. `None` for
+    /// shaped, shapeless, cooking and mod-defined types. The ingredient roles,
+    /// bounds and templates come from the game's canonical parse.
+    pub rule: Option<RecipeRule>,
+    /// The recipe's file, as the data pack wrote it.
+    pub json: Arc<Value>,
+}
+
+impl Recipe {
+    /// The recipe `id` of type `kind` with its file `json`, the typed parts empty.
+    pub fn new(id: impl Into<String>, kind: impl Into<String>, json: Arc<Value>) -> Self {
+        Self {
+            id: id.into(),
+            kind: kind.into(),
+            group: String::new(),
+            ingredients: Vec::new(),
+            results: Vec::new(),
+            cooking_time: None,
+            experience: None,
+            rule: None,
+            json,
+        }
+    }
+}

@@ -454,25 +454,6 @@ impl Game<'_> {
             });
             return Ok(());
         }
-        let cause = src.cause;
-        let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
-            dimension: self.dim.id(),
-            center,
-            radius,
-            fire: false,
-            interaction: myriade_types::BlockInteraction::TriggerBlock,
-            // `DamageSources.explosion(source, owner)`.
-            damage_type: if cause.source.is_some() && cause.owner.is_some() {
-                "minecraft:player_explosion"
-            } else {
-                "minecraft:explosion"
-            },
-            source: cause.source,
-            owner: cause.owner,
-        });
-        if self.explosion_start_cancelled(&start) {
-            return Ok(());
-        }
         // ServerExplosion.explode: the blast is heard first.
         let ctx = myriade_engine::sculk::Context::default();
         self.post_game_event("minecraft:explode", center, ctx);
@@ -657,7 +638,6 @@ mod tests {
         assert!(!push_waits_for_tick(false, 3, Some(7)), "ticks before it");
         assert!(!push_waits_for_tick(true, 3, None), "not a charge's burst");
         let tnt = crate::game::tnt::PrimedTnt {
-            attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             id: 1,
             position: Vec3::ZERO,

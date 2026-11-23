@@ -6,12 +6,10 @@
 use super::{Game, GameLevel};
 use myriade_engine::{block_entities::Carried, save::ChunkExtras};
 use horizon_core::{geometry::Direction, nbt::Tag, position::BlockPos};
-use horizon_mod_runtime::attachments::{ATTACHMENTS_KEY, Attachments, attachment_compound};
 use horizon_world::{level::MovingPiston, registry::BlockStateId};
 
-/// The moving piston's saved key for the block entity it carries, with its
-/// attachments. Horizon's own, written only while it carries one, so a
-/// vanilla moving piston's tag is unchanged; vanilla reads only its own keys.
+/// The moving piston's saved key for the block entity it carries. Written only while it carries
+/// one, so a vanilla moving piston's tag is unchanged; vanilla reads only its own keys.
 const CARRIED_KEY: &str = "horizon:carried_block_entity";
 
 impl GameLevel<'_> {
@@ -29,15 +27,6 @@ impl GameLevel<'_> {
         let mut canceled = self.world.carrier_fences.holds_move(push, destroy);
         if !canceled {
             let step = direction.normal();
-            self.native_piston_pre(mod_api::__private::PistonPreCall {
-                dimension: self.dimension,
-                piston,
-                direction: step,
-                extending,
-                push,
-                destroy,
-                canceled: &mut canceled,
-            });
         }
         !canceled
     }
@@ -52,7 +41,6 @@ impl GameLevel<'_> {
         destroy: &[BlockPos],
     ) {
         let step = direction.normal();
-        self.native_piston_post(self.dimension, piston, step, extending, push, destroy);
     }
     /// `piston_carries_block_entity` for the block `state` at `pos`: what
     /// its part answers, or None.
@@ -62,7 +50,6 @@ impl GameLevel<'_> {
         state: BlockStateId,
     ) -> Option<bool> {
         let mut movable = None;
-        self.native_piston_carries_block_entity(self.dimension, pos, state, &mut movable);
         if movable == Some(true) {
             let at = (pos.x, pos.y, pos.z);
             if self.world.block_entities.is_taken(&at) {
@@ -124,8 +111,7 @@ impl GameLevel<'_> {
             .push(super::piston_carry_state::PositionChange::Carry { from, to, partner });
     }
     /// Installs the block entity the moving piston at `pos` carried there; its
-    /// custom name is the block's again, as for one loaded there, and on a
-    /// server its synced attachments go whole to the players who see it.
+    /// custom name is the block's again, as for one loaded there.
     pub(super) fn land_carried_block_entity(&mut self, pos: BlockPos) -> bool {
         let key = (pos.x, pos.y, pos.z);
         let data = self
@@ -151,11 +137,6 @@ impl GameLevel<'_> {
         self.spill
             .piston_positions
             .push(super::piston_carry_state::PositionChange::Land { at: key });
-        if self.world.block_entities.attachments(key).is_some() {
-            self.world.attachment_landings.insert(
-                horizon_mod_runtime::attachments::Holder::BlockEntity([pos.x, pos.y, pos.z]),
-            );
-        }
         true
     }
 }
@@ -167,8 +148,8 @@ impl Game<'_> {
         let mut tag = self.moving_piston_to_nbt(pos, piston);
         if let Some(Carried {
             entity,
-            attachments,
             position_data,
+            ..
         }) = self.world.block_entities.carried(&(pos.x, pos.y, pos.z))
             && let Tag::Compound(map) = &mut tag
         {
@@ -183,14 +164,6 @@ impl Game<'_> {
                     "horizon:position_data".into(),
                     Tag::Compound(position_data.clone()),
                 );
-                match attachments.as_ref().map(Attachments::to_nbt) {
-                    Some(data) if !data.is_empty() => {
-                        fields.insert(ATTACHMENTS_KEY.into(), Tag::Compound(data));
-                    }
-                    _ => {
-                        fields.remove(&ATTACHMENTS_KEY.into());
-                    }
-                }
             }
             map.insert(CARRIED_KEY.into(), carried);
         }
@@ -218,19 +191,6 @@ impl Game<'_> {
         let block = &self.res.facts().get(piston.moved_state).name;
         match myriade_engine::save::decode_block_entity_for_block(tag, block) {
             Some((_, entity)) => {
-                let attachments = match attachment_compound(tag.get(ATTACHMENTS_KEY)) {
-                    Ok(Some(data)) => Some(Attachments::from_nbt(data.clone())),
-                    Ok(None) => None,
-                    Err(_) => {
-                        log::warn!(
-                            "Horizon: unreadable attachments on the block entity in the moving piston at {} {} {}; it lands without them",
-                            pos.x,
-                            pos.y,
-                            pos.z
-                        );
-                        None
-                    }
-                };
                 self.world.block_entities.hold_carried(
                     (pos.x, pos.y, pos.z),
                     Carried {
@@ -239,7 +199,6 @@ impl Game<'_> {
                             Some(Tag::Compound(data)) => data.clone(),
                             _ => Default::default(),
                         },
-                        attachments,
                     },
                 );
             }
@@ -250,120 +209,5 @@ impl Game<'_> {
                 pos.z
             ),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use myriade_engine::{chunk::Chunk, containers::BlockEntity, items::ItemStack};
-    use std::sync::Arc;
-
-    #[test]
-    #[ignore = "daily"]
-    fn a_save_mid_move_keeps_the_carried_block_entity_and_a_bad_key_is_left_out() {
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let registry = game.pack.assets.registry;
-            let chest = registry.default_state("minecraft:chest").unwrap();
-            let moving = registry.default_state("minecraft:moving_piston").unwrap();
-            let (from, to) = ((1, 64, 1), (2, 64, 1));
-            let at = BlockPos::new(to.0, to.1, to.2);
-            let mut chunk = Chunk::empty(0, 0);
-            chunk.set(to.0, to.1, to.2, moving.0);
-            game.world.chunks.insert((0, 0), Arc::new(chunk));
-            let Tag::Compound(saved_attachments) = Tag::compound([(
-                "carry_test",
-                Tag::compound([("value", Tag::compound([("value", Tag::Int(7))]))]),
-            )]) else {
-                unreachable!()
-            };
-            game.world.block_entities.insert(
-                from,
-                BlockEntity::Chest(vec![Some(ItemStack::new("minecraft:diamond", 3))]),
-            );
-            game.world
-                .block_entities
-                .restore_attachments(from, Attachments::from_nbt(saved_attachments.clone()));
-            assert!(game.world.block_entities.carry(from, to));
-            let piston = MovingPiston {
-                moved_state: chest,
-                direction: Direction::East,
-                extending: true,
-                source: false,
-                progress: 0.5,
-                progress_o: 0.5,
-                last_ticked: 0,
-                death_ticks: 0,
-                id: 0,
-            };
-
-            // Saved with one key more than vanilla's tag, and only while it carries.
-            let saved = game.saved_moving_piston(at, &piston);
-            let vanilla = game.moving_piston_to_nbt(at, &piston);
-            let Tag::Compound(mut without) = saved.clone() else {
-                unreachable!()
-            };
-            assert!(without.remove(&CARRIED_KEY.into()).is_some());
-            assert_eq!(Tag::Compound(without), vanilla);
-
-            // Unloaded, then loaded again with its chunk.
-            game.world.block_entities.unload(|p| *p == to);
-            let mut extras = ChunkExtras::default();
-            extras.block_entities.push(saved);
-            game.restore_moving_piston(at, piston, Some(&extras));
-            assert!(game.world.block_entities.land(to));
-            let diamonds = match game.world.block_entities.get(&to) {
-                Some(BlockEntity::Chest(items)) => items[0].as_ref().map(|s| s.count),
-                _ => None,
-            };
-            assert_eq!(diamonds, Some(3));
-            assert_eq!(
-                game.world
-                    .block_entities
-                    .attachments(to)
-                    .map(Attachments::to_nbt),
-                Some(saved_attachments)
-            );
-            assert_eq!(
-                game.saved_moving_piston(at, &piston),
-                vanilla,
-                "nothing carried, nothing added"
-            );
-
-            // Attachments that can't be read: the block entity lands without them.
-            assert!(game.world.block_entities.carry(to, to));
-            let mut saved = game.saved_moving_piston(at, &piston);
-            let Some(Tag::Compound(carried)) = saved.get_mut(CARRIED_KEY) else {
-                panic!("the carried block entity is saved")
-            };
-            carried.insert(ATTACHMENTS_KEY.into(), Tag::Int(1));
-            let mut extras = ChunkExtras::default();
-            extras.block_entities.push(saved);
-            game.world.block_entities.unload(|p| *p == to);
-            game.restore_moving_piston(at, piston, Some(&extras));
-            assert!(game.world.block_entities.land(to));
-            assert!(matches!(
-                game.world.block_entities.get(&to),
-                Some(BlockEntity::Chest(items)) if items[0].as_ref().is_some_and(|s| s.count == 3)
-            ));
-            assert!(game.world.block_entities.attachments(to).is_none());
-
-            // A key that can't be read: the piston loads, its block lands bare.
-            let Tag::Compound(mut bad) = vanilla.clone() else {
-                unreachable!()
-            };
-            bad.insert(CARRIED_KEY.into(), Tag::Int(3));
-            let mut extras = ChunkExtras::default();
-            extras.block_entities.push(Tag::Compound(bad));
-            game.world.block_entities.remove(&to);
-            game.restore_moving_piston(at, piston, Some(&extras));
-            assert!(game.world.block_entities.carried(&to).is_none());
-            assert!(
-                game.block_ticks
-                    .moving_pistons
-                    .iter()
-                    .any(|(p, _)| *p == at)
-            );
-        });
     }
 }

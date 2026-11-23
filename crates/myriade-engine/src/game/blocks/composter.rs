@@ -113,7 +113,6 @@ impl Game<'_> {
         }
         if level < 7 {
             self.composter_add(pos, &layers);
-            self.native_compost_item(pos, &stack.item);
             self.award_stat("used", &stack.item, 1);
             self.consume_held();
         }

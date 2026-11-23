@@ -234,68 +234,6 @@ impl Game<'_> {
         })
     }
 
-    /// Visit exactly the actual physical lifetime slot. Resolution releases the
-    /// table and its journal before lending storage; no lift, swap or replacement
-    /// occurs, including when the visitor unwinds. Logical visibility is a caller
-    /// policy, just as for the underlying owner resolver. The visitor must not
-    /// call entity lookup or recursively enter this seam.
-    pub(super) fn with_resident_slot<R>(
-        &mut self,
-        dimension: &myriade_types::DimensionKey,
-        id: std::num::NonZeroU32,
-        visit: impl FnOnce(&mut horizon_mod_runtime::attachments::AttachmentLifetime) -> R,
-    ) -> super::entity_residency::SlotAccess<R> {
-        use super::entity_residency::SlotAccess;
-        let resolved = {
-            self.resident_entities
-                .table
-                .borrow_mut()
-                .entity_lookup(dimension, id.get(), |at| {
-                    self.locate_server_resident_owner(at)
-                })
-        };
-        let location = match resolved {
-            EntityLookup::Found { location, .. } => location,
-            EntityLookup::Taken => return SlotAccess::Taken,
-            EntityLookup::Missing => return SlotAccess::Missing,
-        };
-        debug_assert!(self.resident_entities.table.try_borrow_mut().is_ok());
-        if matches!(
-            location.owner.kind,
-            myriade_engine::join_seq::residency::Kind::Player
-                | myriade_engine::join_seq::residency::Kind::Hook
-        ) {
-            if *dimension != self.dim.key() {
-                let dim = match *dimension {
-                    DimensionKey::OVERWORLD => Dim::Overworld,
-                    DimensionKey::NETHER => Dim::Nether,
-                    DimensionKey::END => Dim::End,
-                    key => Dim::Extra(key),
-                };
-                if !self.levels.parked.contains_key(&dim) {
-                    return SlotAccess::Missing;
-                }
-            }
-            return self.with_specialized_resident_slot(location, visit);
-        }
-        if *dimension == self.dim.key() {
-            self.with_resident_owner_slot(location, visit)
-        } else {
-            let dim = match *dimension {
-                myriade_types::DimensionKey::OVERWORLD => Dim::Overworld,
-                myriade_types::DimensionKey::NETHER => Dim::Nether,
-                myriade_types::DimensionKey::END => Dim::End,
-                key => Dim::Extra(key),
-            };
-            self.levels
-                .parked
-                .get_mut(&dim)
-                .map_or(SlotAccess::Missing, |parked| {
-                    parked.with_resident_owner_slot(location, visit)
-                })
-        }
-    }
-
     pub(in crate::game) fn server_resident_entity(&self, id: u32) -> EntityLookup<Target> {
         let found = self
             .resident_entities
@@ -396,8 +334,6 @@ pub(super) struct Levels {
     /// The levels a mod asked to have saved (`level_request_save`), each once, saved at the start
     /// of the next server tick.
     requested_saves: Vec<Dim>,
-    /// The levels mods opened while the server runs, and the requests waiting to be applied.
-    pub(super) runtime: super::runtime_levels::RuntimeTable,
 }
 
 impl Levels {
@@ -440,7 +376,6 @@ impl Levels {
         self.parked.clear();
         self.heard_open.clear();
         self.requested_saves.clear();
-        self.runtime.clear();
     }
 
     /// A parked level, without opening or loading it.
@@ -644,11 +579,6 @@ impl Levels {
 impl Game<'_> {
     /// A new level for `dim`, opened from the save (`MinecraftServer.createLevels`).
     pub(super) fn open_level(&self, dim: Dim) -> Result<Parked> {
-        // A level a mod opened has the seed and generator it asked for.
-        let (generate, seed) = match self.runtime_terrain(dim) {
-            Some((generate, seed)) => (Some(generate), seed),
-            None => (None, self.level.seed),
-        };
         let (streaming, save, locator) = super::world_loading::make_streaming(
             &self.res,
             &self.pack,
@@ -657,13 +587,12 @@ impl Game<'_> {
             &self.world_root,
             dim,
             self.level_shapes.get(dim.id()),
-            seed,
+            self.level.seed,
             &self.level.enabled_features,
             self.world_biomes
                 .as_ref()
                 .unwrap_or_else(|| self.res.biomes())
                 .clone(),
-            generate.as_ref(),
         )?;
         save.install_profession_snapshot(self.stations().professions.clone());
         if let Some(terrain) = &locator {
@@ -1094,8 +1023,6 @@ impl Game<'_> {
             self.native_lifecycle.cancel_server_tick();
         }
         result?;
-        // The levels mods asked to open or close: now that no level is in the middle of a tick.
-        self.apply_runtime_levels();
         let closed = {
             let _span = myriade_engine::spans::guard("close_idle_levels");
             self.close_idle_levels()

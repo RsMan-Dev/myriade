@@ -1090,9 +1090,6 @@ impl Game<'_> {
         }
         // EmptyMapItem.use: consumed, then counted.
         self.award_stat("used", "minecraft:map", 1);
-        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
-            self.native_player_map_filled(player, &name, id);
-        }
         self.play_player_bound_sound(
             "minecraft:ui.cartography_table.take_result",
             7,

@@ -15,7 +15,6 @@ mod give;
 mod item_count;
 pub(in crate::game) mod items;
 mod misc;
-mod modprofile;
 mod place;
 mod players;
 mod position_args;
@@ -136,8 +135,6 @@ pub(super) fn teleport_velocity(velocity: Vec3, relative: [bool; 3], fall_flying
 /// entity memory (`persist.raw`), its position and rotation here.
 #[derive(Clone, Debug)]
 pub(in crate::game) struct OtherEntity {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub(super) attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     pub(in crate::game) join: myriade_engine::join_seq::JoinSeq,
     pub id: u32,
     pub kind: String,
@@ -154,7 +151,6 @@ pub(in crate::game) struct OtherEntity {
 }
 
 myriade_engine::impl_joined!(OtherEntity);
-horizon_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 
 pub(super) fn err(key: &str, args: &[&dyn std::fmt::Display]) -> CommandError {
     CommandError::tr(key, args)
@@ -1076,7 +1072,6 @@ impl Game<'_> {
             "save-off" | "save-on" => self.cmd_auto_save(id == "save-on"),
             "transfer" => self.cmd_transfer(ctx),
             "fetchprofile" => self.cmd_fetchprofile(ctx),
-            id if id.starts_with("modprofile.") => self.cmd_modprofile(id),
             "debug" => self.cmd_debug(ctx),
             "jfr" => self.cmd_jfr(ctx),
             "version" => self.cmd_version(),

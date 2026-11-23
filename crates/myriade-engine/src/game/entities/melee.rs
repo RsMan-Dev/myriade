@@ -218,14 +218,8 @@ impl Game<'_> {
     /// strength and whether it is a critical hit): the weapon and effects
     /// scaled by the attack strength, a mace's smash, the critical hit, then
     /// enchantments.
-    pub(super) fn melee_damage(
-        &mut self,
-        target_kind: &str,
-        living: bool,
-        victim: Option<u32>,
-    ) -> (f32, f32, bool, bool) {
-        self.melee_damage_with_admission(target_kind, living, victim)
-            .0
+    pub(super) fn melee_damage(&mut self, target_kind: &str, living: bool) -> (f32, f32, bool, bool) {
+        self.melee_damage_with_admission(target_kind, living).0
     }
     /// Player.attack admits its hurt/tail before the item's damage bonus. Keep
     /// that predicate with the one damage evaluation, including its RNG draws.
@@ -233,7 +227,6 @@ impl Game<'_> {
         &mut self,
         target_kind: &str,
         living: bool,
-        victim: Option<u32>,
     ) -> ((f32, f32, bool, bool), bool) {
         if self.legacy_rules() {
             let hit = self.legacy_melee_damage(target_kind, living);
@@ -246,7 +239,7 @@ impl Game<'_> {
         let scale = self.attack_strength_scale();
         // getEnchantedDamage(target, damage, source) - damage, taken before the
         // attack strength scales the base damage.
-        let enchant_bonus = self.enchanted_damage(target_kind, damage, victim) - damage;
+        let enchant_bonus = self.enchanted_damage(target_kind, damage) - damage;
         let mut amount = damage * (0.2 + scale * scale * 0.8);
         // Player.attack decides the critical hit only for a hit with base or
         // enchantment damage: checked before the mace's smash bonus is added.

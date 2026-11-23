@@ -120,36 +120,6 @@ impl Game<'_> {
         })
     }
 
-    pub(super) fn with_specialized_resident_slot<R>(
-        &mut self,
-        at: Location,
-        visit: impl FnOnce(&mut horizon_mod_runtime::attachments::AttachmentLifetime) -> R,
-    ) -> super::entity_residency::SlotAccess<R> {
-        use super::entity_residency::SlotAccess;
-        use horizon_mod_runtime::attachments::HasAttachmentLifetime;
-        match at.source {
-            Source::LocalPlayer => {
-                SlotAccess::Done(visit(self.player_state.attachments.attachment_lifetime()))
-            }
-            Source::Guest(conn) => {
-                if self.lan_acting == Some(conn) {
-                    return SlotAccess::Done(visit(
-                        self.player_state.attachments.attachment_lifetime(),
-                    ));
-                }
-                let Some(attachments) = self
-                    .lan
-                    .as_mut()
-                    .and_then(|host| host.hub.guests.attachments_mut(conn))
-                else {
-                    return SlotAccess::Missing;
-                };
-                SlotAccess::Done(visit(attachments.attachment_lifetime()))
-            }
-            Source::DragonPart(_) | Source::Ordinary => SlotAccess::Missing,
-        }
-    }
-
     pub(super) fn locate_specialized_resident_owner(
         &self,
         at: Location,

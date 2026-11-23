@@ -30,7 +30,6 @@ pub enum Message {
         flags: BookFlags,
     },
     Resnapshot,
-    Placement(super::placement_sync::Frame),
 }
 
 /// Connection payload budget, checked before decoding or allocating replies.

@@ -57,7 +57,6 @@ impl Game<'_> {
             _ => false,
         };
         if placed {
-            self.native_campfire_start(pos, &held.item);
             // ItemStack.consumeAndReturn: creative keeps the item.
             self.consume_held();
             self.award_custom_stat("interact_with_campfire", 1);
@@ -117,7 +116,6 @@ impl Game<'_> {
             let result = world_recipes!(self)
                 .cook(&self.loop_context, KIND, &item)
                 .map_or_else(|| item.clone(), |r| r.result.clone());
-            self.native_block_cook([pos.0, pos.1, pos.2], &item.item, &result.item);
             self.campfire_drop(pos, result);
             self.mark_block_entity_updated(pos);
             self.post_block_game_event(

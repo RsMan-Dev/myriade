@@ -5,12 +5,9 @@
 mod loot_access;
 use super::{Game, composter::is_composter, spill, storage::is_shulker_box};
 use horizon_core::nbt::Tag;
-use mod_api::__private::game::*;
 
 pub(in crate::game) mod cauldron_contents;
 mod crafter;
-pub(in crate::game) mod native_energy;
-pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3},
@@ -21,30 +18,9 @@ use horizon_world::{
     level::{Behaviours, LevelAccess},
     registry::BlockStateId,
 };
-use mod_api;
-use mod_api::BlockSide;
-use mod_api::Capability;
-use mod_api::ENTITY_AUTOMATION;
-use mod_api::EntityRef;
-use mod_api::ItemResource;
-use mod_api::ResourceHandler;
-use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 type Pos = (i32, i32, i32);
-
-/// What item automation reaches among the entities at its target (`ENTITY_AUTOMATION`).
-enum AutomationEntity {
-    /// A container entity the game answers for, by id: reached as a vanilla container.
-    Container(u32),
-    /// An entity a mod's provider answers for, with its handler.
-    Part(EntityRef, Capability<dyn ResourceHandler<ItemResource>>),
-}
-
-/// A block or entity destination, reached through its slots or a mod's handler.
-enum ContainerTarget<'a> {
-    View(&'a View),
-    Part(Capability<dyn ResourceHandler<ItemResource>>),
-}
 
 /// `HopperBlockEntity` transient state (`TransferCooldown`, `tickedGameTime`).
 #[derive(Clone, Copy, Debug)]
@@ -833,7 +809,6 @@ impl Game<'_> {
             && let Some(level) = self.native_level_here()
         {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
-            self.native_contents_changed(level, at, self.world.block(pos.0, pos.1, pos.2));
         }
         self.chiseled_bookshelf_synced(pos);
         if matches!(
@@ -1122,7 +1097,6 @@ impl Game<'_> {
         if self.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) || !enabled {
             return;
         }
-        self.native_prepare_hopper_transfer([pos.0, pos.1, pos.2]);
         self.unpack_loot(super::container_loot::LootTarget::Block(pos), None);
         let c = self.containers();
         let mut changed = false;
@@ -1234,150 +1208,6 @@ impl Game<'_> {
         }
         taken
     }
-    /// A mod's item handler through `side`. Vanilla containers and container providers keep
-    /// their direct automation path even when a capability overrides their public storage.
-    pub(super) fn item_part_at(
-        &mut self,
-        pos: Pos,
-        side: Direction,
-    ) -> Option<Capability<dyn ResourceHandler<ItemResource>>> {
-        let at = BlockSide {
-            level: self.native_level_here()?,
-            pos: [pos.0, pos.1, pos.2],
-            side: Some(side),
-        };
-        let providers = mod_api::block_providers(&mod_api::ITEMS, self, at)?;
-        if self.vanilla_automation_container(pos) {
-            return None;
-        }
-        let game = self.container_size(at).is_some();
-        providers.ask(self, game)
-    }
-    /// Offers `stack` to a capability part and, in the same transaction, `take`s what it took
-    /// from where it came, after the part's own writes, so a part handing it on back into the
-    /// source loses nothing: how many went. A part taking none, a part answering more than it
-    /// was offered (a mod bug) and a failed `take` undo the move (none went).
-    pub(super) fn put_into_part(
-        &mut self,
-        part: &Capability<dyn ResourceHandler<ItemResource>>,
-        at: [i32; 3],
-        stack: &ItemStack,
-        take: impl FnOnce(&mut Self, u32) -> Option<()>,
-    ) -> u32 {
-        use super::api_values::TryIntoApi;
-        let Ok(snapshot) = stack.try_into_api() else {
-            return 0;
-        };
-        let resource = ItemResource::of(&snapshot);
-        mod_api::run_transaction(self, |game, tx| {
-            let host: &mut dyn mod_api::ServerHost = game;
-            let went = part.insert_any(host, tx, &resource, stack.count);
-            match part.checked(went, stack.count, &at) {
-                Some(0) | None => Err(()),
-                Some(went) => take(game, went).map(|()| went).ok_or(()),
-            }
-        })
-        .unwrap_or(0)
-    }
-    /// `InventoryMoveItemEvent` for `item` going from `source` to `destination`, where one end
-    /// is a capability part: whether a mod canceled the move.
-    fn part_move_canceled(&mut self, source: [i32; 3], destination: [i32; 3], item: &str) -> bool {
-        let mut cancel = false;
-        self.native_inventory_move_item(source, destination, item, &mut cancel);
-        cancel
-    }
-    /// `HopperBlockEntity.ejectItems`: one root attempt across source slots, restoring each
-    /// refused slot directly. Only the caller's final cooldown mark changes the hopper.
-    fn eject_into_part(
-        &mut self,
-        hopper: &View,
-        part: &Capability<dyn ResourceHandler<ItemResource>>,
-        at: [i32; 3],
-    ) -> bool {
-        if (0..part.size(self)).all(|slot| {
-            part.resource(self, slot).is_some_and(|resource| {
-                part.amount(self, slot) >= part.capacity(self, slot, &resource)
-            })
-        }) {
-            return false;
-        }
-        let from = self.container_world_pos(hopper);
-        mod_api::run_transaction(self, |game, tx| {
-            use super::api_values::TryIntoApi;
-            for slot in 0..hopper.len() {
-                let Some(snapshot) = game
-                    .containers()
-                    .get(hopper, slot)
-                    .and_then(|stack| stack.try_into_api().ok())
-                else {
-                    continue;
-                };
-                let resource = ItemResource::of(&snapshot);
-                let item = mod_api::__private::item_key_id(snapshot.item()).unwrap();
-                if game.part_move_canceled(from, at, item) {
-                    continue;
-                }
-                let (source, index) = hopper.locate(slot).ok_or(())?;
-                game.journal_block_entity_slot(source, index);
-                let Some(mut one) = game.take_one(hopper, slot) else {
-                    continue;
-                };
-                let went = part.insert_any(game, tx, &resource, 1);
-                let accepted = part.checked(went, 1, &at);
-                if accepted == Some(1) {
-                    return Ok(());
-                }
-                one.count = snapshot.count();
-                *game.slot_mut_at(hopper, slot).ok_or(())? = Some(one);
-                accepted.ok_or(())?;
-            }
-            Err(())
-        })
-        .is_ok()
-    }
-    /// `HopperBlockEntity.suckInItems`: extract before choosing the first receptive hopper
-    /// slot. Each nonempty storage index gets its own commit or abort.
-    fn suck_from_part(
-        &mut self,
-        part: &Capability<dyn ResourceHandler<ItemResource>>,
-        at: [i32; 3],
-        hopper: &View,
-    ) -> bool {
-        if self.hopper_is_stacked(hopper) {
-            return false;
-        }
-        let into = self.container_world_pos(hopper);
-        for slot in 0..part.size(self) {
-            let Some(resource) = part.resource(self, slot) else {
-                continue;
-            };
-            use super::api_values::TryIntoEngine;
-            let Ok(one) = resource.as_stack().try_into_engine(self.items()) else {
-                continue;
-            };
-            if part.amount(self, slot) == 0 || self.part_move_canceled(at, into, &one.item) {
-                continue;
-            }
-            let moved = mod_api::run_transaction(self, |game, tx| {
-                let host: &mut dyn mod_api::ServerHost = game;
-                let came = part.extract(host, tx, slot, &resource, 1);
-                if part.checked(came, 1, &at) != Some(1) {
-                    return Err(());
-                }
-                let target = (0..hopper.len())
-                    .find(|&slot| game.containers().fits(hopper, slot, &one) > 0)
-                    .ok_or(())?;
-                let (pos, slot) = hopper.locate(target).ok_or(())?;
-                game.journal_block_entity_slot(pos, slot);
-                game.try_move_in_item(None, hopper, one, target)
-                    .map_or(Ok(()), |_| Err(()))
-            });
-            if moved.is_ok() {
-                return true;
-            }
-        }
-        false
-    }
     /// `HopperBlockEntity.ejectItems`: into the block container in front, else
     /// a container entity there (`getContainerAt`). A capability part in front takes the
     /// container's place.
@@ -1392,40 +1222,18 @@ impl Game<'_> {
         };
         let front = offset(pos, facing);
         let face = facing.opposite();
-        if let Some(part) = self.item_part_at(front, face) {
-            let at = [front.0, front.1, front.2];
-            self.native_hopper_inventory_search([pos.0, pos.1, pos.2], Some(at), None);
-            return self.eject_into_part(hopper, &part, at);
-        }
         if let Some(target) = self.containers().hopper_insertion_view(front) {
-            self.native_hopper_inventory_search(
-                [pos.0, pos.1, pos.2],
-                Some([front.0, front.1, front.2]),
-                None,
-            );
             return self.eject_into(pos, hopper, &target, face);
         }
-        let Some(found) = self.automation_entity_at(
-            [
-                f64::from(front.0) + 0.5,
-                f64::from(front.1) + 0.5,
-                f64::from(front.2) + 0.5,
-            ],
-            face,
-        ) else {
+        let Some(id) = self.automation_entity_at([
+            f64::from(front.0) + 0.5,
+            f64::from(front.1) + 0.5,
+            f64::from(front.2) + 0.5,
+        ]) else {
             return false;
         };
-        match found {
-            AutomationEntity::Container(id) => {
-                self.native_hopper_inventory_search([pos.0, pos.1, pos.2], None, Some(id));
-                self.with_entity_container(id, |g, target| g.eject_into(pos, hopper, target, face))
-                    .unwrap_or(false)
-            }
-            AutomationEntity::Part(entity, part) => {
-                self.native_hopper_inventory_search([pos.0, pos.1, pos.2], None, Some(entity.id()));
-                self.eject_into_part(hopper, &part, [front.0, front.1, front.2])
-            }
-        }
+        self.with_entity_container(id, |g, target| g.eject_into(pos, hopper, target, face))
+            .unwrap_or(false)
     }
     /// Where a container is in the world for the mods: its block, or the block a chest
     /// boat or minecart is in (its view sits under a placeholder key).
@@ -1457,12 +1265,6 @@ impl Game<'_> {
             return false;
         };
         let mut cancel = false;
-        self.native_inventory_move_item(
-            self.container_world_pos(source),
-            self.container_world_pos(destination),
-            &stack.item,
-            &mut cancel,
-        );
         cancel
     }
     /// The rest of `HopperBlockEntity.ejectItems`: one item into `target`.
@@ -1539,28 +1341,12 @@ impl Game<'_> {
     /// above takes the container's place.
     fn suck_from_container(&mut self, above: Pos, at: [f64; 3], hopper: &View) -> Option<bool> {
         let (x, y, z) = hopper.parts[0].0;
-        if let Some(part) = self.item_part_at(above, Direction::Down) {
-            let above = [above.0, above.1, above.2];
-            self.native_hopper_inventory_search([x, y, z], Some(above), None);
-            return Some(self.suck_from_part(&part, above, hopper));
-        }
         let c = self.containers();
         let Some(source) = c.hopper_insertion_view(above) else {
-            let found = self.automation_entity_at(at, Direction::Down)?;
-            return match found {
-                AutomationEntity::Container(id) => {
-                    self.native_hopper_inventory_search([x, y, z], None, Some(id));
-                    self.with_entity_container(id, |g, source| {
-                        g.suck_from_slots(None, source, hopper)
-                    })
-                }
-                AutomationEntity::Part(entity, part) => {
-                    self.native_hopper_inventory_search([x, y, z], None, Some(entity.id()));
-                    Some(self.suck_from_part(&part, [above.0, above.1, above.2], hopper))
-                }
-            };
+            let id = self.automation_entity_at(at)?;
+            return self
+                .with_entity_container(id, |g, source| g.suck_from_slots(None, source, hopper));
         };
-        self.native_hopper_inventory_search([x, y, z], Some([above.0, above.1, above.2]), None);
         if let Kind::Composter(level) = source.kind {
             if level != 8 {
                 return Some(false);
@@ -1664,62 +1450,29 @@ impl Game<'_> {
         let pick = self.world.random.next_int_bound(len as i32).unwrap_or(0);
         Some(pick as usize)
     }
-    /// The entity item automation reaches around `at` from `side`, through `ENTITY_AUTOMATION`: one of
-    /// the container entities the game has there, and, once a mod registered a provider for it,
-    /// the entities whose mod provider answers it, picked at random as `getEntityContainer` picks, the one draw.
-    /// Vanilla container entities always keep their direct path, even with a provider.
-    fn automation_entity_at(&mut self, at: [f64; 3], side: Direction) -> Option<AutomationEntity> {
+    /// The container entity item automation reaches around `at`: one of the container
+    /// entities the game has there, picked at random as `getEntityContainer` picks, the one draw.
+    fn automation_entity_at(&mut self, at: [f64; 3]) -> Option<u32> {
         let vanilla = self.container_entities_at(at);
-        if !mod_api::has_entity_providers(&ENTITY_AUTOMATION) {
-            let pick = self.pick_index(vanilla.len())?;
-            return Some(AutomationEntity::Container(vanilla[pick]));
-        }
-        let mut found: Vec<AutomationEntity> = Vec::new();
-        let context = Some(side);
-        let ask = |game: &mut Self, entity: EntityRef, has_game_answer: bool| {
-            let providers = mod_api::entity_providers(&ENTITY_AUTOMATION, &*game, entity, context)?;
-            providers.ask(game, has_game_answer)
-        };
-        found.extend(vanilla.iter().copied().map(AutomationEntity::Container));
-        if let Some(level) = self.native_level_here() {
-            let min = [at[0] - 0.5, at[1] - 0.5, at[2] - 0.5];
-            let max = [at[0] + 0.5, at[1] + 0.5, at[2] + 0.5];
-            for entity in self.level_entities_in(level, min, max).unwrap_or_default() {
-                if !vanilla.contains(&entity.id())
-                    && let Some(part) = ask(self, entity, false)
-                {
-                    found.push(AutomationEntity::Part(entity, part));
-                }
-            }
-        }
-        let pick = self.pick_index(found.len())?;
-        Some(found.swap_remove(pick))
+        let pick = self.pick_index(vanilla.len())?;
+        Some(vanilla[pick])
     }
-    /// Runs `f` on the block container at `pos`, or one entity there, with providers taking
-    /// the game's slots' place when registered ahead of them.
+    /// Runs `f` on the block container at `pos`, or one entity there.
     fn with_container_at<R>(
         &mut self,
         pos: Pos,
-        side: Direction,
-        f: impl FnOnce(&mut Self, ContainerTarget<'_>) -> R,
+        f: impl FnOnce(&mut Self, &View) -> R,
     ) -> Option<R> {
-        if let Some(part) = self.item_part_at(pos, side) {
-            return Some(f(self, ContainerTarget::Part(part)));
-        }
         if let Some(view) = self.containers().hopper_insertion_view(pos) {
-            return Some(f(self, ContainerTarget::View(&view)));
+            return Some(f(self, &view));
         }
         let centre = [
             f64::from(pos.0) + 0.5,
             f64::from(pos.1) + 0.5,
             f64::from(pos.2) + 0.5,
         ];
-        match self.automation_entity_at(centre, side)? {
-            AutomationEntity::Container(id) => {
-                self.with_entity_container(id, |game, view| f(game, ContainerTarget::View(view)))
-            }
-            AutomationEntity::Part(_, part) => Some(f(self, ContainerTarget::Part(part))),
-        }
+        let id = self.automation_entity_at(centre)?;
+        self.with_entity_container(id, f)
     }
     /// Runs `f` on a container entity's items as a container, under the
     /// placeholder key its menu uses (the open menu's copy when it is open),
@@ -1887,30 +1640,19 @@ impl Game<'_> {
         let target = offset(key, facing);
         let remaining = if dropper {
             let side = facing.opposite();
-            let inserted = self.with_container_at(target, side, |game, into| match into {
-                ContainerTarget::View(into) => {
-                    let one = ItemStack {
-                        count: 1,
-                        ..stack.clone()
-                    };
-                    let inserted = game.add_item(None, into, one, Some(side)).is_none();
-                    if inserted {
-                        game.view_changed(into);
-                    }
-                    ControlFlow::Continue(inserted)
+            let inserted = self.with_container_at(target, |game, into| {
+                let one = ItemStack {
+                    count: 1,
+                    ..stack.clone()
+                };
+                let inserted = game.add_item(None, into, one, Some(side)).is_none();
+                if inserted {
+                    game.view_changed(into);
                 }
-                ContainerTarget::Part(part) => {
-                    let at = [target.0, target.1, target.2];
-                    game.dropper_into_part(&part, &stack, at, &view, slot);
-                    ControlFlow::Break(())
-                }
+                inserted
             });
             match inserted {
-                Some(ControlFlow::Break(())) => {
-                    self.container_changed(key);
-                    return Ok(());
-                }
-                Some(ControlFlow::Continue(inserted)) => Some(ItemStack {
+                Some(inserted) => Some(ItemStack {
                     count: stack.count - u32::from(inserted),
                     ..stack
                 })

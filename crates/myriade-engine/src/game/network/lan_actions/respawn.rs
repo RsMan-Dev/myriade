@@ -68,7 +68,6 @@ impl Game<'_> {
         // or the world spawn's column, is final only once its trip arrives
         // (`arrive_server_trips`).
         let forced_spawn = host.hub.guests[i].spawn;
-        let point_level = level;
         // The fresh player faces where `hub.respawn` turns it by default,
         // not the way the dead one faced.
         let found = crate::game::respawn_position::Respawn {
@@ -209,25 +208,6 @@ impl Game<'_> {
                 let value = None;
                 host.hub.guests.update(i, |guest| guest.spawn = value);
             }
-        } else if let Some(point) = copied_respawn_point(own.is_some(), forced_spawn) {
-            let g = &host.hub.guests[i];
-            let (uuid, id, name) = (g.uuid, g.entity_id, g.name.clone());
-            let mut cancel = false;
-            self.native_player_set_spawn(mod_api::__private::PlayerSetSpawnCall {
-                player: uuid,
-                player_entity_id: id,
-                name: &name,
-                dimension: point_level.id(),
-                pos: point,
-                forced: point.is_some(),
-                cancel: &mut cancel,
-            });
-            if cancel && let Some(host) = self.lan.as_mut() {
-                {
-                    let value = None;
-                    host.hub.guests.update(i, |guest| guest.spawn = value);
-                }
-            }
         }
         if let Some(config) = elsewhere {
             self.respawn_trip(conn, config);
@@ -302,9 +282,6 @@ impl Game<'_> {
             return;
         };
         let dying = host.hub.guests[gi].health <= 0.0 && !host.hub.guests[gi].dead;
-        // The killing blow, for the death hooks.
-        let blow = (dying && !mod_api::__private::mods().is_empty())
-            .then(|| self.guest_damage_source(conn));
         if dying && self.guest_death_canceled(gi, conn) {
             return;
         }
@@ -460,19 +437,10 @@ impl Game<'_> {
             // and `dropAllDeathLoot` drops it before the rose.
             if drops.is_some() {
                 // LivingEntity.dropExperience: Player.isAlwaysExperienceDropper.
-                let now = self.world.game_time;
-                let attacker = if mod_api::__private::mods().is_empty() {
-                    None
-                } else {
-                    self.guest_combat
-                        .get_mut(&conn)
-                        .and_then(|c| c.take_hurt_by_player(now))
-                        .and_then(|c| self.resolve_player_credit(c).map(|_| c.0))
-                };
                 let reward = self.living_experience_drop(
                     id as u32,
                     "minecraft:player",
-                    attacker,
+                    None,
                     reward as i32,
                 );
                 if !consumed {
@@ -489,11 +457,6 @@ impl Game<'_> {
             // the loot and the experience: Fabric's AFTER_DEATH. The blow is
             // the one `living_death` heard, so a death it cancelled returns
             // above and is never told here.
-            if let Some((damage_type, attacker)) = &blow
-                && false
-            {
-                self.native_living_death_post(id as u32, damage_type, *attacker);
-            }
         }
     }
 

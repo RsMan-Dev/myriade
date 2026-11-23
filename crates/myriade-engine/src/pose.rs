@@ -19,7 +19,7 @@ pub enum Pose {
 }
 impl Pose {
     /// `Pose` by its network id (`Pose.id`); the poses a player never takes
-    /// are standing. One id table: `mod_api::Pose`'s, narrowed to the avatar's
+    /// are standing. One id table: `myriade_types::Pose`'s, narrowed to the avatar's
     /// six stances.
     pub fn from_id(id: i32) -> Self {
         myriade_types::Pose::from_id(id).into()

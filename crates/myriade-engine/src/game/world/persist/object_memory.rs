@@ -254,7 +254,6 @@ impl Game<'_> {
         };
         let name = entity_nbt::kind(&tag)?;
         passenger_graph::take_passengers(&mut tag);
-        write_attachments(&mut tag, root, &self.entity_attachments);
         let mut tags = Vec::new();
         let mut passengers = Vec::new();
         for slot in self.ordered_passenger_slots(root) {

@@ -5,7 +5,6 @@
 mod combat_adaptations;
 mod pufferfish_player;
 mod death_weapon;
-mod destroy_rules;
 mod player_loot_entity;
 mod residency;
 pub(in crate::game) mod section_steps;
@@ -73,8 +72,6 @@ pub(super) struct DyingDrops<'a> {
     pub(super) kind: &'a str,
     /// The UUID of a dying player.
     pub(super) player: Option<u128>,
-    /// The killing blow; none when no mod listens.
-    pub(super) source: Option<HurtSource<'a>>,
     /// Whether a player hurt it within 100 ticks.
     pub(super) recently_hit: bool,
 }
@@ -198,8 +195,6 @@ pub(super) struct Creatures {
     pub shoulder_time: std::collections::HashMap<[i32; 4], i64>,
     /// The cat spawner's countdown (`CatSpawner.nextTick`).
     pub cat: super::cat_spawner::CatSpawner,
-    /// Each level's custom spawners, built when its first tick asks (game/mobs/custom_spawners.rs).
-    pub custom_spawners: std::collections::HashMap<super::Dim, mod_api::CustomSpawners>,
     /// Native sounds waiting for the server host to be available.
     pub lan_sounds: Vec<NativeSound>,
     /// Particles from a guest's turn, waiting for it to end.
@@ -611,125 +606,10 @@ impl Game<'_> {
             terrain.set_spawn_conditions(self.difficulty_id() as u8, self.world.day_time);
         }
     }
-    /// `Mob.finalizeSpawn`'s event, the half listeners own: they hear the
-    /// spawn, cancel it, take it over, set its difficulty, edit the mob
-    /// through its lend and change the pack's `group`, which finalization then
-    /// reads. The decision and the difficulty the spawn finalizes with come
-    /// back together.
-    /// The spawn's kind, position and sheet come from the caller; the group the
-    /// listeners change is the sheet's.
-    pub(super) fn finalize_spawn_event(
-        &self,
-        kind: &str,
-        at: [f64; 3],
-        reason: SpawnReason,
-        spawner: Option<myriade_types::SpawnSource>,
-        sheet: &mut SpawnSheet,
-    ) -> (Finalized, spawning::LocalDifficulty) {
-        let difficulty = self.local_difficulty(at);
-        if !false {
-            return (Finalized::Done, difficulty);
-        }
-        self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, Some(sheet))
-    }
-    /// `Mob.getMaxSpawnClusterSize` as the entity parts of the spawn's type answer it
-    /// (`EntityPart::spawn_cluster_size`), asked with the sheet lent as it stands before the entity
-    /// joins the level: the first part in dispatch order to answer wins, and none answering leaves
-    /// vanilla's `vanilla` to the spawner. A type with no part costs one table lookup. Server-side.
-    pub(super) fn spawn_cluster_size(
-        &self,
-        kind: &str,
-        at: [f64; 3],
-        sheet: Option<&mut SpawnSheet>,
-        reason: SpawnReason,
-        spawner: Option<myriade_types::SpawnSource>,
-        vanilla: u32,
-    ) -> Option<u32> {
-        if !mod_api::__private::has_entity_parts() {
-            return None;
-        }
-        let parts = mod_api::__private::entity_parts();
-        let list = parts.entity_parts(kind);
-        if list.is_empty() {
-            return None;
-        }
-        self.lend_unspawned(kind, at, sheet, |lent, _| {
-            list.iter().find_map(|attached| {
-                let _guard =
-                    mod_api::content::crash::enter_native_mod(mod_api::content::crash::ModCall {
-                        id: attached.mod_id(),
-                        hook: "spawn_cluster_size",
-                        part: Some(attached.type_name()),
-                    });
-                attached
-                    .part()
-                    .spawn_cluster_size(self, lent, reason, spawner, vanilla)
-            })
-        })
-    }
-    /// The shared finalization decision for a mob type the game keeps apart
-    /// from mobs (the dragon), before the entity joins the level: its lend has
-    /// a kind and a position and no mob.
-    pub(in crate::game) fn finalize_spawn_at(
-        &self,
-        kind: &str,
-        at: [f64; 3],
-        reason: SpawnReason,
-        spawner: Option<myriade_types::SpawnSource>,
-        sheet: Option<&mut SpawnSheet>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
-        let difficulty = self.local_difficulty(at);
-        if !false {
-            return (Finalized::Done, difficulty);
-        }
-        self.finalize_spawn_lent(kind, at, reason, spawner, difficulty, sheet)
-    }
-    /// Fires `finalize_spawn` with the sheet lent to it and the group data as the
-    /// API's; a group the listener changed comes back as the sheet's.
-    #[allow(clippy::too_many_arguments)]
-    fn finalize_spawn_lent(
-        &self,
-        kind: &str,
-        at: [f64; 3],
-        reason: SpawnReason,
-        spawner: Option<myriade_types::SpawnSource>,
-        difficulty: spawning::LocalDifficulty,
-        mut sheet: Option<&mut SpawnSheet>,
-    ) -> (Finalized, spawning::LocalDifficulty) {
-        let mut heard = myriade_types::Difficulty::from(difficulty);
-        let (mut spawn_cancelled, mut skip) = (false, false);
-        let given = sheet
-            .as_ref()
-            .and_then(|s| s.group.as_ref())
-            .and_then(|g| super::native_unspawned_mob::native_spawn_group(kind, g));
-        let mut native_group = given.clone();
-        self.lend_unspawned(kind, at, sheet.as_deref_mut(), |mob, edits| {
-            self.native_finalize_spawn(mod_api::__private::FinalizeSpawnCall {
-                dimension: self.dim.id(),
-                kind,
-                reason,
-                pos: at,
-                spawner,
-                difficulty: &mut heard,
-                spawn_cancelled: &mut spawn_cancelled,
-                mob,
-                edits,
-                group: &mut native_group,
-                cancel: &mut skip,
-            });
-        });
-        if let (Some(s), true) = (sheet, native_group != given) {
-            s.group = native_group
-                .as_ref()
-                .and_then(|g| super::native_unspawned_mob::spawn_group(kind, g));
-        }
-        if spawn_cancelled {
-            return (Finalized::Cancelled, difficulty);
-        }
-        if skip {
-            return (Finalized::Skipped, difficulty);
-        }
-        (Finalized::Done, heard.into())
+    /// The spawn of a mob type the game keeps apart from mobs (the dragon) is
+    /// finalized as it stands: no listener cancels or changes it.
+    pub(in crate::game) fn finalize_spawn_at(&self, at: [f64; 3]) -> (Finalized, spawning::LocalDifficulty) {
+        (Finalized::Done, self.local_difficulty(at))
     }
     /// `ServerLevel.getCurrentDifficultyAt` in the level in place.
     pub(super) fn local_difficulty(&self, at: [f64; 3]) -> spawning::LocalDifficulty {
@@ -905,81 +785,24 @@ impl Game<'_> {
     }
 
     /// Adds the items a dying entity dropped to the level, each at its own
-    /// position. With mods, they first hear the list (`native_living_drops`):
-    /// edited or canceled.
+    /// position.
     pub(super) fn drop_death_items(
         &mut self,
-        dying: &DyingDrops<'_>,
         stacks: Vec<(ItemStack, [f64; 3], i32)>,
         pickup_delay: u32,
         mut velocity: impl FnMut(&mut Self) -> Option<[f64; 3]>,
     ) {
-        let Some(source) = &dying.source else {
-            for (stack, position, age) in stacks {
-                let mut random = super::spill::prepare_item_random(None);
-                random.state.age = age;
-                let motion = velocity(self).unwrap_or(random.velocity);
-                self.add_item_entity_prepared(
-                    stack,
-                    position,
-                    Some(motion),
-                    pickup_delay,
-                    Some(random),
-                );
-            }
-            return;
-        };
-        // Vanilla builds each item entity (and draws its motion) when it
-        // collects the drop, before the event sees the list.
-        let mut drops: Vec<super::spill::BlockItemDrop> = stacks
-            .into_iter()
-            .map(|(stack, position, age)| {
-                let random = super::spill::prepare_item_random(None);
-                super::spill::BlockItemDrop {
-                    random: Some(random),
-                    stack,
-                    position,
-                    velocity: velocity(self).unwrap_or(random.velocity),
-                    pickup_delay,
-                    state: super::spill::DropState {
-                        age,
-                        ..Default::default()
-                    },
-                }
-            })
-            .filter(|drop| drop.stack.count > 0 && &*drop.stack.item != "minecraft:air")
-            .collect();
-        let mut cancel = false;
-        if false
-            && let Ok(mut snapshots) = drops.try_into_api()
-        {
-            self.native_living_drops(mod_api::__private::LivingDropsCall {
-                entity: dying.entity,
-                kind: dying.kind,
-                player: dying.player,
-                source,
-                recently_hit: dying.recently_hit,
-                drops: &mut snapshots,
-                cancel: &mut cancel,
-            });
-            if let Ok(mut next) =
-                super::api_values::item_drops_into_engine(&snapshots, self.items())
-            {
-                for (drop, original) in next.iter_mut().zip(&drops) {
-                    drop.random = original.random;
-                }
-                drops = next;
-            } else {
-                cancel = false;
-            }
-        }
-        if cancel {
-            return;
-        }
-        for drop in drops {
-            if drop.stack.count > 0 && &*drop.stack.item != "minecraft:air" {
-                self.add_item_drop(drop);
-            }
+        for (stack, position, age) in stacks {
+            let mut random = super::spill::prepare_item_random(None);
+            random.state.age = age;
+            let motion = velocity(self).unwrap_or(random.velocity);
+            self.add_item_entity_prepared(
+                stack,
+                position,
+                Some(motion),
+                pickup_delay,
+                Some(random),
+            );
         }
     }
     /// Melee or ranged damage to another mob; whether the hit landed (its health fell).
@@ -1953,9 +1776,6 @@ impl Game<'_> {
                     self.ecs.jump(mob);
                 }
                 MobEvent::BreakDoor { mob, pos } => {
-                    if !self.mob_may_destroy(mob, pos) {
-                        continue;
-                    }
                     // BreakDoorGoal.tick: removeBlock, then level events 1021
                     // and 2001 with the state that is there now.
                     let kind = self.ecs.kind(mob).unwrap_or_default().to_owned();
@@ -2055,9 +1875,6 @@ impl Game<'_> {
                     breaker,
                 } => {
                     if let Some(mob) = by {
-                        if !self.mob_may_destroy(mob, pos) {
-                            continue;
-                        }
                         broke.push(mob);
                     }
                     let old = self.world.block(pos[0], pos[1], pos[2]);
@@ -2717,9 +2534,7 @@ impl Game<'_> {
                 .session
                 .rules
                 .bool_at(myriade_engine::gamerules::vanilla::TNT_EXPLODES),
-            mob_hooks: self
-                .grief_hooked()
-                .then_some(self as &dyn myriade_engine::mobs::MobHooks),
+            mob_hooks: None,
             owners: self,
         }
     }
@@ -3053,33 +2868,11 @@ fn mob_effect_instance(
 include!("mob_query_hooks.rs");
 
 impl Game<'_> {
-    /// `EventHooks.canEntityGrief(level, entity)`: the `mob_griefing` rule,
-    /// which a mod may change for `entity` (`EntityMobGriefingEvent`). No
-    /// entity: the rule alone, as NeoForge.
-    pub(super) fn can_entity_grief(&self, entity: Option<u32>) -> bool {
-        let rule = self
-            .session
+    /// `EventHooks.canEntityGrief(level, entity)`: the `mob_griefing` rule.
+    pub(super) fn can_entity_grief(&self) -> bool {
+        self.session
             .rules
-            .bool_at(myriade_engine::gamerules::vanilla::MOB_GRIEFING);
-        entity.map_or(rule, |entity| self.entity_grief(entity, rule))
-    }
-    /// Whether a mod may answer `can_entity_grief` differently from the rule:
-    /// the sites that skip their whole work while griefing is off skip it only
-    /// when no mod listens.
-    pub(super) fn grief_hooked(&self) -> bool {
-        false
-    }
-    /// [`Self::can_entity_grief`] for `entity`, with the rule already read.
-    pub(super) fn entity_grief(&self, entity: u32, rule: bool) -> bool {
-        if !self.grief_hooked() {
-            return rule;
-        }
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return rule;
-        };
-        let mut can_grief = rule;
-        self.native_entity_mob_griefing(mod_api::EntityRef::new(epoch, entity), &mut can_grief);
-        can_grief
+            .bool_at(myriade_engine::gamerules::vanilla::MOB_GRIEFING)
     }
 }
 
@@ -3113,39 +2906,6 @@ mod tests {
         assert!(!e.ambient);
     }
 
-}
-
-
-#[cfg(test)]
-mod mob_subscription_tests {
-    #[test]
-    #[ignore = "daily"]
-    fn empty_mod_never_defers_taming_or_block_destruction() {
-        use mod_api;
-        use mod_api::Hooks;
-        struct Empty;
-        #[mod_api::__subscriptions]
-        impl Hooks for Empty {}
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("empty", Box::new(Empty))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let world = game.mob_world_base(&[]);
-                assert!(!world.asks_animal_tame && !world.asks_living_destroy_block);
-                let mut cancel = false;
-                game.native_animal_tame(1, 1, 2, "minecraft:horse", &mut cancel);
-                game.native_living_destroy_block(
-                    2,
-                    "minecraft:ravager",
-                    [0; 3],
-                    game.world.air,
-                    &mut cancel,
-                );
-                let world = game.mob_world_base(&[]);
-                assert!(!world.asks_animal_tame && !world.asks_living_destroy_block);
-                assert!(!cancel);
-            });
-        });
-    }
 }
 
 
@@ -3304,66 +3064,8 @@ impl myriade_engine::arrows::OwnerLookup for Game<'_> {
 }
 
 #[cfg(test)]
-mod conversion_subscriber_tests {
-    use super::*;
-    use mod_api;
-    use mod_api::Hooks;
-    use mod_api::LivingConversionPostEvent;
-    use mod_api::ModEntry;
-    use mod_api::ServerHost;
-    use std::sync::Mutex;
-
-    #[test]
-    #[ignore = "daily"]
-    fn post_only_listener_is_subscribed_without_a_pre_listener() {
-        struct DefaultMod;
-        #[mod_api::__subscriptions]
-        impl Hooks for DefaultMod {}
-        struct PostOnly(Arc<Mutex<Vec<(u32, u32)>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for PostOnly {
-            fn living_conversion_post(
-                &self,
-                _: &mut dyn ServerHost,
-                event: &mut LivingConversionPostEvent<'_>,
-            ) {
-                assert_eq!(event.kind, "minecraft:zombie");
-                assert_eq!(event.converted_kind, "minecraft:drowned");
-                self.0.lock().unwrap().push((event.entity, event.converted));
-            }
-        }
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let mods = vec![
-            ModEntry::new("default", Box::new(DefaultMod)),
-            ModEntry::new("post", Box::new(PostOnly(seen.clone()))),
-        ]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            for _ in 0..2 {
-                let at = [0.5, 64.0, 0.5];
-                let (mut game, id) = crate::game::ecs::test_support::ecs_game_with("minecraft:zombie", at);
-                let old = game.ecs.entity_of(id).unwrap();
-                let mut ecs = std::mem::replace(&mut game.ecs, crate::ecs_bridge::EcsLevel::inert());
-                let new = {
-                    let mw = game.mob_world_base(&[]);
-                    ecs.spawn(&mw, "minecraft:drowned", at, None).unwrap()
-                };
-                game.ecs = ecs;
-                let converted = game.ecs_converted(id, new);
-                game.ecs.despawn(old);
-                assert_eq!(seen.lock().unwrap().last(), Some(&(id, converted)));
-                assert_eq!(game.ecs_kind(converted).as_deref(), Some("minecraft:drowned"));
-                assert!(!false);
-            }
-            assert_eq!(seen.lock().unwrap().len(), 2);
-        });
-    }
-}
-
-#[cfg(test)]
 mod living_drops_tests {
     use super::*;
-    use mod_api::ServerHost;
 
     #[test]
     fn a_projectile_blow_has_no_known_direct_entity_and_a_melee_one_is_its_causer() {

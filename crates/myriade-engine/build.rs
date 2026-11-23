@@ -1,4 +1,4 @@
-//! Generates the native mod API, and gives the Windows executable its stack
+//! Generates the game's module list, and gives the Windows executable its stack
 //! (`packaging/windows/exe.rs`, shared with the dedicated server's build script).
 #[path = "../../packaging/windows/exe.rs"]
 mod windows_exe;
@@ -15,7 +15,7 @@ fn main() {
         out_dir.join("game_modules.rs"),
         horizon_game_discovery::declarations(
             &root.join("crates/myriade-engine/src/game"),
-            &["native_hooks", "host", "creatures", "ecs"],
+            &["native_hooks", "creatures", "ecs"],
         )
         .expect("discovering game modules"),
     )
@@ -28,16 +28,6 @@ fn main() {
         horizon_game_discovery::folder_modules(&tests).expect("discovering ingredient tests"),
     )
     .expect("writing ingredient test modules");
-    // The launcher adds trait packages to the workspace's members.
-    println!(
-        "cargo:rerun-if-changed={}",
-        root.join("Cargo.toml").display()
-    );
-    for dir in ["native-api", "native-crates"] {
-        if root.join(dir).is_dir() {
-            println!("cargo:rerun-if-changed={}", root.join(dir).display());
-        }
-    }
     // The SDK builds this library, not the platform executable. Carry the same executable
     // policy without asking Cargo to link a binary this package no longer owns.
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").expect("Cargo must provide the target OS");

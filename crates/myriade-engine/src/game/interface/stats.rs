@@ -2,7 +2,6 @@
 //! mined, items used/crafted/broken/picked up/dropped and mobs killed or
 //! killed by, saved to `players/stats/<uuid>.json`, plus the phantom
 //! spawner that reads the time since rest (`PhantomSpawner`).
-use super::native_hooks::PhantomSpawnResult;
 use super::{Dim, Game};
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
@@ -16,12 +15,10 @@ use std::path::PathBuf;
 #[path = "tests/player_stat_award_tests.rs"]
 mod player_stat_award_tests;
 
-/// One player `PhantomSpawner.tick` visits. `identity` is the server player's uuid and
-/// name, absent for a game's own player, which no server player stands for.
+/// One player `PhantomSpawner.tick` visits.
 struct PhantomTarget {
     position: Vec3,
     since_rest: i32,
-    identity: Option<(u128, String)>,
 }
 
 /// The value registry owned by each vanilla statistic type.
@@ -292,7 +289,6 @@ impl Game<'_> {
             || !rules.bool_at(myriade_engine::gamerules::vanilla::SPAWN_MONSTERS)
             || !rules.bool_at(myriade_engine::gamerules::vanilla::SPAWN_PHANTOMS)
             || self.dim != Dim::Overworld
-            || !self.has_custom_spawner(mod_api::SpawnerKind::Phantom)
         {
             return;
         }
@@ -314,7 +310,6 @@ impl Game<'_> {
             players.push(PhantomTarget {
                 position: p.position,
                 since_rest: rest(&self.stats),
-                identity: None,
             });
         }
         if let Some(host) = self.lan.as_ref() {
@@ -329,8 +324,6 @@ impl Game<'_> {
                 players.push(PhantomTarget {
                     position: Vec3::new(g.position[0], g.position[1], g.position[2]),
                     since_rest: since,
-                    identity: (!mod_api::__private::mods().is_empty())
-                        .then(|| (g.uuid, g.name.clone())),
                 });
             }
         }
@@ -343,7 +336,6 @@ impl Game<'_> {
         let PhantomTarget {
             position,
             since_rest,
-            identity,
         } = target;
         let pos = [
             position.x.floor() as i32,
@@ -351,21 +343,8 @@ impl Game<'_> {
             position.z.floor() as i32,
         ];
         let difficulty_id = self.difficulty_id();
-        let mut result = None;
-        let mut phantoms = None;
-        if let Some((player, name)) = identity {
-            phantoms = Some(phantom_group_size(&mut self.world.random, difficulty_id));
-            self.native_player_spawn_phantoms(player, &name, pos, &mut result, &mut phantoms);
-        }
-        let attempt = match result.unwrap_or(PhantomSpawnResult::Default) {
-            PhantomSpawnResult::Allow => true,
-            PhantomSpawnResult::Default => {
-                pos[1] >= self.dim.sea_level()
-                    && self.mob_world_base(&[]).can_see_sky(pos[0], pos[1], pos[2])
-            }
-            PhantomSpawnResult::Deny => false,
-            _ => unreachable!("PhantomSpawnResult: unhandled variant"),
-        };
+        let attempt = pos[1] >= self.dim.sea_level()
+            && self.mob_world_base(&[]).can_see_sky(pos[0], pos[1], pos[2]);
         if !attempt {
             return;
         }
@@ -391,8 +370,7 @@ impl Game<'_> {
         {
             return;
         }
-        let group =
-            phantoms.unwrap_or_else(|| phantom_group_size(&mut self.world.random, difficulty_id));
+        let group = phantom_group_size(&mut self.world.random, difficulty_id);
         for _ in 0..group {
             let _ = self.spawn_mob(
                 "minecraft:phantom",

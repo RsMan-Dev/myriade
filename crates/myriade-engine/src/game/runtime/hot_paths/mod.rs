@@ -21,7 +21,6 @@ use std::{
 
 mod chunks;
 mod commands;
-mod mods;
 mod ticks;
 mod world;
 
@@ -89,17 +88,11 @@ impl Game<'_> {
         // from the resources, as a world's opening sets them.
         self.build_registries();
         self.session.registries.permission = 4;
-        // The levels' handles, which a world's opening publishes to mods.
         self.reset_entity_residency();
         self.native_lifecycle
             .begin_open(myriade_types::Authority::DedicatedServer);
-        let listening =
-            std::env::var_os("HORIZON_HOT_PATHS_MODS").is_some_and(|mods| mods == "native");
-        if !listening {
-            self.hot_ticks(&mut recorder)?;
-            self.hot_commands(&mut recorder)?;
-            self.hot_chunks(&mut recorder)?;
-        }
-        self.hot_mods(&mut recorder, listening)
+        self.hot_ticks(&mut recorder)?;
+        self.hot_commands(&mut recorder)?;
+        self.hot_chunks(&mut recorder)
     }
 }

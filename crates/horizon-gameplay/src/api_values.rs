@@ -2,22 +2,17 @@
 //! conversions that need no running game. myriade-engine keeps the ones that name `Game` or its types.
 use horizon_core::nbt::{Compound, JavaString, Tag};
 use horizon_items::items::{ItemStack as EngineStack, Items};
-use mod_api::item::item_stack::{ItemStack as ApiStack, StackWriteError};
+use myriade_types::{ItemStack as ApiStack, StackWriteError};
 
-pub mod block_edit;
-pub mod block_entity_writeback;
 pub mod block_state;
 pub mod content_declarations;
 pub mod damage;
-pub mod game_rule_values;
 #[path = "api_values/ingredient.rs"]
 mod ingredient_values;
 pub mod inside_write;
 pub mod item_model_context;
 pub mod item_properties;
 pub mod landing_write;
-pub mod loot_values;
-pub mod package_snapshot;
 pub mod particle_values;
 pub mod phase_values;
 pub mod recipe_inputs;
@@ -25,7 +20,6 @@ pub mod small_values;
 pub mod stack_count;
 pub mod text_boundary;
 
-pub use block_entity_writeback::{BlockEntitySnapshotError, finish_block_entity_writeback};
 pub use stack_count::TryIntoEnginePreservingCount;
 
 /// Convert an engine value into an owned API value after resolving registry identities.
@@ -298,8 +292,7 @@ impl TryIntoApi for EngineStack {
     type Error = StackReadError;
 
     fn try_into_api(&self) -> Result<ApiStack, Self::Error> {
-        let key = mod_api::__private::item_key(&self.item).ok_or(StackReadError::UnknownItem)?;
-        let mut result = ApiStack::new(key, self.count).ok_or(StackReadError::Empty)?;
+        let mut result = ApiStack::new(self.item.clone(), self.count).ok_or(StackReadError::Empty)?;
         if self.carries_component(None, "minecraft:damage") {
             result.set_damage(self.damage);
         }
@@ -332,8 +325,7 @@ impl TryIntoApi for horizon_assets::item_model::StackView {
                 Tag::Compound(Compound::new()),
             ),
         }));
-        let key = mod_api::__private::item_key(&self.item).ok_or(StackReadError::UnknownItem)?;
-        let mut stack = ApiStack::new(key, count).ok_or(StackReadError::Empty)?;
+        let mut stack = ApiStack::new(self.item.clone(), count).ok_or(StackReadError::Empty)?;
         let Tag::Compound(patch) = components else {
             unreachable!("model patch is constructed as a compound")
         };
@@ -344,20 +336,11 @@ impl TryIntoApi for horizon_assets::item_model::StackView {
     }
 }
 
-impl TryIntoEngine for mod_api::ItemResource {
-    type Engine = EngineStack;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        self.as_stack().try_into_engine(items)
-    }
-}
-
 /// Encode an API value for a read-only predicate or drawing, without imposing resident maxima.
-/// Unknown keys and unrepresentable/invalid effect payloads still refuse conversion.
+/// Unrepresentable or invalid effect payloads still refuse conversion.
 /// The write conversion below adds authoritative registry-dependent validation.
 pub fn stack_value(value: &ApiStack) -> Result<EngineStack, StackWriteError> {
-    let id = mod_api::__private::item_key_id(value.item()).ok_or(StackWriteError::UnknownItem)?;
-    encode_stack(value, id.into())
+    encode_stack(value, value.item().into())
 }
 
 fn encode_stack(
@@ -731,43 +714,6 @@ impl TryIntoEngine for myriade_types::AnvilUpdate {
         })
     }
 }
-impl TryIntoApi for myriade_engine::containers::ModBlockEntityFields {
-    type Api = mod_api::item::containers::ModBlockEntityFields;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::containers::ModBlockEntityFields {
-            nbt: self.nbt.clone(),
-            items: self.items.try_into_api()?,
-            data: self.data.clone(),
-        })
-    }
-}
-impl TryIntoEngine for mod_api::item::containers::ModBlockEntityFields {
-    type Engine = myriade_engine::containers::ModBlockEntityFields;
-    type Error = StackWriteError;
-    fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
-        Ok(myriade_engine::containers::ModBlockEntityFields {
-            nbt: self.nbt.clone(),
-            items: self.items.try_into_engine(items)?,
-            data: self.data.clone(),
-        })
-    }
-}
-impl TryIntoApi for myriade_engine::containers::ModBlockEntity {
-    type Api = mod_api::ModBlockEntity;
-    type Error = StackReadError;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::ModBlockEntity::from_snapshot(
-            self.id().to_owned(),
-            (**self).try_into_api()?,
-            mod_api::item::containers::ModRevision::from_snapshot(
-                self.revision().identity(),
-                self.revision().changes(),
-            ),
-        ))
-    }
-}
-
 impl TryIntoApi for myriade_data::suggestion::Suggestion {
     type Api = myriade_types::Suggestion;
     type Error = std::convert::Infallible;
@@ -790,26 +736,11 @@ impl TryIntoEngine for myriade_types::Suggestion {
         })
     }
 }
-// Registration declarations do not need a live item registry.
-impl TryIntoEngine<()> for mod_api::BlockEntityTypeDecl {
-    type Engine = horizon_mod_package::content::BlockEntityType;
-    type Error = std::convert::Infallible;
-    fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
-        Ok(Self::Engine {
-            id: self.id.clone(),
-            blocks: self.blocks.clone(),
-        })
-    }
-}
 impl TryIntoApi for horizon_world::level::PlacementContext {
     type Api = myriade_types::PlacementContext;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let item = if self.item.is_empty() {
-            None
-        } else {
-            Some(mod_api::__private::item_key(&self.item).ok_or(StackReadError::UnknownItem)?)
-        };
+        let item = (!self.item.is_empty()).then(|| self.item.clone());
         let mut snapshot = myriade_types::PlacementContext::new(self.pos, self.face, item);
         snapshot.hit_pos = self.hit_pos;
         snapshot.hit = [self.hit.x, self.hit.y, self.hit.z];
@@ -850,7 +781,7 @@ impl TryIntoApi for horizon_world::chunk::BlockState {
     type Api = myriade_types::BlockState;
     type Error = myriade_types::BlockStateError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let block = mod_api::__private::block_key(&self.name)
+        let block = myriade_types::block_key(&self.name)
             .ok_or(myriade_types::BlockStateError::UnknownBlock)?;
         let properties: Vec<_> = self
             .properties
@@ -862,6 +793,6 @@ impl TryIntoApi for horizon_world::chunk::BlockState {
 }
 
 pub fn block_metadata_table()
--> Result<&'static horizon_mod_runtime::block_definitions::Blocks, myriade_types::BlockStateError> {
-    mod_api::__private::block_definitions().ok_or(myriade_types::BlockStateError::Unavailable)
+-> Result<&'static myriade_types::Blocks, myriade_types::BlockStateError> {
+    myriade_types::block_definitions().ok_or(myriade_types::BlockStateError::Unavailable)
 }

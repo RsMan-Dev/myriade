@@ -206,7 +206,6 @@ impl Game<'_> {
                 }
                 // Vec3.atBottomCenterOf(pos).relative(UP, 1.2), lowered by spawnItem.
                 VaultEvent::Eject(stack, v) => {
-                    self.native_vault_loot(pos, &stack.item);
                     self.spawn_item_thrown(
                         stack,
                         [center[0], center[1] + 0.7 - 0.125, center[2]],
@@ -228,7 +227,6 @@ impl Game<'_> {
             .insert("vault_state".into(), state.name().into());
         let id = self.pack.assets.registry.resolve(&block)?;
         self.level_set([key.0, key.1, key.2], id)?;
-        self.native_vault_change_state(self.dim.id(), [key.0, key.1, key.2], state.name());
         Ok(())
     }
 }

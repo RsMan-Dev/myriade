@@ -10,13 +10,11 @@ use crate::{
 };
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_protocol::{
-    attachment_sync,
     item::Stack,
     packets::{
-        configuration::{ClientInformation, CustomPayload},
+        configuration::ClientInformation,
         play,
     },
-    passage_sync,
 };
 use std::{
     collections::VecDeque,
@@ -138,15 +136,11 @@ struct GuestInit {
 
 /// One physical connection's ordered main-thread input. Provider credit follows
 /// the value through the inbox and derived HostEvent segments, never a wire-size
-/// refund/re-reserve gap. Raw work is not subject to vanilla movement freezing.
+/// refund/re-reserve gap.
 pub enum InboxItem {
     Packet(
         play::Serverbound,
         Option<crate::net::ingress::ReceiveLease<super::NetEvent>>,
-    ),
-    Raw(
-        Box<crate::raw_payloads::Delivery>,
-        crate::net::ingress::ReceiveLease<super::NetEvent>,
     ),
 }
 #[cfg(test)]
@@ -189,12 +183,6 @@ pub struct Guest {
     pub center_sent: Option<(i32, i32)>,
     /// Why the connection closed (the console's "lost connection").
     pub left_reason: String,
-    /// A validated movement report the mods have not ruled on yet (`player_move`).
-    pub pending_move: Option<super::hub::PendingMove>,
-    /// Validated movement packets waiting to be told to `player_move_packet`, oldest first, and
-    /// the hub tick with how many were told in it (the per-tick budget, `MOVE_PACKET_BUDGET`).
-    pub move_packet_queue: VecDeque<super::hub::MovePacket>,
-    pub move_packets_told: (u64, usize),
     /// A disconnect was started ([`Guest::begin_disconnect`]); the connection closes when the
     /// server next polls it, and until then no other disconnect is sent.
     pub disconnect_pending: bool,
@@ -355,9 +343,6 @@ pub struct Guest {
     pub sent_chunks: crate::fast_hash::FxHashSet<(i32, i32)>,
     /// Sent as far-ring columns and needing a near snapshot on promotion.
     pub far_sent_chunks: crate::fast_hash::FxHashSet<(i32, i32)>,
-    /// The near chunks the mods were told this player watches
-    /// (`lan::chunk_watch`); empty while no mod listens.
-    pub watched: crate::fast_hash::FxHashSet<(i32, i32)>,
     pub chunk_queue: Vec<(i32, i32)>,
     /// The far ring's chunks still to send, past the view distance (`lan::far`), closest first.
     pub far_queue: Vec<(i32, i32)>,
@@ -555,8 +540,6 @@ pub struct Guest {
     pub drag: Option<(u8, Vec<usize>)>,
     /// The compound this player was loaded from, for fields Horizon does not model.
     pub saved: Option<horizon_core::nbt::Tag>,
-    /// Server-owned attachment data for this player.
-    pub attachments: horizon_mod_runtime::attachments::ResidentAttachments,
     /// `ServerPlayer.seenCredits`: the end poem has been shown.
     pub seen_credits: bool,
     /// `ServerPlayer.postEffects` and `postEffectsDirty`.
@@ -728,11 +711,8 @@ impl Guest {
             placed_at: 0,
             level_entered: 0,
             last_reported: (position, [0.0, 0.0]),
-            move_packet_queue: VecDeque::new(),
-            move_packets_told: (0, 0),
             center_sent: None,
             left_reason: String::new(),
-            pending_move: None,
             disconnect_pending: false,
             leaving: false,
             personal_sidebar: false,
@@ -808,7 +788,6 @@ impl Guest {
             center: None,
             sent_chunks: Default::default(),
             far_sent_chunks: Default::default(),
-            watched: Default::default(),
             chunk_queue: Vec::new(),
             far_queue: Vec::new(),
             far_cursor: 0,
@@ -896,7 +875,6 @@ impl Guest {
             menu_generation: menu_generation(),
             drag: None,
             saved: None,
-            attachments: Default::default(),
             seen_credits: false,
             post_effects: Vec::new(),
             post_effects_dirty: true,
@@ -930,26 +908,6 @@ impl Guest {
         match packet.try_encode() {
             Ok(body) => self.sender.send(body),
             Err(error) => eprintln!("[lan] send refused: {error}"),
-        }
-    }
-    /// Whether the guest's play epoch has attachment sync negotiated (a vanilla client never
-    /// offers it).
-    pub fn negotiated_attachment_sync(&self) -> bool {
-        crate::raw_payloads::negotiated(self.sender.payload_transport(), attachment_sync::CHANNEL)
-    }
-    /// Passages to hold or forget (arismoko/horizon#3775), if the guest is on a Horizon client, the only
-    /// one that reads them, and placed or held (a hand-over's arrival is sent its chunks,
-    /// so their passages too); a message that cannot be written is not sent.
-    pub fn send_passage_sync(&self, message: &passage_sync::Message) {
-        if !(self.placed || self.held) || self.brand != "horizon" {
-            return;
-        }
-        match passage_sync::encode(message) {
-            Ok(data) => self.send(&play::Clientbound::CustomPayload(CustomPayload {
-                channel: passage_sync::CHANNEL.into(),
-                data,
-            })),
-            Err(e) => log::debug!("Horizon: passage sync not sent: {e}"),
         }
     }
     /// [`Self::send`] of a `ChunksBiomes` whose body is `packet.encode()`, the same
@@ -3171,25 +3129,6 @@ mod tests {
             position,
             10,
         )
-    }
-
-    #[test]
-    fn a_player_handle_keeps_its_identity_when_respawn_resets_the_body() {
-        use mod_api::__private::game::player_ref;
-        use mod_api::EntityRef;
-        use myriade_types::WorldEpoch;
-        let mut guest = guest_at([0.5, 64.0, 0.5]);
-        guest.death_time = 20;
-        guest.death_canceled = true;
-        let epoch = WorldEpoch::new(7);
-        let before = player_ref(EntityRef::new(epoch, guest.entity_id as u32), guest.uuid);
-
-        // This is the respawn reset, with no motion/resources needed for identity.
-        let _ = guest.new_body(false);
-        let after = player_ref(EntityRef::new(epoch, guest.entity_id as u32), guest.uuid);
-        assert_eq!(before, after);
-        assert_eq!(guest.death_time, 0);
-        assert!(!guest.death_canceled);
     }
 
     #[test]

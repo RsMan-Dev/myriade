@@ -245,23 +245,7 @@ impl Game<'_> {
                 Some(item) if item.item != stack.item => (item, true),
                 _ => (stack, game.use_hand_changed(slot)),
             };
-            let player = (!mod_api::__private::mods().is_empty()).then(|| {
-                let name = game.acting_player_name().to_owned();
-                (game.native_acting_id(), name)
-            });
-            if let Some((uuid, name)) = &player
-                && !hand_changed
-                && &*stack.item == "minecraft:bow"
-                && let Some(arrow) = game
-                    .projectile_slot("minecraft:bow")
-                    .and_then(|slot| game.stack_in(slot).map(|s| s.item.clone()))
-            {
-                game.native_player_ready_arrow(*uuid, name, &arrow);
-            }
             game.release_used_item(&stack, ticks, hand_changed);
-            if let Some((uuid, name)) = &player {
-                game.native_player_stop_using_item(*uuid, name);
-            }
             true
         })
     }

@@ -21,7 +21,7 @@ use horizon_world::{
     server_player_damage::ServerDamageEnvironment,
     synced_floats::{FloatValue, Observer, SyncedFloats},
 };
-pub use mod_api::entity::health::{HurtSource, ShieldBlock, Victim};
+pub use myriade_types::{HurtSource, ShieldBlock, Victim};
 use std::{fs, io, path::Path};
 pub(crate) type Attributes = LiveAttributes<Box<dyn horizon_world::attributes::live::Identities>>;
 pub(crate) type State = HurtState<DamageTypeId>;
@@ -100,7 +100,7 @@ impl DamageHooks {
     }
 }
 /// The level a hit lands in, as damage code sees it: its blocks, its random
-/// (`Level.random`) and its own attachments, lent to the damage hooks as their level host.
+/// (`Level.random`), lent to the damage hooks as their level host.
 /// Built from the level's world, or, in the mob tick, which reads the world while mobs
 /// draw, from a [`LentLevel`] taken out of it for the tick.
 pub struct DamageLevel<'a> {
@@ -111,8 +111,6 @@ pub struct DamageLevel<'a> {
     tags: Option<&'a crate::items::Items>,
     block_registries: Option<&'a crate::command::args::Registries>,
     random: &'a mut horizon_core::random::LevelRandom,
-    attachments: &'a mut horizon_mod_runtime::attachments::Attachments,
-    attachment_syncs: &'a mut crate::fast_hash::FxHashSet<horizon_mod_runtime::attachments::Holder>,
     /// The game's hooks; on a client predicting its own mount, only the both-side ones
     /// ([`DamageHooks::client_side`]).
     hooks: &'a DamageHooks,
@@ -138,8 +136,6 @@ impl<'a> DamageLevel<'a> {
             shape,
             air,
             random,
-            attachments,
-            attachment_syncs,
             ..
         } = world;
         Self {
@@ -150,15 +146,13 @@ impl<'a> DamageLevel<'a> {
             tags,
             block_registries,
             random,
-            attachments,
-            attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
             client_side: false,
             knock_entry: myriade_types::KnockbackEntry::Full,
         }
     }
-    /// The level of `world`, with the random and attachments `lent` took out of it.
+    /// The level of `world`, with the random `lent` took out of it.
     pub fn lent(
         world: &'a crate::world::World,
         registry: &'a horizon_world::registry::BlockRegistry,
@@ -175,8 +169,6 @@ impl<'a> DamageLevel<'a> {
             tags,
             block_registries,
             random: &mut lent.random,
-            attachments: &mut lent.attachments,
-            attachment_syncs: &mut lent.attachment_syncs,
             hooks,
             attack: &NO_ATTACK,
             client_side: false,
@@ -193,15 +185,13 @@ impl<'a> DamageLevel<'a> {
             tags: self.tags,
             block_registries: self.block_registries,
             random: self.random,
-            attachments: self.attachments,
-            attachment_syncs: self.attachment_syncs,
             hooks: self.hooks,
             attack: self.attack,
             client_side: self.client_side,
             knock_entry: self.knock_entry,
         }
     }
-    /// The same level with a task-local random, retaining its typed hook and attachment context.
+    /// The same level with a task-local random, retaining its typed hook.
     pub fn reborrow_with_random<'b>(
         &'b mut self,
         random: &'b mut horizon_core::random::LevelRandom,
@@ -214,8 +204,6 @@ impl<'a> DamageLevel<'a> {
             tags: self.tags,
             block_registries: self.block_registries,
             random,
-            attachments: self.attachments,
-            attachment_syncs: self.attachment_syncs,
             hooks: self.hooks,
             attack: self.attack,
             client_side: self.client_side,
@@ -223,9 +211,7 @@ impl<'a> DamageLevel<'a> {
         }
     }
     /// Runs `push` as the short entry of `LivingEntity.knockback` (power and direction), which
-    /// delegates to the full entry: the knockback hook, fired once inside the full entry, tells
-    /// its listener the push came in as [`mod_api::KnockbackEntry::Short`]. A direct call of the
-    /// full entry stays `Full`.
+    /// delegates to the full entry. A direct call of the full entry stays `Full`.
     pub fn through_short_knockback<R>(&mut self, push: impl FnOnce(&mut Self) -> R) -> R {
         let before = std::mem::replace(&mut self.knock_entry, myriade_types::KnockbackEntry::Short);
         let out = push(self);
@@ -284,21 +270,6 @@ impl<'a> DamageLevel<'a> {
     pub fn registry(&self) -> &'a horizon_world::registry::BlockRegistry {
         self.registry
     }
-    /// The level's own attachments (`Holder::Level`), marked for the next sync. A chunk,
-    /// block entity or entity's are not reachable from a hit: `MissingHolder`.
-    pub fn attachments(
-        &mut self,
-        holder: horizon_mod_runtime::attachments::Holder,
-    ) -> std::result::Result<
-        &mut horizon_mod_runtime::attachments::Attachments,
-        horizon_mod_runtime::attachments::AttachmentError,
-    > {
-        if holder != horizon_mod_runtime::attachments::Holder::Level {
-            return Err(horizon_mod_runtime::attachments::AttachmentError::MissingHolder);
-        }
-        self.attachment_syncs.insert(holder);
-        Ok(self.attachments)
-    }
     /// Return the hook's immunity decision, or vanilla's without a listener.
     pub fn invulnerability_check(&mut self, hurting: Hurting<'_>, vanilla: bool) -> bool {
         match self.hooks.invulnerable {
@@ -330,16 +301,13 @@ impl<'a> DamageLevel<'a> {
         }
     }
 }
-/// A level's random and attachments, taken out of its world while the world is read
+/// A level's random, taken out of its world while the world is read
 /// elsewhere (the mob tick), and put back after.
 pub struct LentLevel {
     random: horizon_core::random::LevelRandom,
-    attachments: horizon_mod_runtime::attachments::Attachments,
-    attachment_syncs: crate::fast_hash::FxHashSet<horizon_mod_runtime::attachments::Holder>,
 }
 impl LentLevel {
-    /// Take `world`'s random and attachments: until [`Self::give_back`] the world has a
-    /// placeholder random and none.
+    /// Take `world`'s random: until [`Self::give_back`] the world has a placeholder random.
     pub fn take(world: &mut crate::world::World) -> Self {
         Self {
             random: std::mem::replace(
@@ -348,20 +316,16 @@ impl LentLevel {
                     horizon_core::random::LegacyRandom::new(0),
                 ),
             ),
-            attachments: std::mem::take(&mut world.attachments),
-            attachment_syncs: std::mem::take(&mut world.attachment_syncs),
         }
     }
     /// Put them back into `world`.
     pub fn give_back(self, world: &mut crate::world::World) {
         world.random = self.random;
-        world.attachments = self.attachments;
-        world.attachment_syncs = self.attachment_syncs;
     }
 }
 /// `Entity.isInvulnerableTo` asked outside a hit (a mod goal's or an entity handle's query):
 /// the hook's answer over `vanilla`, or `vanilla` without a listener. The world is only read,
-/// and the hook's level host reads no random or attachments, so the level lends empty ones.
+/// and the hook's level host reads no random, so the level lends an empty one.
 pub fn query_invulnerability(
     world: &crate::world::World,
     registry: &horizon_world::registry::BlockRegistry,
@@ -378,8 +342,6 @@ pub fn query_invulnerability(
         random: horizon_core::random::LevelRandom::for_level(
             horizon_core::random::LegacyRandom::new(0),
         ),
-        attachments: Default::default(),
-        attachment_syncs: Default::default(),
     };
     hook(
         DamageLevel::lent(world, registry, &mut unread, tags, block_registries, hooks),

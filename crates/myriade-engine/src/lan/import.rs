@@ -379,7 +379,6 @@ struct Kept {
         Option<(String, [i32; 3])>,
         bool,
         Vec<String>,
-        horizon_mod_runtime::attachments::Attachments,
     )>,
     dimension: String,
 }
@@ -436,7 +435,6 @@ impl Kept {
                     g.last_death.clone(),
                     g.seen_credits,
                     g.post_effects.clone(),
-                    horizon_mod_runtime::attachments::Attachments::clone(&g.attachments),
                 )
             }),
             dimension: g.dimension.clone(),
@@ -504,9 +502,8 @@ impl Kept {
             (Some(mine), None) => g.loaded_body = Some(mine),
             (None, _) => {}
         }
-        if let Some((saved, death, credits, post, attachments)) = self.other {
+        if let Some((saved, death, credits, post)) = self.other {
             (g.saved, g.last_death, g.seen_credits, g.post_effects) = (saved, death, credits, post);
-            g.attachments.replace_contents(attachments);
         }
         // The client is in one dimension, and only a login can change it.
         g.dimension = self.dimension;
@@ -565,7 +562,7 @@ pub fn import_player(
         );
     }
     // What `playerdata::load` gives `apply` too: the whole compound, for the keys Horizon
-    // does not model, the mods' attachments and the body's values.
+    // does not model and the body's values.
     level.player_extra = Some(tag);
     // A position in another dimension than the client's cannot be taken: the client
     // would have to change its world, and only a login does that.

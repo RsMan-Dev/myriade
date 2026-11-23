@@ -582,16 +582,13 @@ impl Game<'_> {
             match &*name {
                 "minecraft:anvil" => {
                     let _ = self.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:chipped_anvil");
                 }
                 "minecraft:chipped_anvil" => {
                     let _ = self.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:damaged_anvil");
                 }
                 _ => {
                     let _ = self.world.set(pos[0], pos[1], pos[2], self.world.air);
                     self.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
-                    self.native_anvil_damaged(self.dim.id(), pos, &name, "minecraft:air");
                     self.level_event_at(1029, pos, 0);
                     return true;
                 }
@@ -636,7 +633,6 @@ impl Game<'_> {
     pub(super) fn give_levels(&mut self, levels: i32) {
         let old_level = self.experience.level;
         self.add_experience_levels(levels);
-        self.native_player_level_changed(old_level);
     }
     /// `ServerPlayer.giveExperienceLevels`: the mods of a server player may change
     /// or cancel the levels, and every fifth level gained plays the level-up sound
@@ -650,7 +646,6 @@ impl Game<'_> {
             && let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone())
         {
             let mut cancel = false;
-            self.native_player_xp_level_change(player, &name, &mut levels, &mut cancel);
             if cancel {
                 return;
             }
@@ -664,7 +659,6 @@ impl Game<'_> {
     pub(super) fn enchantment_performed(&mut self, cost: i32) {
         let old_level = self.experience.level;
         self.experience.add_levels(-cost);
-        self.native_player_level_changed(old_level);
     }
     /// `Player.giveExperienceLevels`: all players near its feet hear the sound.
     pub(super) fn play_level_up(&mut self, amount: i32, level: i32) {
@@ -708,7 +702,6 @@ impl Game<'_> {
         let was_idle = b.brew_time <= 0;
         // `serverTick` takes the fuel item only while the stand has no fuel
         // uses left, which `out.fuel_taken` reports.
-        let fuel_item = b.items[4].as_ref().map(|s| s.item.clone());
         let (mut out, due) = b.tick_to_brew(
             &world_stations!(self).brewing,
             world_items!(self),
@@ -716,36 +709,16 @@ impl Game<'_> {
             &|s| fuel.resolve(world_items!(self), s),
         );
         let started = was_idle && b.brew_time > 0;
-        let ingredient = started.then(|| b.ingredient.clone()).flatten();
-        let hooked = !mod_api::__private::mods().is_empty();
-        let stacks = (due && hooked).then(|| b.items.clone());
         let at = [pos.0, pos.1, pos.2];
-        let mut post = false;
         if due {
-            // `doBrew`, with PotionBrewEvent.Pre before it and .Post after.
-            let asked = stacks.map(|mut stacks| {
-                let mut cancel = false;
-                self.native_potion_brew_pre(at, &mut stacks, &mut cancel);
-                (stacks, cancel)
-            });
-            // A cancelled Pre fires Post itself, with the slots the mods left.
-            let cancelled = matches!(asked, Some((_, true)));
-            let rest = self.brewing_ingredient_remainder(pos, cancelled);
+            // `doBrew`.
+            let rest = self.brewing_ingredient_remainder(pos);
             let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
                 return Ok(());
             };
             let brewing = &world_stations!(self).brewing;
-            b.brew_after_pre(asked, brewing, &|_| rest.clone(), &mut out);
+            b.brew(brewing, &|_| rest.clone(), &mut out);
             self.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
-            post = hooked && (out.brewed || cancelled);
-        }
-        if out.fuel_taken
-            && let Some(item) = fuel_item
-        {
-            self.native_brewing_fuel(at, &item);
-        }
-        if let Some(ingredient) = ingredient {
-            self.native_brewing_start(at, &ingredient);
         }
         if !was_idle || started || out != brewing::BrewTick::default() {
             self.container_changed(pos);
@@ -758,17 +731,7 @@ impl Game<'_> {
             self.drop_item_stack_containers(at, d);
         }
         if out.brewed {
-            self.native_brewing_complete(at);
             self.play_at("minecraft:block.brewing_stand.brew", at, 1.0, 1.0);
-        }
-        // PotionBrewEvent.Post ends `doBrew`, after its sound and the
-        // ingredient's remainder; the bottles' block state follows it.
-        if post && let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get(&pos) {
-            let mut stacks = b.items.clone();
-            self.native_potion_brew_post(at, &mut stacks);
-            if let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) {
-                b.items = stacks;
-            }
         }
         let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
             return Ok(());
@@ -801,68 +764,6 @@ impl Game<'_> {
         }
         Ok(())
     }
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    #[ignore = "daily"]
-    fn anvil_subscriber_probe_and_answer_cache() {
-        use mod_api;
-        use mod_api::AnvilUpdateEvent;
-        use mod_api::Flow;
-        use mod_api::HookId;
-        use mod_api::Hooks;
-        use mod_api::HostSide;
-        use mod_api::ModEntry;
-        use std::sync::{
-            Arc,
-            atomic::{AtomicUsize, Ordering},
-        };
-
-        struct DefaultMod;
-        #[mod_api::__subscriptions]
-        impl Hooks for DefaultMod {}
-        struct Listener(Arc<AtomicUsize>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn anvil_update(&self, _: HostSide<'_>, event: &mut AnvilUpdateEvent<'_>) -> Flow {
-                self.0.fetch_add(1, Ordering::Relaxed);
-                event.update.xp_cost = -7;
-                Flow::Continue
-            }
-        }
-        let defaults = vec![ModEntry::new("default", Box::new(DefaultMod))].into();
-        mod_platform::testing::with_mods(defaults, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
-                station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                assert!(!false);
-                game.update_anvil_answer(&mut station, "first".into());
-                assert!(station.anvil_answer.is_none());
-                game.update_anvil_answer(&mut station, "second".into());
-                assert!(station.anvil_answer.is_none());
-            });
-        });
-        let calls = Arc::new(AtomicUsize::new(0));
-        let mods = vec![ModEntry::new("listener", Box::new(Listener(calls.clone())))].into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                let mut station = super::Station::new(super::Kind::Anvil, [0; 3]);
-                station.inputs[0] = Some(super::ItemStack::new("minecraft:iron_sword", 1));
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7);
-                station.anvil.cost = 1;
-                game.update_anvil_answer(&mut station, "first".into());
-                assert_eq!(station.anvil.cost, -7, "cached listener answer is signed");
-                game.update_anvil_answer(&mut station, "second".into());
-                assert_eq!(station.anvil.cost, -7);
-                assert_eq!(calls.load(Ordering::Relaxed), 2);
-                assert!(false);
-            });
-        });
-    }
-
 }
 
 #[cfg(test)]

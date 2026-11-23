@@ -79,7 +79,7 @@ impl EcsLevel {
     pub fn set_gliding(&mut self, id: u32, on: bool) -> bool {
         self.write_state(id, |w, e| w.set_gliding(e, on))
     }
-    /// The pose an event imposed; None while the creature stands. The id is `Pose.id`, read back as `mod_api::Pose`.
+    /// The pose an event imposed; None while the creature stands. The id is `Pose.id`.
     pub fn pose(&self, id: u32) -> Option<myriade_types::Pose> {
         self.read_state(id, None, |w, e| w.pose(e).map(|p| myriade_types::Pose::from_id(i32::from(p))))
     }

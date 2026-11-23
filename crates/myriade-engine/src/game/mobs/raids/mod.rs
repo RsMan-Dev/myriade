@@ -332,13 +332,6 @@ impl Game<'_> {
         if triggered {
             self.award_custom_stat("raid_trigger", 1);
             self.trigger_player("minecraft:voluntary_exile");
-            if let Some(level) = self.level(self.dim.id()) {
-                self.native_raid_state_change(
-                    mod_api::RaidRef::new(level, id),
-                    center,
-                    "triggered",
-                );
-            }
         }
         Some(id)
     }
@@ -367,11 +360,7 @@ impl Game<'_> {
         true
     }
     pub(super) fn raid_command_stop(&mut self, id: i32) {
-        if let Some(center) = self.raiding.raids.stop(id)
-            && let Some(level) = self.level(self.dim.id())
-        {
-            self.native_raid_state_change(mod_api::RaidRef::new(level, id), center, "stopped");
-        }
+        self.raiding.raids.stop(id);
     }
     pub(super) fn raid_set_omen(&mut self, id: i32, level: i32) -> i32 {
         self.raiding.raids.set_omen_level(id, level).unwrap_or(0)
@@ -479,18 +468,6 @@ impl Game<'_> {
         views.extend(old_states.keys().filter(|id| self.raiding.raids.get(**id).is_none()).map(|id| (*id, None)));
         for (id, view) in views {
             self.ecs.set_raid_view(id, view);
-        }
-        for (id, (old, ..)) in old_states {
-            if let Some(r) = self.raiding.raids.get(id)
-                && r.status != old
-                && let Some(level) = self.level(self.dim.id())
-            {
-                self.native_raid_state_change(
-                    mod_api::RaidRef::new(level, id),
-                    r.center,
-                    r.status.name(),
-                );
-            }
         }
         for (id, action) in actions {
             self.apply_raid_action(id, action);

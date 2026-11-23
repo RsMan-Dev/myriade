@@ -619,7 +619,7 @@ impl Game<'_> {
         ecs_victims.sort_by_key(|&(key, id)| (key, id));
         for (_, id) in ecs_victims {
             let Some(kind) = self.ecs_mob(id).map(|m| m.kind) else { continue };
-            let amount = self.enchanted_damage(kind, base, Some(id)) * scale;
+            let amount = self.enchanted_damage(kind, base) * scale;
             self.ecs_hurt(id, amount, horizon_ecs_proto::bridge::host::HurtSource::Player(own));
             self.ecs.knockback(id, 0.4, xd, zd);
         }

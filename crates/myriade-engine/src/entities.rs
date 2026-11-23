@@ -224,7 +224,6 @@ pub fn drop_motion(
 #[derive(Clone, Debug)]
 pub struct ItemEntity {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
@@ -638,29 +637,6 @@ impl ItemEntity {
                 self.velocity.y *= -0.5;
             }
         }
-        if !no_physics {
-            // Entity.applyEffectsFromBlocks: stepOn, then checkInsideBlocks.
-            // The block sweep itself runs at the batch that ticks the item
-            // (Game::sweep_item_inside), where the level host for a part's
-            // contact is: the item's own tick sees the world read-only.
-            if self.on_ground {
-                let p = BlockPos::containing(self.position.add_vector(Vec3::new(
-                    0.0,
-                    -f64::from(0.2_f32),
-                    0.0,
-                )));
-                let state = world.block(p.x, p.y, p.z);
-                crate::block_contact::step_on(
-                    &facts.get(state).name,
-                    crate::block_contact::Contact {
-                        entity: self.id as i32,
-                        kind: "minecraft:item",
-                        state,
-                        position: p,
-                    },
-                );
-            }
-        }
         if self.velocity.subtract(step.old_velocity).length_squared() > 0.01 {
             self.needs_sync = true;
         }
@@ -856,7 +832,6 @@ pub const ORB_QUAD_SCALE: f32 = 0.3;
 #[derive(Clone, Debug)]
 pub struct ExperienceOrb {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
@@ -905,7 +880,6 @@ impl ExperienceOrb {
     /// health, no age, fall or followed player, not yet ticked.
     pub fn new(id: u32, position: Vec3, velocity: Vec3, value: i32) -> Self {
         Self {
-            attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             id,
@@ -1233,13 +1207,8 @@ impl ExperienceOrb {
         let wanted = self.velocity;
         // The orb's Entity.move goes through the move gate (arismoko/horizon#2414); PR 1a
         // records the movement unchanged.
-        let mut gate = crate::move_gate::armed(
-            context,
-            self.id,
-            "minecraft:experience_orb",
-            horizon_world::entity_move::MoverType::SelfMovement,
-            wanted,
-        );
+        let mut gate =
+            crate::move_gate::armed(horizon_world::entity_move::MoverType::SelfMovement, wanted);
         let wanted = gate.delta();
         // Entity.collide: the world border's walls and the entities that
         // `canBeCollidedWith` it (a boat, a shulker) stop the orb too.
@@ -1562,7 +1531,6 @@ mod level_up_sound {
 #[derive(Clone, Debug)]
 pub struct Painting {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     pub join: crate::join_seq::JoinSeq,
     pub id: u32,
     pub pos: [i32; 3],
@@ -1627,7 +1595,6 @@ pub fn dye_index(name: &str) -> u8 {
 #[derive(Clone, Debug)]
 pub struct Cushion {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     pub join: crate::join_seq::JoinSeq,
     pub id: u32,
     /// `Entity.position`: the bottom centre of the cushion.
@@ -1683,7 +1650,6 @@ impl Cushion {
 #[derive(Clone, Debug)]
 pub struct ItemFrame {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     pub join: crate::join_seq::JoinSeq,
     pub id: u32,
     pub pos: [i32; 3],
@@ -1749,7 +1715,6 @@ impl ItemFrame {
 #[derive(Clone, Debug)]
 pub struct ArmorStand {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.xRot`: kept for `/tp` and `Rotation`; the kind turns only in yaw.
     pub pitch: f32,
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
@@ -2032,7 +1997,6 @@ impl ArmorStand {
     }
     pub fn new(id: u32, position: Vec3, yaw: f32) -> Self {
         Self {
-            attachment_lifetime: Default::default(),
             pitch: 0.0,
             join: Default::default(),
             fire_ticks: 0,
@@ -2283,13 +2247,8 @@ impl ArmorStand {
         let mut horizontal_collision = false;
         // The stand's Entity.move goes through the move gate (arismoko/horizon#2414); PR 1a
         // records the movement unchanged.
-        let mut gate = crate::move_gate::armed(
-            context,
-            self.id,
-            "minecraft:armor_stand",
-            horizon_world::entity_move::MoverType::SelfMovement,
-            wanted,
-        );
+        let mut gate =
+            crate::move_gate::armed(horizon_world::entity_move::MoverType::SelfMovement, wanted);
         let wanted = gate.delta();
         // Entity.collide: the world border's walls and the entities that
         // `canBeCollidedWith` the stand stop it too.
@@ -2382,8 +2341,7 @@ impl ArmorStand {
         };
         // The lid's `Entity.move(mover, delta)` goes through the
         // move gate (arismoko/horizon#2414); PR 1a records the movement unchanged.
-        let mut gate =
-            crate::move_gate::armed(context, self.id, "minecraft:armor_stand", mover, delta);
+        let mut gate = crate::move_gate::armed(mover, delta);
         let delta = gate.delta();
         let Ok(moved) = crate::move_gate::scene_resolve_in_border_with(
             &mut gate,
@@ -2582,7 +2540,6 @@ mod fire_environment_tests {
             .unwrap();
         let make = |id: &str| ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -2781,7 +2738,6 @@ mod destroyed_bundle_environment_tests {
         ];
         let mut bundle = ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -2990,7 +2946,6 @@ mod merge_tests {
         let at = Vec3::new(x, 64.0, 0.5);
         ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -3314,7 +3269,6 @@ mod world_border_tests {
                 None,
             );
             let mut orb = ExperienceOrb {
-                attachment_lifetime: Default::default(),
                 fall_distance: 0.0,
                 rotation: [0.0, 0.0],
                 join: Default::default(),
@@ -3521,7 +3475,6 @@ mod honey_slide_tests {
         let at = Vec3::new(x, y, z);
         ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -3675,7 +3628,6 @@ mod slime_bounce_tests {
         let at = Vec3::new(0.5, 2.0, 0.5);
         ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -4549,7 +4501,6 @@ mod item_destroyed_tests {
             .collect();
         ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -4700,7 +4651,6 @@ mod orb_underwater_tests {
             .iter()
             .map(|(v, _)| {
                 let mut orb = ExperienceOrb {
-                    attachment_lifetime: Default::default(),
                     fall_distance: 0.0,
                     rotation: [0.0, 0.0],
                     join: Default::default(),
@@ -4738,7 +4688,6 @@ mod render_light_tests {
 
     fn orb(y: f64) -> ExperienceOrb {
         ExperienceOrb {
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -4817,7 +4766,6 @@ mod dropped_item_light_tests {
     fn item(previous_y: f64, y: f64) -> ItemEntity {
         ItemEntity {
             random: EntityRandom::own(horizon_core::random::LegacyRandom::new(0)),
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),
@@ -4920,13 +4868,6 @@ crate::impl_joined!(
     Cushion,
     ItemFrame
 );
-horizon_mod_runtime::impl_attachment_lifetime!(
-    ItemEntity,
-    ExperienceOrb,
-    ArmorStand,
-    Painting,
-    Cushion,
-    ItemFrame
 );
 
 
@@ -4956,7 +4897,6 @@ mod orb_lava_tests {
 
     fn sample_orb(at: Vec3, health: i32) -> ExperienceOrb {
         ExperienceOrb {
-            attachment_lifetime: Default::default(),
             fall_distance: 0.0,
             rotation: [0.0, 0.0],
             join: Default::default(),

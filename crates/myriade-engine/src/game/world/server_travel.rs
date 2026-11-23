@@ -458,90 +458,9 @@ impl Game<'_> {
         self.entity_may_travel(entity as u32, target, cause)
     }
 
-    /// `EntityTravelToDimensionEvent`: whether the entity `id` (the network
-    /// id its handle names) may travel to the level `to`, asked before
-    /// anything of it moves. Only a server asks, and only when a mod listens.
-    pub(super) fn entity_may_travel(&mut self, id: u32, to: Dim, cause: TravelCause) -> bool {
-        self.entity_tree_may_travel(id, to, cause, &mut Vec::new())
-    }
-
-    fn entity_tree_may_travel(
-        &mut self,
-        id: u32,
-        to: Dim,
-        cause: TravelCause,
-        visited: &mut Vec<u32>,
-    ) -> bool {
-        if !false {
-            return true;
-        }
-        let Some(epoch) = self.native_lifecycle.epoch() else {
-            return true;
-        };
-        if visited.contains(&id)
-            || (!self.held_out.contains(&id)
-                && self
-                    .native_entity_target(mod_api::EntityRef::new(epoch, id))
-                    .is_none())
-        {
-            return false;
-        }
-        let entity = mod_api::EntityRef::new(epoch, id);
-        // A callback can reparent a participant into a later subtree.
-        // Keep the whole transition's visited set, not only its active path.
-        visited.push(id);
-        let riders = self.entity_passengers(entity).unwrap_or_default();
-        let mut cancel = false;
-        self.native_entity_travel_to_dimension(
-            mod_api::EntityRef::new(epoch, id),
-            to.id(),
-            cause.id(),
-            &mut cancel,
-        );
-        // A discard hides the handle immediately, even when physical removal
-        // waits for the entity sweep. Never serialize that deferred copy.
-        // Falling blocks tick held out of the level and cannot be addressed
-        // through a handle during this callback.
-        if cancel {
-            return false;
-        }
-        if self.held_out.contains(&id) {
-            return true;
-        }
-        if self
-            .native_entity_target(mod_api::EntityRef::new(epoch, id))
-            .is_none()
-        {
-            return false;
-        }
-        // One snapshot in the shared player/mob boarding order. Ejection can
-        // itself call mods; refuse changed edges instead of overriding them.
-        for &rider in riders.iter().rev() {
-            if self.entity_vehicle(rider) != Some(entity) {
-                continue;
-            }
-            if !self.entity_stop_riding(rider) && self.entity_vehicle(rider) == Some(entity) {
-                return false;
-            }
-        }
-        let accepted: Vec<_> = riders
-            .into_iter()
-            .filter(|rider| {
-                self.entity_is_passenger(*rider) == Some(false)
-                    && self.entity_tree_may_travel(rider.id(), to, cause, visited)
-            })
-            .collect();
-        for rider in accepted {
-            if self.entity_is_passenger(rider) == Some(false)
-                && (!self.ecs.exists(rider.id()) || self.ecs.alive(rider.id()))
-            {
-                // Reject callback topology changes: the shared mount path
-                // checks live handles, dimension, cycles and vehicle capacity.
-                self.entity_start_riding(rider, entity, true);
-            }
-        }
-        self.native_entity_target(mod_api::EntityRef::new(epoch, id))
-            .is_some()
+    /// Whether the entity `id` may travel to the level `to`: no mod refuses it.
+    pub(super) fn entity_may_travel(&mut self, _id: u32, _to: Dim, _cause: TravelCause) -> bool {
+        true
     }
 
     /// `Entity.handlePortal` for one player, whose portal state is in place.

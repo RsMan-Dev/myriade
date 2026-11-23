@@ -489,9 +489,9 @@ impl Game<'_> {
             SpawnSite::Finalizing(myriade_engine::mobs::spawn_rules::Reason::Command) => 0.0,
             _ => myriade_types::wrap_degrees(self.world.random.next_float() * 360.0),
         };
-        let mut sheet = horizon_ecs_proto::spawn_sheet::SpawnSheet::default();
+        let sheet = horizon_ecs_proto::spawn_sheet::SpawnSheet::default();
         let finalized = match site {
-            SpawnSite::Finalizing(reason) => self.finalize_spawn_at("minecraft:ender_dragon", at, reason, None, Some(&mut sheet)).0,
+            SpawnSite::Finalizing(_) => self.finalize_spawn_at(at).0,
             SpawnSite::Plain | SpawnSite::Raw => Finalized::Done,
         };
         match finalized {

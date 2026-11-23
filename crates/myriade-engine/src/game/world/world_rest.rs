@@ -24,8 +24,7 @@ pub(super) fn load_world_rest(
         .files
         .into_iter()
         .collect::<Vec<_>>();
-    let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
-    let conditions = horizon_world::conditions::LoadConditions::new(inventory.server_ids());
+    let conditions = horizon_world::conditions::LoadConditions::vanilla();
     let overlay = &horizon_world::loot::PackOverlay {
         conditions: &conditions,
         files: &files,
@@ -66,51 +65,13 @@ pub(super) fn load_world_rest(
     let load_mobs = || -> Result<_> {
         let _step = startup::step("rest.mobs");
         let catalog = &resources.motion().attributes;
-        let mut types = MobTypes::load_for_server(root, catalog)?;
-        // arismoko/horizon#845: the declared sets take their types' rows — the merged rows
-        // the live attribute map's catalog took in core (the template's with
-        // the declared set on top) — as their attribute map and spawn
-        // fields, so a mob of the type spawns with what the map answers.
-        for declaration in mod_api::__private::entity_attribute_declarations() {
-            let row = catalog.entity_row(&declaration.id).map(std::sync::Arc::new);
-            match (types.types.get_mut(&declaration.id), row) {
-                (Some(kind), Some(row)) => kind.take_attribute_row(row, catalog),
-                (Some(_), None) => log::warn!(
-                    "Horizon: mod entity attributes of {} never reached the catalog; ignored",
-                    declaration.id
-                ),
-                (None, _) => log::warn!(
-                    "Horizon: mod entity attributes of {} name no loaded entity type; ignored",
-                    declaration.id
-                ),
-            }
-        }
-        // arismoko/horizon#846: the types mods added attributes to take their grown rows the
-        // same way, so a new mob of the type spawns with them.
-        resource_load::take_modified_attribute_rows(
-            &mut types.types,
-            catalog,
-            mod_api::__private::entity_attribute_modifications(),
-        );
+        let types = MobTypes::load_for_server(root, catalog)?;
         let mob_types: HashMap<_, _> = types
             .types
             .into_iter()
             .map(|(k, v)| (k, Arc::new(v)))
             .collect();
-        let mut mob_data = myriade_engine::mobs::MobData::load(resource_root, facts);
-        // arismoko/horizon#847: the mods' spawn rules (`RegisterSpawnPlacementsEvent`) take
-        // their types' placement, heightmap and predicate here, once, so a
-        // spawn check reads one table with no pass over the mods.
-        for declaration in mod_api::__private::spawn_placement_declarations() {
-            if !mob_types.contains_key(&declaration.id) {
-                return Err(format!(
-                    "mod spawn placement of {} names no loaded entity type",
-                    declaration.id
-                )
-                .into());
-            }
-            mob_data.register_mod_spawn(&declaration.id, &declaration.rule);
-        }
+        let mob_data = myriade_engine::mobs::MobData::load(resource_root, facts);
         crate::game::entity_part_state::refuse_entity_part_state_kinds(|kind| {
             mob_types.contains_key(kind)
         })?;

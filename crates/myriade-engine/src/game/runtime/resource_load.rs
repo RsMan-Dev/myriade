@@ -3,10 +3,6 @@
 //! read from the prepared resources.
 use super::*;
 
-#[cfg(test)]
-#[path = "incoming_tests/resource_load_scope.rs"]
-mod scope_tests;
-
 pub(super) const STAGE_LINES: [&str; 10] = [
     "Loading menu",
     "Loading assets",
@@ -79,10 +75,6 @@ pub(super) fn named_scope<'scope, T: Send + 'scope>(
     name: &str,
     f: impl FnOnce() -> T + Send + 'scope,
 ) -> std::thread::ScopedJoinHandle<'scope, T> {
-    #[cfg(test)]
-    let inherited = mod_api::testing::inherit_mods(move |_: &()| f());
-    #[cfg(test)]
-    let f = move || inherited(&());
     horizon_guest_stack::builder()
         // Linux keeps 15 bytes of a thread name: a short prefix keeps them apart
         // ("horizon-load-core" and "horizon-load-collision" would both read
@@ -261,55 +253,9 @@ pub(super) fn gameplay_tables(
             .map_err(|e| e.to_string())
         });
         let motion = startup::time("core.motion", || {
-            let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
-            let conditions = horizon_world::conditions::LoadConditions::new(inventory.server_ids());
-            let mut motion =
+            let conditions = horizon_world::conditions::LoadConditions::vanilla();
+            let motion =
                 MotionResources::load_with_conditions(root, assets, &facts, &conditions)?;
-            // arismoko/horizon#812: the attribute types mods declare come first, appended
-            // after every vanilla attribute in the sorted catalog order, so
-            // the rows below may name a mod's own new attribute and the
-            // network ids stay the same on every side running these mods.
-            let declared = mod_api::__private::attribute_declarations();
-            if !declared.is_empty() {
-                motion.attributes =
-                    std::sync::Arc::new(with_mod_attributes(&motion.attributes, declared)?);
-            }
-            // arismoko/horizon#3728: then the bounds mods widen, on vanilla's attributes and
-            // the declared ones alike, before anything reads a definition.
-            let widenings = mod_api::__private::attribute_bounds_widenings();
-            if !widenings.is_empty() {
-                motion.attributes =
-                    std::sync::Arc::new(with_mod_widened_bounds(&motion.attributes, widenings)?);
-            }
-            // arismoko/horizon#845: a mod's declared attribute sets
-            // (`EntityAttributeCreationEvent`) become their entity types' rows
-            // in the live attribute map's catalog — the one record the mob
-            // logic and the attribute sync read (arismoko/horizon#1493) — built from the
-            // template's row, as the type's content row is.
-            for declaration in mod_api::__private::entity_attribute_declarations() {
-                motion.attributes = std::sync::Arc::new(
-                    motion
-                        .attributes
-                        .with_entity_row(
-                            &declaration.id,
-                            &declaration.template,
-                            &declaration.attributes,
-                        )
-                        .map_err(|error| {
-                            format!("mod entity attributes of {}: {error}", declaration.id)
-                        })?,
-                );
-            }
-            // arismoko/horizon#846: then the attributes mods add to existing types
-            // (`EntityAttributeModificationEvent`, fired after the creation
-            // event), on the same catalog rows.
-            let modifications = mod_api::__private::entity_attribute_modifications();
-            if !modifications.is_empty() {
-                motion.attributes = std::sync::Arc::new(with_mod_attribute_additions(
-                    &motion.attributes,
-                    modifications,
-                )?);
-            }
             Ok::<_, Box<dyn std::error::Error>>(motion)
         })
         .map_err(|e| e.to_string());
@@ -322,125 +268,6 @@ pub(super) fn gameplay_tables(
         facts,
         gameplay_projection,
     })
-}
-
-/// The catalog with the attribute types mods declared (arismoko/horizon#812,
-/// `Registrar::declare_attribute`), appended after every vanilla attribute:
-/// `Catalog::with_attributes` sorts them by declaring mod id, then attribute
-/// id, and refuses a duplicate, naming it.
-pub(super) fn with_mod_attributes(
-    catalog: &horizon_world::attributes::entity::Catalog,
-    declared: &[mod_api::__private::AttributeDeclaration],
-) -> std::result::Result<horizon_world::attributes::entity::Catalog, String> {
-    let added = declared
-        .iter()
-        .map(|declared| {
-            Ok(horizon_world::attributes::entity::AddedAttribute {
-                mod_id: declared.mod_id.clone(),
-                id: declared.id.clone(),
-                definition: horizon_world::attributes::Definition::ranged(
-                    declared.default,
-                    declared.min,
-                    declared.max,
-                )
-                .map_err(|error| format!("mod attribute {}: {error}", declared.id))?,
-                syncable: declared.syncable,
-                tooltip: horizon_world::attributes::Tooltip {
-                    sentiment: match declared.sentiment {
-                        myriade_types::Sentiment::Positive => {
-                            horizon_world::attributes::Sentiment::Positive
-                        }
-                        myriade_types::Sentiment::Negative => {
-                            horizon_world::attributes::Sentiment::Negative
-                        }
-                        myriade_types::Sentiment::Neutral => {
-                            horizon_world::attributes::Sentiment::Neutral
-                        }
-                    },
-                    display: match declared.tooltip.display {
-                        myriade_types::AttributeDisplay::Ranged => {
-                            horizon_world::attributes::Display::Ranged
-                        }
-                        myriade_types::AttributeDisplay::Percentage => {
-                            horizon_world::attributes::Display::Percentage
-                        }
-                        myriade_types::AttributeDisplay::Boolean => {
-                            horizon_world::attributes::Display::Boolean
-                        }
-                    },
-                    base_modifier: declared.tooltip.base_modifier.clone(),
-                },
-            })
-        })
-        .collect::<std::result::Result<Vec<_>, String>>()?;
-    catalog
-        .with_attributes(&added)
-        .map_err(|error| format!("mod attribute declarations: {error}"))
-}
-
-/// The catalog with the attribute bounds mods widened (arismoko/horizon#3728,
-/// `Registrar::widen_attribute_bounds`): the union of every ask, whatever the
-/// load order. An unknown attribute, or a range without the attribute's
-/// default, refuses the load, naming the mod.
-pub(super) fn with_mod_widened_bounds(
-    catalog: &horizon_world::attributes::entity::Catalog,
-    widenings: &[mod_api::__private::AttributeBoundsWidening],
-) -> std::result::Result<horizon_world::attributes::entity::Catalog, String> {
-    let asks: Vec<_> = widenings
-        .iter()
-        .map(|ask| horizon_world::attributes::entity::WidenedBounds {
-            mod_id: ask.mod_id.clone(),
-            id: ask.id.clone(),
-            min: ask.min,
-            max: ask.max,
-        })
-        .collect();
-    catalog
-        .with_widened_bounds(&asks)
-        .map_err(|error| format!("mod attribute bounds: {error}"))
-}
-
-/// The catalog with the attributes mods add to existing entity types
-/// (arismoko/horizon#846, `EntityAttributeModificationEvent`), in registration order, so a
-/// later addition of the same attribute wins. An unknown attribute or a type
-/// without a row refuses the load, naming the type.
-pub(super) fn with_mod_attribute_additions(
-    catalog: &horizon_world::attributes::entity::Catalog,
-    modifications: &[mod_api::__private::EntityAttributeModification],
-) -> std::result::Result<horizon_world::attributes::entity::Catalog, String> {
-    let mut catalog = catalog.clone();
-    for modification in modifications {
-        catalog = catalog
-            .with_entity_additions(&modification.entity, &modification.attributes)
-            .map_err(|error| {
-                format!(
-                    "mod entity attribute additions to {}: {error}",
-                    modification.entity
-                )
-            })?;
-    }
-    Ok(catalog)
-}
-
-/// Each mob type mods added attributes to takes its grown catalog row
-/// (`with_mod_attribute_additions`) as its attribute map and spawn fields, as
-/// a declared set's type does (arismoko/horizon#845), so a new mob of the type spawns with
-/// what the live map answers. A type with no mob type (the player) builds
-/// its map from the catalog alone.
-pub(super) fn take_modified_attribute_rows(
-    types: &mut HashMap<String, myriade_engine::mobs::MobType>,
-    catalog: &horizon_world::attributes::entity::Catalog,
-    modifications: &[mod_api::__private::EntityAttributeModification],
-) {
-    let modified: std::collections::BTreeSet<&str> = modifications
-        .iter()
-        .map(|modification| modification.entity.as_str())
-        .collect();
-    for entity in modified {
-        if let (Some(kind), Some(row)) = (types.get_mut(entity), catalog.entity_row(entity)) {
-            kind.take_attribute_row(Arc::new(row), catalog);
-        }
-    }
 }
 
 /// The core bundle and the world's rest, loaded here; a failed pack starts

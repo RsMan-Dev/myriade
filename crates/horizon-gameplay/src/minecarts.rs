@@ -100,7 +100,6 @@ impl CartKind {
 }
 #[derive(Clone, Debug)]
 pub struct Minecart {
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list (`myriade_engine::join_seq`); set by the list.
     pub join: myriade_engine::join_seq::JoinSeq,
     pub id: u32,
@@ -268,9 +267,6 @@ pub struct CartIndex {
     pub near: Vec<u32>,
 }
 impl CartIndex {
-    pub fn usable() -> bool {
-        mod_api::__private::mods().is_empty()
-    }
     /// The cart in slot `i` has these bounds now.
     pub fn moved(&mut self, i: usize, bounds: Aabb) {
         if let Some((grid, ids)) = &mut self.carts
@@ -291,9 +287,6 @@ impl CartIndex {
         area: Aabb,
         out: &mut Vec<u32>,
     ) -> bool {
-        if !Self::usable() {
-            return false;
-        }
         let fresh = |ids: &[u32]| ids.len() == carts.len() && ids[i] == carts[i].id;
         if !self.carts.as_ref().is_some_and(|(_, ids)| fresh(ids)) {
             self.carts = Some((
@@ -477,7 +470,6 @@ impl Minecart {
     pub fn new(id: u32, kind: CartKind, position: Vec3) -> Self {
         Self {
             join: Default::default(),
-            attachment_lifetime: Default::default(),
             id,
             kind,
             position,
@@ -838,7 +830,6 @@ pub fn furnace_speed(c: &Minecart, base: f64) -> f64 {
     }
 }
 myriade_engine::impl_joined!(Minecart);
-horizon_mod_runtime::impl_attachment_lifetime!(Minecart);
 impl myriade_engine::entity_rules::EntityRules for Minecart {
     fn is_no_gravity(&self) -> bool {
         self.no_gravity

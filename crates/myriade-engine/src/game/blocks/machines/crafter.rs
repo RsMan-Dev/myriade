@@ -151,7 +151,6 @@ impl Game<'_> {
             }
         }
         self.container_changed(key);
-        self.native_crafter_craft([key.0, key.1, key.2], &recipe);
         Ok(())
     }
     /// `CrafterBlock.dispenseItem`: into the container in front, else out as an item.
@@ -161,8 +160,7 @@ impl Game<'_> {
         let side = facing.opposite();
         // `HopperBlockEntity.getBlockContainer`: a decorated pot keeps its slot in
         // the chunk's saved tag, which `view` does not read.
-        if self.item_part_at(target, side).is_none()
-            && self.containers().view(target, false).is_none()
+        if self.containers().view(target, false).is_none()
             && let Some(pot) = self.containers().hopper_insertion_view(target)
         {
             self.crafter_insert(&pot, &mut rest, side, false);
@@ -173,16 +171,9 @@ impl Game<'_> {
             self.crafter_crafted_notice(pos, facing, recipe);
             return;
         }
-        self.with_container_at(target, side, |game, into| match into {
-            ContainerTarget::Part(part) => {
-                // `insertCrafterOutput`: the handler takes what it will; the rest is dispensed.
-                let at = [target.0, target.1, target.2];
-                rest.count -= game.put_into_part(&part, at, &rest, |_, _| Some(()));
-            }
-            ContainerTarget::View(into) => {
-                let into_is_crafter = game.crafter_at(target).is_some();
-                game.crafter_insert(into, &mut rest, side, into_is_crafter);
-            }
+        self.with_container_at(target, |game, into| {
+            let into_is_crafter = game.crafter_at(target).is_some();
+            game.crafter_insert(into, &mut rest, side, into_is_crafter);
         });
         if rest.count == 0 {
             return;
@@ -509,74 +500,5 @@ mod tests {
             .map(|d| (d.stack.item.to_string(), d.stack.count))
             .collect();
         assert_eq!(dropped, [("minecraft:pumpkin_pie".to_owned(), 8)]);
-    }
-}
-
-#[cfg(test)]
-mod part_remainder_tests {
-    use super::*;
-    struct Milk;
-    #[mod_api::horizon_part]
-    impl mod_api::ItemPart for Milk {
-        fn crafting_remainder(
-            &self,
-            _: &dyn mod_api::Host,
-            event: &mut mod_api::CraftingRemainderEvent<'_>,
-        ) {
-            *event.remainder = None;
-        }
-    }
-    struct Remainders;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Remainders {
-        fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
-            let milk = r.item_key("minecraft:milk_bucket");
-            r.item_part(milk, Milk);
-        }
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn crafter_dispense_observes_part_replaced_remainders() {
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new("milk", Box::new(Remainders))].into();
-        crate::game::api_values::install_parts(&mods).unwrap();
-        mod_platform::testing::with_mods(mods, || {
-            crate::game::native_entity_refs::tests::with_game(|game| {
-                crate::game::native_entity_refs::tests::resolve_parts(game).unwrap();
-                let state = game
-                    .block_state_id("minecraft:crafter[orientation=north_up]")
-                    .unwrap();
-                let pos = BlockPos::new(0, 100, 0);
-                let grid = [
-                    "milk_bucket",
-                    "milk_bucket",
-                    "milk_bucket",
-                    "sugar",
-                    "egg",
-                    "sugar",
-                    "wheat",
-                    "wheat",
-                    "wheat",
-                ];
-                let mut crafter = Crafter::default();
-                for (slot, item) in crafter.items.iter_mut().zip(grid) {
-                    *slot = Some(ItemStack::new(&format!("minecraft:{item}"), 1));
-                }
-                game.world
-                    .block_entities
-                    .insert((0, 100, 0), BlockEntity::Crafter(crafter));
-                game.ecs_clear_items();
-                game.crafter_dispense(pos, state).unwrap();
-                let output: Vec<_> = game
-                    .ecs.item_views()
-                    .iter()
-                    .map(|e| (e.stack.item.to_string(), e.stack.count))
-                    .collect();
-                assert_eq!(
-                    output,
-                    [("minecraft:cake".to_owned(), 1)],
-                    "the Part suppresses all three data-only buckets"
-                );
-            });
-        });
     }
 }

@@ -9,9 +9,8 @@
 //! survive abort: the journal restores storage, not observer calls or scheduled comparator
 //! ticks that already happened.
 //!
-//! Covered here: block entities (slots, saved compound, custom name, lock, loot roll, attachments), a hopper's cooldown and
-//! cauldron and composter block states. The attachment map of every other holder (an entity, a player, a
-//! chunk, the level) is kept on the first access to it through `attachment_map`. A block's tentative state is stored only (`World::set_stored`): the
+//! Covered here: block entities (slots, saved compound, custom name, lock, loot roll), a hopper's cooldown and
+//! cauldron and composter block states. A block's tentative state is stored only (`World::set_stored`): the
 //! one real write, with its remesh, relight and logs, is at the root commit. A jukebox is
 //! told at the root commit from its record before and after, so a disc swapped in one
 //! transaction changes the song. A player's inventory (slots, armour, off hand, cursor) is kept
@@ -28,17 +27,14 @@
 //! commit, and mods hear of joins and leaves at the root commit (`transactions/entities.rs`).
 use super::{BlockEntity, BlockStateId, Game, machines::HopperState};
 use myriade_engine::{items::ItemStack, world::BlockEntityExtras};
-use horizon_mod_runtime::attachments::{Attachments, Holder};
-use mod_api::Transaction;
-use mod_api::TransactionLifecycle;
-use mod_api::TransactionSeal;
+use myriade_types::{Transaction, TransactionLifecycle, TransactionSeal};
 use std::collections::HashMap;
 
 #[path = "transactions/decision.rs"]
 pub(in crate::game) mod decision;
 #[path = "transactions/entities.rs"]
 mod entities;
-pub(in crate::game) use entities::{Announcement, ArrivalRollback};
+pub(in crate::game) use entities::Announcement;
 #[path = "transactions/scratch.rs"]
 mod scratch;
 
@@ -127,17 +123,6 @@ pub(super) struct Level {
     item_entities: HashMap<u32, ItemStack>,
     /// Each guest's menu storage before this transaction first wrote it, by connection.
     menus: HashMap<u32, KeptMenus>,
-    /// Each entity's, player's, chunk's and the level's attachment map before this transaction
-    /// first reached it (a block entity's is kept with it).
-    attachments: HashMap<Holder, KeptAttachments>,
-    /// Held once this transaction reaches an attachment map, until it closes: the save
-    /// admission gate (`passes_settled`) refuses a save while a map may hold tentative
-    /// values, which only the root commit makes saveable.
-    save_gate: Option<myriade_engine::join_seq::visibility::PassLease>,
-    /// Each chunk's unsaved mark and save queue entry before this transaction first reached an
-    /// attachment map in it: an abort puts them back, so a chunk only a tentative write marked
-    /// is clean again.
-    chunk_marks: HashMap<(i32, i32), myriade_engine::world::ChunkMark>,
     /// What the root commit does, in order.
     after: Vec<After>,
     /// Internal decide/fire/apply state. No menu route uses this yet.
@@ -149,14 +134,6 @@ pub(super) struct Level {
     scratch_kept: HashMap<u64, Option<scratch::Scratch>>,
     /// The entities it added and removed, and the announcements it holds.
     lifetimes: entities::EntityJournal,
-    /// Each attachment map that went with an entity to another level after this transaction
-    /// first reached it, by the id it arrived under, as it was then.
-    travelled: HashMap<u32, KeptAttachments>,
-    /// The index rows of the entities that left this level, kept until the root closes.
-    departed: Vec<entities::Departure>,
-    /// The entities taken for a transfer whose arrival is not adopted yet, by source id, each
-    /// with the slot its arrival reads an abort's way back from.
-    in_flight: HashMap<u32, entities::ArrivalRollback>,
 }
 
 /// A slot's stack before a transaction first wrote it, and the generation of the block entity
@@ -167,16 +144,9 @@ struct KeptSlot {
     generation: Option<u64>,
 }
 
-struct KeptAttachments {
-    contents: Attachments,
-    indexed: bool,
-}
-
 struct Kept {
     entity: Option<BlockEntity>,
     generation: Option<u64>,
-    /// None where it had no map: an abort removes one a write made.
-    attachments: Option<Attachments>,
     hopper: Option<HopperState>,
     /// The custom name Horizon keeps beside the model (`World::block_names`).
     name: Option<horizon_core::nbt::Tag>,
@@ -193,7 +163,6 @@ impl Kept {
         Self {
             entity: world.block_entities.get(&pos).cloned(),
             generation: world.block_entities.generation(&pos),
-            attachments: world.block_entities.attachments(pos).cloned(),
             hopper: hoppers.get(&pos).copied(),
             name: world.block_names.get(&pos).cloned(),
             extras: world.block_entity_extras(pos),
@@ -335,7 +304,10 @@ impl Game<'_> {
     /// the seal that ends it.
     pub(in crate::game) fn transaction_open(&mut self) -> TransactionSeal {
         let (token, close) = self.open_storage_transaction();
-        mod_api::__private::transaction_seal(token, close)
+        TransactionSeal {
+            tx: Transaction(token),
+            close,
+        }
     }
     /// Opens a transaction and gives back its write and close tokens.
     fn open_storage_transaction(&mut self) -> (u64, u64) {
@@ -366,7 +338,7 @@ impl Game<'_> {
     /// Refused when `seal` names no open transaction: only whoever opened one ends it, never a
     /// handler lent its `Transaction` (a hopper's move lends the game's own).
     pub(in crate::game) fn transaction_close(&mut self, seal: &TransactionSeal, commit: bool) {
-        let (token, close) = mod_api::__private::seal_tokens(seal);
+        let (token, close) = (seal.tx.0, seal.close);
         let Some(at) = self
             .transactions
             .iter()
@@ -386,7 +358,7 @@ impl Game<'_> {
     /// Whether `tx` names an open transaction: a write given any other changes nothing, so none
     /// happens outside the journal.
     pub(in crate::game) fn transaction_holds(&self, tx: &Transaction) -> bool {
-        let named = mod_api::__private::transaction_token(tx);
+        let named = tx.0;
         self.transactions.iter().any(|level| level.token == named)
     }
     /// `transaction_lifecycle`: the close running, else whether one is open.
@@ -400,11 +372,11 @@ impl Game<'_> {
     /// `transaction_current`: the innermost open transaction's write token, never its seal.
     pub(in crate::game) fn transaction_current(&self) -> Option<Transaction> {
         let level = self.transactions.last()?;
-        Some(mod_api::__private::transaction_of(level.token))
+        Some(Transaction(level.token))
     }
     /// `transaction_depth`: how deeply `tx` is nested, 0 for the outermost.
     pub(in crate::game) fn transaction_depth(&self, tx: &Transaction) -> Option<u32> {
-        let named = mod_api::__private::transaction_token(tx);
+        let named = tx.0;
         let at = self
             .transactions
             .iter()
@@ -442,7 +414,6 @@ impl Game<'_> {
     }
     /// What closing `level` does, with the closing phase already set.
     fn close_level(&mut self, mut level: Level, commit: bool) {
-        let departed = std::mem::take(&mut level.departed);
         if let Some(scope) = &mut self.block_entity_tick_items {
             scope.close_transaction(commit);
         }
@@ -505,21 +476,8 @@ impl Game<'_> {
                 for (conn, kept) in level.menus {
                     outer.menus.entry(conn).or_insert(kept);
                 }
-                for (holder, kept) in level.attachments {
-                    outer.attachments.entry(holder).or_insert(kept);
-                }
-                for (id, kept) in level.travelled {
-                    outer.travelled.entry(id).or_insert(kept);
-                }
-                for (id, slot) in level.in_flight {
-                    outer.in_flight.entry(id).or_insert(slot);
-                }
                 for (id, kept) in level.scratch_kept {
                     outer.scratch_kept.entry(id).or_insert(kept);
-                }
-                outer.save_gate = outer.save_gate.take().or(level.save_gate);
-                for (chunk, mark) in level.chunk_marks {
-                    outer.chunk_marks.entry(chunk).or_insert(mark);
                 }
                 outer.after.extend(level.after);
                 // The nearest enclosing transaction of this level takes its entities back; a
@@ -548,7 +506,6 @@ impl Game<'_> {
                 }
             }
         }
-        self.close_departures(departed);
     }
     /// Closes every transaction left open, as aborted. Run before each tick, as a backstop:
     /// `host.transaction` is the only way in, and its drop guard closes each one it opens, so
@@ -623,7 +580,7 @@ impl Game<'_> {
             level.composter_randoms.clear();
         }
     }
-    /// Keeps the block entity at `pos` as it is, with its attachments and a hopper's
+    /// Keeps the block entity at `pos` as it is, with a hopper's
     /// cooldown, if a transaction is open and hasn't yet.
     pub(super) fn journal_block_entity(&mut self, pos: Pos) {
         let Some(level) = self.transactions.last_mut() else {
@@ -704,59 +661,6 @@ impl Game<'_> {
             generation: self.world.block_entities.generation(&pos),
         });
     }
-    /// Keeps `holder`'s attachment map as it is, if a transaction is open and hasn't yet: a
-    /// block entity's with the rest of it, any other's alone.
-    pub(super) fn journal_attachments(&mut self, holder: Holder) {
-        if let Some(level) = self.transactions.last_mut() {
-            level
-                .save_gate
-                .get_or_insert_with(myriade_engine::join_seq::visibility::PassLease::enter);
-            // The chunk that a block entity's or chunk's map marks unsaved (`world_attachments`).
-            let chunk = match holder {
-                Holder::BlockEntity([x, _, z]) => Some((x >> 4, z >> 4)),
-                Holder::Chunk(chunk) => Some((chunk[0], chunk[1])),
-                _ => None,
-            };
-            if let Some(chunk) = chunk {
-                let modified = &self.world.modified;
-                level
-                    .chunk_marks
-                    .entry(chunk)
-                    .or_insert_with(|| modified.mark(chunk));
-            }
-        }
-        if let Holder::BlockEntity([x, y, z]) = holder {
-            return self.journal_block_entity((x, y, z));
-        }
-        let Some(level) = self.transactions.last() else {
-            return;
-        };
-        if level.attachments.contains_key(&holder) {
-            return;
-        }
-        let entity_bound = if let Holder::Entity(id) = holder {
-            std::num::NonZeroU32::new(id).and_then(|id| {
-                match self.with_resident_slot(&self.dim.key(), id, |slot| slot.is_bound()) {
-                    super::entity_residency::SlotAccess::Done(bound) => Some(bound),
-                    _ => None,
-                }
-            })
-        } else {
-            None
-        };
-        let Ok(kept) = self
-            .attachment_slot(holder, mod_api::AttachmentAccess::Existing)
-            .map(|map| KeptAttachments {
-                contents: map.clone(),
-                indexed: entity_bound.unwrap_or_else(|| map.has_index_binding()),
-            })
-        else {
-            return;
-        };
-        if let Some(level) = self.transactions.last_mut() {
-            level.attachments.insert(holder, kept);
-        }
-    }
     /// Keeps the inventory of the player whose state is in `Game` now, `uuid`, as it is, if a
     /// transaction is open and hasn't yet. Called inside `native_as_player`.
     pub(super) fn journal_player(&mut self, uuid: u128) {
@@ -816,7 +720,7 @@ impl Game<'_> {
         }
     }
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
-    pub(super) fn journal_menus(&mut self, player: mod_api::PlayerRef) {
+    pub(super) fn journal_menus(&mut self, player: myriade_types::PlayerRef) {
         let Some(level) = self.transactions.last() else {
             return;
         };
@@ -1062,7 +966,6 @@ impl Game<'_> {
         }
     }
     fn roll_back(&mut self, mut level: Level) {
-        self.roll_back_in_flight(&mut level);
         self.scratch_roll_back(std::mem::take(&mut level.scratch_kept));
         // Discard deferred effects before undoing tentative action storage.
         level.after.clear();
@@ -1102,9 +1005,6 @@ impl Game<'_> {
                 }
                 _ => {}
             }
-            self.world
-                .block_entities
-                .put_back_attachments(pos, kept.generation, kept.attachments);
             match kept.name {
                 Some(name) => self.world.block_names.insert(pos, name),
                 None => self.world.block_names.remove(&pos),
@@ -1178,27 +1078,6 @@ impl Game<'_> {
                 }
             });
         }
-        for (holder, kept) in level.attachments {
-            if let Ok(map) = self.attachment_slot(holder, mod_api::AttachmentAccess::Existing) {
-                map.replace_contents(kept.contents);
-                if !kept.indexed {
-                    map.unbind_index();
-                }
-            }
-            if !kept.indexed
-                && let Holder::Entity(id) = holder
-                && let Some(id) = std::num::NonZeroU32::new(id)
-            {
-                self.with_resident_slot(&self.dim.key(), id, |slot| {
-                    *slot = Default::default();
-                });
-            }
-        }
-        self.restore_travelled(std::mem::take(&mut level.travelled));
-        // After the maps: putting a chunk's map back marks it again.
-        for (chunk, mark) in level.chunk_marks {
-            self.world.modified.restore(chunk, mark);
-        }
         for (id, kept) in level.mob_health {
             self.ecs.set_health(id, kept.health);
             self.ecs.set_absorption(id, kept.absorption);
@@ -1262,212 +1141,8 @@ mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::{BlockEntity, Game, Options, Progress, Settings, load_resources};
     use myriade_engine::{chunk::Chunk, items::ItemStack};
-    use mod_api::HostTransaction;
-    use mod_api::ServerHost;
-    use mod_api::BlockSide;
     use myriade_types::BlockUpdateFlags;
-    use mod_api::ITEMS;
-    use mod_api::ItemResource;
-    use mod_api::Transaction;
     use std::{sync::Arc, time::Instant};
-
-    #[test]
-    #[ignore = "daily"]
-    fn cauldron_stat_listener_observes_committed_state_and_can_cancel() {
-        use super::super::native_entity_refs::tests::run_fresh_cases;
-        use crate::game::api_values::TryIntoApi;
-        use mod_api::Flow;
-        use mod_api::Hooks;
-        use mod_api::ItemSpawnEvent;
-        use mod_api::ItemTossEvent;
-        use mod_api::ModEntry;
-        use mod_api::Mods;
-        use mod_api::PlayerStatAwardEvent;
-        use std::sync::Mutex;
-        if run_fresh_cases(
-            "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
-            "HORIZON_CAULDRON_STAT_CHILD",
-            &["run"],
-        ) {
-            return;
-        }
-        struct Listener {
-            seen: Arc<Mutex<Vec<(Option<myriade_types::BlockState>, Option<String>)>>>,
-            drops: Arc<Mutex<Vec<(&'static str, Option<myriade_types::BlockState>)>>>,
-        }
-        #[mod_api::__subscriptions]
-        impl Hooks for Listener {
-            fn player_stat_award(
-                &self,
-                host: &mut dyn ServerHost,
-                event: &mut PlayerStatAwardEvent<'_>,
-            ) -> Flow {
-                if event.stat.as_str() != "minecraft:fill_cauldron" {
-                    return Flow::Continue;
-                }
-                let level = host.level("minecraft:overworld").unwrap();
-                let hand = myriade_types::ItemPlace::PlayerHand {
-                    player: event.player,
-                    hand: myriade_types::Hand::Main,
-                };
-                self.seen.lock().unwrap().push((
-                    level.block_state(host, [2, 64, 2]),
-                    hand.stack(host).map(|s| {
-                        mod_api::__private::item_key_id(s.item())
-                            .unwrap()
-                            .to_string()
-                    }),
-                ));
-                Flow::Cancel
-            }
-            fn item_toss(&self, host: &mut dyn ServerHost, event: &mut ItemTossEvent) -> Flow {
-                let potion = event.item.stack(host).is_some_and(|stack| {
-                    mod_api::__private::item_key_id(stack.item())
-                        .is_some_and(|id| id == "minecraft:potion")
-                });
-                if potion {
-                    let level = host.level("minecraft:overworld").unwrap();
-                    self.drops
-                        .lock()
-                        .unwrap()
-                        .push(("toss", level.block_state(host, [2, 64, 2])));
-                }
-                Flow::Continue
-            }
-            fn item_spawn(&self, host: &mut dyn ServerHost, event: &mut ItemSpawnEvent<'_>) {
-                if event.item == "minecraft:potion" {
-                    let level = host.level("minecraft:overworld").unwrap();
-                    self.drops
-                        .lock()
-                        .unwrap()
-                        .push(("spawn", level.block_state(host, [2, 64, 2])));
-                }
-            }
-        }
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let drops = Arc::new(Mutex::new(Vec::new()));
-        let mods: Mods = vec![ModEntry::new(
-            "observer",
-            Box::new(Listener {
-                seen: seen.clone(),
-                drops: drops.clone(),
-            }),
-        )]
-        .into();
-        mod_platform::__private::install(mods);
-        super::super::native_guest_turn_tests::with_guests(|game| {
-            let pos = [2, 64, 2];
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let empty = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:cauldron")
-                .unwrap();
-            let full = game
-                .pack
-                .assets
-                .registry
-                .resolve(&horizon_world::chunk::BlockState {
-                    name: "minecraft:water_cauldron".into(),
-                    properties: [("level".into(), "3".into())].into_iter().collect(),
-                })
-                .unwrap();
-            game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
-            game.as_guest(12, |game| {
-                game.selected = 0;
-                game.creative = false;
-                game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
-                game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
-                assert!(seen.lock().unwrap().is_empty());
-                game.close_storage_transaction(false);
-                assert!(seen.lock().unwrap().is_empty());
-                assert!(game.use_on_cauldron(pos).unwrap());
-                assert_eq!(
-                    seen.lock().unwrap().as_slice(),
-                    &[(
-                        Some(empty.try_into_api().unwrap()),
-                        Some("minecraft:bucket".into())
-                    )]
-                );
-                game.world.set(pos[0], pos[1], pos[2], empty).unwrap();
-                game.inventory[0] = Some(ItemStack::new("minecraft:water_bucket", 1));
-                game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
-                assert_eq!(seen.lock().unwrap().len(), 1);
-                game.close_storage_transaction(true);
-            })
-            .unwrap();
-            assert_eq!(
-                *seen.lock().unwrap(),
-                vec![
-                    (
-                        Some(empty.try_into_api().unwrap()),
-                        Some("minecraft:bucket".into())
-                    ),
-                    (
-                        Some(full.try_into_api().unwrap()),
-                        Some("minecraft:bucket".into())
-                    )
-                ]
-            );
-            let level2 = game
-                .pack
-                .assets
-                .registry
-                .resolve(&horizon_world::chunk::BlockState {
-                    name: "minecraft:water_cauldron".into(),
-                    properties: [("level".into(), "2".into())].into_iter().collect(),
-                })
-                .unwrap();
-            game.as_guest(12, |game| {
-                let setup = |game: &mut Game<'_>| {
-                    game.world.set(pos[0], pos[1], pos[2], full).unwrap();
-                    game.inventory
-                        .iter_mut()
-                        .for_each(|s| *s = Some(ItemStack::new("minecraft:stone", 64)));
-                    game.offhand = Some(ItemStack::new("minecraft:stone", 64));
-                    game.inventory[0] = Some(ItemStack::new("minecraft:glass_bottle", 2));
-                };
-                setup(game);
-                assert!(game.use_on_cauldron(pos).unwrap());
-                assert_eq!(
-                    drops.lock().unwrap().as_slice(),
-                    &[
-                        ("toss", Some(full.try_into_api().unwrap())),
-                        ("spawn", Some(full.try_into_api().unwrap()))
-                    ]
-                );
-                drops.lock().unwrap().clear();
-                setup(game);
-                game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
-                assert!(drops.lock().unwrap().is_empty());
-                game.close_storage_transaction(false);
-                assert!(drops.lock().unwrap().is_empty());
-                game.open_storage_transaction();
-                assert!(game.use_on_cauldron(pos).unwrap());
-                game.close_storage_transaction(true);
-                assert_eq!(
-                    drops.lock().unwrap().as_slice(),
-                    &[
-                        ("toss", Some(level2.try_into_api().unwrap())),
-                        ("spawn", Some(level2.try_into_api().unwrap()))
-                    ]
-                );
-            })
-            .unwrap();
-            assert_eq!(
-                game.lan.as_ref().unwrap().play[&12]
-                    .stats
-                    .get("custom", "minecraft:fill_cauldron"),
-                0
-            );
-        });
-    }
 
     #[test]
     #[ignore = "daily"]
@@ -1605,230 +1280,4 @@ mod tests {
         })
     }
 
-}
-
-#[cfg(test)]
-mod mod_capability_tests {
-    use super::super::native_entity_refs::tests::with_game;
-    use myriade_engine::chunk::Chunk;
-    use myriade_engine::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
-    use horizon_core::nbt::{Compound, Tag};
-    use mod_api::ServerHost;
-    use mod_api::BlockSide;
-    use mod_api::HostTransaction;
-    use mod_api::ResourceHandler;
-    use mod_api::move_resources;
-    use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
-    use std::sync::Arc;
-
-    /// Two mods sharing a capability one of them defines, as Mekanism's chemicals are shared
-    /// through its API: the first's tank and the second's vat each answer `CHEMICALS`, and a
-    /// move between them in a committed transaction moves the chemical, kept in their saved
-    /// data; in an aborted one, both are put back.
-    #[test]
-    #[ignore = "daily"]
-    fn a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back() {
-        use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
-        let Some(root) = declared_part_root(
-            "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
-        ) else {
-            return;
-        };
-        with_game_at(root, |game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let level = game.level("minecraft:overworld").unwrap();
-            let hydrogen = Chemical("test:hydrogen".into());
-            let mut nbt = Compound::new();
-            nbt.insert("chemical".into(), Tag::String("test:hydrogen".into()));
-            nbt.insert("amount".into(), Tag::Int(600));
-            for (x, id, nbt) in [
-                (0, "test:chem_tank", nbt),
-                (1, "test:chem_vat", Compound::new()),
-            ] {
-                let state = game.pack.assets.registry.default_state(id).unwrap();
-                game.world.set(x, 64, 0, state).unwrap();
-                let fields = ModBlockEntityFields {
-                    nbt,
-                    ..Default::default()
-                };
-                let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(id.into(), fields)));
-                game.world.block_entities.insert((x, 64, 0), entity);
-            }
-            let host: &mut dyn ServerHost = game;
-            let tank = level
-                .capability(host, &CHEMICALS, [0, 64, 0], None)
-                .unwrap();
-            let vat = level
-                .capability(host, &CHEMICALS, [1, 64, 0], None)
-                .unwrap();
-            // Each answered by its own mod.
-            assert_ne!(tank.owner(), vat.owner());
-            assert!(![tank.owner(), vat.owner()].contains(&"the game".to_owned()));
-            let amounts = |host: &mut dyn ServerHost| {
-                let side = |x| BlockSide {
-                    level,
-                    pos: [x, 64, 0],
-                    side: None,
-                };
-                (
-                    ChemTank(side(0)).amount(host, 0),
-                    ChemTank(side(1)).amount(host, 0),
-                )
-            };
-
-            let moved = host.transaction(|host, tx| {
-                move_resources(host, &tank, &vat, |c| *c == hydrogen, 250, tx).map_err(drop)
-            });
-            assert_eq!(moved, Ok(250));
-            assert_eq!(amounts(host), (350, 250));
-            assert_eq!(vat.resource(host, 0), Some(hydrogen.clone()));
-
-            let aborted = host.transaction(|host, tx| {
-                let moved = move_resources(host, &tank, &vat, |_| true, 100, tx);
-                assert_eq!(moved.ok(), Some(100));
-                assert_eq!(amounts(host), (250, 350));
-                Err::<(), ()>(())
-            });
-            assert!(aborted.is_err());
-            assert_eq!(amounts(host), (350, 250));
-            assert!(game.transactions.is_empty());
-        });
-    }
-
-    /// A mod's attachments on an entity and on a player are kept by a transaction as a block
-    /// entity's are: a commit keeps what it wrote, an abort puts each map back as it was before
-    /// the transaction first reached it (none for an entity that had none), and a guest's is
-    /// put back wherever their state lives at the abort, swapped in for their turn or not.
-    #[test]
-    #[ignore = "daily"]
-    fn entity_and_player_attachments_stay_on_commit_and_go_back_on_abort() {
-        use myriade_engine::entities::ArmorStand;
-        use horizon_core::geometry::Vec3;
-        use mod_api::AttachmentType;
-        use mod_api::Holder;
-        const ENERGY: AttachmentType<i32> = AttachmentType {
-            namespace: "robot",
-            name: "energy",
-            default: || 0,
-            codec: None,
-            copy_on_death: false,
-            sync: false,
-        };
-        with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            crate::game::ecs::test_support::place_test_stand(game, 13, &ArmorStand::new(13, Vec3::ZERO, 0.0));
-            crate::game::ecs::test_support::place_test_stand(game, 14, &ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let guest = 0x5eed_u128;
-            let config = myriade_engine::lan::hub::HubConfig {
-                default_game_mode: 0,
-                guest_commands: false,
-                force_game_mode: false,
-                hardcore: false,
-                view_distance: 10,
-                simulation_distance: 10,
-                dimension: "minecraft:overworld".into(),
-                allow_flight: false,
-                seed: 0,
-                max_players: 20,
-                levels: Default::default(),
-                level_seeds: Default::default(),
-            };
-            game.lan_host(
-                super::super::lan::LanSettings {
-                    port: 0,
-                    guest_commands: false,
-                    force_game_mode: false,
-                },
-                myriade_engine::lan::NetConfig {
-                    announce: false,
-                    ..myriade_engine::lan::NetConfig::lan(0, "test".into(), 2)
-                },
-                config,
-            )
-            .unwrap();
-            let level = game.level(game.dim.id()).unwrap();
-            let player_ref = game.fake_player(level, guest, "test").unwrap();
-            let conn = game
-                .lan
-                .as_ref()
-                .unwrap()
-                .hub
-                .guests
-                .iter()
-                .find(|g| g.entity_id as u32 == player_ref.entity().id())
-                .unwrap()
-                .conn;
-            let (stand, fresh, player) = (
-                Holder::Entity(13),
-                Holder::Entity(14),
-                Holder::Player(guest),
-            );
-            let energy =
-                |host: &mut dyn ServerHost, holder| ENERGY.get_existing(host, holder).unwrap();
-
-            let host: &mut dyn ServerHost = game;
-            let done = host.transaction(|host, _| {
-                ENERGY.set(host, stand, 100)?;
-                ENERGY.set(host, player, 40)
-            });
-            assert_eq!(done, Ok(()));
-            assert_eq!(
-                (energy(host, stand), energy(host, player)),
-                (Some(100), Some(40))
-            );
-
-            // Aborted, with a committed child inside: both maps as they were, and the entity
-            // that had no value has none.
-            let aborted: Result<(), _> = host.transaction(|host, _| {
-                ENERGY.set(host, stand, 250)?;
-                ENERGY.set(host, player, 90)?;
-                ENERGY.set(host, fresh, 7)?;
-                host.transaction(|host, _| ENERGY.set(host, stand, 300))?;
-                assert_eq!(energy(host, stand), Some(300));
-                Err(mod_api::AttachmentError::MissingHolder)
-            });
-            assert!(aborted.is_err());
-            assert_eq!(
-                (energy(host, stand), energy(host, player)),
-                (Some(100), Some(40))
-            );
-            assert_eq!(energy(host, fresh), None);
-
-            // Written while the guest's state is swapped in for their turn, aborted after it
-            // is swapped back out: the guest's own map is put back.
-            game.open_storage_transaction();
-            game.lan_acting_uuid = Some(guest);
-            std::mem::swap(
-                &mut game.player_state.attachments,
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .attachments_mut(conn)
-                    .unwrap(),
-            );
-            let host: &mut dyn ServerHost = game;
-            ENERGY.set(host, player, 70).unwrap();
-            std::mem::swap(
-                &mut game.player_state.attachments,
-                game.lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .guests
-                    .attachments_mut(conn)
-                    .unwrap(),
-            );
-            game.lan_acting_uuid = None;
-            game.close_storage_transaction(false);
-            let host: &mut dyn ServerHost = game;
-            assert_eq!(energy(host, player), Some(40));
-            assert!(game.transactions.is_empty());
-        });
-    }
 }

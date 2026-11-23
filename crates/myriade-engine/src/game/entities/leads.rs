@@ -10,7 +10,6 @@ use myriade_engine::{
 };
 use horizon_core::nbt::Tag;
 use horizon_ecs_proto::leash::Holder as EcsHolder;
-use mod_api::LootDrops;
 
 /// The item context of a leash success (`InteractionResult.Success`): tying
 /// held mobs to this one and the holder's detach are `withoutItem`, so item
@@ -231,32 +230,7 @@ impl Game<'_> {
         if !drop {
             return;
         }
-        // The mods' say when a player is behind it: the user.
-        let player = used.then(|| self.native_acting_id());
-        let Some(player) = player else {
-            self.drop_lead_item(at);
-            return;
-        };
-        let mut drops = vec![ItemStack::new("minecraft:lead", 1)];
-        let context = LootDrops::from(mod_api::__private::built::LootDrops {
-            weapon: None,
-            damage_source: None,
-            table: "",
-            dimension: self.dim.id(),
-            origin: at,
-            block: None,
-            entity: Some((id, &kind)),
-            player: Some(player),
-            tool: None,
-            explosion: None,
-            used,
-        });
-        self.native_loot_drops(&context, &mut drops);
-        for stack in drops {
-            if stack.count > 0 && &*stack.item != "minecraft:air" {
-                self.spawn_item_own(stack, at, 10);
-            }
-        }
+        self.drop_lead_item(at);
     }
     /// The `leash` tag of a mob about to be saved.
     pub(super) fn write_leash(&mut self, tag: &mut Tag, id: u32) {

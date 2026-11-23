@@ -8,7 +8,7 @@
 use super::{Game, HashMap, frame_token};
 use myriade_engine::items::ItemStack;
 use myriade_types::ItemPlace;
-use mod_api::Transaction;
+use myriade_types::Transaction;
 use std::sync::Arc;
 
 /// One scratch stack: its item, fixed (none for a two-slot copy, whose item may change), what

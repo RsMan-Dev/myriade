@@ -16,12 +16,8 @@
 //! to. A client that did not swap refuses it, so the two sides never disagree in silence. With
 //! the epochs spent, the view of the level entered is closed before the travel
 //! (`Hub::before_travel`), which then swaps nothing (`horizon_protocol::viewed_levels`).
-use super::super::{
-    chunk_watch::ChunkWatchKind,
-    hub::{AttachmentSnapshot, Hub, tracked},
-};
+use super::super::hub::Hub;
 use super::view::View;
-use horizon_mod_runtime::attachments::Holder;
 use horizon_protocol::viewed_levels::{self, Level};
 
 impl Hub {
@@ -46,8 +42,7 @@ impl Hub {
     /// entities.
     pub(in crate::lan) fn leave_level(&mut self, i: usize, left: &str) {
         let entered = self.config.dimension.clone();
-        let watching = self.chunk_watches.recording();
-        let kept = self.guests.update(i, |g| {
+        self.guests.update(i, |g| {
             let own = std::mem::take(&mut g.sent_chunks);
             g.far_sent_chunks.clear();
             g.chunk_queue.clear();
@@ -79,26 +74,6 @@ impl Hub {
             // What the view sent is the player's own now: `update_view` forgets what is past the
             // player's view and queues the rest.
             g.sent_chunks = view.sent;
-            let mut kept: Vec<_> = g.sent_chunks.iter().copied().collect();
-            kept.sort_unstable();
-            if watching {
-                let ((cx, cz), r) = (g.chunk(), g.view_distance);
-                for &key in kept.iter().filter(|&&(x, z)| tracked(cx, cz, r, x, z)) {
-                    if g.watched.insert(key) {
-                        self.chunk_watches.push(g, ChunkWatchKind::Watch, key);
-                    }
-                }
-            }
-            kept
         });
-        // A viewed level's chunks went without their synced attachments.
-        if self.sync_attachments {
-            let player = self.guests[i].uuid;
-            self.attachment_snapshots
-                .extend(kept.into_iter().map(|(x, z)| AttachmentSnapshot {
-                    player,
-                    holder: Holder::Chunk([x, z]),
-                }));
-        }
     }
 }

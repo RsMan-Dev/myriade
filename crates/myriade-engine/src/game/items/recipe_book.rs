@@ -171,34 +171,6 @@ impl Game<'_> {
         let k = self.container?;
         Some((self.mod_menu_at(k)?, [k.0, k.1, k.2]))
     }
-    /// `menu_transfer` for this player's own mod menu when the game is its own server: the same
-    /// server-side ask a guest's transfer gets (`guest_menu_transfer`), on the same thread.
-    /// None when no part listens (vanilla menus never ask) or no mod menu is open here.
-    fn local_menu_transfer(
-        &mut self,
-        recipe: &str,
-        max: bool,
-        dry_run: bool,
-    ) -> Option<RecipeTransferResult> {
-        if !false {
-            return None;
-        }
-        let (menu, pos) = self.local_mod_menu()?;
-        if !false {
-            return None;
-        }
-        let mut result = None;
-        self.native_menu_transfer(mod_api::__private::MenuTransferCall {
-            player: self.own_uuid(),
-            menu,
-            pos: Some(pos),
-            recipe,
-            max,
-            dry_run,
-            result: &mut result,
-        });
-        result
-    }
     /// The display ids of `recipe_id` that the server sent and this book
     /// numbers the same way (`Book::confirmed_ids`): the entries
     /// `transfer_viewer_recipe` and `transfer_recipe_check` find. A server
@@ -234,11 +206,6 @@ impl Game<'_> {
             self.show_transfer_result(RecipeTransferResult::NotIntoMenu);
             return;
         };
-        // The game is its own server: a mod menu's part answers first, as on a server.
-        if let Some(answer) = self.local_menu_transfer(&id, false, false) {
-            self.show_transfer_result(answer);
-            return;
-        }
         self.local_grid_transfer(&id, false);
     }
     /// The game's own grid transfer of `id` into this player's menu when the game is its own

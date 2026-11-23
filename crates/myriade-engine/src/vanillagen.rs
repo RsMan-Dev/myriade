@@ -546,20 +546,10 @@ impl VanillaTerrain {
             .collect();
         let fluid_ticks = chunk.terrain.fluid_ticks().pack(0).to_vec();
         if !block_ticks.is_empty() || !fluid_ticks.is_empty() || !chunk.saved_root.is_empty() {
-            let attachments = horizon_mod_runtime::attachments::attachment_compound(
-                chunk
-                    .saved_root
-                    .get(&horizon_mod_runtime::attachments::ATTACHMENTS_KEY.into()),
-            )
-            .ok()
-            .flatten()
-            .map(|data| horizon_mod_runtime::attachments::Attachments::from_nbt(data.clone()))
-            .unwrap_or_default();
             out.saved = Some(Arc::new(crate::save::ChunkExtras {
                 block_ticks,
                 fluid_ticks,
                 root: chunk.saved_root.clone(),
-                attachments,
                 ..Default::default()
             }));
         }
@@ -842,15 +832,7 @@ pub fn biome_modifiers_over_packs(
     overrides: &WorldgenOverrides,
 ) -> Option<WorldgenOverrides> {
     let root = dir.parent()?;
-    // The modifiers code mods declared: they register after the content root is built.
-    let declared: Vec<[String; 3]> = mod_api::__private::biome_modifier_declarations()
-        .iter()
-        .filter_map(|d| {
-            let (mod_id, _) = d.id.split_once(':')?;
-            Some([mod_id.to_owned(), d.file(), d.modifier.json()])
-        })
-        .collect();
-    crate::mod_content::biome_modifiers_over_packs(root, overrides, &declared).unwrap_or_else(|e| {
+    crate::mod_content::biome_modifiers_over_packs(root, overrides, &[]).unwrap_or_else(|e| {
         log::warn!("Horizon: biome modifiers over data packs: {e}");
         None
     })
@@ -915,7 +897,6 @@ pub fn shared_data(
 }
 /// `shared_data` with a world's data packs over the bundle: loaded once for
 /// each registry lifetime and set of packs' entries, the most recent few kept.
-#[horizon_mod_api_macros::replaceable]
 pub fn shared_data_with(
     dir: &Path,
     overrides: &WorldgenOverrides,

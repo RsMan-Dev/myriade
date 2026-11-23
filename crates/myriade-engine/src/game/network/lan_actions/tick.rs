@@ -15,8 +15,6 @@ impl Game<'_> {
         self.lan_merchant_tick();
         self.lan_stations_tick();
         self.lan_tables_tick();
-        self.lan_mod_crafting_tick();
-        self.lan_menu_links_tick();
         self.lan_containers_tick();
         self.tick_lan_mount_menus();
         self.native_players_equipment();
@@ -60,9 +58,6 @@ impl Game<'_> {
             // commandSuggestionsProvider.tick: one answer a tick, to the latest request.
             play.suggestion_budget = true;
             self.guest_try_suggestions(conn);
-            self.guest_player_tick(gi, conn, mod_api::HookId::PlayerTickPre, |game, player| {
-                game.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player })
-            });
             self.guest_sleep_tick(gi);
             let Some(host) = self.lan.as_mut() else {
                 return;
@@ -74,16 +69,6 @@ impl Game<'_> {
                 if let Some(host) = self.lan.as_ref() {
                     refresh_building_player(host, conn);
                 }
-                self.guest_player_tick(
-                    gi,
-                    conn,
-                    mod_api::HookId::PlayerTickPost,
-                    |game, player| {
-                        game.native_player_tick_post(mod_api::__private::PlayerTickPostCall {
-                            player,
-                        })
-                    },
-                );
                 continue;
             }
             if self.on_server_trip(conn) {
@@ -94,16 +79,6 @@ impl Game<'_> {
                 if let Some(host) = self.lan.as_ref() {
                     refresh_building_player(host, conn);
                 }
-                self.guest_player_tick(
-                    gi,
-                    conn,
-                    mod_api::HookId::PlayerTickPost,
-                    |game, player| {
-                        game.native_player_tick_post(mod_api::__private::PlayerTickPostCall {
-                            player,
-                        })
-                    },
-                );
                 continue;
             }
             // ServerPlayerGameMode.tick stops an active destroy when its block is air.
@@ -241,32 +216,7 @@ impl Game<'_> {
             if let Some(host) = self.lan.as_ref() {
                 refresh_building_player(host, conn);
             }
-            self.guest_player_tick(gi, conn, mod_api::HookId::PlayerTickPost, |game, player| {
-                game.native_player_tick_post(mod_api::__private::PlayerTickPostCall { player })
-            });
         }
-    }
-
-    /// Only listeners pay for a guest swap; reuse the loop's resolved index.
-    pub(super) fn guest_player_tick(
-        &mut self,
-        gi: usize,
-        conn: u32,
-        hook: mod_api::HookId,
-        fire: fn(&mut Self, mod_api::PlayerRef),
-    ) {
-        if !false {
-            return;
-        }
-        let (Some(epoch), Some(host)) = (self.native_lifecycle.epoch(), self.lan.as_ref()) else {
-            return;
-        };
-        let guest = &host.hub.guests[gi];
-        let player = mod_api::__private::game::player_ref(
-            mod_api::EntityRef::new(epoch, guest.entity_id as u32),
-            guest.uuid,
-        );
-        let _ = self.as_guest_at(gi, conn, |game| fire(game, player));
     }
 
     /// `LivingEntity.checkAutoSpinAttack` for a server's copy of a Riptide

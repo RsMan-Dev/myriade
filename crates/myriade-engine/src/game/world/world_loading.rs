@@ -305,7 +305,6 @@ impl WorldRequest {
             level.seed,
             &level.enabled_features,
             biomes.clone(),
-            None,
         )?;
         drop(streaming_step);
         streaming.radius = settings.view_distance;
@@ -739,88 +738,6 @@ fn set_level_types(
     myriade_engine::environment::Environment::set_level_attributes(attributes);
 }
 
-/// What generates a level whose stem names a generator a mod registered.
-enum ModLevel {
-    /// The generator's terrain alone.
-    Terrain(myriade_engine::modgen::ModTerrain),
-    /// Its terrain and the vanilla stages it asks for.
-    Staged(VanillaTerrain),
-}
-
-/// The generation of a level whose stem names a generator a mod registered, the
-/// stem being read as the game's own generator reads it: a pack's or mod's,
-/// else the saved one. A stem naming any other generator is left to that
-/// generator, which refuses all but noise. A biome source a mod registered
-/// that names a biome the world lacks refuses the level, and so does a stage
-/// the generator asks for that the level cannot supply. `structures` is the
-/// world's `generate_structures`.
-fn mod_terrain(
-    world_root: &std::path::Path,
-    resources: &std::path::Path,
-    additional: &[Arc<myriade_engine::datapack::DataPack>],
-    enabled_features: &[String],
-    terrain_resources: TerrainResources<'_>,
-    biomes: &myriade_engine::biome::Biomes,
-    dim: Dim,
-    shape: myriade_engine::chunk::LevelShape,
-    seed: i64,
-    structures: bool,
-    runtime_stem: Option<&serde_json::Value>,
-) -> Option<std::result::Result<ModLevel, String>> {
-    use horizon_world::worldgen::{
-        mod_biome_sources::mod_biome_sources, mod_generators::mod_chunk_generators,
-        overrides::DIMENSIONS,
-    };
-    let generators = mod_chunk_generators();
-    if generators.is_empty() {
-        return None;
-    }
-    let (overrides, _) =
-        worldgen_overrides_of(world_root, resources, biomes, enabled_features, additional);
-    let stem = runtime_stem.cloned().or_else(|| {
-        overrides
-            .entries(DIMENSIONS)
-            .find(|(level, _)| *level == dim.id())
-            .and_then(|(_, stem)| serde_json::from_str(stem).ok())
-            .or_else(|| {
-                myriade_engine::save::world_gen_settings(world_root)
-                    .and_then(|s| s.get("dimensions")?.get(dim.id()).cloned())
-                    .map(|stem| myriade_engine::scoreboard::tag_to_json(&stem))
-            })
-    })?;
-    if let Some(generator) = stem["generator"]["type"]
-        .as_str()
-        .and_then(|id| generators.get(id))
-        && generator.vanilla_stages().any()
-    {
-        let staged = VanillaTerrain::for_mod(
-            terrain_resources,
-            &overrides,
-            seed,
-            dim.id(),
-            &stem,
-            generator.clone(),
-            structures,
-        );
-        return Some(
-            staged
-                .map(ModLevel::Staged)
-                .map_err(|e| format!("{}: {e}", dim.id())),
-        );
-    }
-    myriade_engine::modgen::ModTerrain::for_stem(
-        dim.id(),
-        &stem,
-        generators,
-        mod_biome_sources(),
-        terrain_resources.registry,
-        |biome| biomes.contains(biome).then(|| biomes.id(biome)),
-        shape,
-        seed,
-    )
-    .map(|terrain| terrain.map(ModLevel::Terrain))
-}
-
 /// The file beside the world that keeps the structure references of the level `id`. An id with a
 /// `/` puts it in a folder of `data/`.
 pub(super) fn structure_references_file(
@@ -859,7 +776,6 @@ pub(super) fn make_streaming(
     seed: i64,
     enabled_features: &[String],
     biomes: Arc<Biomes>,
-    runtime: Option<&super::runtime_levels::Generate>,
 ) -> Result<(Streaming, Arc<SaveDir>, Option<Arc<VanillaTerrain>>)> {
     let mut save = SaveDir::new(
         myriade_engine::save::dimension_dir(world_root, dim.id()),
@@ -958,30 +874,7 @@ pub(super) fn make_streaming(
     if flat.is_some() || flat_vanilla.is_some() {
         register_sea_level(-63);
     }
-    let mut streaming = if let Some(generate) =
-        runtime.filter(|generate| !matches!(generate, super::runtime_levels::Generate::Stem(_)))
-    {
-        // A level a mod opened with the default layers or with air alone.
-        let flat = matches!(generate, super::runtime_levels::Generate::Flat);
-        let inner = myriade_engine::flatgen::FlatTerrain::of_layers(
-            pack.assets.registry,
-            res.biomes(),
-            shape,
-            flat,
-        )
-        .ok_or("a runtime level's layers use a block the game lacks")?;
-        register_sea_level(-63);
-        Streaming::new(
-            Arc::new(Persistent {
-                inner: Arc::new(inner),
-                save: save.clone(),
-                registry: pack.assets.clone(),
-                biomes: biomes.clone(),
-            }),
-            pack.context_with(biomes.clone()),
-            res.threads(),
-        )
-    } else if let Some(inner) = debug {
+    let mut streaming = if let Some(inner) = debug {
         Streaming::new(
             Arc::new(Persistent {
                 inner: Arc::new(inner),
@@ -1026,54 +919,6 @@ pub(super) fn make_streaming(
             pack.context_with(biomes.clone()),
             res.threads(),
         )
-    } else if let Some(level) = mod_terrain(
-        world_root,
-        &options.resources,
-        &pack.additional_data,
-        enabled_features,
-        terrain_resources,
-        &biomes,
-        dim,
-        shape,
-        seed,
-        automatic_structures,
-        match runtime {
-            Some(super::runtime_levels::Generate::Stem(stem)) => Some(stem),
-            _ => None,
-        },
-    )
-    .transpose()?
-    {
-        match level {
-            ModLevel::Terrain(inner) => Streaming::new(
-                Arc::new(Persistent {
-                    inner: Arc::new(inner),
-                    save: save.clone(),
-                    registry: pack.assets.clone(),
-                    biomes: biomes.clone(),
-                }),
-                pack.context_with(biomes.clone()),
-                res.threads(),
-            ),
-            ModLevel::Staged(mut inner) => {
-                inner.add_mod_signs(res.facts());
-                register_sea_level(inner.sea_level());
-                let inner = Arc::new(inner);
-                inner.load_structure_mobs_behind();
-                keep_structure_references(&inner, world_root, dim, &save);
-                locator = Some(inner.clone());
-                Streaming::new(
-                    Arc::new(Persistent {
-                        inner,
-                        save: save.clone(),
-                        registry: pack.assets.clone(),
-                        biomes: biomes.clone(),
-                    }),
-                    pack.context_with(biomes.clone()),
-                    res.threads(),
-                )
-            }
-        }
     } else {
         if runtime.is_some() {
             return Err(format!("{}: no generator builds this runtime level", dim.id()).into());
@@ -1141,10 +986,7 @@ pub(super) fn make_streaming(
             res.threads(),
         )
     };
-    streaming.load_forced(
-        save.load_forced_chunks(),
-        save.load_mod_tickets(|id| mod_api::TicketController::from_id(id).map(|c| c.slot())),
-    );
+    streaming.load_forced(save.load_forced_chunks());
     streaming.radius = settings.view_distance;
     let facts = horizon_world::dimension_type::DimensionFacts::of_builtin_level(
         horizon_core::LevelKey::builtin_or_overworld(dim.id()),
@@ -1359,175 +1201,6 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
 
-    /// NeoForge's `ModMismatchEvent`: a world saved with version 1 of a mod and
-    /// opened with version 2 fires `mod_mismatch` once with both versions, a
-    /// mod no longer loaded with no current version; the mod that marks its
-    /// own mismatch resolved gets no warning while the missing one does. The
-    /// save records the loaded list, so the reopened world fires nothing, as a
-    /// world without the list doesn't.
-    #[test]
-    #[ignore = "daily"]
-    fn a_world_saved_with_other_mod_versions_fires_mod_mismatch() {
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
-        // The warning is read back from the process's logger and its last 50 lines. In the shared
-        // test process another test may own the global logger, or flood those lines: this runs
-        // in a process of its own.
-        if run_fresh_cases(
-            "game::world_loading::tests::a_world_saved_with_other_mod_versions_fires_mod_mismatch",
-            "HORIZON_MOD_MISMATCH_CHILD",
-            &["alone"],
-        ) {
-            return;
-        }
-        use myriade_engine::save::{
-            Level,
-            level_mods::{ModRecord, set_loaded},
-        };
-        use mod_api::Hooks;
-        use mod_api::HostSide;
-        use mod_api::ModEntry;
-        use mod_api::ModMismatch;
-        use mod_api::ModMismatchEvent;
-        use std::sync::{Arc, Mutex};
-
-        struct Migrating(Arc<Mutex<Vec<Vec<ModMismatch>>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Migrating {
-            fn mod_mismatch(&self, _: HostSide, event: &mut ModMismatchEvent<'_>) {
-                self.0.lock().unwrap().push(event.mismatches.to_vec());
-                event.resolved.push("mismatch_test".to_owned().into());
-            }
-        }
-        struct Erasing;
-        #[mod_api::__subscriptions]
-        impl Hooks for Erasing {
-            fn mod_mismatch(&self, _: HostSide, event: &mut ModMismatchEvent<'_>) {
-                assert_eq!(event.resolved[0].resolver, "mismatch_test");
-                event.resolved.clear();
-            }
-        }
-        struct Observing;
-        #[mod_api::__subscriptions]
-        impl Hooks for Observing {
-            fn mod_mismatch(&self, _: HostSide, event: &mut ModMismatchEvent<'_>) {
-                assert_eq!(event.resolved[0].resolver, "mismatch_test");
-            }
-        }
-        let dir = std::env::current_dir()
-            .unwrap()
-            .join("target")
-            .join(format!("mod-mismatch-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        myriade_engine::logging::init(&dir, "main");
-        let record = |id: &str, version: &str| ModRecord {
-            id: id.into(),
-            version: version.into(),
-        };
-        let mismatch = |mod_id: &str, saved: &str, current: Option<&str>| ModMismatch {
-            mod_id: mod_id.into(),
-            saved_version: saved.into(),
-            current_version: current.map(str::to_owned),
-        };
-        let request = |root: &std::path::Path| {
-            let mut request = WorldRequest::new(
-                "test",
-                Some("test"),
-                Some(1),
-                true,
-                None,
-                Arc::new(myriade_engine::gamerules::RuleRegistry::vanilla()),
-            )
-            .unwrap();
-            request.save_root = root.to_owned();
-            request
-        };
-        let warnings = || -> Vec<String> {
-            myriade_engine::logging::recent_lines()
-                .into_iter()
-                .filter(|line| line.contains("Horizon: mod "))
-                .collect()
-        };
-        let heard = Arc::new(Mutex::new(Vec::new()));
-        let level = || Level {
-            name: "test".into(),
-            ..Level::default()
-        };
-        // The loaded list is the whole process's: the test's goes away when it ends, even
-        // when it fails, so the tests after it save no list.
-        struct Restore(Option<Vec<ModRecord>>);
-        impl Drop for Restore {
-            fn drop(&mut self) {
-                set_loaded(self.0.take());
-            }
-        }
-        // Before the loaded mods are known: a world without the list.
-        let _restore = Restore(set_loaded(None));
-        let plain = dir.join("plain");
-        level().write(&plain).unwrap();
-        assert_eq!(Level::read(&plain).unwrap().saved_mods, None);
-        // Saved with version 1 of the mod, and with one since gone.
-        let changed = dir.join("changed");
-        set_loaded(Some(vec![
-            record("mismatch_test", "1.0.0"),
-            record("gone", "0.5.0"),
-        ]));
-        level().write(&changed).unwrap();
-        set_loaded(Some(vec![record("mismatch_test", "2.0.0")]));
-        mod_platform::testing::with_mods(
-            vec![
-                ModEntry::new("mismatch_test", Box::new(Migrating(heard.clone()))),
-                ModEntry::new("erasing", Box::new(Erasing)),
-                ModEntry::new("observing", Box::new(Observing)),
-            ]
-            .into(),
-            || {
-                with_game(|game| {
-                    game.load_world(request(&changed)).unwrap();
-                    let lines = warnings();
-                    assert_eq!(
-                        *heard.lock().unwrap(),
-                        vec![vec![
-                            mismatch("mismatch_test", "1.0.0", Some("2.0.0")),
-                            mismatch("gone", "0.5.0", None),
-                        ]]
-                    );
-                    assert!(
-                        lines.iter().any(|line| line.contains(
-                            "Horizon: mod gone was 0.5.0 when the world was saved, now missing"
-                        )),
-                        "{lines:?}"
-                    );
-                    assert!(
-                        !lines.iter().any(|line| line.contains("mod mismatch_test")),
-                        "{lines:?}"
-                    );
-                    game.save_game_with(true).unwrap();
-                });
-                assert_eq!(
-                    Level::read(&changed).unwrap().saved_mods,
-                    Some(vec![record("mismatch_test", "2.0.0")])
-                );
-                // An unchanged list still fires.
-                with_game(|game| {
-                    game.load_world(request(&changed)).unwrap();
-                    assert_eq!(heard.lock().unwrap().len(), 2);
-                });
-                // A world without the list fires nothing and gets the list on its save.
-                with_game(|game| {
-                    game.load_world(request(&plain)).unwrap();
-                    assert_eq!(heard.lock().unwrap().len(), 2);
-                    game.save_game_with(true).unwrap();
-                });
-                assert_eq!(
-                    Level::read(&plain).unwrap().saved_mods,
-                    Some(vec![record("mismatch_test", "2.0.0")])
-                );
-            },
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
     #[test]
     fn a_mods_level_opens_with_no_data_packs() {
         use myriade_engine::chunk::{LevelShape, LevelShapes};
@@ -1552,166 +1225,6 @@ mod tests {
         );
         assert_eq!(shapes.dimension_type("test:pocket"), "test:pocket");
         assert_eq!(shapes.overworld, LevelShape::OVERWORLD);
-    }
-
-    /// A registered level's stem finds its generator through the world's
-    /// worldgen entries; the Overworld's noise stays the game's. Ignored as it
-    /// installs the process-wide tables.
-    #[test]
-    #[ignore = "daily"]
-    fn a_stem_naming_a_mods_generator_opens_on_mod_terrain() {
-        use myriade_engine::streaming::ChunkGenerator as _;
-        use horizon_world::worldgen::{
-            mod_generators::{
-                ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,
-            },
-            overrides::{ModDimension, install_mod_dimensions},
-        };
-        struct Floor;
-        impl ModChunkGenerator for Floor {
-            fn build_terrain(&self, chunk: &mut dyn ChunkAccess) {
-                let stone = chunk.state("stone");
-                chunk.set_block([0, chunk.min_y(), 0], stone);
-            }
-        }
-        install_mod_dimensions(vec![ModDimension {
-            id: "test:pocket".into(),
-            stem: r#"{"type":"test:pocket","generator":{"type":"test:floor"}}"#.into(),
-            dimension_type: r#"{"min_y":-128,"height":448,"logical_height":448}"#.into(),
-            sea_level: None,
-        }])
-        .unwrap();
-        let floor: Arc<dyn ModChunkGenerator> = Arc::new(Floor);
-        install_mod_chunk_generators(ModChunkGenerators::from([("test:floor".to_owned(), floor)]))
-            .map_err(|_| "installed twice")
-            .unwrap();
-
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let biomes = myriade_engine::biome::Biomes::load(
-            &horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-        )
-        .unwrap();
-        let registry = myriade_engine::assets::Assets::load(&root)
-            .unwrap()
-            .registry;
-        let world =
-            std::env::temp_dir().join(format!("horizon-mod-terrain-{}", std::process::id()));
-        std::fs::create_dir_all(&world).unwrap();
-        let (overrides, _) = worldgen_overrides_of(&world, &root, &biomes, &[], &[]);
-        let shapes = shapes_of(&overrides);
-        use horizon_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
-        let inputs = LoadInputs::new(Default::default(), root.join("settings"));
-        let item_data = Arc::new(
-            horizon_world::item_defaults::ItemData::load(
-                &root,
-                LoadContext::new(DataLoadOrigin::ServerDataLoad, Arc::new(inputs), []),
-            )
-            .unwrap(),
-        );
-        let worldgen = root.join("worldgen");
-        let resources = TerrainResources {
-            data: None,
-            dir: &worldgen,
-            registry,
-            biomes: &biomes,
-            item_data: &item_data,
-        };
-        let open = |dim: Dim| {
-            let shape = shapes.get(dim.id());
-            mod_terrain(
-                &world,
-                &root,
-                &[],
-                &[],
-                resources,
-                &biomes,
-                dim,
-                shape,
-                0,
-                true,
-                None,
-            )
-        };
-        let pocket = Dim::Extra(mod_api::__private::dimension_key("test:pocket"));
-        let Some(Ok(ModLevel::Terrain(terrain))) = open(pocket) else {
-            panic!("the stem names a registered generator that asks for no stage");
-        };
-        let chunk = terrain.finish(terrain.proto(&mut (), 0, 0));
-        assert_eq!(
-            chunk.block(0, -128, 0),
-            registry.default_state("minecraft:stone").unwrap()
-        );
-        assert!(open(Dim::Overworld).is_none());
-        let _ = std::fs::remove_dir_all(world);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn both_server_roles_record_regions_before_world_generation() {
-        mod_platform::__private::initialize().unwrap();
-        use super::super::native_entity_refs::tests::with_game_role;
-        struct Regions;
-        #[mod_api::__subscriptions]
-        impl mod_api::Hooks for Regions {
-            fn register(
-                &self,
-                registrar: &mut dyn mod_api::Registrar,
-                _: &mod_api::RegistrationContext,
-            ) {
-                registrar
-                    .declare_biome_region(
-                        "ice",
-                        myriade_types::BiomeRegion::new(
-                            "minecraft:overworld".into(),
-                            3,
-                            vec![myriade_types::BiomePoint {
-                                biome: "minecraft:ice_spikes".into(),
-                                temperature: (-2., 2.),
-                                humidity: (-2., 2.),
-                                continentalness: (-2., 2.),
-                                erosion: (-2., 2.),
-                                depth: (-2., 2.),
-                                weirdness: (-2., 2.),
-                                offset: 0.,
-                            }],
-                        ),
-                    )
-                    .unwrap();
-            }
-        }
-        let root = PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        {
-            let scratch = tempfile::tempdir().unwrap();
-            let world = scratch.path().join("world");
-            mod_api::testing::with_dispatch(
-                vec![mod_api::ModEntry::new("region_fixture", Box::new(Regions))].into(),
-                || {
-                    with_game_role(root.clone(), |game| {
-                        let request = WorldRequest {
-                            owner: None,
-                            save_root: world.clone(),
-                            folder: "world".into(),
-                            name: Some("Region fixture".into()),
-                            seed: Some(12345),
-                            creative: true,
-                            create: None,
-                            rule_registry: Level::default().rule_registry,
-                        };
-                        game.load_world(request).unwrap();
-                        let layout = myriade_engine::save::biome_regions::layout(
-                            &world,
-                            "minecraft:overworld",
-                        )
-                        .unwrap()
-                        .unwrap();
-                        assert_eq!(layout.regions.len(), 1);
-                        assert_eq!(layout.regions[0].id, "region_fixture:ice");
-                        assert_eq!(layout.regions[0].weight, 3);
-                        assert_eq!(layout.regions[0].points[0].biome, "minecraft:ice_spikes");
-                    });
-                },
-            );
-        }
     }
 
     #[test]

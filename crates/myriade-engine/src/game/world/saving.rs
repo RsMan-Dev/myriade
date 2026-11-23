@@ -24,15 +24,10 @@ enum Stage {
 }
 
 impl Game<'_> {
-    /// Save the level's chunk tickets: `/forceload`'s in vanilla's `chunk_tickets.dat`, the
-    /// mods' in Horizon's own `mod_chunk_tickets.dat`.
+    /// Save the level's chunk tickets: `/forceload`'s in vanilla's `chunk_tickets.dat`.
     pub(super) fn save_chunk_tickets(&self) -> Result<()> {
         self.save
-            .save_chunk_tickets(self.streaming.commanded(), self.tickets.portal_tickets())?;
-        self.save
-            .save_mod_tickets(self.streaming.mod_tickets(), |slot| {
-                mod_api::TicketController::from_slot(slot).map(|c| c.id())
-            })
+            .save_chunk_tickets(self.streaming.commanded(), self.tickets.portal_tickets())
     }
     pub(super) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
         if let Some(save) = &mut self.pending_save {

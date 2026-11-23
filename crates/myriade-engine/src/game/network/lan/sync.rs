@@ -37,9 +37,7 @@ pub(in crate::game) fn server_sources(
     item_data: &ItemData,
     overlay: &horizon_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
-    server_sources_with(root, item_data, overlay, || {
-        server_data_load(root, item_data)
-    })
+    server_sources_with(root, item_data, overlay, || server_data_load(item_data))
 }
 
 fn server_sources_with(
@@ -98,7 +96,7 @@ pub(in crate::game) fn prepare_server_sources(
     overlay: &horizon_world::loot::PackOverlay,
 ) -> std::io::Result<Arc<ResolvedSources>> {
     Ok(Arc::new(
-        ResolvedSources::load(root, overlay, &server_data_load(root, item_data)?)
+        ResolvedSources::load(root, overlay, &server_data_load(item_data)?)
             .map_err(|error| std::io::Error::other(error.to_string()))?,
     ))
 }
@@ -128,7 +126,7 @@ pub(in crate::game) fn load_sources(
     match origin {
         DataLoadOrigin::ServerDataLoad => server_sources(root, item_data, overlay),
         _ => Ok(Arc::new(
-            ResolvedSources::load(root, overlay, &data_load_context(root, item_data, origin)?)
+            ResolvedSources::load(root, overlay, &data_load_context(item_data, origin)?)
                 .map_err(|error| std::io::Error::other(error.to_string()))?,
         )),
     }
@@ -337,29 +335,19 @@ impl Game<'_> {
 /// A server's own data load over `item_data`'s registry inputs: the owner of
 /// the data a server reads and sends, whichever window shares the `ItemData`.
 pub(in crate::game) fn server_data_load(
-    root: &std::path::Path,
     item_data: &ItemData,
 ) -> std::io::Result<horizon_world::native_load_context::LoadContext> {
     data_load_context(
-        root,
         item_data,
         horizon_world::native_load_context::DataLoadOrigin::ServerDataLoad,
     )
 }
 
 fn data_load_context(
-    root: &std::path::Path,
     item_data: &ItemData,
     origin: horizon_world::native_load_context::DataLoadOrigin,
 ) -> std::io::Result<horizon_world::native_load_context::LoadContext> {
-    use horizon_world::native_load_context::DataLoadOrigin;
-    let inventory = horizon_mod_package::enabled::EnabledMods::read(root)?;
-    let ids: Vec<_> = if origin == DataLoadOrigin::ServerDataLoad {
-        inventory.server_ids().collect()
-    } else {
-        inventory.client_ids().collect()
-    };
-    Ok(item_data.context().for_load(origin, ids))
+    Ok(item_data.context().for_load(origin, Vec::new()))
 }
 
 /// The registries and tags a server sends without data packs over them, read

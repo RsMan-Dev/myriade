@@ -1,14 +1,10 @@
 //! One bounded writer owner. Receiving callbacks never block their own receive loop
 //! while a large reply waits for the peer to drain its socket or memory pipe.
-use horizon_mod_runtime::byte_channel::{self, Permit, ReserveError, Sender, TrySendError};
+use crate::net::byte_channel::{self, Sender, TrySendError};
 use horizon_protocol::{
     Error, Result,
     connection::{Closer, ConnWriter, Framing},
-    frame::FrameSize,
 };
-use mod_api::PayloadFrameStage;
-use mod_api::PayloadId;
-use mod_api::PayloadSendError;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
@@ -17,11 +13,8 @@ use std::sync::{
 use std::thread::JoinHandle;
 
 const CAPACITY: usize = 16 * 1024 * 1024;
-// Covers the pending transaction journal record as well as the queue's own node.
-const PUBLICATION_OVERHEAD: usize = 512;
 enum WriteJob {
     Packet(Vec<u8>),
-    Contents(Vec<u8>),
     Disconnect(Vec<u8>),
 }
 
@@ -47,27 +40,6 @@ impl std::ops::Deref for QueuedWriter {
     }
 }
 
-/// Prepared once, charged immediately, invisible to the writer until root commit.
-pub struct PreparedPayload {
-    permit: Permit<WriteJob>,
-    job: WriteJob,
-    alive: Arc<AtomicBool>,
-}
-impl PreparedPayload {
-    pub fn publish(self) -> std::result::Result<(), PayloadSendError> {
-        if !self.alive.load(Ordering::Acquire) {
-            return Err(PayloadSendError::Disconnected);
-        }
-        self.permit
-            .publish(self.job)
-            .map_err(|_| PayloadSendError::Disconnected)
-    }
-}
-enum PrepareFailure {
-    Closed,
-    Full,
-    Encode(Error),
-}
 impl QueuedWriter {
     #[cfg(any(test, feature = "test-payload-probe"))]
     pub(crate) fn diagnostics(&self) -> String {
@@ -107,9 +79,7 @@ impl QueuedWriter {
                     #[cfg(any(test, feature = "test-payload-probe"))]
                     {
                         let bytes = match &job {
-                            WriteJob::Packet(b)
-                            | WriteJob::Contents(b)
-                            | WriteJob::Disconnect(b) => b.len(),
+                            WriteJob::Packet(b) | WriteJob::Disconnect(b) => b.len(),
                         };
                         writing[0].fetch_add(1, Ordering::Relaxed);
                         writing[2].store(bytes, Ordering::Relaxed);
@@ -117,7 +87,6 @@ impl QueuedWriter {
                     }
                     let result = match job {
                         WriteJob::Packet(body) | WriteJob::Disconnect(body) => writer.send(&body),
-                        WriteJob::Contents(contents) => writer.send_contents(&contents),
                     };
                     #[cfg(any(test, feature = "test-payload-probe"))]
                     {
@@ -172,9 +141,6 @@ impl QueuedWriter {
     pub(crate) fn framing(&self) -> Framing {
         self.framing
     }
-    pub(crate) fn payload_capacity(&self) -> usize {
-        CAPACITY
-    }
     pub(crate) fn shutdown(&self) {
         if self.retired.load(Ordering::Acquire) {
             return;
@@ -215,69 +181,6 @@ impl QueuedWriter {
         if queue.try_send(WriteJob::Disconnect(body), bytes).is_err() {
             self.closer.close();
         }
-    }
-    pub(crate) fn prepare_payload(
-        &self,
-        body: Vec<u8>,
-        id: &PayloadId,
-    ) -> std::result::Result<PreparedPayload, PayloadSendError> {
-        self.prepare_contents(body)
-            .map_err(|failure| match failure {
-                PrepareFailure::Closed => PayloadSendError::Disconnected,
-                PrepareFailure::Full => PayloadSendError::Backpressure,
-                PrepareFailure::Encode(error) => {
-                    if let Some(detail) = error.frame_limit() {
-                        PayloadSendError::FrameTooLarge {
-                            id: id.clone(),
-                            stage: match detail.stage {
-                                FrameSize::Encoded => PayloadFrameStage::Encoded,
-                                FrameSize::Uncompressed => PayloadFrameStage::Uncompressed,
-                            },
-                            size: detail.size as u64,
-                            limit: detail.limit as u64,
-                        }
-                    } else {
-                        PayloadSendError::EncodeFailed(error.to_string())
-                    }
-                }
-            })
-    }
-    fn prepare_contents(
-        &self,
-        body: Vec<u8>,
-    ) -> std::result::Result<PreparedPayload, PrepareFailure> {
-        if !self.alive.load(Ordering::Acquire) {
-            return Err(PrepareFailure::Closed);
-        }
-        let contents = self
-            .framing
-            .contents_owned(body)
-            .map_err(PrepareFailure::Encode)?;
-        self.prepare_job(WriteJob::Contents(contents))
-    }
-    fn prepare_job(&self, job: WriteJob) -> std::result::Result<PreparedPayload, PrepareFailure> {
-        if !self.alive.load(Ordering::Acquire) {
-            return Err(PrepareFailure::Closed);
-        }
-        let capacity = match &job {
-            WriteJob::Packet(bytes) | WriteJob::Contents(bytes) | WriteJob::Disconnect(bytes) => {
-                bytes.capacity()
-            }
-        };
-        let sender = self.sender.lock().unwrap();
-        let permit = sender
-            .as_ref()
-            .ok_or(PrepareFailure::Closed)?
-            .reserve(capacity.saturating_add(PUBLICATION_OVERHEAD))
-            .map_err(|error| match error {
-                ReserveError::Full => PrepareFailure::Full,
-                ReserveError::Disconnected => PrepareFailure::Closed,
-            })?;
-        Ok(PreparedPayload {
-            permit,
-            job,
-            alive: self.alive.clone(),
-        })
     }
 }
 #[cfg(test)]

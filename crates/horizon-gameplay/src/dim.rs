@@ -43,7 +43,7 @@ impl Dim {
             Self::Nether => "minecraft:the_nether",
             Self::End => "minecraft:the_end",
             Self::Extra(key) => {
-                mod_api::__private::dimension_id(key).expect("the game's table made the key")
+                myriade_types::dimension_id(key).expect("the game's table made the key")
             }
         }
     }
@@ -69,7 +69,7 @@ impl Dim {
         let extra = EXTRA_DIMS.read().unwrap();
         let key = extra
             .iter()
-            .find(|key| mod_api::__private::dimension_id(**key) == Some(id))?;
+            .find(|key| myriade_types::dimension_id(**key) == Some(id))?;
         Some(Self::Extra(*key))
     }
     pub fn is_vanilla(id: &str) -> bool {
@@ -95,7 +95,7 @@ impl Dim {
     pub fn set_extra<'a>(ids: impl Iterator<Item = &'a str>) {
         *EXTRA_DIMS.write().unwrap() = ids
             .filter(|id| !Self::is_vanilla(id))
-            .map(mod_api::__private::dimension_key)
+            .map(myriade_types::dimension_key)
             .collect();
     }
     /// Adds the dimension `id` a remote server sent, which no local world told of, so that
@@ -105,7 +105,7 @@ impl Dim {
             EXTRA_DIMS
                 .write()
                 .unwrap()
-                .push(mod_api::__private::dimension_key(id));
+                .push(myriade_types::dimension_key(id));
         }
     }
     /// The dimension as mods' level handles name it.
@@ -160,6 +160,6 @@ impl Dim {
         EXTRA_DIMS
             .write()
             .unwrap()
-            .retain(|key| mod_api::__private::dimension_id(*key) != Some(id));
+            .retain(|key| myriade_types::dimension_id(*key) != Some(id));
     }
 }

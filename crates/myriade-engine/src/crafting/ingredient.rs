@@ -5,13 +5,12 @@ mod components;
 mod display;
 #[path = "ingredient/matching.rs"]
 mod matching;
-use super::native_hooks::native_ingredient;
 use super::{ItemStack, Items};
 use crate::native_stack_hooks::ingredient_test as native_ingredient_test;
 use display::display_stacks;
 use horizon_world::native_load_context::LoadContext;
-use mod_api::__private::{WalkedIngredient, dedup_keep_order, resolved_items};
-pub use mod_api::item::crafting::{IngredientRule, Shape};
+use myriade_types::{WalkedIngredient, resolved_items};
+pub use myriade_types::{IngredientRule, Shape};
 use serde_json::Value;
 use std::collections::HashSet;
 /// Where `Ingredient::resolve` leaves the hook's answer inside the occurrence
@@ -165,14 +164,7 @@ impl Ingredient {
                     }
                     Some("neoforge:components" | "neoforge:block_tag") => {}
                     Some(k) if is_custom(k) => {
-                        let mut list = Vec::new();
-                        if false
-                            && let Ok(data) = crate::json_nbt::json_to_compound(o)
-                        {
-                            native_ingredient(context, k, &data, &mut list);
-                        }
-                        dedup_keep_order(&mut list);
-                        o.insert(RESOLVED_ITEMS.to_owned(), list.into());
+                        o.insert(RESOLVED_ITEMS.to_owned(), Value::Array(Vec::new()));
                         changed = true;
                     }
                     Some(_) => {}

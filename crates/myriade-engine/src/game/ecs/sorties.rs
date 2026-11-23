@@ -10,7 +10,6 @@ use horizon_ecs_proto::host_out_using::UsingEvent;
 use horizon_ecs_proto::targeting::Who;
 
 /// `EquipmentSlot` names in the order of P's `equip_stack::Equipment`.
-const SLOTS: [&str; 8] = ["mainhand", "offhand", "head", "chest", "legs", "feet", "body", "saddle"];
 /// `LivingEntity.entityEventForEquipmentBreak`: the entity event of a worn piece that broke, by slot (main, off, head, chest, legs, feet, body 65, saddle 68).
 const BREAK_EVENTS: [i8; 8] = [47, 48, 49, 50, 51, 52, 65, 68];
 /// `LivingEntity.handleEntityEvent` 35: the totem's animation.
@@ -61,35 +60,6 @@ impl Game<'_> {
         self.ecs_with(|ecs, mw| ecs.resolve_totem(mw, e, cancel));
     }
 
-    /// `HostEvent::TargetChanged` with no target: `living_change_target` hears the clear (not a brain's). A refusal puts `previous` back,
-    /// a replacement is written as the new target; both go through `set_target`, whose `Some` event has no handler for an ECS mob.
-    pub(in crate::game) fn ecs_target_cleared(&mut self, e: Entity, previous: Option<Who>) {
-        if !false {
-            return;
-        }
-        let Some(epoch) = self.native_lifecycle.epoch() else { return };
-        let id = self.entity_id(e);
-        let mob = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, id));
-        match self.native_mob_target_event(mob, None, false) {
-            Some(None) => {}
-            None => {
-                if previous.is_some() {
-                    self.ecs_with(|ecs, mw| ecs.set_target(mw, id, previous));
-                }
-            }
-            Some(Some(new)) => {
-                let new_id = new.entity().id();
-                let who = match self.ecs.entity_of(new_id) {
-                    Some(t) => Some(Who::Entity(t)),
-                    None => self.with_player(new_id, |_| ()).map(|_| Who::Player(new_id)),
-                };
-                if who.is_some() {
-                    self.ecs_with(|ecs, mw| ecs.set_target(mw, id, who));
-                }
-            }
-        }
-    }
-
     /// `HostEvent::HitDealt`: the mods' `hurt_enemy` hears the stack the attacker holds, a player's (the acting one while it is told) or the
     /// ECS mob's main hand.
     pub(in crate::game) fn ecs_hit_dealt(&mut self, attacker: Who, victim: Entity) {
@@ -123,42 +93,15 @@ impl Game<'_> {
         }
     }
 
-    /// `HostEvent::TargetAsk`: `living_change_target` decides the target a brain proposed (held only while a mod hears it); the answer
-    /// goes back through `resolve_target`. A player proposal reaches the hook as no target (its `LivingRef` is not built here).
-    pub(in crate::game) fn ecs_target_asked(&mut self, e: Entity, proposed: Option<Who>) {
+    /// `HostEvent::TargetAsk`: no mod listens to `living_change_target`, so the brain's proposed target is kept.
+    pub(in crate::game) fn ecs_target_asked(&mut self, e: Entity) {
         use horizon_ecs_proto::brain::behaviours::start_attacking::TargetAnswer;
-        let answer = match self.native_lifecycle.epoch() {
-            None => TargetAnswer::Keep,
-            Some(epoch) => {
-                let id = self.entity_id(e);
-                let mob = mod_api::MobRef::new(mod_api::EntityRef::new(epoch, id));
-                let original = match proposed {
-                    Some(Who::Entity(t)) => Some(mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, self.entity_id(t)))),
-                    _ => None,
-                };
-                match self.native_mob_target_event(mob, original, false) {
-                    None => TargetAnswer::Keep,
-                    Some(None) => TargetAnswer::Set(None),
-                    Some(Some(new)) => {
-                        let new_id = new.entity().id();
-                        let who = match self.ecs.entity_of(new_id) {
-                            Some(t) => Some(Who::Entity(t)),
-                            None => self.with_player(new_id, |_| ()).map(|_| Who::Player(new_id)),
-                        };
-                        TargetAnswer::Set(who)
-                    }
-                }
-            }
-        };
-        self.ecs.resolve_target(e, answer);
+        self.ecs.resolve_target(e, TargetAnswer::Keep);
     }
 
-    /// `HostEvent::Spawned`: the mods are told of a mob that joined the level, and its mod goals are attached (every spawn path announces).
+    /// `HostEvent::Spawned`: the mods are told of a mob that joined the level (every spawn path announces).
     pub(in crate::game) fn ecs_spawned_event(&mut self, e: Entity, natural: bool) {
         let id = self.entity_id(e);
-        if let (Some(kind), Some(w)) = (self.ecs.kind(id), self.ecs.ecs_mut()) {
-            myriade_engine::ecs_bridge::mod_goals::attach(w.world_mut(), e, kind);
-        }
         self.native_ecs_joined(id, natural);
     }
 
@@ -249,17 +192,10 @@ impl Game<'_> {
         }
     }
 
-    /// `EquipmentEvent`: the mods hear a changed slot (`living_equipment_change`); a piece that broke is told to the clients.
+    /// `EquipmentEvent`: a piece that broke is told to the clients (no mod hears a changed slot).
     pub(in crate::game) fn ecs_equipment_event(&mut self, ev: EquipmentEvent) {
         match ev {
-            EquipmentEvent::Changed { entity, slot, from, to } => {
-                if !mod_api::__private::enabled_listened(mod_api::HookId::LivingEquipmentChange) {
-                    return;
-                }
-                let id = self.entity_id(entity);
-                let (Some(kind), Some(name)) = (self.ecs_kind(id), SLOTS.get(slot)) else { return };
-                self.native_living_equipment_change(id, &kind, name, from.as_ref(), to.as_ref());
-            }
+            EquipmentEvent::Changed { .. } => {}
             EquipmentEvent::Broke { entity, slot } => {
                 let id = self.entity_id(entity);
                 if let (Some(&code), Some(at)) = (BREAK_EVENTS.get(slot), self.ecs.position(id)) {

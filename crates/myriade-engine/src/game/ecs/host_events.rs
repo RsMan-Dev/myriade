@@ -136,10 +136,9 @@ impl Game<'_> {
                     self.lan_entity_event(id as i32, 60, at);
                 }
                 HostEvent::ConversionAsk { entity, into } => self.ecs_conversion_asked(entity, into),
-                // The `Some` case reached the mob handler through `apply`; a cleared target is told to `living_change_target`.
-                HostEvent::TargetChanged { entity, target: None, previous } => self.ecs_target_cleared(entity, previous),
-                HostEvent::TargetChanged { target: Some(_), .. } => {}
-                HostEvent::TargetAsk { entity, proposed } => self.ecs_target_asked(entity, proposed),
+                // The target change reached the mob handler through `apply`.
+                HostEvent::TargetChanged { .. } => {}
+                HostEvent::TargetAsk { entity, .. } => self.ecs_target_asked(entity),
                 HostEvent::TotemAsk { entity, off_hand, cause, attacker } => self.ecs_totem_asked(entity, off_hand, cause, attacker),
                 HostEvent::Spawned { entity, natural, .. } => self.ecs_spawned_event(entity, natural),
                 HostEvent::Tamed { entity, owner } => self.ecs_tamed_event(entity, owner),

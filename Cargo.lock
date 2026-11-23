@@ -1288,6 +1288,7 @@ dependencies = [
  "log",
  "myriade-data",
  "myriade-engine-lib",
+ "myriade-types",
  "serde_json",
 ]
 
@@ -2017,6 +2018,7 @@ dependencies = [
  "myriade-data",
  "myriade-engine-lib",
  "myriade-level",
+ "myriade-types",
  "png",
  "rustix",
  "serde",
@@ -2097,6 +2099,18 @@ dependencies = [
  "tempfile",
  "ureq",
  "zip",
+]
+
+[[package]]
+name = "myriade-types"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam 0.30.10",
+ "horizon-core",
+ "log",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

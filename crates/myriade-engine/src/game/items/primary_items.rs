@@ -19,13 +19,11 @@ impl Game<'_> {
             table.install(answers.clone());
         }
     }
-    /// Leave the world's parts as its world closes (`clear_game_parts`), with what was resolved
-    /// from them: this server's `is_primary_item_for` answers are retired. A client holds none.
+    /// Leave the world's primary-item answers as its world closes. A client holds none.
     pub(in crate::game) fn clear_world_parts(&self) {
         for table in self.primary_answer_tables() {
             table.clear();
         }
-        mod_api::__private::clear_game_parts();
     }
     /// The answer tables of the enchantment snapshots this game selects with: its stations'
     /// and its items' (loot), once when they are one registry.

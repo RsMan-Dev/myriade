@@ -28,7 +28,7 @@ impl Game<'_> {
         let registry = self.pack.assets.registry;
         let rose = registry.default_state("minecraft:wither_rose");
         // NeoForge: `canEntityGrief` for the wither.
-        if self.can_entity_grief(Some(wither))
+        if self.can_entity_grief()
             && let Some(rose) = rose
             && self
                 .res

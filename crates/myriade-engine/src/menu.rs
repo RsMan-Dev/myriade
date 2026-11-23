@@ -19,7 +19,6 @@ use crate::{
 #[cfg(test)]
 use horizon_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
 use horizon_world::native_load_context::{LoopContext, LoopSide};
-pub use mod_api::item::menu::{LogicalSide, MenuButtonContext};
 mod models;
 pub use models::{
     AnvilCraft, AnvilUpdate, AnvilVanilla, CarriedAccess, GrindstonePlace, GrindstoneTake,
@@ -1176,7 +1175,6 @@ impl Menu {
             // GrindstoneMenu.createResult.
             Kind::Grindstone => {
                 self.state.containers[RESULT][0] = crate::stations::grindstone_result(
-                    env.loop_context,
                     env.enchantments,
                     env.items,
                     self.state.containers[MAIN][0].as_ref(),
@@ -1631,7 +1629,7 @@ impl Menu {
             Role::Plain | Role::CreativeDisplay => true,
             Role::Armor(eq) => Self::armor_may_place(env, eq, stack),
             Role::MountEquip(slot) => self.mount_may_place(env, slot, stack),
-            Role::Shulker => fits_inside_container_items(env.loop_context, stack),
+            Role::Shulker => fits_inside_container_items(stack),
             Role::Mod | Role::ModResult => self.state.slots[s].role == Role::Mod,
             Role::Hidden => false,
             Role::Fuel => Self::is_fuel(env, stack) || Self::is_bucket(stack),
@@ -1651,7 +1649,7 @@ impl Menu {
             Role::LoomDye => env.banners.loom_dye(env.items, stack).is_some(),
             Role::LoomPattern => env.banners.is_pattern_item(env.items, stack),
             Role::GrindInput => {
-                crate::stations::grindstone_accepts(env.loop_context, env.items, stack)
+                crate::stations::grindstone_accepts(env.items, stack)
             }
             Role::SmithInput(i) => env
                 .station_recipes
@@ -2038,7 +2036,6 @@ impl Menu {
     }
 
     /// `CraftingMenu.slotChangedCraftingGrid`.
-    #[horizon_mod_api_macros::replaceable]
     fn recompute(&mut self, env: &Env) {
         self.touch();
         if self.state.grid_size == 0 {
@@ -3376,66 +3373,6 @@ pub(crate) mod tests {
             // Out of the fuel slot: moveItemStackTo(3, 39, false).
             assert_eq!(landing("coal", 5, 1), [3]);
         });
-    }
-
-    struct AppleSets;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for AppleSets {
-        fn recipe_property_sets(
-            &self,
-            _: &dyn mod_api::DataLoadContext,
-            event: &mut mod_api::RecipePropertySetsEvent<'_>,
-        ) {
-            for set in ["furnace_input", "brewing_reagent", "smithing_addition"] {
-                event.additions.push(myriade_types::RecipePropertyAddition::new(
-                    set,
-                    vec!["minecraft:apple".to_owned()],
-                ));
-            }
-        }
-    }
-
-    /// What a mod adds to the recipe property sets is what the furnace's
-    /// shift-click, the brewing stand's reagent slot and the smithing
-    /// table's addition slot take, against the real recipes: with no mod
-    /// an apple goes to none of them.
-    #[test]
-    fn mod_additions_to_the_property_sets_reach_every_reader() {
-        let check = |added: bool| {
-            with_menu(Kind::Furnace("smelting"), |env, menu| {
-                menu.creative = false;
-                menu.set_slot(env, 30, stack("apple", 5));
-                let to = menu.quick_move_landing(env, 30);
-                assert_eq!(to, if added { vec![0] } else { vec![3] });
-                let apple = stack("apple", 1).unwrap();
-                let root = resource_root();
-                let defaults = horizon_world::item_defaults::read(&root).unwrap();
-                let stations = crate::stations::StationData::load(
-                    &root,
-                    env.items,
-                    &PackOverlay::NONE,
-                    &defaults,
-                    &crate::test_resources::server_load(),
-                );
-                assert_eq!(stations.brewing.is_reagent(&apple), added);
-                assert_eq!(
-                    env.station_recipes
-                        .smithing_accepts(env.loop_context, 2, &apple),
-                    added
-                );
-                // Vanilla's own entries stay.
-                assert!(
-                    stations
-                        .brewing
-                        .is_reagent(&stack("nether_wart", 1).unwrap())
-                );
-            })
-        };
-        check(false);
-        mod_platform::testing::with_mods(
-            vec![mod_api::ModEntry::new("apples", Box::new(AppleSets))].into(),
-            || check(true),
-        );
     }
 
     /// `FurnaceResultSlot.checkTakeAchievements` as `ItemSmeltedEvent` sees

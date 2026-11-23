@@ -1,7 +1,7 @@
 //! Particle keys cross the game boundary through the load-resolved provider table.
 use super::{TryIntoApi, TryIntoEngine};
 use myriade_engine::particles::{ParticleOptions as EngineOptions, ParticleType};
-use mod_api::__private::ParticleKind;
+use myriade_types::ParticleKind;
 use myriade_types::ParticleOptions as ApiOptions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,7 +53,7 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
         if !finite(self) {
             return Err(ParticleValueError::NonFinite);
         }
-        let (ty, custom) = match mod_api::__private::particle_kind(self.ty)
+        let (ty, custom) = match myriade_types::particle_kind(self.ty)
             .ok_or(ParticleValueError::UnknownProvider)?
         {
             ParticleKind::Vanilla(index) => (
@@ -65,7 +65,7 @@ impl<C: ParticleItems + ?Sized> TryIntoEngine<C> for ApiOptions {
             ParticleKind::Custom => (
                 ParticleType::Smoke,
                 Some(std::borrow::Cow::Borrowed(
-                    mod_api::__private::particle_name(self.ty)
+                    myriade_types::particle_name(self.ty)
                         .ok_or(ParticleValueError::UnknownProvider)?,
                 )),
             ),
@@ -105,8 +105,8 @@ impl TryIntoApi for EngineOptions {
     type Error = ParticleValueError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         let key = match self.mod_particle.as_deref() {
-            Some(name) => mod_api::__private::particle_named_key(name),
-            None => mod_api::__private::particle_vanilla_key(self.ty as u32),
+            Some(name) => myriade_types::particle_named_key(name),
+            None => myriade_types::particle_vanilla_key(self.ty as u32),
         }
         .ok_or(ParticleValueError::UnknownProvider)?;
         Ok(ApiOptions {

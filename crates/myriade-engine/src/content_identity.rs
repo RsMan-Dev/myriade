@@ -31,7 +31,6 @@ pub const MISMATCH: &str =
 /// Registries that a vanilla client cannot validate before reading their IDs.
 pub(crate) fn requires_horizon() -> bool {
     horizon_protocol::item::custom::entries().next().is_some()
-        || !mod_api::__private::custom_stat_declarations().is_empty()
 }
 
 #[derive(Debug)]
@@ -110,9 +109,6 @@ pub fn identity(
         Ok(bytes) => Some(crate::lan::data::with_custom_stats(parse_registries(
             &bytes,
         )?)),
-        Err(error) if !mod_api::__private::custom_stat_declarations().is_empty() => {
-            return Err(IdentityError::Read(error));
-        }
         Err(_) => None,
     };
     if let Some(report) = report {

@@ -327,7 +327,6 @@ impl Game<'_> {
         let menu_id = matches!(kind, Kind::Mount(_)).then_some("horizon:mount_inventory");
         menu.set_registry_id(menu_id);
         menu.set_block_pos(self.container.map(|(x, y, z)| [x, y, z]));
-        menu.brewed_potion_hook = !mod_api::__private::mods().is_empty();
 
         let total = menu.slot_count();
         let before: Vec<Option<ItemStack>> = game_of

@@ -32,13 +32,6 @@ impl EcsLevel {
         }
     }
 
-    /// The mods' `living_visibility` answers, lent for the next `step_with` only.
-    pub fn lend_living_visibility(&mut self, host: Option<&dyn horizon_ecs_proto::targeting::LivingVisibilityHost>) {
-        if let Some(w) = self.ecs_mut() {
-            w.lend_living_visibility(host);
-        }
-    }
-
     /// The host's table of the attribute modifiers an item grants in a slot, set at the level's creation and again when the world's tables
     /// are staged (no-op when inert).
     pub fn set_item_modifiers_table(&mut self, f: horizon_ecs_proto::equip_attrs::ItemModifiersFn) {

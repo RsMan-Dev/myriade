@@ -1,28 +1,11 @@
-//! Prepare server listeners against the new packs before publishing any data.
-use mod_api::__private::game::*;
-
-use super::packs::reload_files;
+//! Prepare the vanilla function library against the new packs before publishing any data.
 use super::{Game, functions::PackStack};
 use myriade_engine::datapack::DataStore;
-use mod_api::__private::reload::ReloadStageError;
-use mod_api::__private::reload::apply_listeners;
-use mod_api::__private::reload::prepare_listeners;
-use mod_api::FileToIdConverter;
-use myriade_types::Identifier;
-use mod_api::ServerReloadContext;
-use mod_api::ServerReloadListener;
-use mod_api::ServerReloadResources;
-use mod_api::VanillaServerListeners;
+use myriade_types::ReloadStageError;
 
-pub(super) type PreparedReload = PreparedStep<Box<DataStore>>;
-
-use mod_api::__private::reload::PreparedStep;
-
-/// Everything one successful reload publishes: its apply steps, then the
-/// retained listeners' store.
+/// Everything one successful reload publishes: the vanilla function library's store.
 pub(super) struct PreparedServerReload {
-    pub(super) steps: Vec<PreparedReload>,
-    pub(super) resources: mod_api::RetainedListeners,
+    pub(super) store: Box<DataStore>,
 }
 
 /// Loads the vanilla function library from `stack`, logging per-file failures.
@@ -38,22 +21,10 @@ fn functions_store(
     store
 }
 
-impl PackStack {
-    fn reload_context(
-        &self,
-        listener: &Identifier,
-        converter: &FileToIdConverter,
-    ) -> ServerReloadContext {
-        let packs: Vec<_> = self.builtin.iter().chain(self.enabled_packs()).collect();
-        ServerReloadContext::new(reload_files("data", &packs, listener, converter))
-    }
-}
-
 impl Game<'_> {
     pub(super) fn prepare_server_reload(
         &self,
         stack: &PackStack,
-        resources: &std::path::Path,
     ) -> Result<PreparedServerReload, ReloadStageError> {
         let _reload = self
             .mod_phase
@@ -68,76 +39,21 @@ impl Game<'_> {
                 crate::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
             )
         })?;
-        let inventory = horizon_mod_package::enabled::EnabledMods::read(resources)
-            .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
-        let conditions = self
-            .registered_load_conditions(&inventory)
-            .map_err(ReloadStageError::DataSource)?;
-        // Nobody listens: no registration graph, only the vanilla function library.
-        if !false {
-            let store = functions_store(stack, &conditions);
-            conditions
-                .check_errors()
-                .map_err(ReloadStageError::DataSource)?;
-            return Ok(PreparedServerReload {
-                steps: vec![PreparedStep::Vanilla(Box::new(store))],
-                resources: mod_api::RetainedListeners::default(),
-            });
-        }
-        let mut listeners = <mod_api::ServerListenerRegistry as mod_api::__private::game::ServerReloadListenersOrder>::new();
-        self.native_add_server_reload_listeners(&mut listeners);
-        let mut resources = mod_api::RetainedListeners::default();
-        let ordered = listeners.finish().map_err(ReloadStageError::Order)?;
-        resources.install(ordered.retained);
-        let steps = prepare_listeners(
-            ordered.listeners,
-            "server_reload_prepare",
-            |listener| {
-                (listener.id == VanillaServerListeners::functions())
-                    .then(|| Box::new(functions_store(stack, &conditions)))
-            },
-            |id, converter| stack.reload_context(id, converter),
-            ServerReloadListener::prepare,
-        )?;
+        let conditions = horizon_world::conditions::LoadConditions::vanilla();
+        let store = functions_store(stack, &conditions);
         conditions
             .check_errors()
             .map_err(ReloadStageError::DataSource)?;
-        Ok(PreparedServerReload { steps, resources })
+        Ok(PreparedServerReload {
+            store: Box::new(store),
+        })
     }
-    pub(super) fn apply_server_reload_callbacks(
-        &mut self,
-        prepared: PreparedServerReload,
-    ) -> PreparedServerReload {
+    pub(super) fn apply_server_reload(&mut self, prepared: PreparedServerReload, stack: &PackStack) {
         let phase = self.mod_phase.clone();
         let _reload = phase
             .reloading()
             .expect("server apply on its owning thread");
-        let mut vanilla = Vec::new();
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
-            vanilla.push(PreparedStep::Vanilla(store))
-        });
-        PreparedServerReload {
-            steps: vanilla,
-            resources: prepared.resources,
-        }
-    }
-    pub(super) fn apply_server_reload(
-        &mut self,
-        prepared: PreparedServerReload,
-        stack: &PackStack,
-    ) {
-        let phase = self.mod_phase.clone();
-        let _reload = phase
-            .reloading()
-            .expect("server apply on its owning thread");
-        apply_listeners(prepared.steps, "server_reload_apply", |store| {
-            self.admit_store(*store, stack);
-        });
-        self.reload_resources = prepared.resources;
+        self.admit_store(*prepared.store, stack);
         self.structure_templates.clear();
-    }
-    /// The retained server reload listeners of the last successful reload.
-    pub(super) fn reload_resources(&self) -> &dyn ServerReloadResources {
-        &self.reload_resources
     }
 }

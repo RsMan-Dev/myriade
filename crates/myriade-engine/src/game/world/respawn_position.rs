@@ -39,56 +39,11 @@ impl Game<'_> {
     /// again.
     pub(super) fn respawn_position(
         &mut self,
-        conn: u32,
-        found: Respawn,
-        missing: Option<RespawnConfig>,
+        _conn: u32,
+        _found: Respawn,
+        _missing: Option<RespawnConfig>,
     ) -> Option<RespawnDecision> {
-        if !false {
-            return None;
-        }
-        let uuid = self
-            .lan
-            .as_ref()?
-            .hub
-            .guests
-            .iter()
-            .find(|g| g.conn == conn)?
-            .uuid;
-        let player = self.player(uuid)?;
-        let original = [found.at.x, found.at.y, found.at.z];
-        let (mut level, mut position) = (found.dim.level(), original);
-        let (mut yaw, mut pitch) = (found.yaw, found.pitch);
-        let mut copy = missing.is_none();
-        self.native_player_respawn_position(mod_api::__private::PlayerRespawnPositionCall {
-            player,
-            original_level: found.dim.level(),
-            original_position: original,
-            missing_respawn_block: missing.is_some(),
-            level: &mut level,
-            position: &mut position,
-            yaw: &mut yaw,
-            pitch: &mut pitch,
-            copy_original_spawn_position: &mut copy,
-        });
-        // A level the world lacks leaves the player at the whole found point: the mod's
-        // coordinates are for that level.
-        let to = match Dim::from_level(level) {
-            Some(dim) => Respawn {
-                dim,
-                at: Vec3::new(position[0], position[1], position[2]),
-                yaw,
-                pitch,
-            },
-            None => {
-                log::warn!("Horizon: a mod chose a respawn in a level the world does not have");
-                found
-            }
-        };
-        Some(RespawnDecision {
-            to,
-            moved: to != found,
-            copy,
-        })
+        None
     }
 
     /// The deferred respawns' side of a decision: the found point's copy

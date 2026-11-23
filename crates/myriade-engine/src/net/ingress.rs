@@ -2,7 +2,7 @@
 //! Each owner supplies its value's allocation/staging policy; this layer never
 //! guesses from encoded length or invokes user callbacks under a queue lock.
 pub use byte_channel::{OwnedReceipt, ReceiveLease, Stats};
-use horizon_mod_runtime::byte_channel;
+use crate::net::byte_channel;
 use std::{cell::Cell, fmt, marker::PhantomData, sync::mpsc::TryRecvError};
 
 pub struct Producer<T> {

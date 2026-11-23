@@ -8,13 +8,62 @@ use crate::{
 };
 use horizon_core::nbt::Tag;
 use myriade_types::BlockState;
-use mod_api::TerrainPattern;
-use mod_api::TerrainView;
-use mod_api::TerrainViewError;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex, Weak, mpsc},
 };
+
+/// An immutable outbound terrain view. All state IDs come from the server's block registry.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainView {
+    /// First matching band wins. Bands may overlap.
+    pub bands: Vec<TerrainBand>,
+    /// States that count as covering a face.
+    pub occluding: Vec<BlockState>,
+    /// Whether to count an unavailable face as covered.
+    pub unavailable_occludes: bool,
+    /// Manhattan radius around a successfully broken block to reveal, at most four.
+    pub reveal_radius: u8,
+}
+
+/// Uses only the authoritative state of the block and its six face neighbours.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TerrainBand {
+    /// Inclusive lower world Y.
+    pub min_y: i32,
+    /// Exclusive upper world Y.
+    pub max_y: i32,
+    /// Eligible states. A block is replaced only when every face is covered.
+    pub targets: Vec<BlockState>,
+    /// Ordered choices. Repetition weights a state.
+    pub replacements: Vec<BlockState>,
+    /// Spatial granularity of the deterministic choice.
+    pub pattern: TerrainPattern,
+}
+
+/// The position used to choose a replacement, and the seed of the choice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerrainPattern {
+    /// One choice per block.
+    Block(u64),
+    /// One choice per horizontal layer in a chunk.
+    Layer(u64),
+}
+
+/// Why defining or selecting a terrain view failed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TerrainViewError {
+    /// No active server, calling mod or connected player.
+    Unavailable,
+    /// Unregistered view ID or invalid dimension identifier.
+    UnknownView,
+    /// Another owner holds the player's selection for this dimension.
+    Owned,
+    /// Invalid bounds, list size, state ID or reveal radius.
+    InvalidRules,
+    /// The server or player has reached its view limit.
+    Limit,
+}
 
 pub(super) type Column = (i32, i32);
 pub(super) type Pos = (i32, i32, i32);

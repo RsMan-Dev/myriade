@@ -16,7 +16,6 @@ pub mod attributes;
 mod biome_resend;
 mod body;
 pub mod border;
-pub mod chunk_watch;
 pub mod chunks;
 pub mod code_of_conduct;
 mod command_order;
@@ -82,8 +81,6 @@ pub const MAX_PLAYERS: usize = 8;
 
 /// Messages from the connection threads to the game thread.
 pub enum NetEvent {
-    /// Frozen receiver identity and credit, retained through its main root transaction.
-    RawPayload(Box<crate::raw_payloads::Delivery>),
     /// A client finished configuration and enters the play state.
     Joined(Box<Joined>),
     /// A packet and the bytes of its body on the wire.
@@ -132,8 +129,6 @@ impl NetEvent {
         use horizon_protocol::retained::OwnedHeap;
         use std::mem::size_of;
         let owned = match self {
-            Self::RawPayload(delivery) => size_of::<crate::raw_payloads::Delivery>()
-                .saturating_add(delivery.incoming.owned_heap_bytes()),
             Self::Joined(joined) => {
                 let Joined {
                     conn: _,
@@ -461,7 +456,6 @@ impl SecureChat {
 
 /// State shared with the connection threads.
 pub struct Shared {
-    payload_local: Arc<crate::raw_payloads::Local>,
     /// What the next login is sent; `PlayerList.reloadResources` swaps it.
     sync: Mutex<Arc<data::SyncData>>,
     pub events: crate::net::ingress::Producer<NetEvent>,
@@ -884,8 +878,6 @@ impl Lan {
         let hide_online_players = config.hide_online_players;
         let enable_status = config.enable_status;
         let shared = Arc::new(Shared {
-            payload_local: crate::raw_payloads::Local::capture(crate::raw_payloads::Side::Server)
-                .map_err(io::Error::other)?,
             sync: Mutex::new(sync),
             events: tx,
             motd: Mutex::new(config.motd.clone()),

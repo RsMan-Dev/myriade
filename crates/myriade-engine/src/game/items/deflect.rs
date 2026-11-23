@@ -108,7 +108,7 @@ impl Game<'_> {
         let Some(b) = self.ecs_box(id) else {
             return;
         };
-        let (_, _, _, magic) = self.melee_damage("minecraft:shulker_bullet", false, Some(id));
+        let (_, _, _, magic) = self.melee_damage("minecraft:shulker_bullet", false);
         let sweep = self.sweep_before_hit("minecraft:shulker_bullet", false);
         self.ecs_with(|ecs, mw| ecs.shulker_struck(mw, id));
         self.vehicle_attack_sounds(b, sweep, magic.then_some(id as i32));

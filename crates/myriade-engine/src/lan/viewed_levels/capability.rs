@@ -274,48 +274,4 @@ mod tests {
             }
         );
     }
-
-    struct Claims;
-    impl mod_api::IPayloadHandler for Claims {
-        fn handle(
-            &self,
-            _: mod_api::PayloadBytes,
-            _: &mut dyn mod_api::IPayloadContext,
-        ) -> Result<(), mod_api::PayloadHandleError> {
-            Ok(())
-        }
-    }
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for Claims {
-        fn register(
-            &self,
-            registrar: &mut dyn mod_api::Registrar,
-            _: &mod_api::RegistrationContext,
-        ) {
-            registrar
-                .payload_handlers()
-                .registrar("1")
-                .configuration_to_server(
-                    mod_api::PayloadId("horizon:levels".into()),
-                    Arc::new(Claims),
-                );
-        }
-    }
-
-    #[test]
-    fn a_mod_cannot_register_the_channel() {
-        let mods = vec![mod_api::ModEntry::new("horizon", Box::new(Claims))];
-        mod_platform::testing::with_mods(mods.into(), || {
-            mod_platform::__private::part_tests::install_parts_fixture(mod_api::__private::mods())
-                .unwrap();
-            let refused =
-                crate::raw_payloads::Transport::capture(crate::raw_payloads::Side::Server)
-                    .err()
-                    .unwrap();
-            assert_eq!(
-                refused,
-                "payload horizon:levels is reserved for an engine service or transport control"
-            );
-        });
-    }
 }

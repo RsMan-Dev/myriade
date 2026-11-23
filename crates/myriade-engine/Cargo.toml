@@ -24,6 +24,7 @@ myriade-level = { path = "../myriade-level" }
 horizon-command = { path = "../horizon-command" }
 horizon-items = { path = "../horizon-items" }
 horizon-core = { path = "../horizon-core" }
+myriade-types = { path = "../myriade-types" }
 horizon-ecs-proto = { path = "../horizon-ecs-proto" }
 # OptiFine-format pack files: custom entity models, random entity textures.
 # The server thread ahead of the workers (MinecraftServer.spin's Thread.setPriority).

@@ -28,68 +28,24 @@ impl Game<'_> {
         filled_hive: bool,
     ) -> (bool, BlockStateId, bool) {
         let creative = self.creative;
-        let mut correct_tool =
+        let correct_tool =
             !facts.requires_tool || self.res.items().correct_for_drops(held, &facts.name);
-        let block_entity = self.removed_block_entity_data(pos, state);
-        let mut destroyed = None;
-        if crate::game::api_values::block_state::block_listens(
-            mod_api::HookId::OnDestroyedByPlayer,
-            state,
-        ) {
-            let player = self.native_acting_id();
-            self.native_on_destroyed_by_player(
-                player,
-                pos,
-                state,
-                held,
-                !creative && correct_tool,
-                &mut destroyed,
-            );
-        }
-        if let Some(removed) = destroyed {
-            if removed {
-                self.native_player_destroyed_block(pos, state, block_entity);
-            }
-            return (
-                removed,
-                state,
-                self.harvest_after_removal(pos, state, facts),
-            );
-        }
         let state = self.player_will_destroy(pos, state, facts, filled_hive);
-        if !creative
-            && self
-                .res
-                .behaviours()
-                .data(state)
-                .is(horizon_world::level::classes::Class::Door)
-        {
-            self.mod_harvest_check(pos, state, &mut correct_tool);
-        }
         let removed = self.remove_block_as_player(pos, creative, correct_tool);
         (
             removed,
             state,
-            self.harvest_after_removal(pos, state, facts),
+            self.harvest_after_removal(facts),
         )
     }
 
-    /// Whether the break that has just removed `state` harvests: the tool's answer for the held
-    /// stack as it is now, then the mods' (`can_harvest_block`, `player_harvest_check`). Only a
-    /// survival player's break asks.
-    fn harvest_after_removal(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        facts: &StateFacts,
-    ) -> bool {
+    /// Whether the break that has just removed a block harvests it: the tool's answer for the
+    /// held stack as it is now. Only a survival player's break asks.
+    fn harvest_after_removal(&mut self, facts: &StateFacts) -> bool {
         if self.creative {
             return false;
         }
-        let mut harvest =
-            !facts.requires_tool || self.res.items().correct_for_drops(self.held(), &facts.name);
-        self.mod_harvest_check(pos, state, &mut harvest);
-        harvest
+        !facts.requires_tool || self.res.items().correct_for_drops(self.held(), &facts.name)
     }
 
     /// The block side effects of `Block.playerWillDestroy` that run before the vanilla

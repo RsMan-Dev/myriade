@@ -102,20 +102,6 @@ pub mod servers {
     };
 }
 
-/// Build-time mod source generation and point signature inspection.
-#[cfg(feature = "mod-build")]
-pub mod mod_build {
-    /// The shared mod API and source generator.
-    pub use horizon_mod_api_gen as api_gen;
-    /// Parsing and validation of injection point signatures.
-    pub use point_shape;
-}
-
-/// Mod package formats, installation, SDK metadata and registry validation.
-/// Enable `mod-index`, `mod-prebuilt` or `mod-runtime-process` for the corresponding services.
-#[cfg(feature = "mod-package")]
-pub use horizon_mod_package as mod_package;
-
 /// Links supplied by installed products for their built-in mod entries.
 pub mod mod_links {
     pub use horizon_hooks::mod_links::{Links, register};

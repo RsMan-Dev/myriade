@@ -16,6 +16,7 @@ members = [
     "crates/horizon-ecs-proto",
     "crates/horizon-gameplay",
     "crates/myriade-data",
+    "crates/myriade-types",
     "crates/myriade-level",
     "crates/horizon-command",
     "crates/horizon-items",

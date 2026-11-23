@@ -45,16 +45,7 @@ impl Game<'_> {
         let table = "minecraft:carve/pumpkin";
         let mut drops = self.sequence_loot(table, table, Some(shears));
         let origin = pos.map(|c| f64::from(c) + 0.5);
-        let player = Some(self.native_acting_id());
-        self.native_use_drops(
-            table,
-            origin,
-            Some((pos, state)),
-            None,
-            player,
-            Some(shears),
-            &mut drops,
-        );
+        let player = Some(myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()));
         for seeds in drops {
             let at = [
                 f64::from(pos[0]) + 0.5 + dx * 0.65,

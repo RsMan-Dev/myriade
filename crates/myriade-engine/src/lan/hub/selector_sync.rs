@@ -9,8 +9,7 @@ impl Hub {
         self.selector_tokens = tokens;
     }
 
-    /// Commands.sendCommands: the command tree for this player. Public because `Hub::set_mod_commands`, a function
-    /// replacement's target (`tools/ci/fn-replace-check/lower`), calls it from a copy in another crate.
+    /// Commands.sendCommands: the command tree for this player.
     pub fn send_commands(&self, i: usize) {
         let g = &self.guests[i];
         let mut packet = self.commands_packet(g.permission);

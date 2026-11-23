@@ -117,10 +117,6 @@ impl Game<'_> {
         );
         let mut events = Vec::new();
         let mut planned: Vec<Planned> = Vec::new();
-        // A minecart spawner has no block.
-        let source = cart
-            .is_none()
-            .then(|| myriade_types::SpawnSource::Block(myriade_types::BlockPos::new(key.0, key.1, key.2)));
         let rides = {
             let mut level = self.natural_level();
             // A minecart spawner has no block to tell the spawn checks of.
@@ -130,7 +126,7 @@ impl Game<'_> {
             let mut spawn = |l: &super::spawn_level::GameLevel,
                              _rng: &mut LevelRandom,
                              r: &SpawnerSpawn| {
-                l.game.plan_spawner_mob(l, r, source, &mut planned)
+                l.game.plan_spawner_mob(l, r, &mut planned)
             };
             spawner.server_tick(&level, &mut random, pos, &mut spawn, &mut events);
             std::mem::take(&mut *level.rides.borrow_mut())
@@ -178,20 +174,19 @@ impl Game<'_> {
         &self,
         l: &super::spawn_level::GameLevel,
         r: &SpawnerSpawn,
-        source: Option<myriade_types::SpawnSource>,
         planned: &mut Vec<Planned>,
     ) -> Option<SpawnerAdded> {
         let kind = self.res.mob_types().get(r.id)?.clone();
         let [x, y, z] = r.position;
         let at = Vec3::new(x, y, z);
         let (bounds, key) = if r.finalize {
-            // The sheet a listened position check made, else a new one; the spawn data's equipment goes in first, then the hooks' edits.
+            // A new sheet; the spawn data's equipment goes in first.
             let reason = if r.trial {
                 SpawnReason::TrialSpawner
             } else {
                 SpawnReason::Spawner
             };
-            let mut sheet = l.take_checked(r.id, r.position, r.yaw).unwrap_or_default();
+            let mut sheet = SpawnSheet::default();
             // TrialSpawner.spawnMob: setPersistenceRequired.
             sheet.persistent = r.trial;
             if let Some(eq) = r.equipment {
@@ -201,7 +196,7 @@ impl Game<'_> {
                     }
                 }
             }
-            let special = match self.finalize_spawn_event(r.id, [x, y, z], reason, source, &mut sheet) {
+            let special = match self.finalize_spawn_at([x, y, z]) {
                 (Finalized::Cancelled, _) => return None,
                 (Finalized::Skipped, _) => None,
                 (Finalized::Done, difficulty) => Some(difficulty.special()),

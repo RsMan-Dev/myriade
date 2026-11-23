@@ -11,7 +11,7 @@ use horizon_world::compression::Compression;
 use horizon_world::worldgen::biome_source::regions::{
     LayoutRegion, REGION_SELECTOR_VERSION, RegionLayout, RegionPoint, SelectorParams,
 };
-use mod_api::__private::BiomeRegionDeclaration;
+use myriade_types::BiomeRegionDeclaration;
 use std::io::Read;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -258,13 +258,11 @@ fn declared(declaration: &BiomeRegionDeclaration) -> LayoutRegion {
 
 /// The mods installed now: the loaded code mods and the mods whose regions are declared.
 fn installed() -> BTreeSet<&'static str> {
-    mod_api::__private::installed_code_ids()
-        .chain(declarations().iter().map(|d| d.mod_id.as_str()))
-        .collect()
+    declarations().iter().map(|d| d.mod_id.as_str()).collect()
 }
 
 fn declarations() -> &'static [BiomeRegionDeclaration] {
-    mod_api::__private::biome_region_declarations()
+    &[]
 }
 
 /// A new world's record, written before its first chunk generates: the installed mods'

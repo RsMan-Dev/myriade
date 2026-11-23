@@ -95,46 +95,6 @@ fn write_list(data: &mut Tag, mods: &[ModRecord]) {
     put(data, "fml", fml);
 }
 
-/// The saved mods that differ from `loaded`, NeoForge's `ModMismatchEvent`: one saved with another
-/// version (including an unknown saved version) or no longer loaded. A mod loaded now that the
-/// world wasn't saved with is no mismatch.
-pub(super) fn mismatches<'a>(
-    saved: impl IntoIterator<Item = &'a ModRecord>,
-    loaded: &[ModRecord],
-) -> Vec<mod_api::ModMismatch> {
-    saved
-        .into_iter()
-        .filter_map(|saved| {
-            if saved.id == "minecraft" {
-                return None;
-            }
-            let current = loaded.iter().find(|m| m.id == saved.id);
-            let differs = current.is_none_or(|current| {
-                match (
-                    horizon_mod_package::dependencies::parse_version(&saved.version),
-                    horizon_mod_package::dependencies::parse_version(&current.version),
-                ) {
-                    (Ok(saved), Ok(current)) => saved != current,
-                    _ => saved.version != current.version,
-                }
-            });
-            differs.then(|| mod_api::ModMismatch {
-                mod_id: saved.id.clone(),
-                saved_version: saved.version.clone(),
-                current_version: current.map(|m| m.version.clone()),
-            })
-        })
-        .collect()
-}
-
-impl Level {
-    /// The saved code and content mods that differ from `loaded` (the code and content mods
-    /// loaded now): [`mismatches`]. A world without either list has none.
-    pub fn mod_mismatches(&self, loaded: &[ModRecord]) -> Vec<mod_api::ModMismatch> {
-        mismatches(self.saved_mods.iter().flatten(), loaded)
-    }
-}
-
 /// The root compound Horizon keeps its own world records in.
 pub const COMPOUND: &str = "horizon";
 const CONTENT_MODS: &str = "ContentModList";
@@ -377,45 +337,6 @@ pub fn missing_in(dir: &Path, loaded: &Loaded) -> Vec<MissingMod> {
     super::read_level_dat(dir).map_or_else(Vec::new, |root| missing(&root, loaded))
 }
 
-/// `mod_mismatch`'s differences for the world in `dir`: its saved code and content mods against
-/// the loaded ones (`Level::mod_mismatches`); `None` without a saved list.
-pub fn mismatches_in(dir: &Path, loaded: &Loaded) -> Option<Vec<mod_api::ModMismatch>> {
-    let saved = saved(&super::read_level_dat(dir)?)?;
-    Some(mismatches(&saved, &loaded.mods()))
-}
-
-/// The answer `mod_mismatch` gave before a world opened, kept for the open so the hook fires
-/// once, and whether the player chose to open that world anyway.
-struct Answer {
-    folder: PathBuf,
-    mismatches: Vec<mod_api::ModMismatch>,
-    resolved: Vec<mod_api::ModMismatchResolution>,
-    confirmed: bool,
-}
-static ANSWERED: Mutex<Option<Answer>> = Mutex::new(None);
-/// Held by tests that use the kept answer, which is the whole process's.
-#[cfg(test)]
-pub(crate) static TEST_ANSWER: Mutex<()> = Mutex::new(());
-
-fn answered() -> std::sync::MutexGuard<'static, Option<Answer>> {
-    ANSWERED.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// Keeps `mod_mismatch`'s answer for the world in `dir`, heard before it opened, in place of
-/// any other.
-pub fn remember_answer(
-    dir: &Path,
-    mismatches: Vec<mod_api::ModMismatch>,
-    resolved: Vec<mod_api::ModMismatchResolution>,
-) {
-    *answered() = Some(Answer {
-        folder: same_path(dir),
-        mismatches,
-        resolved,
-        confirmed: false,
-    });
-}
-
 /// The player chose to open the world in `dir` with its missing mods: its next open goes ahead
 /// without asking again.
 pub fn confirm(dir: &Path) {
@@ -431,18 +352,6 @@ pub fn is_confirmed(dir: &Path) -> bool {
         .is_some_and(|a| a.confirmed && a.folder == same_path(dir))
 }
 
-/// The answer kept for the world in `dir`, taken: `None` when the hook was not asked before this
-/// open (an answer kept for another world is dropped).
-pub fn take_answer(
-    dir: &Path,
-) -> Option<(
-    Vec<mod_api::ModMismatch>,
-    Vec<mod_api::ModMismatchResolution>,
-)> {
-    let answer = answered().take()?;
-    (answer.folder == same_path(dir)).then_some((answer.mismatches, answer.resolved))
-}
-
 /// Drops the answer kept for a world that did not open after all.
 pub fn forget_answer() {
     answered().take();
@@ -450,17 +359,6 @@ pub fn forget_answer() {
 
 fn same_path(dir: &Path) -> PathBuf {
     std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_owned())
-}
-
-/// The missing mods no `mod_mismatch` listener resolved.
-pub fn unresolved(
-    missing: Vec<MissingMod>,
-    resolved: &[mod_api::ModMismatchResolution],
-) -> Vec<MissingMod> {
-    missing
-        .into_iter()
-        .filter(|m| !resolved.iter().any(|r| r.mod_id == m.id))
-        .collect()
 }
 
 /// One line for `m`: its id, its saved version and what opening the world loses.
@@ -513,31 +411,6 @@ mod tests {
             id: id.into(),
             version: version.into(),
         }
-    }
-
-    #[test]
-    fn malformed_id_is_reported_as_missing() {
-        let root = Tag::compound([(
-            "fml",
-            Tag::compound([(
-                "LoadingModList",
-                Tag::List(vec![
-                    Tag::compound([("ModId", Tag::Int(7))]),
-                    Tag::Compound(Default::default()),
-                ]),
-            )]),
-        )]);
-        let level = Level {
-            saved_mods: saved(&root),
-            ..Level::default()
-        };
-        let differences = level.mod_mismatches(&[]);
-        assert_eq!(differences.len(), 2);
-        assert!(
-            differences
-                .iter()
-                .all(|m| m.mod_id.is_empty() && m.current_version.is_none())
-        );
     }
 
     /// The loaded mods replace the list the file had and the other `fml` keys stay; a write
@@ -602,61 +475,5 @@ mod tests {
             None
         );
         let _ = fs::remove_dir_all(&dir);
-    }
-
-    /// `ModMismatchEvent`: a saved mod with another version, or no longer loaded, and nothing
-    /// else: not a mod loaded since, including versions unknown on either side, not a world without
-    /// the list.
-    #[test]
-    fn mod_mismatches_name_changed_and_missing_mods_only() {
-        let mismatch = |mod_id: &str, saved: &str, current: Option<&str>| mod_api::ModMismatch {
-            mod_id: mod_id.into(),
-            saved_version: saved.into(),
-            current_version: current.map(str::to_owned),
-        };
-        let loaded = [
-            record("same", "1.0.0"),
-            record("changed", "2.0.0"),
-            record("unknown_now", ""),
-            record("known_now", "3.0.0"),
-            record("added", "1.0.0"),
-            record("overflow", "99999999999999999999999999999999999999999999"),
-            record("minecraft", "99"),
-            record("downgrade", "3.0.0"),
-        ];
-        assert!(Level::default().mod_mismatches(&loaded).is_empty());
-        let level = Level {
-            saved_mods: Some(vec![
-                record("same", "1"),
-                record("minecraft", "0"),
-                record("downgrade", "4.0.0"),
-                record("changed", "1.0.0"),
-                record("unknown_now", "1.0.0"),
-                record("known_now", ""),
-                record("gone", "0.5.0"),
-                record("overflow", "1"),
-            ]),
-            ..Level::default()
-        };
-        assert_eq!(
-            level.mod_mismatches(&loaded),
-            vec![
-                mismatch("downgrade", "4.0.0", Some("3.0.0")),
-                mismatch("changed", "1.0.0", Some("2.0.0")),
-                mismatch("unknown_now", "1.0.0", Some("")),
-                mismatch("known_now", "", Some("3.0.0")),
-                mismatch("gone", "0.5.0", None),
-                mismatch(
-                    "overflow",
-                    "1",
-                    Some("99999999999999999999999999999999999999999999")
-                ),
-            ]
-        );
-        let unchanged = Level {
-            saved_mods: Some(loaded.to_vec()),
-            ..Level::default()
-        };
-        assert!(unchanged.mod_mismatches(&loaded).is_empty());
     }
 }

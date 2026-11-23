@@ -48,15 +48,6 @@ impl Game<'_> {
             let mut lines = p.lines.to_vec();
             let mut cancel = false;
             self.as_guest_messaged(conn, |game| {
-                game.native_sign_changed(mod_api::__private::SignChangedCall {
-                    player: uuid,
-                    name: &name,
-                    dimension: &dimension,
-                    pos: p.pos,
-                    front: p.front,
-                    lines: &mut lines,
-                    cancel: &mut cancel,
-                });
             });
             if cancel {
                 // The sign keeps its text: the editor closes, and the player's

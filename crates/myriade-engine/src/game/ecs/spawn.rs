@@ -42,7 +42,7 @@ impl Game<'_> {
         let (id, next) = match site {
             SpawnSite::Finalizing(r) => {
                 let reason = ecs_reason(r);
-                match self.finalize_spawn_at(kind, at, r, None, Some(&mut sheet)).0 {
+                match self.finalize_spawn_at(at).0 {
                     Finalized::Cancelled => return None,
                     Finalized::Skipped => self.ecs_spawn_sheet(kind, at, None, reason, None, &sheet)?,
                     Finalized::Done => self.ecs_spawn_sheet(kind, at, finalize_at, reason, Some((special, group)), &sheet)?,

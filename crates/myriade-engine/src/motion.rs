@@ -325,13 +325,6 @@ pub enum MotionEvent {
     /// `WitherRoseBlock.entityInside`: the player's box swept through a
     /// wither rose; the server adds its Wither unless peaceful.
     InsideWitherRose,
-    /// An `entity_inside` part's `EntityWrite::AddEffect`: the server adds the
-    /// effect, unless peaceful.
-    InsideEffect {
-        id: &'static str,
-        duration: i32,
-        amplifier: u8,
-    },
     /// `ServerPlayer.checkFallDamage` after a mace smash: block particles
     /// from the landing block, more the further the fall.
     SmashLanding {
@@ -1240,7 +1233,6 @@ impl MotionWorld<'_, '_, '_> {
         self.controlled_simulation_tick_with_sprint_window(keys, 7)
     }
     /// Local simulation with the configured double-tap sprint window.
-    #[horizon_mod_api_macros::replaceable]
     pub fn controlled_simulation_tick_with_sprint_window(
         &mut self,
         keys: crate::sprint::Keys,
@@ -1557,22 +1549,10 @@ impl MotionWorld<'_, '_, '_> {
         if self.player.spectator {
             return Ok(());
         }
-        // Block.stepOn for the block under an entity on the ground:
         // MagmaBlock's hot floor hurts unless it steps carefully (sneaks).
         if self.player.ground.on_ground && pass != BlockPass::ServerStuck {
             let on = self.legacy_on_position()?;
             let under = self.assets.registry.state(self.block(on));
-            if let Some(block) = under {
-                crate::block_contact::step_on(
-                    &block.name,
-                    crate::block_contact::Contact {
-                        entity: self.player.entity_id,
-                        kind: "minecraft:player",
-                        state: self.block(on),
-                        position: on,
-                    },
-                );
-            }
             let magma = under.is_some_and(|s| s.name == "minecraft:magma_block");
             let slime = under.is_some_and(|s| s.name == "minecraft:slime_block");
             if magma && !self.player.shift_key_down {
@@ -1658,56 +1638,6 @@ impl MotionWorld<'_, '_, '_> {
         self.player.old_position = self.player.position;
         Ok(())
     }
-    /// The player's view of the shared inside walk: its box, its life, its
-    /// blocks and shapes, and its own `entityInside` moments, which keep their
-    /// existing code and queue into the shared collector instead of the
-    /// hand-written group flush this replaces.
-    fn mod_block_inside(
-        &mut self,
-        state: BlockStateId,
-        p: BlockPos,
-        precise: bool,
-        effects: &mut myriade_types::InsideEffects,
-    ) {
-        let entity = self.player.entity_id;
-        let Some(dimension) = crate::block_contact::current_level() else {
-            return;
-        };
-        if !crate::block_contact::HOOKS
-            .get()
-            .is_some_and(|hooks| (hooks.inside_listens)(state))
-        {
-            return;
-        }
-        // The part is told mid-walk, on the level random host, its whole callback
-        // staged into a fresh collector and write list by the fire: only an
-        // answering callback's writes join the walk, and a panic there is
-        // contained, leaving the player's tick as it was.
-        let mut staged = myriade_types::InsideEffects::default();
-        let mut writes = Vec::new();
-        let mut level = crate::health::DamageLevel::of(
-            &mut *self.scene,
-            self.assets.registry,
-            self.tag_items,
-            self.block_registries,
-            self.damage_hooks,
-        );
-        if let Some(hooks) = crate::block_contact::HOOKS.get() {
-            (hooks.inside_fire)(
-                &mut level,
-                dimension,
-                entity,
-                "minecraft:player",
-                state,
-                p,
-                precise,
-                &mut staged,
-                &mut writes,
-            );
-            effects.absorb_step(staged);
-            crate::block_contact::inside_written(state, p, writes);
-        }
-    }
 
     /// A typed entity write an `entity_inside` part queued, applied to this
     /// player inside its own tick, in the collector's flush order.
@@ -1728,19 +1658,7 @@ impl MotionWorld<'_, '_, '_> {
             }
             myriade_types::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
             myriade_types::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
-            myriade_types::EntityWrite::AddEffect {
-                effect,
-                duration,
-                amplifier,
-            } => {
-                if let Some(id) = mod_api::__private::effect_key_id(effect) {
-                    self.player.events.push(MotionEvent::InsideEffect {
-                        id,
-                        duration,
-                        amplifier,
-                    });
-                }
-            }
+            myriade_types::EntityWrite::AddEffect { .. } => {}
         }
         Ok(())
     }
@@ -2022,13 +1940,7 @@ impl MotionWorld<'_, '_, '_> {
     /// off the ground leaves it airborne, and the next tick's gravity lands it
     /// on the lid again instead of the client holding it on a stale ground.
     pub fn lid_push(&mut self, mover: MoverType, movement: Vec3) -> Result<()> {
-        let gate = crate::move_gate::armed(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            mover,
-            movement,
-        );
+        let gate = crate::move_gate::armed(mover, movement);
         if gate.skipped() {
             return Ok(());
         }
@@ -2038,14 +1950,7 @@ impl MotionWorld<'_, '_, '_> {
     /// horizontal displacement. The gate is this invocation's (arismoko/horizon#2414), armed
     /// here before the move's own handling, no-physics included.
     pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
-        crate::move_gate::arm(
-            gate,
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            MoverType::SelfMovement,
-            movement,
-        );
+        crate::move_gate::arm(gate, MoverType::SelfMovement, movement);
         if gate.skipped() {
             return Ok(());
         }
@@ -2609,23 +2514,7 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
                 horizon_world::block_landing::LandingEntityKind::Player,
             )
             .map_err(|e| e.to_string())?;
-        Ok(crate::block_contact::bounce(
-            &mut crate::health::DamageLevel::of(
-                &mut *self.scene,
-                self.assets.registry,
-                self.tag_items,
-                self.block_registries,
-                self.damage_hooks,
-            ),
-            crate::block_contact::Contact {
-                entity: self.player.entity_id,
-                kind: "minecraft:player",
-                state,
-                position,
-            },
-            fall_distance,
-            movement,
-        ))
+        Ok(movement)
     }
     fn bounce_event(&mut self) -> Result<()> {
         Ok(())
@@ -3007,11 +2896,6 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
             }
             return Ok(());
         }
-        // The part's contact, mid-walk, where vanilla runs the block's own
-        // `entityInside`; its writes join this step only when it answered.
-        // Client and ServerDamage only: those passes each consume the moves
-        // they walk, so no pass pair tells the part twice.
-        self.m.mod_block_inside(state, p, precise, effects);
         // CactusBlock, CampfireBlock and the cauldrons' entityInside
         // (`entity.hurt`, the fire and the fill level), and WitherRoseBlock's
         // server-side effect.

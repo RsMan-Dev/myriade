@@ -19,7 +19,6 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
         horizon_protocol::registry::Ids::from_names(vec!["minecraft:trident".into()]),
     );
     let (mut hub, rx) = hub_with_sync(sync);
-    hub.sync_attachments = true;
     hub.guests.update(0, |g| g.sent_chunks.insert((0, 0)));
     let mut world = World::new(horizon_world::registry::BlockStateId(0), 0);
     let border = crate::worldborder::WorldBorder::default();
@@ -87,17 +86,10 @@ fn a_trident_joining_after_tracking_is_paired_before_its_throw_sound() {
     assert_eq!(hub.native_tracking[0].events.len(), 1);
     assert!(hub.native_tracking[0].events[0].start);
     assert_eq!(hub.native_tracking[0].events[0].entity, 37);
-    assert!(
-        hub.attachment_snapshots
-            .iter()
-            .any(|s| s.player == hub.guests[0].uuid && s.holder == Holder::Entity(37))
-    );
     hub.native_tracking.clear();
-    hub.attachment_snapshots.clear();
     hub.note_joined(std::slice::from_ref(&trident));
     hub.collect_tracking();
     assert!(hub.native_tracking.is_empty());
-    assert!(hub.attachment_snapshots.is_empty());
     assert!(rx.try_recv().is_err());
 }
 

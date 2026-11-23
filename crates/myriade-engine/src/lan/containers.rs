@@ -2,7 +2,7 @@
 //! level events, animations and block containers with their clicks.
 use super::{
     hub::Hub,
-    menu::{self, Menu, NativeMenuEvent, Rules, SlotRef, Slots, View},
+    menu::{self, Menu, Rules, SlotRef, Slots, View},
 };
 use crate::{containers::BlockEntity, items::ItemStack, world::World};
 use horizon_core::nbt::Tag;
@@ -618,22 +618,14 @@ impl Hub {
     }
 
     fn close_container_at(&mut self, i: usize) {
-        let closed = self.guests.update(i, |g| {
-            let menu = g.menu.take()?;
+        self.guests.update(i, |g| {
+            let Some(menu) = g.menu.take() else {
+                return;
+            };
             g.send(&C::ContainerClose(play::ContainerClose {
                 container: menu.window,
             }));
-            if menu.slots == Slots::Native {
-                g.native_menu.clear();
-                Some((g.uuid, menu.window))
-            } else {
-                None
-            }
         });
-        if let Some((uuid, window)) = closed {
-            self.native_menu_events
-                .push(NativeMenuEvent::Closed { uuid, window });
-        }
     }
 
     pub(super) fn close_container_for(&mut self, i: usize) {
@@ -648,24 +640,11 @@ impl Hub {
 
     /// The client closed its window.
     pub fn container_closed(&mut self, conn: u32, window: i32) {
-        let closed = self
-            .update_guest(conn, |g| {
-                if !g.menu.as_ref().is_some_and(|m| m.window == window) {
-                    return None;
-                }
-                let native = g.menu.take().is_some_and(|m| m.slots == Slots::Native);
-                if native {
-                    g.native_menu.clear();
-                    Some(g.uuid)
-                } else {
-                    None
-                }
-            })
-            .flatten();
-        if let Some(uuid) = closed {
-            self.native_menu_events
-                .push(NativeMenuEvent::Closed { uuid, window });
-        }
+        self.update_guest(conn, |g| {
+            if g.menu.as_ref().is_some_and(|m| m.window == window) {
+                g.menu = None;
+            }
+        });
     }
 
     fn hashed_matches(&mut self, claimed: &Option<Hashed>, mine: &Option<ItemStack>) -> bool {
@@ -735,19 +714,6 @@ impl Hub {
         if self.guests[i].spectator() {
             // A spectator's click changes nothing, and sendAllDataToRemote
             // takes back what its client predicted.
-            self.resend_menu(conn, p.container, world);
-            return None;
-        }
-        // A native mod's menu: the click is the mod's to answer, and the
-        // whole menu and the cursor go back as they were.
-        if in_menu && self.guests[i].menu.as_ref().map(|m| m.slots) == Some(Slots::Native) {
-            self.native_menu_events.push(NativeMenuEvent::Click {
-                uuid: self.guests[i].uuid,
-                window: p.container,
-                slot: i32::from(p.slot),
-                button: i32::from(p.button),
-                mode: p.input,
-            });
             self.resend_menu(conn, p.container, world);
             return None;
         }

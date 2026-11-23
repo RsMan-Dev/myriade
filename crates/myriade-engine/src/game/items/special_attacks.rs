@@ -30,9 +30,7 @@ impl Game<'_> {
             return false;
         }
         // A dragon part is no LivingEntity: `canCriticalAttack` is false.
-        // Its dragon: the one whose eight parts take the ids after it.
-        let dragon = self.dragon_views().into_iter().map(|(d, _)| d).find(|d| (d + 1..=d + 8).contains(&id));
-        let (amount, scale, _, _) = self.melee_damage("minecraft:ender_dragon", false, dragon);
+        let (amount, scale, _, _) = self.melee_damage("minecraft:ender_dragon", false);
         self.swing_arm();
         // The part's box.
         let area = self
@@ -69,7 +67,7 @@ impl Game<'_> {
         };
         // Player.attack's full damage against the cart's entity type.
         let id = cart as i32;
-        let (damage, scale, _, magic) = self.melee_damage(kind, false, Some(id as u32));
+        let (damage, scale, _, magic) = self.melee_damage(kind, false);
         let sweep = self.sweep_before_hit(kind, false);
         let attacker = self.own_entity_id();
         let source = myriade_engine::health::HurtSource {

@@ -326,7 +326,7 @@ impl Game<'_> {
         if !self.may_interact_at(BlockPos::new(at[0].floor() as i32, at[1].floor() as i32, at[2].floor() as i32)) {
             return true;
         }
-        let ((_, scale, crit, magic), admitted) = self.melee_damage_with_admission("minecraft:armor_stand", true, Some(id));
+        let ((_, scale, crit, magic), admitted) = self.melee_damage_with_admission("minecraft:armor_stand", true);
         let sweep = self.sweep_before_hit("minecraft:armor_stand", crit);
         let hurt = self.hit_armor_stand(id, |g, area, id| {
             let knockback = if admitted { g.extra_knockback("minecraft:armor_stand", scale).0 } else { 0.0 };

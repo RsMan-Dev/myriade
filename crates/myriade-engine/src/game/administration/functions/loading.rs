@@ -1,6 +1,6 @@
 //! Admit a complete candidate before changing the live functions, tables or pack selection.
 use super::{PackStack, registry_graph};
-use mod_api::__private::reload::ReloadStageError;
+use myriade_types::ReloadStageError;
 
 /// The lines vanilla logs for a refused registry: an error when a reference does not bind, a
 /// warning for the validation problems after it.

@@ -19,7 +19,6 @@ pub use snapshots::{
 mod cooking;
 mod ingredient;
 pub mod mod_kinds;
-pub mod native_hooks;
 mod remainders;
 mod repair_item;
 #[path = "crafting/shapeless_matching.rs"]
@@ -212,13 +211,11 @@ pub enum Recipe {
     },
     /// The recipes with code of their own.
     Special(Special),
-    /// A resolved owner and its opaque recipe value.
-    Mod(mod_kinds::ModRecipe),
 }
 impl Recipe {
     /// `Recipe.isSpecial`: special recipes (e.g. firework rocket, dye) are not in the recipe book.
     pub fn is_special(&self) -> bool {
-        matches!(self, Recipe::Special(_) | Recipe::Mod(_))
+        matches!(self, Recipe::Special(_))
     }
 }
 /// The custom and transmuting crafting recipes.
@@ -1248,15 +1245,7 @@ pub fn registration_key(name: &str) -> (String, String) {
     (format!("{path}.json"), namespace.to_owned())
 }
 /// The type of a recipe the game doesn't craft itself: one outside `minecraft`.
-fn custom_type(v: &Value) -> Option<&str> {
-    v["type"]
-        .as_str()
-        .filter(|t| t.contains(':') && !t.starts_with("minecraft:"))
-}
 pub struct Recipes {
-    /// Decoded read-only recipes, retained for their serializers when synchronizing.
-    pub mod_read_only: Vec<(String, mod_kinds::ModRecipe)>,
-    mod_crafting: bool,
     pub crafting: Vec<(String, Recipe)>,
     pub cooking: Vec<Cooking>,
     /// Every effective recipe's file, by recipe type (`minecraft:smelting`,
@@ -1382,36 +1371,6 @@ pub struct ResolvedSources {
 #[derive(Clone, Debug, Default)]
 pub struct PropertyAdditions(HashMap<String, HashSet<String>>);
 impl PropertyAdditions {
-    /// Asks the `recipe_property_sets` hook once. An unknown set key and an
-    /// item that is air are logged and skipped.
-    fn ask(context: &horizon_world::native_load_context::LoadContext) -> Self {
-        let mut asked = Vec::new();
-        native_hooks::native_recipe_property_sets(context, &mut asked);
-        let mut sets = HashMap::<String, HashSet<String>>::new();
-        for addition in asked {
-            let key = addition
-                .set
-                .strip_prefix("minecraft:")
-                .unwrap_or(&addition.set);
-            if !key.contains(':')
-                && !crate::lan::recipes::PROPERTY_SETS
-                    .iter()
-                    .any(|(set, ..)| *set == key)
-            {
-                log::warn!("recipe_property_sets: unknown set {}", addition.set);
-                continue;
-            }
-            let set = sets.entry(key.to_owned()).or_default();
-            for item in addition.items {
-                if item == "minecraft:air" {
-                    log::warn!("recipe_property_sets: air skipped in {key}");
-                } else {
-                    set.insert(item);
-                }
-            }
-        }
-        Self(sets)
-    }
     /// The items mods added to the set `key` (`furnace_input`).
     pub fn get(&self, key: &str) -> Option<&HashSet<String>> {
         self.0.get(key)
@@ -1486,7 +1445,6 @@ impl ResolvedSources {
                 mod_kinds::recipe_type(name, serializer)?;
             }
         }
-        let listened = false;
         let recipes = sources
             .into_iter()
             .filter_map(|(name, file)| {
@@ -1515,7 +1473,7 @@ impl ResolvedSources {
                     }
                 }
                 if parsed_here {
-                    let kinds: Vec<_> = INGREDIENT_KEYS
+                    let kinds: Vec<(String, bool)> = INGREDIENT_KEYS
                         .iter()
                         .filter_map(|key| resolved.get(*key))
                         .chain(
@@ -1526,18 +1484,13 @@ impl ResolvedSources {
                         )
                         .flat_map(Ingredient::custom_kinds)
                         .collect();
-                    if !listened && let Some((kind, _)) = kinds.first() {
+                    if let Some((kind, _)) = kinds.first() {
                         // No mod answers the `ingredient` hook: the kind is
                         // unregistered, and the whole file fails.
                         log::error!(
                             "recipes: {name} refused: ingredient kind {kind} is not registered by any mod"
                         );
                         return None;
-                    }
-                    for (kind, _) in kinds.iter().filter(|(_, empty)| *empty) {
-                        log::warn!(
-                            "recipes: {name}: ingredient kind {kind} matched no items; the recipe cannot be placed"
-                        );
                     }
                 }
                 let file = Arc::new(file);
@@ -1555,7 +1508,7 @@ impl ResolvedSources {
             .collect();
         Ok(Self {
             recipes,
-            property_additions: PropertyAdditions::ask(context),
+            property_additions: PropertyAdditions::default(),
             ..Self::default()
         })
     }
@@ -1564,8 +1517,6 @@ impl ResolvedSources {
 impl Recipes {
     pub fn empty() -> Self {
         Self {
-            mod_read_only: Vec::new(),
-            mod_crafting: false,
             crafting: Vec::new(),
             cooking: Vec::new(),
             by_type: HashMap::new(),
@@ -1626,7 +1577,6 @@ impl Recipes {
                 mod_kinds::recipe_type(&recipe.name, serializer)?;
             }
         }
-        let mut mod_read_only = Vec::new();
         let mut crafting = Vec::new();
         let mut cooking = Vec::new();
         let mut by_type: HashMap<String, Vec<crate::crafting::RecipeSnapshot>> = HashMap::new();
@@ -1660,19 +1610,6 @@ impl Recipes {
                         continue;
                     }
                 }
-            }
-            if custom_type(json).is_some() {
-                if let Some(recipe) = mod_kinds::decode(name, json)
-                    && let Some(entry) = entry
-                {
-                    if entry.kind == "minecraft:crafting" {
-                        crafting.push((name.clone(), Recipe::Mod(recipe)));
-                    } else {
-                        mod_read_only.push((name.clone(), recipe));
-                    }
-                    by_type.entry(entry.kind.clone()).or_default().push(entry);
-                }
-                continue;
             }
             if !Ingredient::validate_recipe(resolved, items, name) {
                 continue;
@@ -1928,9 +1865,6 @@ impl Recipes {
             .remove("minecraft:curse")
             .unwrap_or_default();
         Ok(Self {
-            mod_read_only,
-            mod_crafting: !mod_api::__private::parts_installation::crafting_recipe_kinds()
-                .is_empty(),
             crafting,
             cooking,
             by_type: by_type
@@ -1971,7 +1905,7 @@ impl Recipes {
         size: usize,
         map_scale: &dyn Fn(i32) -> Option<u8>,
     ) -> Option<(&str, ItemStack)> {
-        self.find_with_dimensions(context, grid, size, size, size, map_scale)
+        self.find_with_dimensions(context, grid, size, map_scale)
     }
     /// `Recipe.matches` then `assemble` for one recipe: None when it does
     /// not match, Some(None) when it matches with nothing to make.
@@ -1981,7 +1915,6 @@ impl Recipes {
         recipe: &Recipe,
     ) -> Option<Option<ItemStack>> {
         match recipe {
-            Recipe::Mod(_) => None,
             Recipe::Special(special) => special
                 .matches(ctx, input)
                 .then(|| special.assemble(ctx, input)),
@@ -2031,9 +1964,6 @@ impl Recipes {
         let Some((_, recipe)) = self.crafting.iter().find(|(n, _)| n == name) else {
             return false;
         };
-        if let Recipe::Mod(recipe) = recipe {
-            return recipe.assemble(grid, size).is_some();
-        }
         let Some(input) = Input::of(grid, size) else {
             return false;
         };
@@ -2084,7 +2014,7 @@ impl Recipes {
                 None,
             ),
             // CustomRecipe.placementInfo: NOT_PLACEABLE.
-            Recipe::Special(_) | Recipe::Mod(_) => Placement::default(),
+            Recipe::Special(_) => Placement::default(),
         })
     }
     /// The `experience` of the cooking recipe with this file name, and 0 for one this data
@@ -2354,119 +2284,6 @@ mod tests {
     }
 
     #[test]
-    fn recipe_rule_views_share_station_and_crafting_parses() {
-        mod_platform::testing::with_recipe_types(&["example:machine"], || {
-            let named = |name: &str, json: &str| {
-                let file = Arc::new(serde_json::from_str::<Value>(json).unwrap());
-                ResolvedRecipe {
-                    name: name.into(),
-                    resolved: file.clone(),
-                    file,
-                }
-            };
-            let sources = ResolvedSources {
-                recipes: vec![
-                    named(
-                        "cut",
-                        r#"{"type":"minecraft:stonecutting","ingredient":"minecraft:stone","result":{"id":"minecraft:stick","count":2}}"#,
-                    ),
-                    named(
-                        "invalid",
-                        r#"{"type":"minecraft:stonecutting","ingredient":"minecraft:stone","result":{"id":"minecraft:stick","count":100}}"#,
-                    ),
-                    named(
-                        "smith",
-                        r#"{"type":"minecraft:smithing_transform","template":"minecraft:stick","base":"minecraft:stone","addition":"minecraft:iron_ingot","result":{"id":"minecraft:diamond"}}"#,
-                    ),
-                    named(
-                        "transmute",
-                        r#"{"type":"minecraft:crafting_transmute","input":"minecraft:stone","material":"minecraft:stick","material_count":{"min":2,"max":4},"add_material_count_to_result":true,"result":{"id":"minecraft:diamond","count":2,"components":{"minecraft:damage":0,"!minecraft:custom_name":{}}}}"#,
-                    ),
-                    named(
-                        "trim",
-                        r#"{"type":"minecraft:smithing_trim","template":"minecraft:stick","base":"minecraft:stone","addition":"minecraft:iron_ingot","pattern":"minecraft:coast"}"#,
-                    ),
-                    named("custom", r#"{"type":"example:machine","value":42}"#),
-                ],
-                ..ResolvedSources::default()
-            };
-            let items = Items::for_tests(HashMap::new());
-            let root = std::env::temp_dir();
-            let recipes =
-                Recipes::from_resolved(&root, &items, &PackOverlay::NONE, &sources).unwrap();
-            let stations = crate::stations::StationRecipes::from_sources(&root, &items, &sources);
-            let cuts = &recipes.by_type["minecraft:stonecutting"];
-            assert_eq!(cuts.len(), 1);
-            let Some(crate::crafting::RecipeRule::Stonecutting { input, result }) = &cuts[0].rule
-            else {
-                panic!("missing stonecutting rule")
-            };
-            assert_eq!(input.order, ["minecraft:stone"]);
-            assert_eq!(result.count, 2);
-            assert_eq!(stations.stonecutting[0].result, *result);
-            let smith = &serialized(&recipes, "minecraft:smithing_transform")[0];
-            let Some(crate::crafting::RecipeRule::SmithingTransform { base, result, .. }) =
-                &smith.rule
-            else {
-                panic!("missing smithing rule")
-            };
-            assert_eq!(base.order, ["minecraft:stone"]);
-            assert_eq!(result.item.as_deref(), Some("minecraft:diamond"));
-            assert!(
-                smith.results.is_empty(),
-                "smithing output inherits components"
-            );
-            let transmute = &serialized(&recipes, "minecraft:crafting_transmute")[0];
-            let Some(crate::crafting::RecipeRule::Transmute {
-                min,
-                max,
-                add_count,
-                result,
-                ..
-            }) = &transmute.rule
-            else {
-                panic!("missing transmute rule")
-            };
-            assert_eq!((*min, *max, *add_count), (2, 4, true));
-            assert_eq!(result.item.as_deref(), Some("minecraft:diamond"));
-            let patch = result
-                .components
-                .as_ref()
-                .expect("component patch retained");
-            assert!(patch.get("minecraft:damage").is_some());
-            assert!(patch.get("!minecraft:custom_name").is_some());
-            let trim = &serialized(&recipes, "minecraft:smithing_trim")[0];
-            let Some(crate::crafting::RecipeRule::SmithingTrim {
-                pattern, addition, ..
-            }) = &trim.rule
-            else {
-                panic!("missing smithing trim rule")
-            };
-            assert!(
-                matches!(pattern, crate::crafting::RecipeTrimPattern::Reference(id) if id == "minecraft:coast")
-            );
-            assert_eq!(addition.order, ["minecraft:iron_ingot"]);
-            assert!(trim.results.is_empty());
-            assert!(
-                transmute.results.is_empty(),
-                "grid-dependent output is not fixed"
-            );
-            let grid = [
-                Some(ItemStack::new("minecraft:stone", 1)),
-                Some(ItemStack::new("minecraft:stick", 1)),
-                Some(ItemStack::new("minecraft:stick", 1)),
-                None,
-            ];
-            let output = recipes.craft(lc(), &grid, 2).expect("transmute matches");
-            assert_eq!(output.item.as_ref(), "minecraft:diamond");
-            assert_eq!(output.count, 4);
-            let custom = &recipes.by_type["example:machine"][0];
-            assert!(custom.rule.is_none());
-            assert_eq!(custom.json["value"], 42);
-        });
-    }
-
-    #[test]
     fn recipe_template_patch_survives_special_and_smithing_parse() {
         let items = Items::for_tests(HashMap::new());
         let template = r#"{"id":"minecraft:diamond","count":2,"components":{"minecraft:custom_data":{"rule":1}}}"#;
@@ -2641,7 +2458,7 @@ mod tests {
         assert!(Ingredient::parse(&json(r#"{"type":"minecraft:future_shape"}"#), &items).is_none());
         assert!(Ingredient::parse(&json(r#"{"type":"aspect"}"#), &items).is_none());
         let mut list = vec!["b".to_string(), "a".to_string(), "b".to_string()];
-        mod_api::__private::dedup_keep_order(&mut list);
+        myriade_types::dedup_keep_order(&mut list);
         assert_eq!(list, vec!["b".to_string(), "a".to_string()]);
     }
 
@@ -2767,8 +2584,6 @@ mod tests {
             })
             .collect();
         Recipes {
-            mod_read_only: Vec::new(),
-            mod_crafting: false,
             crafting: Vec::new(),
             cooking,
             by_type: HashMap::new(),
@@ -2778,159 +2593,6 @@ mod tests {
             cook_index: Default::default(),
             property_additions: PropertyAdditions::default(),
         }
-    }
-    #[test]
-    fn only_types_outside_minecraft_are_custom() {
-        let kind = |json: &str| {
-            let v: Value = serde_json::from_str(json).unwrap();
-            custom_type(&v).map(str::to_owned)
-        };
-        assert_eq!(
-            kind(r#"{"type":"mymod:crusher"}"#).as_deref(),
-            Some("mymod:crusher")
-        );
-        assert_eq!(kind(r#"{"type":"minecraft:smelting"}"#), None);
-        assert_eq!(kind(r#"{"type":"minecraft:from_a_later_version"}"#), None);
-        assert_eq!(kind(r#"{"type":"no_namespace"}"#), None);
-        assert_eq!(kind(r#"{"type":7}"#), None);
-        assert_eq!(kind("{}"), None);
-    }
-    /// Recipes of every type land in `by_type`, in file order, with the id the
-    /// file has; a data pack overrides by id and adds more; a recipe of a mod's
-    /// own type is kept as its file says and isn't crafted.
-    #[test]
-    fn custom_recipes_load_by_type_with_pack_override() {
-        mod_platform::testing::with_recipe_types(
-            &["mymod:crusher", "mymod:mixer", "pack:press"],
-            || {
-                let root = std::env::temp_dir()
-                    .join(format!("horizon-custom-recipes-{}", std::process::id()));
-                let _ = fs::remove_dir_all(&root);
-                fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
-                fs::create_dir_all(root.join("data/mymod/recipe")).unwrap();
-                fs::write(
-                    root.join(horizon_items::content_namespaces::MARKER),
-                    br#"["mymod"]"#,
-                )
-                .unwrap();
-                let file = |kind: &str, tag: &str| {
-                    format!(r#"{{"type":"{kind}","tag":"{tag}"}}"#).into_bytes()
-                };
-                fs::write(
-                    root.join("data/mymod/recipe/a.json"),
-                    file("mymod:crusher", "a"),
-                )
-                .unwrap();
-                fs::write(
-                    root.join("data/mymod/recipe/b.json"),
-                    file("mymod:crusher", "b"),
-                )
-                .unwrap();
-                fs::write(
-                    root.join("data/mymod/recipe/c.json"),
-                    file("mymod:mixer", "c"),
-                )
-                .unwrap();
-                fs::create_dir_all(root.join("data/mymod/recipe/deep/er")).unwrap();
-                fs::write(
-                    root.join("data/mymod/recipe/deep/er/d.json"),
-                    file("mymod:mixer", "d"),
-                )
-                .unwrap();
-                fs::write(
-                    root.join("data/minecraft/recipe/later.json"),
-                    file("minecraft:from_a_later_version", "x"),
-                )
-                .unwrap();
-                // A vanilla type needs ingredients the loader accepts to be a recipe at all.
-                let cutting = |tag: &str| {
-                    format!(
-                r#"{{"type":"minecraft:stonecutting","tag":"{tag}","ingredient":"minecraft:stone","result":{{"id":"minecraft:stone_bricks"}}}}"#
-            )
-            .into_bytes()
-                };
-                fs::write(
-                    root.join("data/minecraft/recipe/iron_ingot.json"),
-                    cutting("vanilla-iron"),
-                )
-                .unwrap();
-                let items = Items::for_tests(HashMap::new());
-                let error = Recipes::load(
-                    &root,
-                    &items,
-                    &PackOverlay::NONE,
-                    &crate::test_resources::server_load(),
-                )
-                .err()
-                .unwrap()
-                .to_string();
-                assert!(
-                    error.contains("later.json")
-                        && error.contains("minecraft:from_a_later_version"),
-                    "{error}"
-                );
-                fs::remove_file(root.join("data/minecraft/recipe/later.json")).unwrap();
-                let recipes = Recipes::load(
-                    &root,
-                    &items,
-                    &PackOverlay::NONE,
-                    &crate::test_resources::server_load(),
-                )
-                .unwrap();
-                let ids = |kind: &str| -> Vec<String> {
-                    recipes.by_type[kind].iter().map(|r| r.id.clone()).collect()
-                };
-                assert_eq!(ids("mymod:crusher"), ["mymod:a", "mymod:b"]);
-                assert_eq!(ids("mymod:mixer"), ["mymod:c", "mymod:deep/er/d"]);
-                // A `minecraft` type 26.3 doesn't have is no recipe, as in `RecipeManager`.
-                assert!(
-                    !recipes
-                        .by_type
-                        .contains_key("minecraft:from_a_later_version")
-                );
-                // Vanilla's types answer through the same table (a type the game doesn't parse keeps its file;
-                // one it parses and drops, `minecraft:smelting` with no result, is no recipe).
-                assert_eq!(ids("minecraft:stonecutting"), ["minecraft:iron_ingot"]);
-                // Not crafted, and no recipe-book meta of their own.
-                assert!(recipes.crafting.is_empty() && recipes.cooking.is_empty());
-                assert!(!recipes.meta.keys().any(|k| k.starts_with("mymod:")));
-                // A pack replaces `mymod:b`, and adds `pack:d` and a `minecraft:p` of its own type.
-                let packs = [
-                    (
-                        "recipe/mymod:b".to_owned(),
-                        vec![file("mymod:crusher", "pack-b")],
-                    ),
-                    ("recipe/pack:d".to_owned(), vec![file("mymod:crusher", "d")]),
-                    (
-                        "recipe/minecraft:iron_ingot".to_owned(),
-                        vec![cutting("pack-iron")],
-                    ),
-                    (
-                        "recipe/minecraft:p".to_owned(),
-                        vec![file("pack:press", "p")],
-                    ),
-                ];
-                let recipes = Recipes::load(
-                    &root,
-                    &items,
-                    &PackOverlay::new(&packs),
-                    &crate::test_resources::server_load(),
-                )
-                .unwrap();
-                let crusher = &recipes.by_type["mymod:crusher"];
-                assert_eq!(
-                    crusher.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-                    ["mymod:a", "mymod:b", "pack:d"]
-                );
-                assert_eq!(crusher[1].json["tag"], "pack-b");
-                assert_eq!(recipes.by_type["pack:press"][0].id, "minecraft:p");
-                assert_eq!(
-                    recipes.by_type["minecraft:stonecutting"][0].json["tag"],
-                    "pack-iron"
-                );
-                let _ = fs::remove_dir_all(&root);
-            },
-        );
     }
     #[test]
     fn a_recipe_result_needs_an_item_and_a_sane_count() {
@@ -3052,126 +2714,6 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    /// A recipe whose `neoforge:conditions` hold loads, one whose don't is
-    /// silently absent, from the root's own files and a pack's alike.
-    #[test]
-    fn load_conditions_gate_recipes() {
-        mod_platform::testing::with_recipe_types(&["mymod:crusher"], || {
-            let root =
-                std::env::temp_dir().join(format!("horizon-conditions-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&root);
-            fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
-            fs::write(
-                root.join(horizon_items::content_namespaces::MARKER),
-                br#"["mymod"]"#,
-            )
-            .unwrap();
-            fs::write(
-                root.join(horizon_mod_package::enabled::MARKER),
-                br#"{"mymod":"both"}"#,
-            )
-            .unwrap();
-            let file = |conditions: &str, tag: &str| {
-                format!(
-                    r#"{{"type":"mymod:crusher","tag":"{tag}","neoforge:conditions":{conditions}}}"#
-                )
-                .into_bytes()
-            };
-            // `mymod` is in the root, `ic2` is not.
-            fs::write(
-                root.join("data/minecraft/recipe/yes.json"),
-                file(r#"[{"type":"neoforge:mod_loaded","modid":"mymod"}]"#, "yes"),
-            )
-            .unwrap();
-            fs::write(
-                root.join("data/minecraft/recipe/no.json"),
-                file(r#"[{"type":"neoforge:mod_loaded","modid":"ic2"}]"#, "no"),
-            )
-            .unwrap();
-            fs::write(
-            root.join("data/minecraft/recipe/inverted.json"),
-            file(
-                r#"[{"type":"neoforge:not","value":{"type":"neoforge:mod_loaded","modid":"ic2"}}]"#,
-                "inverted",
-            ),
-        )
-        .unwrap();
-            let items = Items::for_tests(HashMap::new());
-            let recipes = Recipes::load(
-                &root,
-                &items,
-                &PackOverlay::NONE,
-                &crate::test_resources::server_load(),
-            )
-            .unwrap();
-            let ids = &recipes.by_type["mymod:crusher"];
-            assert_eq!(
-                ids.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-                ["minecraft:inverted", "minecraft:yes"]
-            );
-            // A pack's gated file answers the same gate.
-            let packs = [(
-                "recipe/minecraft:pack_yes".to_owned(),
-                vec![file(r#"[{"type":"neoforge:true"}]"#, "pack_yes")],
-            )];
-            let recipes = Recipes::load(
-                &root,
-                &items,
-                &PackOverlay::new(&packs),
-                &crate::test_resources::server_load(),
-            )
-            .unwrap();
-            let ids = &recipes.by_type["mymod:crusher"];
-            assert!(ids.iter().any(|r| r.id == "minecraft:pack_yes"));
-            let _ = fs::remove_dir_all(&root);
-        });
-    }
-    /// A pack's recipe filter removes a recipe and swaps a mod recipe's input
-    /// in the loaded tables, after the packs are merged.
-    #[test]
-    fn recipe_filters_remove_and_swap() {
-        mod_platform::testing::with_recipe_types(&["mymod:crusher"], || {
-            let root = std::env::temp_dir().join(format!("horizon-filters-{}", std::process::id()));
-            let _ = fs::remove_dir_all(&root);
-            fs::create_dir_all(root.join("data/minecraft/recipe")).unwrap();
-            let crusher = |input: &str| {
-                format!(
-                    r#"{{"type":"mymod:crusher","input":"{input}","result":{{"id":"mymod:dust"}}}}"#
-                )
-                .into_bytes()
-            };
-            fs::write(
-                root.join("data/minecraft/recipe/iron.json"),
-                crusher("minecraft:iron_ingot"),
-            )
-            .unwrap();
-            fs::write(
-                root.join("data/minecraft/recipe/gold.json"),
-                crusher("minecraft:gold_ingot"),
-            )
-            .unwrap();
-            let filter = br##"{"filters":[
-            {"id":"minecraft:gold","remove":true},
-            {"type":"mymod:*","replace_input":{"from":"minecraft:iron_ingot","to":"#c:ingots/iron"}}
-        ]}"##;
-            let packs = [("recipe_filter/pack:f".to_owned(), vec![filter.to_vec()])];
-            let items = Items::for_tests(HashMap::new());
-            let recipes = Recipes::load(
-                &root,
-                &items,
-                &PackOverlay::new(&packs),
-                &crate::test_resources::server_load(),
-            )
-            .unwrap();
-            let crushed = &recipes.by_type["mymod:crusher"];
-            assert_eq!(
-                crushed.iter().map(|r| r.id.as_str()).collect::<Vec<_>>(),
-                ["minecraft:iron"]
-            );
-            assert_eq!(crushed[0].json["input"], "#c:ingots/iron");
-            let _ = fs::remove_dir_all(&root);
-        });
-    }
     #[test]
     fn cook_finds_the_first_recipe_the_scan_finds() {
         let recipes = cooking_book();
@@ -3216,8 +2758,6 @@ mod tests {
     }
     fn run(special: &Special, cells: &[ItemStack]) -> Option<ItemStack> {
         let recipes = Recipes {
-            mod_read_only: Vec::new(),
-            mod_crafting: false,
             crafting: Vec::new(),
             cooking: Vec::new(),
             by_type: HashMap::new(),

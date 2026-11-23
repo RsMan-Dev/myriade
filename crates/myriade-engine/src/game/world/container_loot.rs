@@ -18,7 +18,7 @@ impl Game<'_> {
         key: (i32, i32, i32),
         index: usize,
     ) -> Option<myriade_engine::items::ItemStack> {
-        self.unpack_loot(LootTarget::Block(key), None);
+        self.unpack_loot(LootTarget::Block(key), false);
         self.world
             .block_entities
             .get(&key)?
@@ -37,7 +37,7 @@ impl Game<'_> {
         if self.ecs.cart_kind(cart.id).is_none() {
             return false;
         }
-        self.unpack_loot(LootTarget::Cart(cart.id), None);
+        self.unpack_loot(LootTarget::Cart(cart.id), false);
         cart.loot = None;
         if let Some(items) = self.ecs.cart_items(cart.id) {
             cart.items = items;
@@ -46,7 +46,7 @@ impl Game<'_> {
     }
     /// Consumes metadata before callbacks, so reentrant access cannot roll twice.
     /// A player context is captured from the admitted actor, also during as_guest.
-    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
+    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: bool) {
         let (pending, pos, occupied) = match target {
             LootTarget::Block(key) => {
                 let Some(pending) = take_block_pending(&mut self.world, key) else {
@@ -113,7 +113,7 @@ impl Game<'_> {
             return;
         }
         let table = pending.table_id();
-        if player.is_some() {
+        if player {
             self.trigger_loot_table(&table);
         }
         let Some(loot) = self.server_loot.get() else {
@@ -122,11 +122,11 @@ impl Game<'_> {
         let biome = self
             .biome_name_at(super::Vec3::new(pos.0 as f64, pos.1 as f64, pos.2 as f64))
             .unwrap_or_default();
-        let mut entity = player.map(|_| self.killer_loot_entity(None));
+        let mut entity = player.then(|| self.killer_loot_entity(None));
         if let Some(entity) = &mut entity {
             entity.on_fire = self.player.as_ref().is_some_and(|p| p.fire_ticks > 0);
         }
-        let luck = if player.is_some() {
+        let luck = if player {
             self.player
                 .as_mut()
                 .and_then(|p| p.attribute("minecraft:luck").ok())
@@ -150,12 +150,6 @@ impl Game<'_> {
         }) else {
             return;
         };
-        let origin = match target {
-            LootTarget::Block(_) => [pos.0 as f64 + 0.5, pos.1 as f64 + 0.5, pos.2 as f64 + 0.5],
-            LootTarget::Cart(id) | LootTarget::Boat(id) => self
-                .ecs_view(id)
-                .map_or([pos.0 as f64, pos.1 as f64, pos.2 as f64], |v| v.position),
-        };
         let mut random = self.world.random.clone();
         let mut sequences = std::mem::take(&mut self.rand_sequences);
         fill_with_random(
@@ -166,7 +160,6 @@ impl Game<'_> {
             &mut sequences,
             self.level.seed,
             context,
-            |items| self.container_fill_hook(&table, target, origin, player, items),
         );
         self.world.random = random;
         self.rand_sequences = sequences;
@@ -239,7 +232,6 @@ fn fill_with_random(
     sequences: &mut myriade_engine::random_sequences::RandomSequences,
     world_seed: i64,
     context: horizon_world::loot::ContainerLootContext<'_>,
-    mut hook: impl FnMut(&mut Vec<horizon_world::loot::LootStack>),
 ) {
     if let Some(seed) = pending.seed_value().filter(|seed| *seed != 0) {
         unpack_slots(
@@ -248,7 +240,6 @@ fn fill_with_random(
             loot,
             &mut LegacyRandom::new(seed),
             context,
-            &mut hook,
         );
     } else if let Some(id) = loot.random_sequence(&pending.table_id()) {
         unpack_slots(
@@ -257,10 +248,9 @@ fn fill_with_random(
             loot,
             sequences.get(id, world_seed),
             context,
-            &mut hook,
         );
     } else {
-        unpack_slots(pending, slots, loot, level_random, context, &mut hook);
+        unpack_slots(pending, slots, loot, level_random, context);
     }
 }
 
@@ -271,14 +261,12 @@ fn unpack_slots<R: RandomSource + Clone>(
     loot: &horizon_world::loot::LootData,
     random: &mut R,
     context: horizon_world::loot::ContainerLootContext<'_>,
-    mut hook: impl FnMut(&mut Vec<horizon_world::loot::LootStack>),
 ) {
     // Entry points discard a pre-existing mixed state. Items added by the
     // player's advancement rewards keep their slots while this roll fills free ones.
     let Some(mut items) = loot.roll_container_with(&pending.table_id(), random, context) else {
         return;
     };
-    hook(&mut items);
     let mut placed = vec![None; slots.len()];
     let free = slots
         .iter()
@@ -297,8 +285,8 @@ fn unpack_slots<R: RandomSource + Clone>(
 
 impl super::GameLevel<'_> {
     /// Null-player accesses inside world behavior (comparator, destruction).
-    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
-        debug_assert!(player.is_none());
+    pub(super) fn unpack_loot(&mut self, target: LootTarget, player: bool) {
+        debug_assert!(!player);
         if let LootTarget::Cart(id) = target {
             let Some(view) = self
                 .ecs
@@ -349,15 +337,6 @@ impl super::GameLevel<'_> {
                     biome: biome.as_deref(),
                     ..Default::default()
                 },
-                |items| {
-                    self.container_fill_hook(
-                        &pending.table_id(),
-                        target,
-                        [x, y, z],
-                        player,
-                        items,
-                    )
-                },
             );
             self.world.random = random;
             *self.rand_sequences = sequences;
@@ -402,15 +381,6 @@ impl super::GameLevel<'_> {
             horizon_world::loot::ContainerLootContext {
                 biome: biome.as_deref(),
                 ..Default::default()
-            },
-            |items| {
-                self.container_fill_hook(
-                    &pending.table_id(),
-                    target,
-                    [key.0 as f64 + 0.5, key.1 as f64 + 0.5, key.2 as f64 + 0.5],
-                    player,
-                    items,
-                )
             },
         );
         self.world.random = random;
@@ -462,7 +432,7 @@ impl super::GameLevel<'_> {
             }
         }
         let Some(id) = container else { return 0 };
-        self.unpack_loot(LootTarget::Cart(id), None);
+        self.unpack_loot(LootTarget::Cart(id), false);
         let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
         let slots = match self.world.block_entities.get(&key) {
             Some(BlockEntity::Chest(open)) => open.clone(),

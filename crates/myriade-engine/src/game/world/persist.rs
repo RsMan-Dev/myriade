@@ -38,7 +38,6 @@ use horizon_core::{
     random::RandomSource,
     ticks::ChunkTicks,
 };
-use horizon_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -284,50 +283,6 @@ pub(super) fn with_raw(mut modelled: Tag, raw: Option<&Tag>) -> Tag {
     let no_gravity = entity_nbt::flag(&modelled, "NoGravity");
     entity_nbt::write_saved_flags(&mut modelled, on_ground, no_gravity);
     modelled
-}
-
-fn read_attachments(
-    tag: &Tag,
-    id: u32,
-    maps: &mut HashMap<
-        u32,
-        horizon_mod_runtime::attachments::Attachments,
-        impl std::hash::BuildHasher,
-    >,
-    live: bool,
-) {
-    if let Ok(Some(data)) = attachment_compound(tag.get(ATTACHMENTS_KEY)) {
-        match maps.get_mut(&id) {
-            // Made by `entity_constructing` listeners just now: saved values win.
-            Some(map) if !live => map.read_saved_over(data.clone()),
-            Some(_) => {}
-            None => {
-                maps.insert(
-                    id,
-                    horizon_mod_runtime::attachments::Attachments::from_nbt(data.clone()),
-                );
-            }
-        }
-    }
-}
-
-/// Overlay one modeled object's contents. Raw passengers retain their own payload.
-pub(super) fn write_attachments(
-    tag: &mut Tag,
-    id: u32,
-    maps: &HashMap<u32, horizon_mod_runtime::attachments::Attachments, impl std::hash::BuildHasher>,
-) {
-    if let Tag::Compound(root) = tag
-        && let Some(map) = maps.get(&id)
-        && attachment_compound(root.get(&ATTACHMENTS_KEY.into())).is_ok()
-    {
-        let data = map.to_nbt();
-        if data.is_empty() {
-            root.remove(&ATTACHMENTS_KEY.into());
-        } else {
-            root.insert(ATTACHMENTS_KEY.into(), Tag::Compound(data));
-        }
-    }
 }
 
 pub(in crate::game) fn block_entity_pos(tag: &Tag) -> [i32; 3] {
@@ -1054,7 +1009,6 @@ impl Game<'_> {
             }
             let mut tag = Tag::Compound(self.ecs_mob_tree(root)?);
             self.put_mob_passengers(&mut tag, root);
-            write_attachments(&mut tag, root, &self.entity_attachments);
             return Some(tag);
         }
         if self.ecs.cart_kind(root).is_some() {
@@ -1064,7 +1018,6 @@ impl Game<'_> {
         if let Some(c) = self.ecs.is_active().then(|| self.ecs_mob_tree(root)).flatten() {
             let mut tag = Tag::Compound(c);
             self.put_mob_passengers(&mut tag, root);
-            write_attachments(&mut tag, root, &self.entity_attachments);
             return Some(tag);
         }
         // Any other kind of root vehicle, with its passengers.
@@ -1208,8 +1161,6 @@ impl Game<'_> {
     pub(super) fn forget_entity(&mut self, id: u32) {
         self.persist.uuids.remove(&id);
         self.persist.score_destroyed.remove(&id);
-        self.forget_entity_initialization(mod_api::Holder::Entity(id));
-        self.entity_attachments.remove(&id);
         self.persist.raw.remove(&id);
         self.persist.no_physics.remove(&id);
     }
@@ -1290,14 +1241,6 @@ impl Game<'_> {
         if let Some(u) = uuid {
             self.persist.uuids.insert(id, u);
         }
-        // `EntityType.create` then `Entity.load`: the constructing listeners set their
-        // values first and the saved attachments are read over them. An entity whose map
-        // is already live (told before) keeps it, as before.
-        let live = self.entity_attachments.contains_key(&id);
-        if let Some(kind) = text(tag.get("id")) {
-            self.initialize_entity(mod_api::Holder::Entity(id), &kind);
-        }
-        read_attachments(tag, id, &mut self.entity_attachments, live);
         self.join_saved_team(id, tag);
     }
     fn join_saved_team(&mut self, id: u32, tag: &Tag) {

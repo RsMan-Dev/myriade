@@ -1,7 +1,30 @@
 //! The player limit a mod sets (`set_max_players`) is the one the server list, the Login
 //! packet and the login check all read, not the fixed `max-players` the server started with.
-use super::pending_move_tests::with_input_context;
 use super::*;
+
+fn with_input_context<T>(run: impl FnOnce(&mut TickCtx<'_>) -> T) -> T {
+    let mut world = World::new(horizon_world::registry::BlockStateId(0), 0);
+    let mut next_entity = 2;
+    let border = crate::worldborder::WorldBorder::default();
+    run(&mut TickCtx {
+        sea_level: 63,
+        world: &mut world,
+        entities: &[],
+        next_entity: &mut next_entity,
+        spawn: [0.5, 64.0, 0.5],
+        spawn_angle: [0.0; 2],
+        spawn_dimension: "minecraft:overworld",
+        difficulty: 2,
+        difficulty_locked: false,
+        clock_rate: 1.0,
+        tick_rate: 20.0,
+        tick_frozen: false,
+        tick_steps: Default::default(),
+        collision: None,
+        border: &border,
+        streaming: None,
+    })
+}
 
 const ADDRESS: &str = "127.0.0.1:25565";
 

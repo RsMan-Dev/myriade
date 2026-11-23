@@ -26,9 +26,6 @@ use horizon_core::{
 };
 use myriade_types::EffectApplicable;
 use myriade_types::EffectTickChange;
-use mod_api::EntityRef;
-use mod_api::LivingRef;
-use mod_api::PlayerFood;
 
 /// Per-cloud settings; natural lingering clouds keep their creation defaults.
 pub(super) struct CloudSettings {
@@ -792,35 +789,6 @@ impl Game<'_> {
             .as_ref()
             .is_some_and(|p| p.health.absorption() <= 0.0);
         let mut effects = std::mem::take(&mut self.potions.effects);
-        // `MobEffectEvent.Expired`: ask before the pass, for the effects at
-        // zero ticks and the ones reaching it in this pass (the last tick of
-        // their countdown); a canceled expiry keeps the effect at no ticks,
-        // asking again next tick. Only on the server, where the effects tick.
-        let keep_expired: Vec<&'static str> = {
-            let player = self.effect_living_ref(None);
-            effects
-                .list
-                .iter()
-                .filter(|e| matches!(e.duration, 0 | 1))
-                .filter(|e| {
-                    let Some(player) = player else {
-                        return false;
-                    };
-                    let mut cancel = false;
-                    self.native_mob_effect_expired(
-                        player,
-                        mod_api::__private::effect_key_by_index(
-                            e.registry_index.expect("active effect registry index"),
-                        )
-                        .expect("effects resolved at load"),
-                        e.amplifier,
-                        &mut cancel,
-                    );
-                    cancel
-                })
-                .map(|e| e.id)
-                .collect()
-        };
         let (actions, raid_omen_added) = effects.tick_with(
             &mut |e, t, actions, dispatch| {
                 for action in actions.drain(..) {
@@ -829,65 +797,10 @@ impl Game<'_> {
                 if !dispatch {
                     return OmenTick::Continue;
                 }
-                if !brewing::is_mod_effect(e.id) {
-                    self.omen_tick(e)
-                } else {
-                    let Some(player) = self.player.as_mut() else {
-                        return OmenTick::Remove;
-                    };
-                    let Some(epoch) = self.native_lifecycle.epoch() else {
-                        return OmenTick::Continue;
-                    };
-                    let holder = LivingRef::new(EntityRef::new(epoch, player.entity_id as u32));
-                    let health = player.health.health();
-                    let max_health =
-                        player.attribute("minecraft:max_health").unwrap_or(20.0) as f32;
-                    let food = &player.health.food;
-                    let food = Some(PlayerFood::from(mod_api::__private::built::PlayerFood {
-                        level: food.food,
-                        saturation: food.saturation,
-                        exhaustion: food.exhaustion,
-                    }));
-                    let (keep, changes) = self.mod_effect_tick(
-                        mod_api::__private::effect_key_by_index(
-                            e.registry_index.expect("active effect registry index"),
-                        )
-                        .expect("effects resolved at load"),
-                        None,
-                        t,
-                        e.amplifier,
-                        holder,
-                        health,
-                        max_health,
-                        food,
-                    );
-                    let registry = &self.motion.health.damage;
-                    actions.extend(changes.into_iter().filter_map(|change| {
-                        match change {
-                            EffectTickChange::Heal(amount) => Some(EffectAction::Heal(amount)),
-                            // An unregistered damage type hurts nothing.
-                            EffectTickChange::Hurt(source, amount) => {
-                                NamedDamage::registered(registry, &source)
-                                    .map(|damage| EffectAction::Hurt(damage.name, amount))
-                            }
-                            EffectTickChange::AddExhaustion(amount) => {
-                                Some(EffectAction::Exhaust(amount))
-                            }
-                            EffectTickChange::Eat(nutrition, saturation) => {
-                                Some(EffectAction::Eat(nutrition, saturation))
-                            }
-                            _ => unreachable!("EffectTickChange: unhandled variant"),
-                        }
-                    }));
-                    if keep {
-                        OmenTick::Continue
-                    } else {
-                        OmenTick::Remove
-                    }
-                }
+                self.omen_tick(e)
             },
             absorption_empty,
-            &keep_expired,
+            &[],
         );
         self.potions.effects = effects;
         if raid_omen_added {
@@ -919,51 +832,19 @@ impl Game<'_> {
         }
     }
     /// Add an active effect to the player and update attributes / absorption.
-    /// `LivingEntity.canBeAffected` with the `mob_effect_applicable` hook:
-    /// the event fires first, for every effect, and `Allow` or `Deny`
-    /// decides; unanswered, the vanilla tag check runs. `entity` is a mob's
+    /// `LivingEntity.canBeAffected`: the vanilla tag check. `entity` is a mob's
     /// `Entity.getId`, None for the player.
     pub(in crate::game) fn can_be_affected(
-        &mut self,
-        entity: Option<i32>,
+        &self,
+        _entity: Option<i32>,
         kind: &str,
         effect: &str,
     ) -> bool {
-        let key = brewing::effect(effect)
-            .and_then(|def| mod_api::__private::effect_key_by_index(def.index));
-        self.can_be_affected_resolved(entity, kind, effect, key)
-    }
-
-    /// The validated registry path, also used by native operations without parsing a name again.
-    pub(super) fn can_be_affected_resolved(
-        &mut self,
-        entity: Option<i32>,
-        kind: &str,
-        effect: &str,
-        key: Option<myriade_types::EffectKey>,
-    ) -> bool {
-        let mut answered = None;
-        if let Some(living) = self.effect_living_ref(entity)
-            && let Some(key) = key
-        {
-            self.native_mob_effect_applicable(living, key, &mut answered);
-        }
-        match answered {
-            Some(EffectApplicable::Allow) => true,
-            Some(EffectApplicable::Deny) => false,
-            // An unanswered hook, or a future variant, defers to the
-            // vanilla tag check.
-            _ => mob_can_be_affected(&self.res.stations().enchantments.entity_tags, kind, effect),
-        }
+        mob_can_be_affected(&self.res.stations().enchantments.entity_tags, kind, effect)
     }
     pub(super) fn add_player_effect(&mut self, effect: EffectInstance) -> bool {
-        // `LivingEntity.addEffect` refuses what cannot affect the entity;
-        // players pass the tag check, but the `mob_effect_applicable` hook
-        // is asked for every add.
-        let key = effect
-            .registry_index
-            .and_then(mod_api::__private::effect_key_by_index);
-        if !self.can_be_affected_resolved(None, "minecraft:player", effect.id, key) {
+        // `LivingEntity.addEffect` refuses what cannot affect the entity.
+        if !self.can_be_affected(None, "minecraft:player", effect.id) {
             return false;
         }
         let id = effect.id;
@@ -988,9 +869,6 @@ impl Game<'_> {
             let current = p.health.absorption();
             let _ = p.set_health(current.max(target), true);
         }
-        if let Some(key) = key {
-            self.mod_effect_added_resolved(key, None, amp, new);
-        }
         changed
     }
     /// Removes one effect, or all effects, and refreshes the player's derived state.
@@ -1004,103 +882,13 @@ impl Game<'_> {
                 index += 1;
                 continue;
             }
-            let amplifier = current.amplifier;
-            // `MobEffectEvent.Remove`: refusing the removal keeps it, and the
-            // next one is asked with this one still in place, as in vanilla.
-            let mut cancel = false;
-            if let Some(living) = self.effect_living_ref(None) {
-                self.native_mob_effect_remove(
-                    living,
-                    mod_api::__private::effect_key_by_index(
-                        current
-                            .registry_index
-                            .expect("active effect registry index"),
-                    )
-                    .expect("effects resolved at load"),
-                    amplifier,
-                    &mut cancel,
-                );
-            }
-            if cancel {
-                index += 1;
-            } else {
-                self.potions.effects.list.remove(index);
-            }
+            self.potions.effects.list.remove(index);
         }
         let changed = self.potions.effects.list.len() != before;
         if changed {
             self.apply_effect_status();
         }
         changed
-    }
-    /// `LivingEntity.addEffect` for a content mod's effect: its
-    /// `onEffectAdded` when it is new, then its `onEffectStarted`, on a
-    /// server. `entity` is a mob's id, None for the player.
-    pub(in crate::game) fn mod_effect_added(
-        &mut self,
-        effect: &str,
-        entity: Option<i32>,
-        amplifier: i32,
-        new: bool,
-    ) {
-        if let Some(effect) = brewing::effect(effect)
-            .and_then(|def| mod_api::__private::effect_key_by_index(def.index))
-        {
-            self.mod_effect_added_resolved(effect, entity, amplifier, new);
-        }
-    }
-    /// Dispatch an already resolved effect's added notices, without a registry name lookup.
-    pub(super) fn mod_effect_added_resolved(
-        &mut self,
-        effect: myriade_types::EffectKey,
-        entity: Option<i32>,
-        amplifier: i32,
-        new: bool,
-    ) {
-        if true
-            && mod_api::__private::effect_index(effect)
-                .and_then(myriade_data::potions::effect_by_index)
-                .is_some_and(|def| def.index >= brewing::EFFECTS.len())
-        {
-            if new {
-                self.native_on_effect_added(effect, entity, amplifier);
-            }
-            self.native_mob_effect_added(effect, entity, amplifier);
-        }
-    }
-    /// `MobEffectInstance.tickServer` for a content mod's effect: its
-    /// `shouldApplyEffectTickThisTick`, then its `applyEffectTick`, which
-    /// may end it. Whether it stays.
-    fn mod_effect_tick(
-        &self,
-        effect: myriade_types::EffectKey,
-        entity: Option<i32>,
-        tick_count: i32,
-        amplifier: i32,
-        holder: LivingRef,
-        health: f32,
-        max_health: f32,
-        food: Option<PlayerFood>,
-    ) -> (bool, Vec<EffectTickChange>) {
-        let mut apply = false;
-        self.native_should_apply_effect_tick_this_tick(effect, tick_count, amplifier, &mut apply);
-        let mut keep = true;
-        let mut changes = Vec::new();
-        if apply {
-            self.native_apply_effect_tick(mod_api::__private::ApplyEffectTickCall {
-                effect,
-                dimension: self.dim.id(),
-                entity,
-                amplifier,
-                holder,
-                health,
-                max_health,
-                food,
-                changes: &mut changes,
-                keep: &mut keep,
-            });
-        }
-        (keep, changes)
     }
     /// The effects' attribute modifiers, armor protection and status flags
     /// on `self.player`.
@@ -1682,143 +1470,10 @@ impl Game<'_> {
     }
 }
 
-/// A mob's content mod effects tick in its own tick (`ai::tick_effects`).
-impl myriade_engine::mobs::ModEffectTicks for Game<'_> {
-    fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
-        if let Some(living) = self.effect_living_ref(Some(mob as i32))
-            && let Some(effect) = mod_api::__private::effect_key_by_index(effect)
-        {
-            self.native_mob_effect_expired(living, effect, amplifier, cancel);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use myriade_engine::motion::PlayerMotion;
-    fn effect_test_mod() {
-        use mod_api;
-        use mod_api::*;
-        struct TestMod;
-        #[mod_api::__subscriptions]
-        impl Hooks for TestMod {
-            fn should_apply_effect_tick_this_tick(
-                &self,
-                _: &dyn Host,
-                event: &mut ShouldApplyEffectTickThisTickEvent,
-            ) {
-                event.apply = true;
-            }
-            fn apply_effect_tick(&self, _: &dyn Host, event: &mut ApplyEffectTickEvent<'_>) {
-                match event.amplifier {
-                    0 => {
-                        event.heal(10.0);
-                        event.eat(4, 0.5);
-                        event.add_exhaustion(1.5);
-                    }
-                    1 => event.hurt("minecraft:magic", 3.0),
-                    3 if event.health > 1.0 => event.hurt("minecraft:magic", 1.0),
-                    3 => {}
-                    _ => event.hurt("minecraft:wither", 100.0),
-                }
-            }
-        }
-        mod_platform::__private::install(std::sync::Arc::from([mod_api::ModEntry::new(
-            "test-potions",
-            Box::new(TestMod),
-        )]));
-        assert!(brewing::register_mod_effects([(
-            "test:effect".into(),
-            0,
-            brewing::Category::Neutral,
-            None,
-        )]));
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mod_tick_heals_and_feeds_player() {
-        // Mod effects are frozen process-wide: another fixture may have registered first.
-        if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::potions::tests::mod_tick_heals_and_feeds_player",
-            "HORIZON_POTION_EFFECT_CHILD",
-            &["effect"],
-        ) {
-            return;
-        }
-        effect_test_mod();
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let player = game.player.as_mut().unwrap();
-            player.set_health(18.0, false).unwrap();
-            player.health.food.food = 14;
-            player.health.food.saturation = 2.0;
-            let id = brewing::effect("test:effect").unwrap().id;
-            game.potions.effects.add(EffectInstance::new(id, 10, 0));
-            game.tick_mob_effects();
-            let player = game.player.as_ref().unwrap();
-            assert_eq!(player.health.health(), 20.0);
-            assert_eq!(player.health.food.food, 18);
-            assert_eq!(player.health.food.saturation, 6.0);
-            assert_eq!(player.health.food.exhaustion, 1.5);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mod_tick_magic_respects_player_hit_frames() {
-        // Mod effects are frozen process-wide: another fixture may have registered first.
-        if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::potions::tests::mod_tick_magic_respects_player_hit_frames",
-            "HORIZON_POTION_EFFECT_CHILD",
-            &["effect"],
-        ) {
-            return;
-        }
-        effect_test_mod();
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            let id = brewing::effect("test:effect").unwrap().id;
-            game.potions.effects.add(EffectInstance::new(id, 10, 1));
-            game.tick_mob_effects();
-            assert_eq!(game.player.as_ref().unwrap().health.health(), 17.0);
-            game.tick_mob_effects();
-            assert_eq!(game.player.as_ref().unwrap().health.health(), 17.0);
-        });
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn mod_tick_sees_prior_regeneration() {
-        // Mod effects are frozen process-wide: another fixture may have registered first.
-        if super::super::native_entity_refs::tests::run_fresh_cases(
-            "game::potions::tests::mod_tick_sees_prior_regeneration",
-            "HORIZON_POTION_EFFECT_CHILD",
-            &["effect"],
-        ) {
-            return;
-        }
-        effect_test_mod();
-        super::super::native_entity_refs::tests::with_game(|game| {
-            game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
-            game.player
-                .as_mut()
-                .unwrap()
-                .set_health(1.0, false)
-                .unwrap();
-            game.potions
-                .effects
-                .add(EffectInstance::new("regeneration", 50, 0));
-            let id = brewing::effect("test:effect").unwrap().id;
-            game.potions.effects.add(EffectInstance::new(id, 10, 3));
-            game.tick_mob_effects();
-            assert_eq!(game.player.as_ref().unwrap().health.health(), 1.0);
-        });
-    }
-
-    /// A mod effect's damage type keeps its registry id and tags whether it is
-    /// vanilla's or a datapack's, and one the registry lacks is refused.
     #[test]
     fn effect_damage_sources_retain_their_ids() {
         let type_json = |id: &str| {

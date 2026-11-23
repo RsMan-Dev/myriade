@@ -220,7 +220,7 @@ impl Game<'_> {
         let Some(attacker) = self.player.as_ref().map(|p| p.entity_id) else {
             return false;
         };
-        let magic_boost = self.enchant_damage_bonus(&kind, Some(id));
+        let magic_boost = self.enchant_damage_bonus(&kind);
         let (base_damage, magic_boost) = if self.using.is_none() {
             let scale = self.attack_strength_scale();
             (base_damage * (0.2 + scale * scale * 0.8), magic_boost * scale)

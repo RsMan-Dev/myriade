@@ -9,7 +9,7 @@
 
 use super::commands::Target;
 use super::persist::ChunkKey;
-use super::{Game, general::GeneralRow};
+use super::Game;
 use super::{
     boats::Boat, fireworks::Rocket, minecarts::Minecart, tnt::PrimedTnt, trident::ThrownTrident,
 };
@@ -29,13 +29,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 /// Assign a stored owner's delayed id at its existing allocation point.
-/// Kinds without a lifetime slot pass None; a bound owner must keep its id.
-pub(super) fn assign_stored_id(
-    next: &mut u32,
-    id: &mut u32,
-    lifetime: Option<&horizon_mod_runtime::attachments::AttachmentLifetime>,
-) -> u32 {
-    debug_assert!(*id != 0 || lifetime.is_none_or(|slot| !slot.is_bound()));
+pub(super) fn assign_stored_id(next: &mut u32, id: &mut u32) -> u32 {
     super::lan_entities::assign_entity_id(next, id)
 }
 
@@ -323,7 +317,6 @@ macro_rules! entity_lists {
     ($then:ident, $($args:tt)*) => {
         $crate::game::entity::$then! {
             ($($args)*)
-            General(GeneralRow) general: resident_entities.general.rows,
         }
     };
 }

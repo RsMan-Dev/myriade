@@ -33,33 +33,6 @@ impl TryIntoEngine<()> for myriade_types::FireworkShape {
         })
     }
 }
-impl TryIntoApi for horizon_mod_package::manifest::JarInputsError {
-    type Api = mod_api::JarInputsError;
-    type Error = Infallible;
-    fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        use horizon_mod_package::manifest::JarInputsError as E;
-        use mod_api::JarInputsError as A;
-        Ok(match self {
-            E::Missing(m) => A::Missing(Box::new(mod_api::MissingJar::new(
-                m.owners.clone(),
-                m.jar.id().into(),
-                m.jar.version().into(),
-                m.jar.sha512().into(),
-                m.path.display().to_string(),
-            ))),
-            E::Io { path, source } => A::Io {
-                path: path.display().to_string(),
-                message: source.to_string(),
-            },
-            E::Invalid { path, source } => A::Invalid {
-                path: path.display().to_string(),
-                message: source.to_string(),
-            },
-            _ => unreachable!("all original-jar failures are handled"),
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,42 +47,5 @@ mod tests {
             assert_eq!(api as usize, index);
             assert_eq!(api.try_into_engine(&()).unwrap(), *shape);
         }
-    }
-}
-
-#[cfg(test)]
-mod jar_tests {
-    use super::*;
-    #[test]
-    fn original_jar_diagnostics_preserve_identity_and_failure_kind() {
-        use horizon_mod_package::manifest::{JarInputsError as E, JarRef, MissingJar};
-        let jar = JarRef::new("original".into(), "1".into(), "a".repeat(128)).unwrap();
-        let missing = E::Missing(Box::new(MissingJar {
-            owners: vec!["first".into(), "second".into()],
-            jar,
-            path: "cache/exact.jar".into(),
-        }));
-        let mod_api::JarInputsError::Missing(value) = missing.try_into_api().unwrap() else {
-            panic!("wrong missing case")
-        };
-        assert_eq!(value.owners, ["first", "second"]);
-        assert_eq!(value.id, "original");
-        assert_eq!(value.version, "1");
-        assert_eq!(value.sha512, "a".repeat(128));
-        assert_eq!(value.path, "cache/exact.jar");
-        let io = E::Io {
-            path: "inputs".into(),
-            source: std::io::Error::other("disk failure"),
-        };
-        assert!(
-            matches!(io.try_into_api().unwrap(), mod_api::JarInputsError::Io { path, message } if path == "inputs" && message == "disk failure")
-        );
-        let invalid = E::Invalid {
-            path: "record".into(),
-            source: serde_json::from_str::<serde_json::Value>("{").unwrap_err(),
-        };
-        assert!(
-            matches!(invalid.try_into_api().unwrap(), mod_api::JarInputsError::Invalid { path, message } if path == "record" && !message.is_empty())
-        );
     }
 }

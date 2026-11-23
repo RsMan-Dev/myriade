@@ -12,6 +12,7 @@ myriade-data = { path = "../myriade-data" }
 myriade-engine-lib = { path = "../myriade-engine-lib", default-features = false }
 horizon-command = { path = "../horizon-command" }
 horizon-core = { path = "../horizon-core" }
+myriade-types = { path = "../myriade-types" }
 horizon-items = { path = "../horizon-items" }
 horizon-protocol = { path = "../horizon-protocol" }
 horizon-threads = { path = "../horizon-threads" }

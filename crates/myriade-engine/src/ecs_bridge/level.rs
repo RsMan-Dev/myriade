@@ -85,23 +85,6 @@ fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
         w.set_can_pick_up_loot(e, *on != 0);
     }
 }
-/// The mod goals of a loaded entity, by the species saved in its `id` (`mod_goals::attach`).
-fn attach_saved_goals(w: &mut EcsWorld, e: Entity, c: &Compound) {
-    if let Some(Tag::String(id)) = c.get(&"id".into()) {
-        super::mod_goals::attach(w.world_mut(), e, &id.to_string_lossy());
-    }
-}
-/// `c` and its riders (`Passengers`, depth first, root first): the compounds in the order `load_entity_tree` makes their entities.
-fn ride_compounds<'a>(c: &'a Compound, out: &mut Vec<&'a Compound>) {
-    out.push(c);
-    if let Some(Tag::List(riders)) = c.get(&"Passengers".into()) {
-        for t in riders {
-            if let Tag::Compound(p) = t {
-                ride_compounds(p, out);
-            }
-        }
-    }
-}
 use horizon_protocol::entity_data::Value;
 
 pub struct EcsLevel {
@@ -357,7 +340,6 @@ impl EcsLevel {
         let w = self.inner.as_mut()?;
         let e = w.load_entity(mw, c)?;
         restore_mob_flags(w, e, c);
-        attach_saved_goals(w, e, c);
         Some(e)
     }
     /// `load_entity` for a mount and its riders: the entity of each compound of the NBT, in its order (None: not made). Only the root's
@@ -367,13 +349,6 @@ impl EcsLevel {
         let made = w.load_entity_tree(mw, c);
         if let Some(Some(e)) = made.first() {
             restore_mob_flags(w, *e, c);
-        }
-        let mut compounds = Vec::new();
-        ride_compounds(c, &mut compounds);
-        for (c, e) in compounds.into_iter().zip(&made) {
-            if let Some(e) = e {
-                attach_saved_goals(w, *e, c);
-            }
         }
         made
     }
@@ -401,10 +376,6 @@ impl EcsLevel {
     /// Runs the schedule once with `mw` lent for the call; the host events it wrote come back.
     pub fn step(&mut self, mw: &MobWorld<'_>) -> Vec<HostEvent> {
         self.inner.as_mut().map_or_else(Vec::new, |w| w.step(mw))
-    }
-    /// `step` with the mods' goal and behaviour hooks answered by `goals`, and the natural pass's spawn hooks by `spawn` (None: no mod listens).
-    pub fn step_with(&mut self, mw: &MobWorld<'_>, goals: &dyn horizon_ecs_proto::mod_goals::ModGoalHost, spawn: Option<&dyn horizon_ecs_proto::spawn_mod_host::SpawnModHost>) -> Vec<HostEvent> {
-        self.inner.as_mut().map_or_else(Vec::new, |w| w.step_with(mw, goals, spawn))
     }
     /// Writes the tracker's state of `e` under the network id `id`; false when inert, or when `e` is asleep or has no position.
     pub fn view_state(&self, e: Entity, id: i32, out: &mut EntityState) -> bool {

@@ -17,11 +17,6 @@ impl Recipes {
             .iter()
             .find(|(n, _)| n == recipe)
             .map(|(_, r)| r);
-        if let Some(Recipe::Mod(recipe)) = kind
-            && let Some(result) = recipe.remainders(grid, size)
-        {
-            return result;
-        }
         let Some(input) = Input::of(grid, size) else {
             return out;
         };

@@ -46,11 +46,9 @@ impl TryIntoEngine for ApiStack {
     type Error = StackWriteError;
 
     fn try_into_engine(&self, items: &Items) -> Result<EngineStack, Self::Error> {
-        let id =
-            mod_api::__private::item_key_id(self.item()).ok_or(StackWriteError::UnknownItem)?;
         let (id, definition) = items
             .items
-            .get_key_value(id)
+            .get_key_value(self.item())
             .ok_or(StackWriteError::UnknownItem)?;
         let stack = encode_stack(self, id.clone())?;
         let effective = |name: &str, default: u32| -> Result<u32, StackWriteError> {

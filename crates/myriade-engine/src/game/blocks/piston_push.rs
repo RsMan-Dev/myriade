@@ -343,7 +343,7 @@ impl Game<'_> {
         if self.ecs.is_active() {
             return Some(self.ecs_root_vehicle(id));
         }
-        self.native_root_vehicle_id(id, super::commands::Target::Mob(id))
+        Some(self.ecs_root_vehicle(id))
     }
 
     /// Whether a shulker's lid leaves a body it meets where it is: one with
@@ -388,19 +388,14 @@ impl Game<'_> {
     /// rides nothing (only the players and the mobs ride here). Nothing rides
     /// a player, so a player riding nothing is no shulker's root: `None`.
     fn push_root(&self, target: MoveWho) -> Option<u32> {
-        use super::commands::Target as Named;
-        let vehicle_root = |v: u32| self.native_root_vehicle_id(v, Named::Mob(v));
+        let vehicle_root = |v: u32| Some(self.ecs_root_vehicle(v));
         match target {
             MoveWho::Player => self.riding.and_then(vehicle_root),
             MoveWho::Guest(conn) => self.command_guest(conn)?.vehicle.and_then(vehicle_root),
             MoveWho::Ecs(id) => Some(self.ecs_root_vehicle(id)),
             MoveWho::Entity(handle) => {
-                let (id, named) =
-                    with_entity!(self, handle, entity => (entity.id(), entity.selector_target()));
-                match named {
-                    Some(named) => self.native_root_vehicle_id(id, named),
-                    None => Some(id),
-                }
+                let id = with_entity!(self, handle, entity => entity.id());
+                Some(self.ecs_root_vehicle(id))
             }
         }
     }
@@ -1296,124 +1291,6 @@ mod order_tests {
         assert!(moved[1] < 0.02, "far stone still in the way: {}", moved[1]);
     }
 
-    /// A cancelled push spends none of the piston budget (arismoko/horizon#2414, design
-    /// arismoko/horizon#2308: the hook fires before `limit_piston`). A listener cancels the
-    /// first push of a tick - the TNT does not move - and then lets the
-    /// second push of the same tick through: it still travels the whole
-    /// per-tick budget, which a spent one would have clamped to almost
-    /// nothing.
-    #[test]
-    #[ignore = "daily"]
-    fn a_cancelled_push_spends_none_of_the_piston_budget() {
-        use mod_api::EntityMoveEvent;
-        use mod_api::Flow;
-        use mod_api::Hooks;
-        use mod_api::LoopContext;
-        struct Gate(std::sync::Arc<std::sync::atomic::AtomicBool>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Gate {
-            fn entity_move(&self, _: &dyn LoopContext, _: &mut EntityMoveEvent<'_>) -> Flow {
-                if self.0.load(std::sync::atomic::Ordering::Relaxed) {
-                    Flow::Cancel
-                } else {
-                    Flow::Continue
-                }
-            }
-        }
-        let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "cancel_gate",
-            Box::new(Gate(cancel.clone())),
-        )]
-        .into();
-        let root = std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-        let settings = Settings::default();
-        let loaded = load_resources(
-            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-            Vec::new(),
-            None,
-            &root,
-            &settings,
-            std::time::Instant::now(),
-            crate::game::execution_role::ExecutionRole::DedicatedServer,
-            &Progress::new(),
-        )
-        .unwrap();
-        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-        options.resources = root.clone();
-        options.game_dir = Some(
-            std::env::temp_dir().join(format!("horizon-piston-budget-unit-{}", std::process::id())),
-        );
-        options.execution_role = crate::game::execution_role::ExecutionRole::DedicatedServer;
-        let mut game = Game::new(
-            &loaded.resources,
-            loaded.pack,
-            options,
-            settings,
-        )
-        .unwrap();
-        game.build_registries();
-        game.ecs = game.test_ecs_level();
-        game.set_allow_commands(true);
-        let registry = &game.pack.assets.registry;
-        let stone = registry.default_state("minecraft:stone").unwrap();
-        let moving = registry.default_state("minecraft:moving_piston").unwrap();
-        let mut chunk = Chunk::empty(0, 0);
-        for x in 0..16 {
-            for z in 0..16 {
-                chunk.set(x, 199, z, stone.0);
-            }
-        }
-        chunk.set(5, 200, 5, moving.0);
-        game.world.chunks.insert((0, 0), Arc::new(chunk));
-        let piston = |id, direction, progress| MovingPiston {
-            moved_state: stone,
-            direction,
-            extending: true,
-            source: false,
-            progress,
-            progress_o: progress,
-            last_ticked: 0,
-            death_ticks: 0,
-            id,
-        };
-        mod_platform::testing::with_mods(mods, || {
-            let mut travelled = Vec::new();
-            for cancelled in [true, false] {
-                cancel.store(cancelled, std::sync::atomic::Ordering::Relaxed);
-                game.block_ticks.moving_pistons =
-                    vec![(BlockPos::new(5, 200, 5), piston(1, Direction::East, 0.0))];
-                game.sync_moving_pistons();
-                let tnt = summon_tnt(
-                    &mut game,
-                    "summon tnt 5.5 200 5.5 {fuse:80,Motion:[0.0d,0.0d,0.0d]}",
-                );
-                let before = game.ecs.motion(tnt).unwrap().position[0];
-                let pushes: Vec<_> = game
-                    .block_ticks
-                    .moving_pistons
-                    .iter()
-                    .map(|&(pos, old)| (pos, old, old.progress + 0.5))
-                    .collect();
-                for (_, piston) in &mut game.block_ticks.moving_pistons {
-                    piston.progress += 0.5;
-                }
-                game.push_piston_entities(pushes);
-                travelled.push(game.ecs.motion(tnt).unwrap().position[0] - before);
-            }
-            assert!(
-                travelled[0].abs() < 1e-9,
-                "the cancelled push moved the TNT: {}",
-                travelled[0]
-            );
-            assert!(
-                travelled[1] > 0.4,
-                "the second push of the same tick lost the budget: {}",
-                travelled[1]
-            );
-        });
-    }
-
     /// A primed TNT pushed east by a piston into a stone wall loses its
     /// horizontal velocity, matching `Entity.move(MoverType.PISTON, …)`
     /// restitution even in a chunk that does not tick entities (#12022).
@@ -1605,72 +1482,70 @@ mod h255_mob_piston_ground_tests {
         role: crate::game::execution_role::ExecutionRole,
         test: impl FnOnce(&mut Game<'_>),
     ) {
-        mod_platform::testing::with_mods(Default::default(), || {
-            let root =
-                std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
-            let settings = Settings::default();
-            let loaded = load_resources(
-                horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
-                Vec::new(),
-                None,
-                &root,
-                &settings,
-                std::time::Instant::now(),
-                crate::game::execution_role::ExecutionRole::DedicatedServer,
-                &Progress::new(),
-            )
-            .unwrap();
-            let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
-            options.resources = root.clone();
-            options.game_dir = Some(
-                std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
-                    .join(format!("h255-{:?}", std::thread::current().id())),
-            );
-            options.execution_role = role;
-            let mut game = Game::new(
-                &loaded.resources,
-                loaded.pack,
-                options,
-                settings,
-            )
-            .unwrap();
-            game.native_lifecycle
-                .begin_open(myriade_types::Authority::DedicatedServer);
-            game.build_registries();
-            game.ecs = game.test_ecs_level();
-            game.set_allow_commands(true);
+        let root =
+            std::path::PathBuf::from(std::env::var_os("HORIZON_TEST_RESOURCES").unwrap());
+        let settings = Settings::default();
+        let loaded = load_resources(
+            horizon_assets::resource_source::ResourceRoot::directory(root.clone()),
+            Vec::new(),
+            None,
+            &root,
+            &settings,
+            std::time::Instant::now(),
+            crate::game::execution_role::ExecutionRole::DedicatedServer,
+            &Progress::new(),
+        )
+        .unwrap();
+        let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
+        options.resources = root.clone();
+        options.game_dir = Some(
+            std::path::PathBuf::from(std::env::var_os("HORIZON_HOME").unwrap())
+                .join(format!("h255-{:?}", std::thread::current().id())),
+        );
+        options.execution_role = role;
+        let mut game = Game::new(
+            &loaded.resources,
+            loaded.pack,
+            options,
+            settings,
+        )
+        .unwrap();
+        game.native_lifecycle
+            .begin_open(myriade_types::Authority::DedicatedServer);
+        game.build_registries();
+        game.ecs = game.test_ecs_level();
+        game.set_allow_commands(true);
 
-            let mut center = Chunk::empty(0, 0);
-            center.lit = true;
-            game.world.chunks.insert((0, 0), Arc::new(center));
-            game.block_ticks
-                .add_empty_chunk(ChunkPos::new(0, 0))
-                .unwrap();
-            assert!(game.run_command("difficulty normal"));
-            assert!(game.run_command("forceload add 0 0"));
-            for x in -1..=1 {
-                for z in -1..=1 {
-                    if x == 0 && z == 0 {
-                        continue;
-                    }
-                    let mut chunk = Chunk::empty(x, z);
-                    chunk.lit = true;
-                    game.world.chunks.insert((x, z), Arc::new(chunk));
-                    game.block_ticks
-                        .add_empty_chunk(ChunkPos::new(x, z))
-                        .unwrap();
+        let mut center = Chunk::empty(0, 0);
+        center.lit = true;
+        game.world.chunks.insert((0, 0), Arc::new(center));
+        game.block_ticks
+            .add_empty_chunk(ChunkPos::new(0, 0))
+            .unwrap();
+        assert!(game.run_command("difficulty normal"));
+        assert!(game.run_command("forceload add 0 0"));
+        for x in -1..=1 {
+            for z in -1..=1 {
+                if x == 0 && z == 0 {
+                    continue;
                 }
+                let mut chunk = Chunk::empty(x, z);
+                chunk.lit = true;
+                game.world.chunks.insert((x, z), Arc::new(chunk));
+                game.block_ticks
+                    .add_empty_chunk(ChunkPos::new(x, z))
+                    .unwrap();
             }
-            crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
-            game.load_ticking_neighbourhood(0, 0);
-            game.creative = true;
-            assert!(game.run_command("fill 0 199 0 31 199 31 stone"));
-            game.world.random.set_seed(255);
-            game.update_chunk_tickets();
-            assert!(crate::game::ticking_chunk(&game.world, 0, 0));
-            assert!(game.tickets.levels().block_ticking(0, 0));
-            test(&mut game);
-        });
+        }
+        crate::game::native_guest_turn_tests::lan_guests_on(&mut game);
+        game.load_ticking_neighbourhood(0, 0);
+        game.creative = true;
+        assert!(game.run_command("fill 0 199 0 31 199 31 stone"));
+        game.world.random.set_seed(255);
+        game.update_chunk_tickets();
+        assert!(crate::game::ticking_chunk(&game.world, 0, 0));
+        assert!(game.tickets.levels().block_ticking(0, 0));
+        test(&mut game);
     }
     #[test]
     #[ignore = "daily"]

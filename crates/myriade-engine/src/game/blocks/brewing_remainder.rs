@@ -28,14 +28,7 @@ impl Game<'_> {
         BrewingRemainder(answer)
     }
 
-    pub(super) fn brewing_ingredient_remainder(
-        &self,
-        pos: (i32, i32, i32),
-        cancelled: bool,
-    ) -> Option<ItemStack> {
-        if cancelled {
-            return None;
-        }
+    pub(super) fn brewing_ingredient_remainder(&self, pos: (i32, i32, i32)) -> Option<ItemStack> {
         match self.world.block_entities.get(&pos) {
             Some(BlockEntity::Brewing(b)) => {
                 b.items[3].as_ref().and_then(|s| self.crafting_remainder(s))

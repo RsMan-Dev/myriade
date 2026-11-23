@@ -5,7 +5,6 @@ use super::{
     settings_sync::{MAX_BYTES, Message},
 };
 
-pub const PLACEMENT_TAG: u8 = 8;
 
 pub fn encode(message: &Message) -> Option<Vec<u8>> {
     let mut out = Vec::new();
@@ -76,10 +75,6 @@ pub fn encode(message: &Message) -> Option<Vec<u8>> {
             pair(&mut out, *flags);
         }
         Message::Resnapshot => out.push(4),
-        Message::Placement(frame) => {
-            out.push(PLACEMENT_TAG);
-            out.extend(super::placement_codec::encode(frame)?);
-        }
     }
     (out.len() <= MAX_BYTES).then_some(out)
 }
@@ -193,11 +188,6 @@ pub fn decode(data: &[u8]) -> Option<Message> {
             } else {
                 Message::Ready
             }
-        }
-        PLACEMENT_TAG => {
-            let frame = super::placement_codec::decode(r.0)?;
-            r.0 = &[];
-            Message::Placement(frame)
         }
         _ => return None,
     };

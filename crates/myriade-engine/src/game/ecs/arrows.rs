@@ -111,30 +111,9 @@ impl Game<'_> {
                 }
                 self.ecs.arrow_taken(entity, took);
             }
-            ArrowEvent::ModImpact { entity, kind, at, target, owner, block, face } => {
+            ArrowEvent::ModImpact { entity, .. } => {
                 let projectile = self.ecs_id_of(entity);
-                let owner = self.ecs_who_id(owner);
-                let entity = match target {
-                    Some(Who::Entity(e)) => Some(self.ecs_id_of(e)),
-                    Some(Who::Player(p)) => Some(p),
-                    None => None,
-                };
-                let entity_kind = entity.and_then(|id| self.ecs_view(id)).map(|v| v.kind).unwrap_or_default();
-                let dimension = self.dim.id();
-                let mut canceled = false;
-                self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
-                    dimension,
-                    projectile,
-                    kind,
-                    owner,
-                    entity,
-                    entity_kind: &entity_kind,
-                    block: block.unwrap_or_default(),
-                    face: face.unwrap_or_default(),
-                    at,
-                    canceled: &mut canceled,
-                });
-                self.ecs.resolve_impact(projectile, canceled);
+                self.ecs.resolve_impact(projectile, false);
             }
             ArrowEvent::Killed { kinds, weapon, .. } if !kinds.is_empty() => {
                 // The event carries the kinds, not the victims themselves: each victim is an EntityView of its kind.

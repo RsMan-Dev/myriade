@@ -25,14 +25,6 @@ fn default_tag(v: &serde_json::Value) -> Option<horizon_core::nbt::Tag> {
     })
 }
 
-/// The game's `living_visibility` answers, lent to the ECS for one step; `scaled_visibility` finds the listeners and the epoch.
-struct LivingVisibilityAnswers<'g, 'a>(&'g Game<'a>);
-impl horizon_ecs_proto::targeting::LivingVisibilityHost for LivingVisibilityAnswers<'_, '_> {
-    fn visibility(&self, player: u32, looking: u32, visibility: f64) -> f64 {
-        self.0.scaled_visibility(|epoch| mod_api::EntityRef::new(epoch, player), looking, visibility)
-    }
-}
-
 impl Game<'_> {
     pub(in crate::game) fn tick_ecs(&mut self) -> Result<()> {
         if !self.ecs.is_active() {
@@ -83,18 +75,7 @@ impl Game<'_> {
             },
             |[month, day]| myriade_engine::mobs::finalize::halloween_date(month, day),
         );
-        // The mod goals of this step call their hooks under this native attempt's epoch; the game answers the reads the step does not hold.
-        let g: &Game = &*self;
-        let epoch = g.native_lifecycle.epoch();
-        let level = epoch.map(|ep| mod_api::LevelRef::new(ep, g.dim.key()));
-        let host = myriade_engine::ecs_bridge::mod_goals::ModGoalsHost { epoch, level, game: g };
-        // The natural pass's spawn hooks are lent only while a mod listens to one (`ecs_spawn_hooks`): else it asks nothing.
-        let spawn_hooks = g.ecs_spawn_hooks();
-        let spawn_host = spawn_hooks.as_ref().map(|h| h as &dyn horizon_ecs_proto::spawn_mod_host::SpawnModHost);
-        // The mods' `living_visibility` answers are lent for this step, and only while a mod listens to it.
-        let visibility = LivingVisibilityAnswers(g);
-        ecs.lend_living_visibility(false.then_some(&visibility as &dyn horizon_ecs_proto::targeting::LivingVisibilityHost));
-        let evs = ecs.step_with(&g.mob_world_base(&[]), &host, spawn_host);
+        let evs = ecs.step(&self.mob_world_base(&[]));
         let mut mob = Vec::new();
         let kept = match ecs.world() {
             Some(world) => apply(world, evs, |m| {

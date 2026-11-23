@@ -8,8 +8,6 @@ use myriade_engine::{
 use horizon_core::geometry::{Aabb, Vec3};
 
 pub struct Rocket {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`myriade_engine::join_seq`); set by the list.
@@ -68,7 +66,6 @@ impl Rocket {
         let item = ItemStack::new("minecraft:firework_rocket", 1);
         let (_, explosions) = fireworks_of(&item);
         Self {
-            attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             id,
@@ -140,7 +137,6 @@ impl Rocket {
             .unwrap_or_else(|| ItemStack::new("minecraft:firework_rocket", 1));
         let (_, explosions) = fireworks_of(&item);
         Self {
-            attachment_lifetime: Default::default(),
             rotation: r.rotation,
             join: Default::default(),
             id: 0,
@@ -310,5 +306,4 @@ pub fn fireworks_of(stack: &ItemStack) -> (u8, Vec<FireworkExplosion>) {
         .unwrap_or((1, Vec::new()))
 }
 myriade_engine::impl_joined!(Rocket);
-horizon_mod_runtime::impl_attachment_lifetime!(Rocket);
 impl myriade_engine::entity_rules::EntityRules for Rocket {}

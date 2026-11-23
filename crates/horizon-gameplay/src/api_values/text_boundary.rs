@@ -2,7 +2,7 @@
 mod text_style_capture;
 use super::{TryIntoApi, TryIntoEngine};
 use myriade_data::text as engine;
-use mod_api::text::{Text, TextFormError};
+use myriade_types::{Text, TextFormError};
 
 impl TryIntoApi for engine::Text {
     type Api = Text;

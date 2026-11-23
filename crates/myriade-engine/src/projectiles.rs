@@ -290,7 +290,6 @@ fn potion_sprite(item: &str) -> &'static str {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Projectile {
     /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// When it joined its list ([`crate::join_seq`]); set by the list, not by the spawn site.
     pub join: crate::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
@@ -621,7 +620,6 @@ impl Projectile {
         // An arrow keeps its own random (`Entity.random`) for its later draws.
         let (random, uuid) = new_own_random();
         Self {
-            attachment_lifetime: Default::default(),
             join: Default::default(),
             id: 0,
             egg_variant: None,
@@ -3372,7 +3370,6 @@ mod arrow_color_tests {
     }
 }
 crate::impl_joined!(Projectile);
-horizon_mod_runtime::impl_attachment_lifetime!(Projectile);
 
 #[cfg(test)]
 mod enchanted_arrow_order_tests {

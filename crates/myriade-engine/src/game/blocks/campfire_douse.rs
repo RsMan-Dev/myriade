@@ -24,37 +24,6 @@ impl Game<'_> {
             .cloned()
     }
 
-
-    fn modified_campfire(
-        &self,
-        hit: &Hit,
-        stack: &ItemStack,
-        unlit: horizon_world::registry::BlockStateId,
-    ) -> Option<horizon_world::registry::BlockStateId> {
-        let block = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if !false
-            && !crate::game::api_values::block_state::block_listens(
-                mod_api::HookId::ToolModifiedState,
-                block,
-            )
-        {
-            return Some(unlit);
-        }
-        let tool = mod_api::ToolUse::from(mod_api::__private::built::ToolUse {
-            player: self.player.is_some().then(|| self.own_entity_id() as u32),
-            hand: self.hand,
-            pos: hit.pos,
-            face: hit.face,
-            click: hit.point,
-            ability: myriade_types::ToolAbility::ShovelDouse,
-            simulated: false,
-        });
-        let mut state = Some(unlit);
-        let mut cancel = false;
-        self.mod_tool_modification(stack, block, &tool, &mut state, &mut cancel);
-        if cancel { None } else { state }
-    }
-
     /// `CampfireBlock.useItemOn` with `held` in the hand that acts, the block
     /// at `pos` clicked: true when it doused a lit campfire (SUCCESS).
     pub(super) fn use_campfire_douse(
@@ -69,9 +38,6 @@ impl Game<'_> {
         };
         state.properties.insert("lit".into(), "false".into());
         let Ok(unlit) = self.pack.assets.registry.resolve(&state) else {
-            return Ok(false);
-        };
-        let Some(unlit) = self.modified_campfire(hit, &used, unlit) else {
             return Ok(false);
         };
         // Level event 1009 (SOUND_EXTINGUISH_FIRE) goes to every player.

@@ -12,8 +12,6 @@ use myriade_engine::{
     effects::EffectInstance,
     mobs::DYE_NAMES,
 };
-use horizon_core::position::BlockPos;
-use horizon_world::registry::BlockStateId;
 
 /// `DyeColor.getTextureDiffuseColor` (RGB), by dye index.
 pub(super) const SHIFT: f32 = -27.0;
@@ -53,34 +51,6 @@ impl Game<'_> {
             .or_else(|| n.strip_suffix("_stained_glass_pane"))?;
         DYE_NAMES.iter().position(|d| *d == dye).map(|i| DYE[i])
     }
-    /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` (named `name`) at `pos`
-    /// for the beacon at `beacon`: the beam colour of a `BeaconBeamBlock`, unless a part of the
-    /// state answers. The beam keeps the answer's red, green and blue.
-    pub(super) fn beacon_color(
-        &self,
-        state: BlockStateId,
-        name: &str,
-        pos: [i32; 3],
-        beacon: [i32; 3],
-    ) -> Option<u32> {
-        let own = self.beam_color(name);
-        if !super::api_values::block_state::block_listens(
-            mod_api::HookId::BeaconColorMultiplier,
-            state,
-        ) {
-            return own;
-        }
-        let mut color = own;
-        let [x, y, z] = pos;
-        let [bx, by, bz] = beacon;
-        self.native_beacon_color_multiplier(
-            state,
-            BlockPos::new(x, y, z),
-            BlockPos::new(bx, by, bz),
-            &mut color,
-        );
-        color.map(|c| c & 0xFF_FFFF)
-    }
     /// `getHeight(WORLD_SURFACE)`: above the highest non-air block.
     pub(super) fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.world
@@ -91,13 +61,8 @@ impl Game<'_> {
         let Some((lease, BlockEntity::Beacon(mut b))) = self.world.block_entities.take(&key) else {
             return;
         };
-        let previous = b.levels;
         self.tick_beacon(key, &mut b, false);
-        let current = b.levels;
         self.world.block_entities.put(lease, BlockEntity::Beacon(b));
-        if (previous == 0) != (current == 0) {
-            self.native_beacon_state_change(self.dim.id(), [key.0, key.1, key.2], current > 0);
-        }
     }
     fn tick_beacon(&mut self, (x, y, z): (i32, i32, i32), b: &mut Beacon, client: bool) {
         let mut check = if b.last_check_y < y {
@@ -112,7 +77,7 @@ impl Game<'_> {
         while i < 10 && check <= surface {
             let state = self.world.block(x, check, z);
             let f = self.res.facts().get(state);
-            if let Some(color) = self.beacon_color(state, &f.name, [x, check, z], [x, y, z]) {
+            if let Some(color) = self.beam_color(&f.name) {
                 if b.checking.len() <= 1 {
                     b.checking.push((color, 1));
                 } else if let Some(last) = b.checking.last_mut() {

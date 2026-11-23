@@ -15,7 +15,6 @@ use myriade_engine::{
 };
 use horizon_core::position::BlockPos;
 use horizon_core::random::RandomSource;
-use mod_api::EntityRef;
 use std::collections::HashMap;
 use {
     horizon_core::nbt::{Compound, JavaString, Tag},
@@ -680,7 +679,7 @@ impl GameLevel<'_> {
         pos: BlockPos,
         state: BlockStateId,
         tool: Option<&ItemStack>,
-        entity: Option<EntityRef>,
+        entity: Option<u32>,
     ) -> Vec<ItemStack> {
         let key = (pos.x, pos.y, pos.z);
         let at = [pos.x, pos.y, pos.z];
@@ -798,18 +797,6 @@ impl GameLevel<'_> {
             let (block_entity, breaker_entity) = self.drop_event_refs(pos, breaker);
             let mut next_experience = experience;
             let mut next_canceled = canceled;
-            self.native_block_drops(crate::game::native_hooks::BlockDropsCall {
-                dimension: self.dimension,
-                pos,
-                state,
-                breaker,
-                breaker_entity,
-                block_entity,
-                tool,
-                drops: &mut snapshots,
-                experience: &mut next_experience,
-                cancel: &mut next_canceled,
-            });
             if let Ok(mut next_items) =
                 super::api_values::item_drops_into_engine(&snapshots, self.items)
             {
@@ -1134,11 +1121,6 @@ impl Game<'_> {
             Some((&mut self.rand_sequences, self.level.seed)),
         )
     }
-    /// The handle of `LootContextParams.THIS_ENTITY`, by its id.
-    pub(in crate::game) fn loot_entity_ref(&self, id: Option<u32>) -> Option<EntityRef> {
-        let epoch = self.native_lifecycle.epoch()?;
-        Some(EntityRef::new(epoch, id.filter(|id| *id != 0)?))
-    }
     /// Apply the shared block-drop event's item entities and experience unchanged.
     pub(super) fn spawn_block_drops(&mut self, pos: [i32; 3], dropped: BlockDrops) {
         for item in dropped.items {
@@ -1171,18 +1153,9 @@ impl Game<'_> {
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
         let tool = self.held().cloned();
-        let player = Some(self.native_acting_id());
+        let player = Some(myriade_engine::lan::playerdata::ints_uuid(self.acting_player_uuid()));
         retell_runs(&mut spill.spawns, &used, |used, origin, drops| {
             let block = Some((used.pos, used.state));
-            self.native_use_drops(
-                used.table,
-                origin,
-                block,
-                None,
-                player,
-                tool.as_ref(),
-                drops,
-            );
         });
         for s in spill.spawns {
             self.add_item_entity_prepared(s.stack, s.pos, s.motion, s.delay, s.random);
@@ -1211,224 +1184,6 @@ impl Game<'_> {
 mod tests {
     use super::*;
 
-    /// Listens to `block_drops`: takes any break of dirt, adds 2 points to the rest.
-    struct DropsMod;
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for DropsMod {
-        fn block_drops(
-            &self,
-            _: &dyn mod_api::LevelHost,
-            event: &mut mod_api::BlockDropsEvent<'_>,
-        ) -> mod_api::Flow {
-            if event.drops.iter().any(|d| {
-                mod_api::__private::item_key_id(d.stack.item()).unwrap() == "minecraft:dirt"
-            }) {
-                return mod_api::Flow::Cancel;
-            }
-            event.experience += 2;
-            mod_api::Flow::Continue
-        }
-    }
-
-    /// `Block.dropResources` builds its item entities (and samples the experience) before
-    /// `BlockDropsEvent`, so the level random ends where it does without a listener; a mod that
-    /// cancels gets no entities and no experience but the draws still happened; a mod that
-    /// edits the amount changes only the amount.
-    #[test]
-    #[ignore = "daily"]
-    fn block_drops_draws_before_the_event_and_cancel_empties_the_break() {
-        use horizon_core::random::LegacyRandom;
-        use std::sync::Arc;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(myriade_engine::chunk::Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let dirt = registry.default_state("minecraft:dirt").unwrap();
-            let ore = registry.default_state("minecraft:diamond_ore").unwrap();
-            let pos = BlockPos::new(1, 64, 2);
-            let break_of = |game: &mut Game<'_>, state, item, exp_to_drop| {
-                game.world.random =
-                    horizon_core::random::LevelRandom::for_level(LegacyRandom::new(7));
-                let dropped = game.with_level(|_, level, _| {
-                    level.block_dropped(
-                        pos,
-                        state,
-                        None,
-                        None,
-                        vec![ItemStack::new(item, 1)],
-                        exp_to_drop,
-                    )
-                });
-                (dropped, game.world.random.next_int())
-            };
-            let (plain_ore, ore_after) = break_of(game, ore, "minecraft:diamond", None);
-            let (plain_dirt, dirt_after) = break_of(game, dirt, "minecraft:dirt", None);
-            let (overridden, _) = break_of(game, ore, "minecraft:diamond", Some(17));
-            assert_eq!(overridden.experience, 17);
-            assert_eq!(plain_dirt.items.len(), 1);
-            let mods: mod_api::Mods =
-                vec![mod_api::ModEntry::new("block-drops", Box::new(DropsMod))].into();
-            mod_platform::testing::with_mods(mods, || {
-                let (heard, after) = break_of(game, ore, "minecraft:diamond", None);
-                assert_eq!(after, ore_after);
-                assert_eq!(heard.items.len(), 1);
-                assert_eq!(heard.items[0].position, plain_ore.items[0].position);
-                assert_eq!(heard.experience, plain_ore.experience + 2);
-                assert!(!heard.canceled);
-                let (overridden, _) = break_of(game, ore, "minecraft:diamond", Some(17));
-                assert_eq!(overridden.experience, 19);
-                let (taken, after) = break_of(game, dirt, "minecraft:dirt", None);
-                assert_eq!(after, dirt_after);
-                assert!(taken.canceled && taken.items.is_empty() && taken.experience == 0);
-            });
-        });
-    }
-
-    /// A mod block entity's part answers its removal as vanilla's `preRemoveSideEffects`
-    /// override does: found by the entity's type, not its block, reading its attachments in
-    /// place, its stacks scattered after the block entity's own; skipped under flag 256, and
-    /// drawing nothing when it gives nothing back.
-    #[test]
-    #[ignore = "daily"]
-    fn a_block_entity_part_gives_back_what_it_held_when_removed() {
-        use myriade_engine::chunk::Chunk;
-        use myriade_engine::containers::{ModBlockEntity, ModBlockEntityFields};
-        use mod_api::Holder;
-        use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED, game_thread};
-        use std::sync::Arc;
-        use std::sync::atomic::Ordering;
-        crate::game::native_entity_refs::tests::with_game(|game| {
-            let _mods = game_thread();
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let stone = game
-                .pack
-                .assets
-                .registry
-                .default_state("minecraft:stone")
-                .unwrap();
-            // Each case: the entity's type, its hoard, side effects; the gold that comes out.
-            let asked = HOARD_ASKED.load(Ordering::Relaxed);
-            for (id, hoard, side_effects, gold) in [
-                ("doubler:hoard", 5, true, 5),
-                ("doubler:hoard", 5, false, 0),
-                ("doubler:hoard", 0, true, 0),
-                // A different declared type's removal doesn't reach `Hoard`.
-                ("doubler:press_entity", 5, true, 0),
-            ] {
-                let pos = BlockPos::new(1, 64, 2);
-                let key = (pos.x, pos.y, pos.z);
-                let entity = BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                    id.into(),
-                    ModBlockEntityFields::default(),
-                )));
-                game.world.block_entities.insert(key, entity);
-                let holder = Holder::BlockEntity([pos.x, pos.y, pos.z]);
-                let host: &mut dyn mod_api::Host = game;
-                HOARD.set(host, holder, hoard).unwrap();
-                let (spawns, random) = game.with_level(|_, level, _| {
-                    let mut scatter = level.world.random.clone();
-                    level.remove_entity(pos, stone, side_effects);
-                    // The game's own draws for what came out, from the random as it was.
-                    let count = level.spill.spawns.iter().map(|s| s.stack.count).sum();
-                    if count > 0 {
-                        removal::drop_item_stack(&mut scatter, pos, count);
-                    }
-                    let spawns: Vec<_> = level
-                        .spill
-                        .spawns
-                        .iter()
-                        .map(|s| (s.stack.item.to_string(), s.stack.count))
-                        .collect();
-                    (spawns, scatter.next_int() == level.world.random.next_int())
-                });
-                let total: u32 = spawns.iter().map(|(_, count)| count).sum();
-                assert!(
-                    spawns
-                        .iter()
-                        .all(|(item, _)| item == "minecraft:gold_ingot")
-                );
-                assert_eq!(
-                    total, gold,
-                    "{id} holding {hoard}, side effects {side_effects}"
-                );
-                assert!(random, "{id}: the random drew only the scatter");
-                assert!(game.world.block_entities.get(&key).is_none());
-            }
-            // Only the two `doubler:hoard` removals with side effects asked it.
-            assert_eq!(HOARD_ASKED.load(Ordering::Relaxed) - asked, 2);
-        });
-    }
-
-    /// A mod block entity that replaces its own block during its tick is out of the level for
-    /// the call, so its removal doesn't reach its part: the part isn't asked, its attachments
-    /// go with the block entity, and only its container slots come back out.
-    #[test]
-    #[ignore = "daily"]
-    fn a_block_entity_removing_itself_in_its_tick_is_not_asked() {
-        use myriade_engine::chunk::Chunk;
-        use myriade_engine::containers::{ModBlockEntity, ModBlockEntityFields, ModContainer};
-        use mod_api::Holder;
-        use mod_platform::__private::part_tests::{HOARD, HOARD_ASKED};
-        use std::sync::Arc;
-        use std::sync::atomic::Ordering;
-        let Some(root) = crate::game::native_entity_refs::tests::declared_part_root(
-            "game::spill::tests::a_block_entity_removing_itself_in_its_tick_is_not_asked",
-        ) else {
-            return;
-        };
-        crate::game::native_entity_refs::tests::with_game_at(root, |game| {
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = &game.pack.assets.registry;
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let granite = registry.default_state("minecraft:granite").unwrap();
-            let pos = BlockPos::new(1, 64, 2);
-            let key = (pos.x, pos.y, pos.z);
-            game.world.set(pos.x, pos.y, pos.z, stone).unwrap();
-            game.world.block_entities.set_mod_containers(
-                [(
-                    stone.0,
-                    Arc::new(ModContainer {
-                        slots: 1,
-                        ..Default::default()
-                    }),
-                )]
-                .into_iter()
-                .collect(),
-            );
-            // Data `[1]` makes the hoard's tick set its own block to granite.
-            let fields = ModBlockEntityFields {
-                items: vec![Some(ItemStack::new("minecraft:diamond", 3))],
-                data: vec![1],
-                ..Default::default()
-            };
-            game.world.block_entities.insert(
-                key,
-                BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                    "doubler:hoard".into(),
-                    fields,
-                ))),
-            );
-            let holder = Holder::BlockEntity([pos.x, pos.y, pos.z]);
-            let host: &mut dyn mod_api::Host = game;
-            HOARD.set(host, holder, 5).unwrap();
-            let asked = HOARD_ASKED.load(Ordering::Relaxed);
-            let dropped = game.ecs.item_ids().len();
-            game.tick_mod_block_entity(key);
-            assert_eq!(game.world.block(pos.x, pos.y, pos.z), granite);
-            assert_eq!(HOARD_ASKED.load(Ordering::Relaxed), asked);
-            assert!(game.world.block_entities.attachments(key).is_none());
-            let out: Vec<_> = game.ecs.item_views()[dropped..]
-                .iter()
-                .map(|d| (d.stack.item.to_string(), d.stack.count))
-                .collect();
-            assert_eq!(out, [("minecraft:diamond".to_owned(), 3)]);
-        });
-    }
     use myriade_engine::{block_entity_item, item_data, mobs::raider, save};
     use horizon_core::nbt::Tag;
 

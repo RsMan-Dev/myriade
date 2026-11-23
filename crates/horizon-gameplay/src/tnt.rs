@@ -10,8 +10,6 @@ use horizon_core::{
 
 #[derive(Clone, Debug)]
 pub struct PrimedTnt {
-    /// Entity-owned registration metadata; content clones are detached.
-    pub attachment_lifetime: horizon_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`myriade_engine::join_seq`); set by the list.
@@ -342,7 +340,6 @@ impl PrimedTnt {
     }
 }
 myriade_engine::impl_joined!(PrimedTnt);
-horizon_mod_runtime::impl_attachment_lifetime!(PrimedTnt);
 impl EntityRules for PrimedTnt {
     fn is_no_gravity(&self) -> bool {
         self.no_gravity

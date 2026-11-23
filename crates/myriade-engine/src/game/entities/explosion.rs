@@ -14,7 +14,7 @@ use horizon_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
-use mod_api::ExplosionStart;
+use myriade_types::ExplosionStart;
 #[cfg(test)]
 use myriade_types::ItemDrop;
 use std::{cmp::Ordering, collections::HashSet, io};
@@ -514,8 +514,8 @@ impl Game<'_> {
         // A primed TNT minecart's rails and the blocks they
         // stand on: no resistance, and never blown up.
         let spared = rules.rail_proof
-            && (self.rail(None, pos[0], pos[1], pos[2]).is_some()
-                || self.rail(None, pos[0], pos[1] + 1, pos[2]).is_some());
+            && (self.rail(pos[0], pos[1], pos[2]).is_some()
+                || self.rail(pos[0], pos[1] + 1, pos[2]).is_some());
         let resistance = match rules.resists {
             Some((at, resistance)) if at == pos => Some(resistance),
             _ if !self.res.facts().is_air(state) || f.fluid != Fluid::None => {
@@ -947,30 +947,21 @@ impl Game<'_> {
             knockback,
             flying_knockback,
         };
-        let own = if self
-            .lan_acting_entity
-            .is_some_and(|id| !self.combat.visits(id))
-        {
-            None
-        } else {
-            self.explosion_hurt_player(
-                &context,
-                radius,
-                damage_type,
-                exploding,
-                attacker.as_ref(),
-                blast_source.as_ref(),
-            )
-        };
+        let own = self.explosion_hurt_player(
+            &context,
+            radius,
+            damage_type,
+            exploding,
+            attacker.as_ref(),
+            blast_source.as_ref(),
+        );
         let mut pushed: Vec<_> = self.lan_acting.zip(own).into_iter().collect();
         if let Some(host) = self.lan.as_ref() {
-            let combat = &self.combat;
             let guests: Vec<u32> = host
                 .hub
                 .guests
                 .iter()
                 .filter(|g| host.hub.here(g))
-                .filter(|g| u32::try_from(g.entity_id).map_or(true, |id| combat.visits(id)))
                 .map(|g| g.conn)
                 .collect();
             for conn in guests {
@@ -1034,29 +1025,13 @@ impl Game<'_> {
                 )
             }};
         }
-        // The walk visits the storages in storage order, unless a listening
-        // `explosion_detonate` left the list, and then it visits exactly what
-        // the list names, in its order (`explosion_detonate.rs`). The kinds
-        // outside the storages (players, frames, paintings, cushions,
-        // crystals, the dragon, hooks) answer no handle here: the player walk
-        // and their own passes read the list for them.
+        // The walk visits the storages in storage order. The kinds outside the
+        // storages (players, frames, paintings, cushions, crystals, the dragon)
+        // are walked by their own passes.
         let mut cursor = self.entity_id_cursor();
-        let mut listed_at = 0;
         loop {
-            let next = if let Some(list) = self.combat.blast_hit_list.as_ref() {
-                let Some(&id) = list.get(listed_at) else {
-                    break;
-                };
-                listed_at += 1;
-                self.blast_handle(id).map(|handle| (id, handle))
-            } else {
-                let Some(next) = self.next_entity_id(&mut cursor) else {
-                    break;
-                };
-                Some(next)
-            };
-            let Some((entity, handle)) = next else {
-                continue;
+            let Some((entity, handle)) = self.next_entity_id(&mut cursor) else {
+                break;
             };
             // A callback may discard a later original without sweeping its
             // storage yet. Removed entities no longer receive blast callbacks.
@@ -1068,14 +1043,8 @@ impl Game<'_> {
             {
                 continue;
             }
-            // An entity the blast's list does not name is neither hurt nor
-            // pushed; without a listener the storages are the walk.
-            let hit = if with_entity!(self, handle, e => self.combat.visits(e.id())) {
-                let seen = hurts || knockback != 0.0;
-                with_entity!(self, handle, e => self.blast_hit(e, center, diameter, &blast, seen))
-            } else {
-                None
-            };
+            let seen = hurts || knockback != 0.0;
+            let hit = with_entity!(self, handle, e => self.blast_hit(e, center, diameter, &blast, seen));
             if let Some(Hit {
                 dist,
                 exposure,
@@ -1083,11 +1052,6 @@ impl Game<'_> {
             }) = hit
             {
                 let amount = damage(dist, exposure);
-                match handle {
-                    _ if !hurts => {}
-                    // `hurtServer` does nothing to the rest.
-                    _ => {}
-                }
                 let k = f64::from(knockback);
                 let mut velocity = [push.x * k, push.y * k, push.z * k];
                 self.native_explosion_knockback(
@@ -1224,7 +1188,6 @@ impl Game<'_> {
             let Some(a) = self.armor_stand_saved(id) else { continue };
             let p = a.position;
             if !super::armor_stands::spared_by_blast(&a)
-                && self.combat.visits(a.id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
                 let source = myriade_engine::health::HurtSource {
@@ -1264,7 +1227,7 @@ impl Game<'_> {
     fn explosion_breaks_hanging(&mut self, center: [f64; 3], diameter: f64) {
         for c in self.cushion_list() {
             let p = c.position;
-            if self.combat.visits(c.id) && blast_reaches(center, diameter, [p.x, p.y, p.z]) {
+            if blast_reaches(center, diameter, [p.x, p.y, p.z]) {
                 self.break_cushion_id(c.id, self.explosion_kill_credit(), true);
             }
         }
@@ -1365,7 +1328,7 @@ impl Game<'_> {
         fire: bool,
         damage_type: &'a str,
     ) -> ExplosionStart<'a> {
-        ExplosionStart::from(mod_api::__private::built::ExplosionStart {
+        myriade_types::ExplosionStart {
             dimension: self.dim.id(),
             center,
             radius,
@@ -1380,7 +1343,7 @@ impl Game<'_> {
             source: self.combat.explosion_source,
             // `getIndirectSourceEntity`, as the blast's attacker is.
             owner: self.blast_attacker().map(|(id, _)| id),
-        })
+        }
     }
     /// `server_explode` with the damage type the player takes and a block
     /// whose explosion resistance the damage calculator overrides.
@@ -1432,16 +1395,8 @@ impl Game<'_> {
         if !self.blast_explodes_blocks() {
             targets.clear();
         }
-        // The walks that hurt entities follow the list a listening
-        // `explosion_detonate` leaves: a blast set off inside one of them
-        // (its own detonate, a nested `level_explode`) keeps its own list.
-        let outer = std::mem::take(&mut self.combat.blast_hit_list);
-        let outer_ids = std::mem::take(&mut self.combat.blast_hit_ids);
-        self.explosion_detonate(center, radius, &mut targets);
         let pushed =
             self.explosion_hurt_entities(center, radius, damage_type, interaction, &targets);
-        self.combat.blast_hit_list = outer;
-        self.combat.blast_hit_ids = outer_ids;
         self.explosion_block_step(&mut targets, radius, interaction, fire, &start)?;
         let effects = self.blast_effects();
         if !source.silent {
@@ -2027,7 +1982,7 @@ mod tests {
             game.world.random.set_seed(7);
             let expected = exploded_positions_stepwise(&mut game, center, radius, resists);
             game.world.random.set_seed(7);
-            let start = ExplosionStart::from(mod_api::__private::built::ExplosionStart {
+            let start = myriade_types::ExplosionStart {
                 dimension: "minecraft:overworld",
                 center,
                 radius,
@@ -2036,7 +1991,7 @@ mod tests {
                 damage_type: "minecraft:explosion",
                 source: None,
                 owner: None,
-            });
+            };
             let got = game.exploded_positions(center, radius, resists, false, &start);
             assert!(expected.len() > 20, "{radius}: {}", expected.len());
             assert_eq!(got, expected, "radius {radius}, {resists:?}");

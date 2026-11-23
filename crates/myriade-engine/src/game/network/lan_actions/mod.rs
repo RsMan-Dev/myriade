@@ -29,7 +29,7 @@ use horizon_protocol::{
     text::literal,
 };
 use horizon_world::entity_move::EntityMoveWorld;
-use mod_api::ActionRefused;
+use myriade_types::ActionRefused;
 use myriade_types::GameMode;
 use myriade_types::SoundSource;
 

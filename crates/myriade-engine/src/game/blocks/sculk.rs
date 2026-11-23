@@ -1036,13 +1036,6 @@ impl Game<'_> {
             SculkKind::Catalyst => "minecraft:sculk_catalyst",
         };
         let mut cancel = false;
-        self.native_block_receive_game(
-            self.dim.id(),
-            [key.0, key.1, key.2],
-            block,
-            info.event,
-            &mut cancel,
-        );
         if cancel {
             return Ok(());
         }
@@ -1476,7 +1469,6 @@ impl Game<'_> {
     fn catalyst_bloom(&mut self, key: (i32, i32, i32)) {
         let pos = BlockPos::new(key.0, key.1, key.2);
         self.with_level(|b, level, ticks| b.sculk_catalyst_bloom(level, ticks, pos));
-        self.native_sculk_bloom(self.dim.id(), [key.0, key.1, key.2]);
         let _ = self.process_level_events();
         let c = center(key);
         let pitch = 0.6 + self.world.random.next_float() * 0.4;
@@ -2170,51 +2162,6 @@ mod tests {
             assert_eq!(info.source, Some(EventSource::Entity(123)));
             assert_eq!(info.owner, Some(Who::Player));
         });
-    }
-
-    /// `vanilla_game_event` hears `GameEvent.Context.affectedState`: the state a context
-    /// was made with reaches the listener, and a context made with none reads as None.
-    #[test]
-    #[ignore = "daily"]
-    fn vanilla_game_event_carries_the_affected_state() {
-        use crate::game::native_entity_refs::tests::with_game;
-        use mod_api::Hooks;
-        use mod_api::ModEntry;
-        use mod_api::VanillaGameEventEvent;
-        use mod_platform::testing::with_mods;
-        use std::sync::{Arc, Mutex};
-
-        struct Heard(Arc<Mutex<Vec<Option<BlockStateId>>>>);
-        #[mod_api::__subscriptions]
-        impl Hooks for Heard {
-            fn vanilla_game_event(
-                &self,
-                _host: &mut dyn mod_api::ServerHost,
-                event: &mut VanillaGameEventEvent<'_>,
-            ) -> mod_api::Flow {
-                self.0
-                    .lock()
-                    .unwrap()
-                    .push(event.affected_state.map(|state| {
-                        crate::game::api_values::TryIntoEngine::try_into_engine(&state, &())
-                            .unwrap()
-                    }));
-                mod_api::Flow::Continue
-            }
-        }
-
-        let heard = Arc::new(Mutex::new(Vec::new()));
-        let mods = vec![ModEntry::new("heard", Box::new(Heard(heard.clone())))].into();
-        with_mods(mods, || {
-            with_game(|game| {
-                let state = BlockStateId(3);
-                let placed = game.player_context(Some(state));
-                game.post_game_event("minecraft:block_place", [0.5, 64.0, 0.5], placed);
-                let stepped = game.who_context(None, None);
-                game.post_game_event("minecraft:step", [0.5, 64.0, 0.5], stepped);
-            });
-        });
-        assert_eq!(*heard.lock().unwrap(), vec![Some(BlockStateId(3)), None]);
     }
 
     /// Retaining keeps the insertion order and the membership in step.

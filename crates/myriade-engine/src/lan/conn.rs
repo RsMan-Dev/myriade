@@ -6,7 +6,6 @@
 //! network threads ([`io_pool`]): they forward decoded packets to the game
 //! thread, frame, compress and encrypt what the game queues, and keep the
 //! keep-alive schedule on their own so a long tick never times a client out.
-mod payloads;
 use super::config_payloads::ConfigIo;
 use super::{
     Body, Joined, NetEvent, Out, Shared,
@@ -14,7 +13,6 @@ use super::{
     forwarding,
     io_pool::{self, Session as _},
 };
-use crate::raw_payloads::{Side, Transport};
 use horizon_protocol::{
     PROTOCOL_VERSION,
     connection::{ConnWriter, Connection, Counters},
@@ -22,14 +20,12 @@ use horizon_protocol::{
     packets::{
         Empty,
         configuration::{self as cfg, ClientInformation, KnownPack},
+        custom_payload::PayloadCodecs,
         handshake, login, play, status,
     },
     payload_negotiation::Phase,
     text::translatable,
 };
-use mod_api::PayloadFrameStage;
-use mod_api::PayloadId;
-use mod_api::PayloadSendError;
 use std::{
     cell::Cell,
     net::TcpStream,
@@ -277,7 +273,6 @@ impl Undrained {
 /// The sending half given to the game thread.
 #[derive(Clone)]
 pub struct PlayerSender {
-    payload_transport: Arc<Transport>,
     /// What the player's network thread has handed the hub and the hub hasn't taken yet.
     pub undrained: Arc<Undrained>,
     /// The bytes of the bodies sent and not framed yet.
@@ -289,7 +284,6 @@ pub struct PlayerSender {
     /// network thread: `horizon-report`'s network use per player. None for a test's channel.
     wire: Option<Arc<Counters>>,
     /// Registry negotiation belongs to this live connection, never a process-wide UUID cache.
-    pub datapack_offer: Option<Arc<[u8]>>,
     /// The plugin channels the client announced, in configuration and play.
     pub announced: Arc<super::announced_channels::AnnouncedChannels>,
     /// Its `horizon:levels` answer: its revision and the levels besides its own it can view.
@@ -350,17 +344,6 @@ impl PlayerSender {
             )
         })
     }
-    /// The immutable codec snapshot and live epochs for this connection.
-    pub fn payload_transport(&self) -> &Arc<Transport> {
-        &self.payload_transport
-    }
-    /// Frozen physical framing, used to reject before copying a large raw body.
-    pub(crate) fn payload_framing(&self) -> horizon_protocol::connection::Framing {
-        self.framing
-    }
-    pub(crate) fn payload_capacity(&self) -> usize {
-        io_pool::MAX_PENDING
-    }
     /// A sender whose packets go to `tx` (a test's).
     pub fn new(tx: Sender<Out>, pending: Arc<AtomicUsize>) -> Self {
         Self {
@@ -370,55 +353,12 @@ impl PlayerSender {
             framing: horizon_protocol::connection::Framing::Network(None),
             to: To::Channel(tx),
             wire: None,
-            payload_transport: Transport::empty(),
-            datapack_offer: None,
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
             packet_counts: Arc::default(),
             connect: None,
         }
-    }
-    #[cfg(test)]
-    pub(crate) fn new_with_payload_transport(
-        tx: Sender<Out>,
-        pending: Arc<AtomicUsize>,
-        transport: Arc<Transport>,
-    ) -> Self {
-        let mut sender = Self::new(tx, pending);
-        sender.payload_transport = transport;
-        sender
-    }
-    /// Real bounded output queue without socket adoption, for executor tests.
-    #[cfg(test)]
-    pub(crate) fn payload_executor_test_sender(
-        transport: Arc<Transport>,
-    ) -> (Self, impl Fn() -> Vec<Vec<u8>>) {
-        let pending = Arc::default();
-        let outbox = io_pool::Outbox::new(Arc::clone(&pending), false).unwrap();
-        let inspect = outbox.clone();
-        let sender = Self {
-            payload_transport: transport,
-            undrained: Arc::default(),
-            pending,
-            held: Arc::default(),
-            framing: horizon_protocol::connection::Framing::Memory,
-            to: To::Pool(
-                outbox,
-                Arc::new(KeepAliveWatch {
-                    start: Instant::now(),
-                    alive: Arc::new(AtomicI64::new(-1)),
-                }),
-            ),
-            wire: None,
-            datapack_offer: None,
-            announced: Arc::default(),
-            viewed_levels: Default::default(),
-            menu_extra_rev: 0,
-            packet_counts: Arc::default(),
-            connect: None,
-        };
-        (sender, move || inspect.queued_contents())
     }
     /// A connectionless actor has no writer, queue or packet delivery.
     pub fn disabled() -> Self {
@@ -429,8 +369,6 @@ impl PlayerSender {
             framing: horizon_protocol::connection::Framing::Network(None),
             to: To::Disabled,
             wire: None,
-            payload_transport: Transport::empty(),
-            datapack_offer: None,
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
@@ -453,7 +391,6 @@ impl PlayerSender {
     }
     /// Close the connection now, dropping what is still queued for it.
     pub fn close(&self) {
-        self.payload_transport.close();
         if let To::Pool(outbox, _) = &self.to {
             outbox.send(Vec::new(), Some(io_pool::End::Close));
         }
@@ -480,49 +417,6 @@ impl PlayerSender {
             return true;
         }
         self.reserve(cost)
-    }
-    /// Prepare a whole encoded packet without publishing it. The channel is diagnostic only;
-    /// its wire identifier must already be included in `body`.
-    pub fn prepare_payload(
-        &self,
-        body: Vec<u8>,
-        id: &PayloadId,
-    ) -> Result<PreparedPayload, PayloadSendError> {
-        let To::Pool(outbox, _) = &self.to else {
-            return Err(PayloadSendError::Disconnected);
-        };
-        if !outbox.alive() {
-            return Err(PayloadSendError::Disconnected);
-        }
-        let bytes = self
-            .framing
-            .contents_owned(body)
-            .map_err(|e| match e.frame_limit() {
-                Some(d) => PayloadSendError::FrameTooLarge {
-                    id: id.clone(),
-                    stage: match d.stage {
-                        horizon_protocol::frame::FrameSize::Encoded => PayloadFrameStage::Encoded,
-                        horizon_protocol::frame::FrameSize::Uncompressed => {
-                            PayloadFrameStage::Uncompressed
-                        }
-                    },
-                    size: d.size as u64,
-                    limit: d.limit as u64,
-                },
-                None => PayloadSendError::EncodeFailed(e.to_string()),
-            })?;
-        // Bookkeeping for PreparedPayload and the transaction's deferred journal record,
-        // including geometric journal growth (records are at most 256 bytes). This is
-        // retained-memory accounting, not a packet count or application-body cap.
-        let cost = io_pool::charge(bytes.capacity()).saturating_add(512);
-        if !self.reserve(cost) {
-            return Err(PayloadSendError::Backpressure);
-        }
-        Ok(PreparedPayload {
-            sender: self.clone(),
-            bytes: Some(bytes),
-            cost,
-        })
     }
     pub fn send(&self, body: Vec<u8>) {
         self.send_body(body.into());
@@ -598,7 +492,6 @@ impl PlayerSender {
     /// Send a play disconnect with this reason after what was sent before,
     /// then close.
     pub fn disconnect(&self, reason: horizon_core::nbt::Tag) {
-        self.payload_transport.close();
         self.flush();
         match &self.to {
             To::Disabled => {}
@@ -620,35 +513,6 @@ impl PlayerSender {
 /// Held bodies as a test's channel gives them: each its own bytes.
 fn unshared(held: Vec<Body>) -> Out {
     Out::Packets(held.into_iter().map(Body::into_vec).collect())
-}
-
-/// A transaction-owned packet. Dropping it cancels its retained-byte reservation.
-pub struct PreparedPayload {
-    sender: PlayerSender,
-    bytes: Option<Vec<u8>>,
-    cost: usize,
-}
-impl PreparedPayload {
-    /// Publish exactly the bytes prepared earlier, after the transaction commits.
-    pub fn publish(mut self) -> Result<(), PayloadSendError> {
-        self.sender.flush();
-        let bytes = self.bytes.take().expect("prepared bytes");
-        let To::Pool(outbox, _) = &self.sender.to else {
-            unreachable!()
-        };
-        if outbox.publish(bytes, self.cost) {
-            Ok(())
-        } else {
-            Err(PayloadSendError::Disconnected)
-        }
-    }
-}
-impl Drop for PreparedPayload {
-    fn drop(&mut self) {
-        if self.bytes.is_some() {
-            self.sender.pending.fetch_sub(self.cost, Ordering::Relaxed);
-        }
-    }
 }
 
 /// Hand every player's held packets to their network threads, waking each
@@ -1405,13 +1269,11 @@ fn forward(
 }
 
 struct Parts {
-    payload_transport: Arc<Transport>,
     uuid: u128,
     name: String,
     properties: Vec<login::Property>,
     info: ClientInformation,
     brand: String,
-    datapack_offer: Option<Vec<u8>>,
     channels: super::config_payloads::EngineChannels,
 }
 
@@ -1458,9 +1320,7 @@ fn login_and_configure(
     }
     c.reader.set_read_timeout(Some(READ_TIMEOUT)).map_err(e)?;
     // Configuration.
-    let payload_transport = Transport::new(shared.payload_local.clone(), Side::Server);
-    let mut config_io =
-        ConfigIo::new(c, payload_transport.clone(), shared.events.clone()).map_err(e)?;
+    let mut config_io = ConfigIo::new(c);
     let c = &mut config_io;
     let sync_data = shared.sync();
     let sync: &SyncData = &sync_data;
@@ -1501,7 +1361,7 @@ fn login_and_configure(
         }),
     )?;
     let mut payload_negotiation = horizon_protocol::payload_negotiation::Negotiation::new(
-        payload_transport.local.manifest.clone(),
+        horizon_protocol::payload_negotiation::Manifest::default(),
     );
     // This build's name goes first, so a Horizon client can name it if the negotiation fails
     // (crate::build_mismatch). A vanilla client discards it, as it discards the Query.
@@ -1519,7 +1379,6 @@ fn login_and_configure(
     // answering known packs. That reply orders the announcement without a ping.
     let server_mods = horizon_protocol::mod_list::local();
     let mut client_mods = Vec::new();
-    let mut datapack_offer = None;
     let core = KnownPack {
         namespace: CORE_PACK.0.into(),
         id: CORE_PACK.1.into(),
@@ -1539,7 +1398,6 @@ fn login_and_configure(
             c,
             id,
             &payload,
-            &payload_transport,
             &mut payload_negotiation,
         )?
         else {
@@ -1581,21 +1439,10 @@ fn login_and_configure(
                     }
                 }
             }
-            cfg::Serverbound::CustomPayload(p)
-                if p.channel == crate::datapack_net::OFFER_CHANNEL =>
-            {
-                datapack_offer = Some(p.data);
-            }
             cfg::Serverbound::SelectKnownPacks(p) => {
                 // A Horizon client that never answered predates the negotiation.
                 if let Err(error) = payload_negotiation.finish_without_offer() {
                     return Err(negotiation_disconnect(c, error));
-                }
-                if payload_transport.epoch().is_none()
-                    && let Err(error) =
-                        payload_transport.accept(payload_negotiation.accepted().unwrap_or_default())
-                {
-                    return Err(payload_disconnect(c, error));
                 }
                 break p.packs == vec![core.clone()];
             }
@@ -1704,7 +1551,6 @@ fn login_and_configure(
                 c,
                 id,
                 &payload,
-                &payload_transport,
                 &mut payload_negotiation,
             )?
             else {
@@ -1739,28 +1585,6 @@ fn login_and_configure(
             return Ok(None);
         }
     }
-    // The mods' datapack registries this client has, or the reason it cannot play (arismoko/horizon#811).
-    match crate::datapack_net::server_step(brand == "horizon", datapack_offer.as_deref()) {
-        crate::datapack_net::Step::Nothing => {}
-        crate::datapack_net::Step::Send(data) => {
-            for data in crate::datapack_net::chunks(&data)? {
-                send(
-                    c,
-                    cfg::Clientbound::CustomPayload(cfg::CustomPayload {
-                        channel: crate::datapack_net::CHANNEL.into(),
-                        data,
-                    }),
-                )?;
-            }
-        }
-        crate::datapack_net::Step::Refuse(text) => {
-            let reason =
-                horizon_core::nbt::Tag::String(horizon_core::nbt::JavaString::from(text.as_str()));
-            let _ = send(c, cfg::Clientbound::Disconnect(cfg::Disconnect { reason }));
-            lost(shared, &format!("{name} ({})", uuid_string(uuid)), &text);
-            return Ok(None);
-        }
-    }
     for packet in sync.registry_packets(known_pack, &shared.config.levels) {
         send(c, cfg::Clientbound::RegistryData(packet))?;
     }
@@ -1773,7 +1597,6 @@ fn login_and_configure(
             c,
             text,
             &mut info,
-            &payload_transport,
             &mut payload_negotiation,
         )?;
     }
@@ -1782,7 +1605,6 @@ fn login_and_configure(
             c,
             pack,
             &mut info,
-            &payload_transport,
             &mut payload_negotiation,
         )?
     {
@@ -1791,11 +1613,6 @@ fn login_and_configure(
         lost(shared, &format!("{name} ({})", uuid_string(uuid)), &text);
         return Ok(None);
     }
-    if let Some(epoch) = payload_transport.epoch()
-        && !epoch.wait_main()
-    {
-        return Err("configuration payload epoch ended".into());
-    }
     send(c, cfg::Clientbound::FinishConfiguration(Empty))?;
     loop {
         let (id, payload) = c.recv().map_err(e)?;
@@ -1803,7 +1620,6 @@ fn login_and_configure(
             c,
             id,
             &payload,
-            &payload_transport,
             &mut payload_negotiation,
         )?
         else {
@@ -1818,18 +1634,14 @@ fn login_and_configure(
             _ => {}
         }
     }
-    payload_transport.finish_configuration()?;
     let channels = std::mem::take(&mut c.channels);
-    c.finish()?;
     Ok(Some(Parts {
         channels,
-        payload_transport,
         uuid,
         name: name.to_owned(),
         properties,
         info,
         brand,
-        datapack_offer,
     }))
 }
 
@@ -1868,16 +1680,13 @@ fn negotiation_disconnect(
     }
 }
 
-/// Consume transport metadata in every configuration receive loop. Application
-/// payloads stay ordered for the configuration dispatcher (not implemented here).
 fn receive_configuration(
     c: &mut ConfigIo<'_>,
     id: i32,
     bytes: &[u8],
-    transport: &Transport,
     negotiation: &mut horizon_protocol::payload_negotiation::Negotiation,
 ) -> Result<Option<cfg::Serverbound>, String> {
-    let packet = cfg::Serverbound::decode_with_payload_codecs(id, bytes, &transport.local.codecs)
+    let packet = cfg::Serverbound::decode_with_payload_codecs(id, bytes, &PayloadCodecs::default())
         .map_err(|e| payload_disconnect(c, e.to_string()))?;
     if let cfg::Serverbound::CustomPayload(payload) = &packet
         && payload.channel == crate::build_mismatch::CHANNEL
@@ -1893,11 +1702,6 @@ fn receive_configuration(
         let reply = result.map_err(|e| negotiation_disconnect(c, e))?;
         if let Some(reply) = reply {
             send_payload_control(c, reply)?;
-        }
-        if let Some(accepted) = negotiation.accepted() {
-            transport
-                .accept(accepted)
-                .map_err(|e| payload_disconnect(c, e))?;
         }
         return Ok(None);
     }
@@ -2015,7 +1819,6 @@ fn offer_pack(
     c: &mut ConfigIo<'_>,
     pack: &crate::server::properties::ResourcePackInfo,
     info: &mut ClientInformation,
-    transport: &Transport,
     negotiation: &mut horizon_protocol::payload_negotiation::Negotiation,
 ) -> Result<Option<u128>, String> {
     let e = |e: horizon_protocol::Error| e.to_string();
@@ -2028,7 +1831,7 @@ fn offer_pack(
     };
     c.send(&cfg::Clientbound::ResourcePackPush(push).encode())
         .map_err(e)?;
-    wait_alive(c, transport, negotiation, |packet| match packet {
+    wait_alive(c, negotiation, |packet| match packet {
         Ok(cfg::Serverbound::ResourcePack(r)) if !matches!(r.action, 3 | 4) => {
             let rejected = r.action == PACK_DECLINED && pack.required;
             Some(Ok(rejected.then_some(r.id)))
@@ -2051,13 +1854,12 @@ fn accept_code_of_conduct(
     c: &mut ConfigIo<'_>,
     text: &str,
     info: &mut ClientInformation,
-    transport: &Transport,
     negotiation: &mut horizon_protocol::payload_negotiation::Negotiation,
 ) -> Result<(), String> {
     let e = |e: horizon_protocol::Error| e.to_string();
     c.send(&cfg::Clientbound::CodeOfConduct(cfg::CodeOfConduct { text: text.into() }).encode())
         .map_err(e)?;
-    wait_alive(c, transport, negotiation, |packet| match packet {
+    wait_alive(c, negotiation, |packet| match packet {
         Ok(cfg::Serverbound::AcceptCodeOfConduct(_)) => Some(Ok(())),
         Ok(cfg::Serverbound::FinishConfiguration(_)) => {
             Some(Err("Unexpected configuration task".to_owned()))
@@ -2076,43 +1878,9 @@ fn accept_code_of_conduct(
 /// (ServerConfigurationPacketListenerImpl.tick).
 fn wait_alive<T>(
     c: &mut ConfigIo<'_>,
-    transport: &Transport,
     negotiation: &mut horizon_protocol::payload_negotiation::Negotiation,
     mut answer: impl FnMut(Result<cfg::Serverbound, String>) -> Option<Result<T, String>>,
 ) -> Result<T, String> {
-    if let Some(sender) = c.sender.clone() {
-        return std::thread::scope(|scope| {
-            let (stop, stopped) = channel::<()>();
-            scope.spawn(move || {
-                let start = Instant::now();
-                while stopped.recv_timeout(KEEP_ALIVE_EVERY) == Err(RecvTimeoutError::Timeout) {
-                    let id = i64::try_from(start.elapsed().as_millis()).unwrap_or(0);
-                    if sender
-                        .send_packet(&cfg::Clientbound::KeepAlive(cfg::KeepAlive { id }).encode())
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-            });
-            let result = loop {
-                let (id, payload) = match c.recv() {
-                    Ok(packet) => packet,
-                    Err(e) => break Err(e.to_string()),
-                };
-                let packet = match receive_configuration(c, id, &payload, transport, negotiation) {
-                    Ok(Some(packet)) => Ok(packet),
-                    Ok(None) => continue,
-                    Err(e) => Err(e),
-                };
-                if let Some(result) = answer(packet) {
-                    break result;
-                }
-            };
-            drop(stop);
-            result
-        });
-    }
     // The engine's channels live on ConfigIo, which the wait below borrows as a plain connection.
     let mut channels = std::mem::take(&mut c.channels);
     let result = {
@@ -2141,7 +1909,7 @@ fn wait_alive<T>(
                     Ok((id, payload)) => cfg::Serverbound::decode_with_payload_codecs(
                         id,
                         &payload,
-                        &transport.local.codecs,
+                        &PayloadCodecs::default(),
                     )
                     .map_err(|e| e.to_string()),
                     Err(err) => break Err(err.to_string()),
@@ -2168,9 +1936,6 @@ fn wait_alive<T>(
                                 .unwrap()
                                 .send(&body)
                                 .map_err(|e| e.to_string())?;
-                        }
-                        if let Some(accepted) = negotiation.accepted() {
-                            transport.accept(accepted)?;
                         }
                         Ok::<(), String>(())
                     })();
@@ -2236,8 +2001,6 @@ fn play(
         framing: c.writer.framing(),
         to: To::Pool(outbox.clone(), watch.clone()),
         wire: Some(c.reader.counters.clone()),
-        payload_transport: parts.payload_transport.clone(),
-        datapack_offer: parts.datapack_offer.map(Into::into),
         announced: parts.channels.announced.clone().unwrap_or_default(),
         viewed_levels: parts.channels.viewed_levels.answer(),
         menu_extra_rev: parts.channels.menu_extra_rev.revision(),
@@ -2251,7 +2014,6 @@ fn play(
         .is_some_and(|p| p.required);
     let session = PlayConn {
         payload_sender: sender.clone(),
-        payload_transport: parts.payload_transport,
         conn,
         shared: shared.clone(),
         uuid: parts.uuid,
@@ -2297,7 +2059,6 @@ fn play(
 /// A player's play state on its network thread.
 struct PlayConn {
     payload_sender: PlayerSender,
-    payload_transport: Arc<Transport>,
     conn: u32,
     shared: Arc<Shared>,
     uuid: u128,
@@ -2348,9 +2109,6 @@ impl io_pool::Session for PlayConn {
             counts.add_body(&body);
             Verdict::Kick(text, body)
         };
-        if self.payload_transport.closed() {
-            return Verdict::Go;
-        }
         // Only the ids the protocol has: a client sending others (up to 2^31 of them) must not grow the
         // connection's table, so all of those are counted under one id, -1.
         self.packet_counts.add(
@@ -2365,7 +2123,7 @@ impl io_pool::Session for PlayConn {
         match play::Serverbound::decode_with_payload_codecs(
             id,
             &payload,
-            &self.payload_transport.local.codecs,
+            &PayloadCodecs::default(),
         )
         .and_then(checked_play)
         {
@@ -2410,56 +2168,10 @@ impl io_pool::Session for PlayConn {
             Ok(p) => {
                 let p = match p {
                     play::Serverbound::CustomPayload(payload) => {
-                        match crate::raw_payloads::Incoming::classify(
-                            &self.payload_transport,
-                            Phase::Play,
-                            payload,
-                        ) {
-                            Ok(crate::raw_payloads::Classified::Application(incoming)) => {
-                                let endpoint = crate::raw_payloads::Endpoint::server(
-                                    self.payload_sender.clone(),
-                                );
-                                crate::raw_payloads::dispatch(
-                                    incoming,
-                                    endpoint.clone(),
-                                    crate::raw_payloads::MainQueue::Server {
-                                        events: self.shared.events.clone(),
-                                        endpoint,
-                                        conn: Some(self.conn),
-                                    },
-                                );
-                                return Verdict::Go;
-                            }
-                            Ok(crate::raw_payloads::Classified::Raw(deliveries)) => {
-                                for incoming in deliveries {
-                                    let endpoint = crate::raw_payloads::Endpoint::server(
-                                        self.payload_sender.clone(),
-                                    );
-                                    crate::raw_payloads::dispatch(
-                                        incoming,
-                                        endpoint.clone(),
-                                        crate::raw_payloads::MainQueue::Server {
-                                            events: self.shared.events.clone(),
-                                            endpoint,
-                                            conn: Some(self.conn),
-                                        },
-                                    );
-                                }
-                                return Verdict::Go;
-                            }
-                            Ok(crate::raw_payloads::Classified::Other(payload))
-                                if self
-                                    .payload_sender
-                                    .announced
-                                    .apply(&payload.channel, &payload.data) =>
-                            {
-                                return Verdict::Go;
-                            }
-                            Ok(crate::raw_payloads::Classified::Other(payload)) => {
-                                play::Serverbound::CustomPayload(payload)
-                            }
-                            Err(error) => return Verdict::Close(error.to_string()),
+                        if self.payload_sender.announced.apply(&payload.channel, &payload.data) {
+                            return Verdict::Go;
                         }
+                        play::Serverbound::CustomPayload(payload)
                     }
                     packet => packet,
                 };
@@ -2482,7 +2194,13 @@ impl io_pool::Session for PlayConn {
     /// ([`PlayerSender::timed_out`]).
     fn tick(&mut self, now: Instant) -> Option<Vec<u8>> {
         // The keep-alive goes out through the I/O thread, not the player's sender: counted here.
-        let body = self.payload_tick(now)?;
+        if self.sent_at.is_some() || now < self.next_keep_alive {
+            return None;
+        }
+        let id = i64::try_from(self.watch.start.elapsed().as_millis()).unwrap_or(0);
+        self.sent_at = Some((id, now));
+        self.next_keep_alive = now + KEEP_ALIVE_EVERY;
+        let body = play::Clientbound::KeepAlive(cfg::KeepAlive { id }).encode();
         self.packet_counts.add_body(&body);
         Some(body)
     }
@@ -2491,7 +2209,6 @@ impl io_pool::Session for PlayConn {
         self.shared.closing.fetch_add(1, Ordering::AcqRel);
     }
     fn closed(&mut self) {
-        self.payload_transport.close();
         self.shared.closing.fetch_sub(1, Ordering::AcqRel);
         self.shared.release(self.uuid);
         self.counted = None;
@@ -2818,87 +2535,6 @@ mod tests {
         );
     }
 
-    /// A mod's login-profile edit is what the login success sends, with the login's own uuid and
-    /// name; a list past the profile limits falls back to the login's own properties.
-    #[test]
-    fn a_modded_login_profile_reaches_the_login_success() {
-        use mod_api::Hooks;
-        use mod_api::ModEntry;
-        use myriade_types::ProfileProperty;
-
-        // The library's test adapter installs process-wide, once; it must dispatch this hook.
-        crate::native_level_hooks::test_hooks::install();
-
-        #[derive(Default)]
-        struct Skin;
-        #[mod_api::__subscriptions]
-        impl Hooks for Skin {
-            fn player_login_profile(&self, event: &mut mod_api::PlayerLoginProfileEvent<'_>) {
-                event.properties.retain(|p| p.name != "textures");
-                event.properties.push(ProfileProperty::new(
-                    "textures".into(),
-                    "new".into(),
-                    Some("signed".into()),
-                ));
-            }
-        }
-
-        #[derive(Default)]
-        struct TooMany;
-        #[mod_api::__subscriptions]
-        impl Hooks for TooMany {
-            fn player_login_profile(&self, event: &mut mod_api::PlayerLoginProfileEvent<'_>) {
-                *event.properties = (0..17)
-                    .map(|i| ProfileProperty::new(format!("p{i}"), "v".into(), None))
-                    .collect();
-            }
-        }
-
-        let lan = crate::lan::Lan::start_with(
-            Arc::new(SyncData::empty()),
-            crate::lan::NetConfig {
-                listen: false,
-                ..crate::lan::NetConfig::loopback(0, "Mods".into(), 8)
-            },
-        )
-        .unwrap();
-
-        let login = |mods: mod_platform::Mods| {
-            mod_platform::testing::with_mods(mods, || {
-                let (client, server) = horizon_protocol::connection::Pipe::pair();
-                let shared = lan.shared.clone();
-                let serve = mod_platform::testing::inherit_mods(move |_: &()| {
-                    let _ = super::serve_local(server, shared);
-                });
-                let worker =
-                    horizon_guest_stack::spawn("mod-login".into(), move || serve(&())).unwrap();
-                let profile = login_profile(&mut Connection::local(client), "Alex");
-                worker.join().unwrap();
-                profile
-            })
-        };
-
-        let profile = login(vec![ModEntry::new("skin", Box::new(Skin))].into());
-        assert_eq!(profile.uuid, offline_uuid("Alex"));
-        assert_eq!(profile.name, "Alex");
-        assert_eq!(
-            profile.properties,
-            vec![login::Property {
-                name: "textures".into(),
-                value: "new".into(),
-                signature: Some("signed".into()),
-            }]
-        );
-
-        let profile = login(vec![ModEntry::new("too-many", Box::new(TooMany))].into());
-        assert_eq!(profile.uuid, offline_uuid("Alex"));
-        assert_eq!(profile.name, "Alex");
-        assert!(
-            profile.properties.is_empty(),
-            "a list past the limits keeps the login's own properties"
-        );
-    }
-
     /// arismoko/horizon#3209: a client may announce its channels while the server waits on a configuration
     /// task (here the code of conduct). With no typed declaration the wait reads packets
     /// itself; the list must still be kept.
@@ -2922,15 +2558,12 @@ mod tests {
         ] {
             client.send(&packet.encode()).unwrap();
         }
-        let transport = Transport::empty();
-        let (events, _receiver) = super::super::event_channel_with_capacity(1 << 20);
-        let mut io = ConfigIo::new(&mut server, transport.clone(), events).unwrap();
-        assert!(io.sender.is_none(), "the wait reads packets itself");
+        let mut io = ConfigIo::new(&mut server);
         let mut negotiation = horizon_protocol::payload_negotiation::Negotiation::new(
-            transport.local.manifest.clone(),
+            horizon_protocol::payload_negotiation::Manifest::default(),
         );
         let mut info = ClientInformation::new(10);
-        accept_code_of_conduct(&mut io, "Be kind.", &mut info, &transport, &mut negotiation)
+        accept_code_of_conduct(&mut io, "Be kind.", &mut info, &mut negotiation)
             .unwrap();
         let announced = io.channels.announced.as_ref().map(|list| list.list());
         assert_eq!(announced, Some(vec!["voicechat:secret".to_owned()]));
@@ -3174,218 +2807,6 @@ mod tests {
                 }
                 cfg::Clientbound::FinishConfiguration(_) => panic!("extra mod was accepted"),
                 _ => {}
-            }
-        }
-    }
-
-    #[test]
-    fn horizon_client_raw_protocol_admission_at_known_packs() {
-        for mode in [0, 1, 2] {
-            let wrong_version = mode == 1;
-            let compatible = mode == 2;
-            let config = crate::lan::NetConfig {
-                announce: false,
-                listen: false,
-                ..crate::lan::NetConfig::lan(0, "test".into(), 8)
-            };
-            let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
-            let mut c = Connection::local(lan.connect_local().unwrap());
-            c.reader
-                .set_read_timeout(Some(Duration::from_secs(10)))
-                .unwrap();
-            login_profile(&mut c, "Owner");
-            c.send(
-                &login::Serverbound::LoginAcknowledged(horizon_protocol::packets::Empty).encode(),
-            )
-            .unwrap();
-            let mut brand = horizon_protocol::buf::Writer::new();
-            brand.string("horizon");
-            c.send(
-                &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
-                    channel: "minecraft:brand".into(),
-                    data: brand.data,
-                })
-                .encode(),
-            )
-            .unwrap();
-            // A client that negotiates names its build first; one from before never does.
-            let client_build = "Nightly 2000-01-01 · 0000000";
-            if wrong_version {
-                for (channel, data) in [
-                    (
-                        crate::build_mismatch::CHANNEL,
-                        crate::build_mismatch::encode(client_build),
-                    ),
-                    (
-                        horizon_protocol::payload_negotiation::CHANNEL,
-                        vec![0, horizon_protocol::payload_negotiation::RAW_PROTOCOL + 1],
-                    ),
-                ] {
-                    c.send(
-                        &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
-                            channel: channel.into(),
-                            data,
-                        })
-                        .encode(),
-                    )
-                    .unwrap();
-                }
-            }
-            loop {
-                let (id, payload) = c.recv().unwrap();
-                match cfg::Clientbound::decode(id, &payload).unwrap() {
-                    cfg::Clientbound::CustomPayload(p)
-                        if compatible
-                            && p.channel == horizon_protocol::payload_negotiation::CHANNEL =>
-                    {
-                        use horizon_protocol::payload_negotiation::{CHANNEL, Control, Manifest};
-                        if Control::decode(&p.data).unwrap() == Control::Query {
-                            c.send(
-                                &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
-                                    channel: CHANNEL.into(),
-                                    data: Control::Offer(Manifest::default()).encode().unwrap(),
-                                })
-                                .encode(),
-                            )
-                            .unwrap();
-                        }
-                    }
-                    cfg::Clientbound::SelectKnownPacks(p) => {
-                        let _ = c.send(&cfg::Serverbound::SelectKnownPacks(p).encode());
-                    }
-                    cfg::Clientbound::Disconnect(d) => {
-                        assert!(!compatible, "compatible empty Horizon peer refused");
-                        let text = horizon_protocol::text::plain(&d.reason, &Default::default());
-                        assert!(text.contains(if wrong_version {
-                            "protocol version"
-                        } else {
-                            "missing response"
-                        }));
-                        // The reason says which builds met, and that an older client updates.
-                        let server = crate::build_mismatch::this_build();
-                        assert!(
-                            text.starts_with(&format!("This server runs Horizon {server}; ")),
-                            "{text}"
-                        );
-                        if wrong_version {
-                            assert!(
-                                text.contains(&format!("your game is Horizon {client_build}."))
-                            );
-                        } else {
-                            assert!(text.contains(
-                                "your game is an older Horizon build. Update your game to join."
-                            ));
-                        }
-                        break;
-                    }
-                    cfg::Clientbound::FinishConfiguration(_) => {
-                        assert!(compatible, "old Horizon client admitted");
-                        c.send(
-                            &cfg::Serverbound::FinishConfiguration(
-                                horizon_protocol::packets::Empty,
-                            )
-                            .encode(),
-                        )
-                        .unwrap();
-                        break;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn raw_payload_peer_admission_over_memory_configuration() {
-        use horizon_protocol::payload_negotiation::{
-            CHANNEL, Control, Flow, Manifest, RegistrationPhase,
-        };
-        for optional in [true, false] {
-            let config = crate::lan::NetConfig {
-                announce: false,
-                listen: false,
-                ..crate::lan::NetConfig::lan(0, "test".into(), 8)
-            };
-            let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
-            let mut c = Connection::local(lan.connect_local().unwrap());
-            c.reader
-                .set_read_timeout(Some(Duration::from_secs(10)))
-                .unwrap();
-            login_profile(&mut c, "Owner");
-            c.send(
-                &login::Serverbound::LoginAcknowledged(horizon_protocol::packets::Empty).encode(),
-            )
-            .unwrap();
-            let mut builder = Manifest::builder();
-            for n in 0..500 {
-                builder
-                    .register(
-                        RegistrationPhase::Play,
-                        &format!("example:payload_{n:04}_with_long_name"),
-                        Flow::ToServer,
-                        "version_long_enough_for_large_offer",
-                        optional,
-                    )
-                    .unwrap();
-            }
-            let offer = Control::Offer(builder.finish().unwrap()).encode().unwrap();
-            assert!(offer.len() > 32_767);
-            // A query followed by an offer crosses the server's known-pack request.
-            for data in [Control::Query.encode().unwrap(), offer] {
-                c.send(
-                    &cfg::Serverbound::CustomPayload(cfg::CustomPayload {
-                        channel: CHANNEL.into(),
-                        data,
-                    })
-                    .encode(),
-                )
-                .unwrap();
-            }
-            let mut saw_offer = false;
-            loop {
-                let (id, payload) = c.recv().unwrap();
-                match cfg::Clientbound::decode_with_payload_codecs(
-                    id,
-                    &payload,
-                    &lan.shared.payload_local.codecs,
-                )
-                .unwrap()
-                {
-                    cfg::Clientbound::CustomPayload(p) if p.channel == CHANNEL => {
-                        if matches!(Control::decode(&p.data).unwrap(), Control::Offer(_)) {
-                            saw_offer = true;
-                        }
-                    }
-                    cfg::Clientbound::SelectKnownPacks(p) => {
-                        // A required unmatched Offer is refused as soon as it is read.
-                        // The disconnect can close the peer before this crossed ACK;
-                        // still read and assert that named refusal below.
-                        let sent = c.send(&cfg::Serverbound::SelectKnownPacks(p).encode());
-                        if optional {
-                            sent.unwrap();
-                        }
-                    }
-                    cfg::Clientbound::Disconnect(d) => {
-                        assert!(!optional);
-                        assert!(
-                            horizon_protocol::text::plain(&d.reason, &Default::default())
-                                .contains("example:payload_")
-                        );
-                        break;
-                    }
-                    cfg::Clientbound::FinishConfiguration(_) => {
-                        assert!(optional && saw_offer);
-                        c.send(
-                            &cfg::Serverbound::FinishConfiguration(
-                                horizon_protocol::packets::Empty,
-                            )
-                            .encode(),
-                        )
-                        .unwrap();
-                        break;
-                    }
-                    _ => {}
-                }
             }
         }
     }
@@ -3962,7 +3383,6 @@ mod tests {
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let mut c = PlayConn {
             payload_sender: PlayerSender::disabled(),
-            payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
             uuid: 2,
@@ -4101,7 +3521,6 @@ mod tests {
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128, pending: Option<i64>| PlayConn {
             payload_sender: PlayerSender::disabled(),
-            payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
             uuid,
@@ -4155,7 +3574,6 @@ mod tests {
         let lan = crate::lan::Lan::start_with(Arc::new(SyncData::empty()), config).unwrap();
         let conn = |uuid: u128| PlayConn {
             payload_sender: PlayerSender::disabled(),
-            payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
             uuid,
@@ -4237,7 +3655,6 @@ mod outgoing_budget_tests {
             io_pool::Outbox::new(Arc::clone(&pending), !matches!(framing, Framing::Memory))
                 .unwrap();
         PlayerSender {
-            payload_transport: Transport::empty(),
             undrained: Arc::default(),
             pending,
             held: Arc::default(),
@@ -4250,80 +3667,12 @@ mod outgoing_budget_tests {
                 }),
             ),
             wire: None,
-            datapack_offer: None,
             announced: Arc::default(),
             viewed_levels: Default::default(),
             menu_extra_rev: 0,
             packet_counts: Arc::default(),
             connect: None,
         }
-    }
-    #[test]
-    fn empty_prepared_journal_records_are_bounded_and_fully_refunded() {
-        let s = sender(Framing::Memory);
-        let id = PayloadId("test:raw".into());
-        let cost = io_pool::charge(0) + 512;
-        let mut permits = Vec::new();
-        for _ in 0..io_pool::MAX_PENDING / cost {
-            permits.push(s.prepare_payload(Vec::new(), &id).unwrap());
-        }
-        assert_eq!(s.pending.load(Ordering::Relaxed), permits.len() * cost);
-        assert!(s.pending.load(Ordering::Relaxed) <= io_pool::MAX_PENDING);
-        assert!(matches!(
-            s.prepare_payload(Vec::new(), &id),
-            Err(PayloadSendError::Backpressure)
-        ));
-        drop(permits.pop());
-        assert_eq!(s.pending.load(Ordering::Relaxed), permits.len() * cost);
-        let replacement = s.prepare_payload(Vec::new(), &id).unwrap();
-        drop(replacement);
-        drop(permits);
-        assert_eq!(s.pending.load(Ordering::Relaxed), 0);
-    }
-    #[test]
-    fn prepared_reservations_refund_and_share_capacity() {
-        let s = sender(Framing::Memory);
-        let id = PayloadId("test:raw".into());
-        let body = Vec::with_capacity(io_pool::MAX_PENDING - 4096);
-        let p = s.prepare_payload(body, &id).unwrap();
-        assert!(s.pending.load(Ordering::Relaxed) > io_pool::MAX_PENDING - 4096);
-        assert!(matches!(
-            s.prepare_payload(vec![0; 8192], &id),
-            Err(PayloadSendError::Backpressure)
-        ));
-        drop(p);
-        assert_eq!(s.pending.load(Ordering::Relaxed), 0);
-        let p = s.prepare_payload(vec![0; 9 << 20], &id).unwrap();
-        s.close();
-        assert!(matches!(p.publish(), Err(PayloadSendError::Disconnected)));
-        assert_eq!(s.pending.load(Ordering::Relaxed), 0);
-    }
-    #[test]
-    fn prepare_does_not_deliver_and_publish_reuses_compressed_contents() {
-        let s = sender(Framing::Network(Some(32)));
-        let id = PayloadId("test:raw".into());
-        let body = vec![42; 10000];
-        let expected = Framing::Network(Some(32)).contents(&body).unwrap();
-        let p = s.prepare_payload(body, &id).unwrap();
-        let To::Pool(outbox, _) = &s.to else {
-            unreachable!()
-        };
-        assert!(outbox.queued_contents().is_empty());
-        assert_eq!(p.bytes.as_ref().unwrap(), &expected);
-        p.publish().unwrap();
-        assert_eq!(outbox.queued_contents(), [expected]);
-        let before = s.pending.load(Ordering::Relaxed);
-        let hold = Holding::start();
-        s.send(Vec::with_capacity(20000));
-        assert_eq!(
-            s.pending.load(Ordering::Relaxed),
-            before + io_pool::charge(20000)
-        );
-        drop(hold);
-        s.flush();
-        let reserved = s.prepare_payload(vec![1; 400], &id).unwrap();
-        assert!(s.pending.load(Ordering::Relaxed) > before + 20000);
-        drop(reserved);
     }
     #[test]
     fn network_refuses_before_queueing_and_empty_messages_cost_space() {
@@ -4395,8 +3744,6 @@ mod outgoing_budget_tests {
 }
 
 #[cfg(test)]
-#[path = "datapack_offer_tests.rs"]
-mod datapack_offer_tests;
 
 #[cfg(test)]
 mod handshake_hook_tests {

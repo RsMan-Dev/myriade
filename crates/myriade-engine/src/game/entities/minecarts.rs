@@ -113,7 +113,7 @@ impl Game<'_> {
         let Some(kind) = CartKind::from_id(&stack.item) else {
             return false;
         };
-        let Some(rail) = self.rail(None, hit.pos[0], hit.pos[1], hit.pos[2]) else {
+        let Some(rail) = self.rail(hit.pos[0], hit.pos[1], hit.pos[2]) else {
             return false;
         };
         let offset = if rail.shape.is_slope() { 0.5 } else { 0.0 };
@@ -368,90 +368,6 @@ mod cart_push_tests {
     use myriade_engine::{items::ItemStack, save::PendingContainerLoot};
     use horizon_core::geometry::Vec3;
 
-}
-
-#[cfg(test)]
-mod hook_mutation_regressions {
-    use super::*;
-    use std::sync::{Arc, Mutex};
-
-    struct MutateRider {
-        discard: bool,
-        heard: Arc<Mutex<Vec<(u32, bool)>>>,
-    }
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for MutateRider {
-        fn entity_mount(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            event: &mut mod_api::EntityMountEvent<'_>,
-        ) -> mod_api::Flow {
-            self.heard
-                .lock()
-                .unwrap()
-                .push((event.entity, event.mounting));
-            if !event.mounting && event.entity == 72 {
-                if self.discard {
-                    assert!(host.entity(72).unwrap().discard(host));
-                } else {
-                    let later = host.entity(73).unwrap();
-                    let replacement = host.entity(74).unwrap();
-                    assert!(later.start_riding(host, replacement, true));
-                }
-            }
-            mod_api::Flow::Continue
-        }
-    }
-    struct DiscardDamagedVehicle(Arc<Mutex<usize>>, Arc<Mutex<u32>>);
-    #[mod_api::__subscriptions]
-    impl mod_api::Hooks for DiscardDamagedVehicle {
-        fn vehicle_damage(
-            &self,
-            host: &mut dyn mod_api::ServerHost,
-            _: &mut mod_api::VehicleDamageEvent<'_>,
-        ) -> mod_api::Flow {
-            let vehicle = *self.1.lock().unwrap();
-            assert!(host.entity(vehicle).unwrap().discard(host));
-            mod_api::Flow::Continue
-        }
-        fn vehicle_destroy(
-            &self,
-            _: &mut dyn mod_api::ServerHost,
-            _: &mut mod_api::VehicleDestroyEvent<'_>,
-        ) {
-            *self.0.lock().unwrap() += 1;
-        }
-    }
-    #[test]
-    #[ignore = "daily"]
-    fn a_damage_callback_discard_does_not_also_destroy_or_drop_the_vehicle() {
-        let destroyed = Arc::new(Mutex::new(0));
-        let vehicle = Arc::new(Mutex::new(0));
-        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
-            "discard_damaged",
-            Box::new(DiscardDamagedVehicle(destroyed.clone(), vehicle.clone())),
-        )]
-        .into();
-        mod_platform::testing::with_mods(mods, || {
-            super::super::native_entity_refs::tests::with_game(|game| {
-                game.session
-                    .rules
-                    .set("entity_drops", myriade_engine::gamerules::Value::Bool(true));
-                let boat = game.ecs_spawn("minecraft:oak_boat", [0.0; 3], None).unwrap();
-                *vehicle.lock().unwrap() = boat;
-                game.hurt_boat(boat, 5.0, false);
-                assert_eq!(*destroyed.lock().unwrap(), 0);
-                assert!(
-                    game.ecs.item_ids().is_empty(),
-                    "discard must not create the vehicle item"
-                );
-                game.native_removals_flush();
-                assert_eq!(*destroyed.lock().unwrap(), 0);
-                assert!(game.ecs.item_ids().is_empty());
-                assert!(game.entity(boat).is_none());
-            });
-        });
-    }
 }
 
 #[cfg(test)]
