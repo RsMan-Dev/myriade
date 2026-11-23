@@ -289,6 +289,11 @@ impl EcsLevel {
             w.chunk_loaded(mw, cx, cz);
         }
     }
+    pub fn chunk_hazards(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
+        if let Some(w) = self.inner.as_mut() {
+            w.chunk_hazards(mw, cx, cz);
+        }
+    }
     pub fn chunk_unloaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         if let Some(w) = self.inner.as_mut() {
             w.chunk_unloaded(mw, cx, cz);

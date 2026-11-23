@@ -318,6 +318,37 @@ impl Hazards {
         }
         h
     }
+    /// Reads the hazard blocks of the chunk (cx, cz) that just loaded (`build` read only the arena's floor): section by section, the ones whose
+    /// palette holds none are skipped, so a generated ocean, lava lake or cactus field reaches the fluid and hazard modules of the creatures.
+    pub fn scan_chunk(&mut self, mw: &myriade_engine_lib::mobs::MobWorld<'_>, cx: i32, cz: i32) {
+        let layout = mw.world.layout();
+        let (x0, z0) = (cx << 4, cz << 4);
+        let wanted = |id| {
+            let n = &*mw.facts.get(id).name;
+            hazard_bit(n) != 0 || n == EGG
+        };
+        let mut cursor = myriade_level::world::BlockCursor::new(mw.world);
+        for s in 0..layout.sections() {
+            let y0 = layout.section_y(s);
+            if !mw.world.may_hold([x0, y0, z0], [x0 + 15, y0 + 15, z0 + 15], wanted) {
+                continue;
+            }
+            for y in y0..y0 + 16 {
+                for z in z0..z0 + 16 {
+                    for x in x0..x0 + 16 {
+                        let name = &mw.facts.get(cursor.block(x, y, z)).name;
+                        if &**name == EGG {
+                            self.eggs.insert([x, y, z]);
+                        }
+                        let bit = hazard_bit(name);
+                        if bit != 0 {
+                            self.set(x, y, z, bit);
+                        }
+                    }
+                }
+            }
+        }
+    }
     /// The world holds no turtle egg at all.
     pub fn eggs_empty(&self) -> bool {
         self.eggs.is_empty()

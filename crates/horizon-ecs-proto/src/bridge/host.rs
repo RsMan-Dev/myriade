@@ -538,6 +538,11 @@ impl EcsWorld {
         }
     }
 
+    /// A chunk just loaded (with or without entities): its water, lava, fire, cactus, powder snow and turtle eggs join the hazard grid.
+    pub fn chunk_hazards(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
+        self.world.resource_mut::<crate::cow::Hazards>().scan_chunk(mw, cx, cz);
+    }
+
     /// Restores the NBT the chunk was saved with (its entities come back; none when it was never unloaded).
     pub fn chunk_loaded(&mut self, mw: &MobWorld<'_>, cx: i32, cz: i32) {
         let saved = self.chunks.remove(&(cx, cz)).unwrap_or_default();

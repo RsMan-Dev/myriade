@@ -5,6 +5,13 @@ impl Game<'_> {
     /// Spawn the entities of chunks that finished loading.
     pub(in crate::game) fn spawn_loaded_entities(&mut self) {
         let _save_lease = myriade_engine::join_seq::visibility::PassLease::enter();
+        // The hazard grid of the ECS reads every chunk that loaded, with entities or not, before its entities come back.
+        let fresh = std::mem::take(&mut self.world.loaded_chunks);
+        if self.ecs.is_active() {
+            for (cx, cz, _) in fresh {
+                self.ecs_with(|ecs, mw| ecs.chunk_hazards(mw, cx, cz));
+            }
+        }
         let loaded = std::mem::take(&mut self.world.loaded_entities);
         for (key, tags) in loaded {
             if self.ecs.is_active() {
