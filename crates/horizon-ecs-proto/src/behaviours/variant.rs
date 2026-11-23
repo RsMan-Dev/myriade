@@ -146,7 +146,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("variant"), write: write_variant, read: read_variant, accepts: accept::string, owner: Some(owner::<Variant>) },
     Field { key: Cow::Borrowed("Variant"), write: write_variant_int, read: read_variant_int, accepts: accept::int, owner: Some(owner::<Variant>) },
     Field { key: Cow::Borrowed("type"), write: write_salmon_type, read: read_salmon_type, accepts: accept::string, owner: Some(owner::<Variant>) },
-    Field { key: Cow::Borrowed("Variant"), write: write_wide, read: read_wide, accepts: accept::int, owner: Some(owner::<super::spawn_draw::Wide>) },
+    Field { key: Cow::Borrowed("Variant"), write: write_wide, read: read_wide, accepts: accept::int, owner: Some(owner::<super::spawn_draw::WholeVariant>) },
 ];
 
 fn read_wide(_: &mut World, _: Entity, _: &Tag) -> bool {
@@ -189,7 +189,7 @@ fn read_variant_int(w: &mut World, e: Entity, t: &Tag) -> bool {
         return handled;
     }
     if super::spawn_draw::draws_of(w, e).is_some() {
-        w.entity_mut(e).insert(super::spawn_draw::Wide(*i as u32));
+        w.entity_mut(e).insert((super::spawn_draw::Wide(*i as u32), super::spawn_draw::WholeVariant));
         return true;
     }
     false

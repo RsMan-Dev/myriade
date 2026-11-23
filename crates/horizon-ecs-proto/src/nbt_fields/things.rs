@@ -521,16 +521,17 @@ fn read_after(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `FallingBlock.BlockState`: the registry's state, as the block state codec writes it (a name or `{Name, Properties}`).
 fn write_block_state(w: &World, e: Entity, c: &mut Compound) {
-    let Some(f) = w.get::<FallingBlock>(e) else { return };
-    if let Some(s) = world_of(w).registry.state(f.state) {
-        c.insert("BlockState".into(), s.to_nbt());
+    if let Some(nbt) = w.get::<FallingBlock>(e).and_then(|f| f.state_nbt.clone()) {
+        c.insert("BlockState".into(), nbt);
     }
 }
 
 fn read_block_state(w: &mut World, e: Entity, t: &Tag) -> bool {
     let Some(state) = world_of(w).registry.saved_state_id(t) else { return false };
+    let nbt = world_of(w).registry.state(state).map(|s| s.to_nbt());
     let Some(mut f) = w.get_mut::<FallingBlock>(e) else { return false };
     f.state = state;
+    f.state_nbt = nbt;
     true
 }
 

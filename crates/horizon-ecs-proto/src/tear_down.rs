@@ -68,6 +68,10 @@ pub fn linger(w: &mut World, e: Entity) {
 
 /// `Mob.voice`: `name` at the entity's place with a pitch drawn from its own stream; nothing is heard while it is `Silent`.
 pub fn voice(w: &mut World, e: Entity, name: &'static str) {
+    // The voice is queued by a hit: the entity may be gone by the time it runs, and a thing without a stream of its own has no voice.
+    if w.get::<crate::cow::Rng>(e).is_none() {
+        return;
+    }
     // `AgeableMob.getVoicePitch`: a baby's voice is raised by half an octave, the same two draws.
     let base = if w.get::<crate::cow::GrowAt>(e).is_some() { 1.5 } else { 1.0 };
     let pitch = crate::goals::with_rng(w, e, |r| {

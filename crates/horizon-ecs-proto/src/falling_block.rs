@@ -23,6 +23,8 @@ use horizon_world::registry::BlockStateId;
 #[component(storage = "SparseSet")]
 pub struct FallingBlock {
     pub state: BlockStateId,
+    /// The state as the block state codec writes it, kept at the making so a save needs no level (a chunk is saved outside a step).
+    pub state_nbt: Option<horizon_core::nbt::Tag>,
     pub drop: Option<ItemStack>,
     /// `Entity.fallDistance` as the last tick in the air left it (the move that lands resets the body's own before `lands` reads it).
     pub fell: f64,
@@ -77,7 +79,7 @@ pub fn fall(w: &mut World, cell: [i32; 3], state: BlockStateId, drop: Option<Ite
 /// clearing any cell.
 pub fn spawn(w: &mut World, at: Vec3, velocity: Vec3, state: BlockStateId, drop: Option<ItemStack>, settings: FallSettings) -> Entity {
     let body = Body { width: SIZE, height: SIZE, step_height: 0.0, speed: 0.0, fall_factor: 1.0, safe_fall: 3.0, fall_mult: 1.0, movement_efficiency: 0.0, lava_walker: false, object: true, orb: false, tnt: true };
-    let e = w.spawn((Pos(at), Vel(velocity), OwnTime, body, Gravity(0.04), Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), FallingBlock { state, drop, fell: 0.0, data: None, settings, born: w.resource::<Clock>().0 }, Moving))
+    let e = w.spawn((Pos(at), Vel(velocity), OwnTime, body, Gravity(0.04), Bounds(box_at(at, SIZE, SIZE)), Contact { on_ground: false, horizontal: false, fall_distance: 0.0, stuck: 0 }, FluidState::default(), FallingBlock { state, state_nbt: crate::blocks::world_of(w).registry.state(state).map(|s| s.to_nbt()), drop, fell: 0.0, data: None, settings, born: w.resource::<Clock>().0 }, Moving))
 .id();
     crate::nbt::mark_saved(w, e, crate::species::lists::FALLING_BLOCK);
     w.entity_mut(e).insert(crate::cow::TypeName(crate::species::lists::FALLING_BLOCK));

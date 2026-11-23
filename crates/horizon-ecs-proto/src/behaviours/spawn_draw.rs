@@ -14,6 +14,10 @@ use horizon_core::random::RandomSource;
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Wide(pub u32);
 
+/// Marks a `Wide` that is the whole saved `Variant` int (no variant table: `TropicalFish`), the owner of that key's second field.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WholeVariant;
+
 /// The genes of a panda (`Panda.mainGene`, `hiddenGene`); the gene it shows is the component `Gene`.
 #[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Genes {
@@ -205,6 +209,9 @@ fn store(w: &mut World, e: Entity, s: Store, v: u32) {
     match s {
         Store::Wide => {
             w.entity_mut(e).insert(Wide(v));
+            if super::variant::table_of(w, e).is_none() {
+                w.entity_mut(e).insert(WholeVariant);
+            }
         }
         Store::Variant => super::variant::set_variant(w, e, v as u8),
         Store::GeneMain | Store::GeneHidden => {

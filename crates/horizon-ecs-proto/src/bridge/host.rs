@@ -78,6 +78,15 @@ fn chunk_of(v: Vec3) -> (i32, i32) {
     ((v.x.floor() as i32) >> 4, (v.z.floor() as i32) >> 4)
 }
 
+/// A command on an entity that a command before it removed (a death and a hit in one batch) does nothing, as vanilla's calls on a removed
+/// entity do; every other error keeps bevy's severity (a panic for a real mistake).
+fn despawned_is_a_no_op(err: bevy_ecs::error::BevyError, ctx: bevy_ecs::error::ErrorContext) {
+    if err.downcast_ref::<bevy_ecs::entity::EntityNotSpawnedError>().is_some() {
+        return;
+    }
+    bevy_ecs::error::match_severity(err, ctx);
+}
+
 impl EcsWorld {
     /// `tags` is the resources' folder: the entity type tags are read from it, against the species table.
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &std::path::Path) -> EcsWorld {
@@ -88,6 +97,7 @@ impl EcsWorld {
         world.remove_resource::<Level>();
         zone::enable(&mut world, setup.simulation_radius);
         world.init_resource::<view::Modified>();
+        world.insert_resource(bevy_ecs::error::FallbackErrorHandler(despawned_is_a_no_op));
         world.insert_resource(crate::frame_item::DropRng(crate::flat::Rng(setup.seed as u64 ^ 0x9E37_79B9_7F4A_7C15)));
         world.insert_resource(WorldDimension(setup.dimension));
         EcsWorld { world, schedule: crate::cow::schedule(), occ, half: HALF, spawned: setup.seed as u64, chunks: HashMap::new() }
