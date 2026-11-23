@@ -267,8 +267,6 @@ pub fn run(dir: &Path) -> Result<(), String> {
         );
         shared.set_phase(Phase::Starting);
         let transfers = config.transfer.engine_arg();
-        // The claims on the folders the game leases live as long as the game: the next start takes
-        // them again on the release `current` points at then.
         let spawned = engine::spawn(
             &program,
             &resources,
@@ -278,7 +276,7 @@ pub fn run(dir: &Path) -> Result<(), String> {
             &config.entities,
             transfers.as_deref(),
         );
-        let (mut child, _leases) = match spawned {
+        let mut child = match spawned {
             Ok(spawned) => spawned,
             // `apply_queued` has already moved `current` to the new release, so a start that never
             // produced a game goes back like a game that came up and stopped.

@@ -2,11 +2,6 @@
 //! game/interface/dedicated/mod.rs). It reads the vanilla files the supervisor writes, takes console commands on stdin and
 //! logs on stdout.
 
-use horizon_platform::mod_package::{
-    holder,
-    runtime_leases::{self, Claim},
-    selection::LaunchArguments,
-};
 use horizon_server_launch::config::Entities;
 use std::process::Command;
 use std::{
@@ -144,8 +139,7 @@ fn sha256_file(path: &Path) -> std::io::Result<String> {
 }
 
 /// Starts the engine in the server folder, with its console and log piped to the supervisor and its status
-/// on the control endpoint. The returned claims on the folders the game leases must live as long as it
-/// does (empty for a game the launcher does not manage).
+/// on the control endpoint.
 pub fn spawn(
     program: &Path,
     resources: &Path,
@@ -154,7 +148,7 @@ pub fn spawn(
     parallel_tick: bool,
     entities: &Entities,
     transfers: Option<&str>,
-) -> Result<(Child, Vec<Claim>), String> {
+) -> Result<Child, String> {
     let mut command = command(
         program,
         resources,
@@ -165,56 +159,10 @@ pub fn spawn(
         transfers,
     )
     .map_err(|e| format!("{}: {e}", program.display()))?;
-    let claims = lease(program, &command, dir)?;
     let child = command
         .spawn()
         .map_err(|e| format!("{}: {e}", program.display()))?;
-    Ok((child, claims))
-}
-
-/// What the launcher's launch does for a game it starts, for a game the supervisor starts: the release
-/// it runs from carries its completion marker, and the units the game leases by itself are registered
-/// and held. The supervisor re-reads the release before every start, so this covers the restart an
-/// update switches to; a game installed outside a launcher registry takes no leases, and nothing is
-/// written into its folder.
-fn lease(program: &Path, command: &Command, dir: &Path) -> Result<Vec<Claim>, String> {
-    let program =
-        std::path::absolute(program).map_err(|e| format!("{}: {e}", program.display()))?;
-    let folder = program
-        .parent()
-        .ok_or_else(|| format!("the game program {} has no folder", program.display()))?;
-    let install = folder
-        .canonicalize()
-        .unwrap_or_else(|_| folder.to_path_buf());
-    // The game looks for the launcher's registry in the folders above its own, and takes no leases
-    // when it finds none.
-    let Some(data) = install
-        .ancestors()
-        .find(|folder| folder.join("run-leases").is_dir())
-        .map(Path::to_path_buf)
-    else {
-        return Ok(Vec::new());
-    };
-    let data = data.canonicalize().unwrap_or(data);
-    let directory = std::path::absolute(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let selection = LaunchArguments::for_command(command).map_err(|e| e.to_string())?;
-    let units =
-        holder::lease_paths(&program, &selection, &data, &directory).map_err(|e| e.to_string())?;
-    // A copied release has no marker of the version it came from; the game opens `.installed` in the
-    // folder it runs from. Only the runtime's own release copies are ours to complete: the marker is
-    // what lists a version as installed, so a version under `versions/` that the cleanup invalidated
-    // keeps it missing even when `[engine] engine.path` starts the game from there.
-    let released = install.starts_with(data.join("server-runtime").join("releases"));
-    if released
-        && units
-            .iter()
-            .any(|(unit, complete)| *complete && *unit == install)
-    {
-        runtime_leases::write_completion(&install)
-            .map_err(|e| format!("{}: {e}", install.display()))?;
-    }
-    runtime_leases::lease_units(&program, &selection, &data, &directory)
-        .map_err(|e| format!("{}: {e}", install.display()))
+    Ok(child)
 }
 
 /// The command `spawn` runs.

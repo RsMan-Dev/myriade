@@ -17,14 +17,6 @@ prepare = ["dep:horizon-prepare"]
 # A server's own files: server.properties, the op, white and ban lists, the user cache.
 server-files = ["dep:horizon-server-files", "dep:horizon-java-properties"]
 
-mod-build = []
-
-# Mod files exposed to the launcher and registry without exposing engine dependencies.
-mod-package = []
-mod-index = ["mod-package", ]
-mod-prebuilt = ["mod-package", ]
-mod-runtime-process = ["mod-package", ]
-
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
 horizon-core = { path = "../horizon-core" }
