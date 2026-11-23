@@ -2657,6 +2657,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
 
 [[package]]
+name = "myriade-bot"
+version = "0.1.0"
+dependencies = [
+ "horizon-core",
+ "horizon-protocol",
+ "serde_json",
+]
+
+[[package]]
 name = "naga-types"
 version = "30.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

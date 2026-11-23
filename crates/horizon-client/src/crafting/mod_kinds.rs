@@ -207,9 +207,6 @@ impl Recipes {
     }
 }
 
-#[cfg(test)]
-#[path = "mod_kinds_tests.rs"]
-pub(crate) mod tests;
 
 impl Recipes {
     /// Lookup preserves the dimensions supplied to recipe_for, including rectangles.

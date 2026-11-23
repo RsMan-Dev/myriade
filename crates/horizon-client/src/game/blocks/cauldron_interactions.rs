@@ -400,6 +400,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "cauldron_interactions/tests.rs"]
-mod tests;

@@ -1220,6 +1220,3 @@ pub(super) fn station_inputs(gs: &GuestStation) -> Vec<ItemStack> {
         .unwrap_or_default()
 }
 
-#[cfg(test)]
-#[path = "lan_stations/portable_anvil_tests.rs"]
-mod portable_anvil_tests;

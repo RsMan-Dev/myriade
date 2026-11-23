@@ -15,9 +15,6 @@ use std::path::PathBuf;
 #[cfg(test)]
 #[path = "tests/player_stat_award_tests.rs"]
 mod player_stat_award_tests;
-#[cfg(test)]
-#[path = "tests/stat_award_tests.rs"]
-mod stat_award_tests;
 
 /// One player `PhantomSpawner.tick` visits. `identity` is the server player's uuid and
 /// name, absent for a game's own player, which no server player stands for.

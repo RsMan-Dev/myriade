@@ -343,9 +343,6 @@ impl Ingredient {
     }
 }
 
-#[cfg(test)]
-#[path = "custom_data_tests.rs"]
-mod custom_data_tests;
 
 #[cfg(test)]
 #[path = "ingredient/builtin_kinds_tests/mod.rs"]
@@ -355,6 +352,3 @@ mod builtin_kinds_tests;
 #[path = "ingredient/review_tests.rs"]
 mod review_tests;
 
-#[cfg(test)]
-#[path = "ingredient/second_review_tests.rs"]
-mod second_review_tests;

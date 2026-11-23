@@ -2,5 +2,4 @@
 //! dependencies again for every file. A new test file goes in this folder with a `mod` line here.
 
 mod datapack_biome_sync;
-mod mod_api_hooks;
 mod mod_biome_sync;

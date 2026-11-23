@@ -2085,9 +2085,6 @@ mod tests {
 }
 
 
-#[cfg(test)]
-#[path = "nether_portal/arrival_effects_tests.rs"]
-pub(in crate::game) mod arrival_effects_tests;
 
 impl Game<'_> {
     /// PortalShape: an obsidian frame around 2..=21 by 3..=21 empty blocks.

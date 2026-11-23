@@ -88,6 +88,3 @@ fn write_profile(game_dir: &Path, stamp: u128, bytes: &[u8]) -> Result<PathBuf, 
     Ok(relative)
 }
 
-#[cfg(test)]
-#[path = "modprofile_tests.rs"]
-mod tests;

@@ -9,12 +9,7 @@ description = "The dedicated server executable (`horizon-client`): the engine's 
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
 horizon-client = { path = "../horizon-client", default-features = false }
-horizon-mod-package = { path = "../horizon-mod-package", default-features = false, features = ["index"] }
 
-horizon-engine-slots = { path = "../horizon-engine-slots" }
-mod-points = { package = "horizon-mod-points", path = "../horizon-mod-points" }
-horizon-mod-wasm = { path = "../horizon-mod-wasm" }
-mod-api = { package = "horizon-mod-api", path = "../horizon-mod-api" }
 
 libloading = "0.8"
 serde = { version = "1", features = ["derive"] }

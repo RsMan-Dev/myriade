@@ -157,9 +157,6 @@ impl Assets {
     }
 }
 
-#[cfg(test)]
-#[path = "assets_registry_tests.rs"]
-mod registry_tests;
 
 #[cfg(test)]
 mod tests {

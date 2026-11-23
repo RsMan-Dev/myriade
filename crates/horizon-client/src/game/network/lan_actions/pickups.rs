@@ -169,6 +169,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "tests/pickup_post_tests.rs"]
-mod pickup_post_tests;

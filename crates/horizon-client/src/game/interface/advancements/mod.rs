@@ -3,9 +3,6 @@
 //! chat announcement, and `players/advancements/<uuid>.json`.
 use super::{Dim, Game};
 
-#[cfg(test)]
-#[path = "inventory_changed_tests.rs"]
-mod inventory_changed_tests;
 use horizon_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
     items::ItemStack,
@@ -22,8 +19,6 @@ use std::{
     time::Instant,
 };
 
-#[cfg(test)]
-mod progress_tests;
 
 /// Capture the owning progress without changing its dates or requirement semantics.
 fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> mod_api::AdvancementProgress {

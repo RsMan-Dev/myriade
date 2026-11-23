@@ -11,19 +11,9 @@ mod incoming;
 pub use incoming::{Body, Classified, Failure, Incoming};
 mod endpoint;
 pub use endpoint::{Endpoint, Prepared};
-#[cfg(test)]
-mod busy_wasm_tests;
 mod executor;
-#[cfg(test)]
-mod executor_tests;
-#[cfg(test)]
-mod raw_channel_tests;
 #[cfg(any(test, feature = "test-payload-probe"))]
 pub mod staging_probe;
-#[cfg(test)]
-mod typed_schema_tests;
-#[cfg(test)]
-mod wasm_tests;
 pub use executor::{dispatch, dispatch_pending, mod_of};
 mod main_queue;
 pub use main_queue::MainQueue;

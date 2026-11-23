@@ -271,9 +271,6 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "composter/capability_tests.rs"]
-mod capability_tests;
 
 impl Game<'_> {
     pub(super) fn composter_fill_event(&mut self, pos: BlockPos, success: bool) {

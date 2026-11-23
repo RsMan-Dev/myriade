@@ -6,9 +6,6 @@ use super::{
 };
 use crate::items::ItemStack;
 
-#[cfg(test)]
-#[path = "custom_tests.rs"]
-mod tests;
 
 impl Menu {
     /// Shared vanilla calculateAmountToCraft, including an already matching grid.

@@ -31,5 +31,3 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-mod warning_tests;

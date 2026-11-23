@@ -106,7 +106,6 @@ pub mod points {
 }
 mod ecs;
 mod host;
-mod native_hooks;
 use hand::interact_location;
 pub(crate) use hit::Hit;
 use horizon_client::random_source;

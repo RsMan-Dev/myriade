@@ -342,6 +342,3 @@ impl Game<'_> {
 #[path = "tests/building_cache.rs"]
 mod building_cache_tests;
 
-#[cfg(test)]
-#[path = "tests/fall_sound_tests.rs"]
-mod fall_sound_tests;

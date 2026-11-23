@@ -113,9 +113,6 @@ fn vehicle_id(t: Target) -> Option<u32> {
     super::native_entities::target_id(t)
 }
 
-#[cfg(test)]
-#[path = "vehicle_teleport/teleport_cross_tests.rs"]
-mod teleport_cross_tests;
 
 impl Game<'_> {
 

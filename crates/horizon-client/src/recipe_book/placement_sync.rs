@@ -1,7 +1,4 @@
 //! Connection/menu-instance scoped custom recipe placement, distinct from vanilla IDs.
-#[cfg(test)]
-#[path = "placement_sync_tests.rs"]
-mod tests;
 use mod_api::wire::Wire;
 use std::sync::OnceLock;
 

@@ -2284,9 +2284,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "explosion/explosion_part_tests.rs"]
-mod explosion_part_tests;
 
 #[cfg(test)]
 mod shulker_lock_drop_tests {

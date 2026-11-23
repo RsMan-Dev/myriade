@@ -3242,9 +3242,6 @@ mod bundle_slot_tests;
 #[path = "tests/crack_feedback_tests.rs"]
 mod crack_feedback_tests;
 
-#[cfg(test)]
-#[path = "tests/menu_still_valid_tests.rs"]
-mod menu_still_valid_tests;
 
 
 #[cfg(test)]

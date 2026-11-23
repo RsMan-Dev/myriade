@@ -11,8 +11,6 @@ publish = false
 # hashing, the mod API's dimension vocabulary, horizon-mod-runtime's attachment lifetimes) and
 # the residency table's own `log::error!`.
 horizon-core = { path = "../../crates/horizon-core" }
-horizon-mod-runtime = { path = "../../crates/horizon-mod-runtime" }
-mod_api = { package = "horizon-mod-vocab", path = "../../crates/horizon-mod-vocab" }
 log = "0.4"
 
 [features]

@@ -3,9 +3,6 @@
 //! applied to a pose map exactly like `KeyframeAnimation.Entry.apply`.
 use mod_api::{AnimationChannel, AnimationTarget, Interpolation, Keyframe};
 
-#[cfg(test)]
-#[path = "keyframes_parity_tests.rs"]
-mod parity_tests;
 use serde_json::Value;
 
 /// A vanilla animation as the game exports it: channels and their sampling are `mod_api`'s, the

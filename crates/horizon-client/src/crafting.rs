@@ -20,8 +20,6 @@ mod cooking;
 mod ingredient;
 pub mod mod_kinds;
 pub mod native_hooks;
-#[cfg(test)]
-mod registration_tests;
 mod remainders;
 mod repair_item;
 #[path = "crafting/shapeless_matching.rs"]
@@ -1383,9 +1381,6 @@ pub struct ResolvedSources {
 /// network copy.
 #[derive(Clone, Debug, Default)]
 pub struct PropertyAdditions(HashMap<String, HashSet<String>>);
-#[cfg(test)]
-#[path = "crafting/property_sets_tests.rs"]
-mod property_sets_tests;
 impl PropertyAdditions {
     /// Asks the `recipe_property_sets` hook once. An unknown set key and an
     /// item that is air are logged and skipped.

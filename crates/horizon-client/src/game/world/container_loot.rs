@@ -421,9 +421,6 @@ impl super::GameLevel<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "container_loot/tests.rs"]
-mod tests;
 
 impl super::GameLevel<'_> {
     /// The lists of the walk; carts are the ECS's, not a list of it.

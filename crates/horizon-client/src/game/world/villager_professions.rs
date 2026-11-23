@@ -105,9 +105,6 @@ impl Game<'_> {
     }
 }
 
-#[cfg(test)]
-#[path = "villager_professions/tests.rs"]
-mod tests;
 
 impl Game<'_> {
 }

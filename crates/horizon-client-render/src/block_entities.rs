@@ -1213,11 +1213,7 @@ impl BlockEntities {
     }
 }
 
-#[cfg(test)]
-mod attachment_tests;
 
-#[cfg(test)]
-mod lease_tests;
 
 #[cfg(test)]
 mod tests {

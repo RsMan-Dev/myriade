@@ -7,7 +7,6 @@ rust-version.workspace = true
 description = "Blocks and items as the client knows them: block facts, item stacks and their data components, enchantments, cooldowns, bundles, and items in NBT"
 
 [dependencies]
-horizon-mod-package = { path = "../horizon-mod-package", default-features = false }
 horizon-client-core = { path = "../horizon-client-core" }
 horizon-core = { path = "../horizon-core" }
 horizon-world = { path = "../horizon-world" }
@@ -24,4 +23,3 @@ workspace = true
 
 [dev-dependencies]
 # The enabled-mods test names a package side (`mod_api::Side`).
-horizon-mod-vocab = { path = "../horizon-mod-vocab" }

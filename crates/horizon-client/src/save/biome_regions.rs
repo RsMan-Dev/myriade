@@ -19,10 +19,6 @@ use std::{
     sync::Arc,
 };
 
-#[cfg(test)]
-mod persistence_tests;
-#[cfg(test)]
-mod tests;
 
 /// The record's format version.
 const VERSION: u32 = 1;

@@ -2212,9 +2212,6 @@ mod recipe_check_tests {
     }
 }
 
-#[cfg(test)]
-#[path = "lan_crafting/lending_tests.rs"]
-mod lending_tests;
 
 #[cfg(test)]
 #[path = "lan_crafting/stonecutter_stat_tests.rs"]

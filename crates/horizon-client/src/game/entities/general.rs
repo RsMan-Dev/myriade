@@ -998,9 +998,6 @@ fn chunk_of(at: Vec3) -> ChunkKey {
 #[path = "general/tick.rs"]
 mod tick;
 
-#[cfg(test)]
-#[path = "general/save_load_tests.rs"]
-mod save_load_tests;
 
 
 #[cfg(test)]

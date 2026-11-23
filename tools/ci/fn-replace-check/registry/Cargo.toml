@@ -5,5 +5,4 @@ edition = "2024"
 publish = false
 
 [dependencies]
-horizon-mod-api = { path = ".horizon/sdk/api/crates/horizon-mod-api" }
 itoa = "1"

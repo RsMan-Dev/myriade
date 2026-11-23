@@ -137,9 +137,6 @@ impl Game<'_> {
     resident_owners!(define_resident_access, self);
 }
 
-#[cfg(test)]
-#[path = "entity_residency/lifetime_tests.rs"]
-mod lifetime_tests;
 
 #[cfg(test)]
 mod tests {

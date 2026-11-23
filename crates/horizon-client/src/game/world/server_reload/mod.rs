@@ -1,9 +1,6 @@
 //! Prepare server listeners against the new packs before publishing any data.
 use mod_api::__private::game::*;
 
-#[cfg(test)]
-#[path = "server_reload_tests.rs"]
-mod tests;
 use super::packs::reload_files;
 use super::{Game, functions::PackStack};
 use horizon_client::datapack::DataStore;

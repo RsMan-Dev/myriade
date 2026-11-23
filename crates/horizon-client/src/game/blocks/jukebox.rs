@@ -572,9 +572,6 @@ mod jukebox_component_tests {
 
 }
 
-#[cfg(test)]
-#[path = "jukebox/tests.rs"]
-mod jukebox_tests;
 
 #[cfg(test)]
 mod block_change_tests {

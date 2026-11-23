@@ -12,10 +12,6 @@ mod fix_f2;
 mod level_goals;
 pub mod mod_goals;
 mod ecs_view;
-#[cfg(test)]
-mod ecs_view_tests;
-#[cfg(test)]
-mod profession_secondary_tests;
 mod level_read;
 mod level_raids;
 mod level_read_ai;

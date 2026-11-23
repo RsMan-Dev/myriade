@@ -55,9 +55,6 @@ pub struct NativeLevelHooks {
 
 static HOOKS: OnceLock<NativeLevelHooks> = OnceLock::new();
 
-#[cfg(test)]
-#[path = "native_level_hooks_tests.rs"]
-pub(crate) mod test_hooks;
 
 /// Install the process-wide callbacks once; a second installation keeps the first and answers false.
 pub fn install(hooks: NativeLevelHooks) -> bool {

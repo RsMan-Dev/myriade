@@ -19,7 +19,6 @@
 //! before this one and DIFF the `horizon-stage surface-diff --json` of its surface against this
 //! one's, which fill the index's surface comparison.
 
-mod mod_api;
 
 use std::fs;
 use std::path::{Component, Path, PathBuf};
@@ -48,9 +47,6 @@ fn main() -> ExitCode {
         [task, engine, out] if task == "package" || task == "package-server" => {
             package_server(Path::new(engine), Path::new(out))
         }
-        [task] if task == "mod-api" => mod_api::run(),
-        [task, notes] if task == "mod-api" && notes == "notes" => mod_api::notes(),
-        [task, coverage] if task == "mod-api" && coverage == "coverage" => mod_api::coverage(),
         [task, dist, commit, date, options @ ..] if task == "sdk-index" => {
             sdk_index(Path::new(dist), commit, date, options)
         }

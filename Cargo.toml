@@ -2,7 +2,6 @@
 exclude = ["crates/horizon-telemetry-server", "launcher", "crates/horizon-mod-registry", "third_party/libmimalloc-sys", "tools/fixtures/paper-trace-mod"]
 members = [
     "crates/horizon-guest-stack",
-    "crates/horizon-mod-vocab",
     "crates/horizon-game-discovery",
     "crates/horizon-hooks",
     "crates/horizon-game",
@@ -10,13 +9,9 @@ members = [
     "crates/horizon-core",
     "crates/horizon-platform",
     "crates/horizon-addresses",
-    "crates/horizon-mod-runtime",
-    "docs/modding/examples",
     "crates/horizon-threads",
     "crates/horizon-world",
     "crates/horizon-client",
-    "crates/horizon-engine-slots",
-    "crates/horizon-mod-points",
     "crates/horizon-client-lib",
     "crates/horizon-ecs-proto",
     "crates/horizon-gameplay",
@@ -40,19 +35,6 @@ members = [
     "crates/horizon-system",
     "crates/horizon-bench",
     "crates/horizon-perf-format",
-    "crates/horizon-mod-package",
-    "crates/horizon-mod-wasm",
-    "crates/horizon-mod-api-gen",
-    "crates/horizon-mod-api",
-    "crates/horizon-mod-api-macros",
-    "crates/horizon-mod-point-shape",
-    "crates/horizon-mod-source",
-    "crates/horizon-mod-surface",
-    "crates/horizon-mod-point-emit",
-    "crates/horizon-mod-api-gen/dispatch-tests",
-    "crates/horizon-mod-wasm/wire-loopback",
-    "crates/cargo-horizon-mod",
-    "crates/horizon-port-pack",
     "crates/horizon-release-sign",
     "xtask",
 ]
@@ -97,21 +79,15 @@ opt-level = 3
 
 # Packaging validates each real module repeatedly. Optimize the validator, not
 # the fixture or guest code (which use their separate horizon-wasm profile).
-[profile.dev.package.horizon-mod-package]
-opt-level = 3
 [profile.dev.package.wasmparser]
 opt-level = 3
 
-[profile.dev.package.horizon-mod-api-gen]
-opt-level = 3
 [profile.dev.package.syn]
 opt-level = 3
 # The perf-format tests gzip over 512 MiB; unoptimized deflate took most of their time.
 [profile.dev.package.miniz_oxide]
 opt-level = 3
 [profile.dev.package.proc-macro2]
-opt-level = 3
-[profile.release.package.horizon-mod-api-gen]
 opt-level = 3
 [profile.release.package.syn]
 opt-level = 3

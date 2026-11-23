@@ -18,11 +18,7 @@ path = "../horizon-client/src/client_lib.rs"
 [dependencies]
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std"] }
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-mod-api-macros = { path = "../horizon-mod-api-macros" }
-horizon-engine-slots = { path = "../horizon-engine-slots" }
 horizon-hooks = { path = "../horizon-hooks" }
-horizon-mod-runtime = { path = "../horizon-mod-runtime" }
-mod_api = { package = "horizon-mod-vocab", path = "../horizon-mod-vocab" }
 horizon-assets = { path = "../horizon-assets" }
 horizon-client-core = { path = "../horizon-client-core" }
 horizon-client-render = { path = "../horizon-client-render" }
@@ -49,7 +45,6 @@ horizon-anticheat = { path = "../horizon-anticheat" }
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
 # Horizon mods: sandboxed WebAssembly components, off unless installed and turned on (docs/modding/src/how-to/content-mods.md).
 # Their runtime is the `mods` feature.
-horizon-mod-package = { path = "../horizon-mod-package", default-features = false, features = ["index", "junction"] }
 glam = "0.30"
 png = "0.18"
 sha2 = "0.10.9"
@@ -98,10 +93,7 @@ workspace = true
 
 [dev-dependencies]
 horizon-threads = { path = "../horizon-threads", features = ["test-allocation-probe"] }
-horizon-mod-wasm = { path = "../horizon-mod-wasm", features = ["listener-fixture", "test-copy-probe"] }
 tempfile = "3"
-mod_platform = { package = "horizon-mod-api", path = "../horizon-mod-api", features = ["testing"] }
-mod_api = { package = "horizon-mod-vocab", path = "../horizon-mod-vocab", features = ["testing"] }
 horizon-client-render = { path = "../horizon-client-render", features = ["test-support"] }
 horizon-items = { path = "../horizon-items", features = ["test-support"] }
 # Reads back the captures the server_perf tests write.

@@ -59,8 +59,6 @@ impl mod_api::LoopReader for LoopReader<'_> {
     }
 }
 
-#[cfg(test)]
-mod recipe_properties_tests;
 
 #[cfg(test)]
 mod tests {

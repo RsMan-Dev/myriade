@@ -5667,14 +5667,12 @@ mod tests {
     mod live_player_limit_tests;
     mod main_hand_tests;
     mod menu_sync_tests;
-    mod ordered_inbox_tests;
     mod pending_move_bound_tests;
     mod pending_move_scope_tests;
     mod pending_move_tests;
     mod pong_tests;
     mod skin_outer_layer_tests;
     mod sound_tests;
-    mod terrain_view_tests;
     use super::*;
     use crate::fast_hash::FxHashSet;
 

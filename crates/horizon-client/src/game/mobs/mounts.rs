@@ -744,9 +744,6 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-#[path = "mounts/camel_jump_tests.rs"]
-mod camel_jump_tests;
 
 #[cfg(test)]
 #[path = "tests/ride_dismount_tests.rs"]

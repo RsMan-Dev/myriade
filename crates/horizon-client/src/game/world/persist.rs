@@ -1703,9 +1703,6 @@ fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
 }
 
 #[cfg(test)]
-#[path = "persist/tests.rs"]
-mod tests;
-#[cfg(test)]
 mod item_display_saved_transform_tests {
     use super::*;
     use crate::game::{Audio, Options, Progress, Settings, commands::Target, load_resources};

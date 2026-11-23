@@ -8,14 +8,11 @@ description = "The client's world data, rendering and screens: chunks, meshing, 
 
 [dependencies]
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-mod-runtime = { path = "../horizon-mod-runtime" }
-mod_api = { package = "horizon-mod-vocab", path = "../horizon-mod-vocab" }
 horizon-assets = { path = "../horizon-assets" }
 horizon-client-core = { path = "../horizon-client-core" }
 horizon-command = { path = "../horizon-command" }
 horizon-core = { path = "../horizon-core" }
 horizon-items = { path = "../horizon-items" }
-horizon-mod-package = { path = "../horizon-mod-package" }
 horizon-protocol = { path = "../horizon-protocol" }
 horizon-system = { path = "../horizon-system" }
 horizon-threads = { path = "../horizon-threads" }
@@ -56,7 +53,6 @@ workspace = true
 
 [dev-dependencies]
 tempfile = "3"
-mod_platform = { package = "horizon-mod-api", path = "../horizon-mod-api", features = ["testing"] }
 horizon-items = { path = "../horizon-items", features = ["test-support"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]

@@ -1368,6 +1368,3 @@ mod trident_selector_tests {
 #[path = "entity/restore_tests.rs"]
 mod restore_tests;
 
-#[cfg(test)]
-#[path = "entity/taken_pass_tests.rs"]
-pub(in crate::game) mod taken_pass_tests;

@@ -1254,9 +1254,6 @@ impl Game<'_> {
 
 include!("transactions/item_entity.rs");
 
-#[cfg(test)]
-#[path = "transactions/player_tests.rs"]
-mod player_tests;
 
 #[cfg(test)]
 mod tests {

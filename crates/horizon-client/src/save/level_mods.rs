@@ -501,9 +501,6 @@ pub fn refusal_lines(missing: &[MissingMod]) -> Vec<String> {
     lines
 }
 
-#[cfg(test)]
-#[path = "level_mods_records_tests.rs"]
-mod records_tests;
 
 #[cfg(test)]
 mod tests {

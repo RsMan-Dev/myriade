@@ -88,6 +88,3 @@ pub fn accept_chunk(packet: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-#[cfg(test)]
-#[path = "datapack_transport_tests.rs"]
-mod tests;

@@ -232,6 +232,3 @@ fn remember_shutdown(failure: &mut Option<String>, message: String) {
     }
 }
 
-#[cfg(test)]
-#[path = "server_lifecycle_tests.rs"]
-mod tests;

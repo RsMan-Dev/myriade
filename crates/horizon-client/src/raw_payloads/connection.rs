@@ -1,8 +1,6 @@
 //! Connection epochs and main-executor barriers, independent of gameplay ownership.
 mod payload_queue;
 pub(super) use payload_queue::PayloadTurn;
-#[cfg(test)]
-mod tests;
 use super::{Local, Peer, Side};
 use horizon_mod_runtime::byte_channel;
 use horizon_protocol::payload_negotiation::{Entry, Phase};

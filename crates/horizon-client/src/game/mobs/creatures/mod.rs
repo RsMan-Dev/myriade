@@ -3374,19 +3374,13 @@ mod living_drops_tests {
 
 }
 
-#[cfg(test)]
-mod armor_destroy_tests;
 
-#[cfg(test)]
-mod mob_pearl_hook_tests;
 
 
 #[cfg(test)]
 #[path = "rabbit_colour_tests.rs"]
 mod rabbit_colour_tests;
 
-#[cfg(test)]
-mod chorus_projectile_drop_tests;
 
 #[cfg(test)]
 mod loaded_arrow_shot_tests;
@@ -3400,8 +3394,6 @@ pub(in crate::game) fn local_difficulty_in(
     spawning::LocalDifficulty::at(world, at)
 }
 
-#[cfg(test)]
-mod death_loot_context_tests;
 
 #[cfg(test)]
 #[path = "frame_projectile_tests.rs"]

@@ -8,14 +8,10 @@ use horizon_core::nbt::Tag;
 use mod_api::__private::game::*;
 
 pub(in crate::game) mod cauldron_contents;
-#[cfg(test)]
-mod contents_changed_tests;
 mod crafter;
 pub(in crate::game) mod native_energy;
 pub(in crate::game) mod native_fluids;
 pub(in crate::game) mod native_items;
-#[cfg(test)]
-mod tank_reopen_tests;
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,

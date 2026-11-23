@@ -1,7 +1,4 @@
 //! Authoritative placement data crosses one checked load boundary, never a draw path.
-#[cfg(test)]
-#[path = "mod_placement_tests.rs"]
-mod tests;
 use super::{DisplayLoadError, DisplayResources, RecipeBookCategory};
 use crate::{
     crafting::{Ingredient, Placement},

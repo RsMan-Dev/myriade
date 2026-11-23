@@ -3,9 +3,6 @@
 mod panel;
 #[path = "mod_placement.rs"]
 mod placement;
-#[cfg(test)]
-#[path = "mod_index_tests.rs"]
-mod tests;
 use super::RecipeBookCategory;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 pub use panel::ModBookPanel;

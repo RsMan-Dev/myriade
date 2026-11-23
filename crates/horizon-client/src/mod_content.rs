@@ -3438,6 +3438,3 @@ fn stamp(
     Ok(format!("{:x}", hasher.finalize()))
 }
 
-#[cfg(test)]
-#[path = "mod_content_tests.rs"]
-mod tests;

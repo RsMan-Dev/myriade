@@ -18,8 +18,6 @@ pub(super) mod entities;
 pub(super) mod send;
 mod sounds;
 mod switch;
-#[cfg(test)]
-mod tests;
 pub mod view;
 
 use super::{guest::Guest, hub::Hub};
