@@ -28,6 +28,7 @@ pub static MODULE: Module = Module {
     flags: MOVE,
     ends_with_path: true,
     blocked: Some(blocked),
+    arm: arm_first,
     equip,
     fired,
     can_use,
@@ -42,6 +43,7 @@ pub static MODULE_LOOK: Module = Module {
     flags: MOVE | LOOK,
     ends_with_path: true,
     blocked: Some(blocked),
+    arm: arm_first,
     equip,
     fired,
     can_use,
@@ -105,6 +107,12 @@ pub fn trigger(w: &mut World, e: Entity) {
     drop(s);
     if !walking {
         wake(w, e, module_of(w, e));
+    }
+}
+/// A creature just made: its first attempt is armed (`GoalSelector` asks `canUse` from its first tick), unless one is.
+fn arm_first(w: &mut World, e: Entity, _: Inst) {
+    if w.get::<Stroll>(e).is_some() {
+        arm_now(w, e);
     }
 }
 /// Arms the next attempt, unless one is armed.

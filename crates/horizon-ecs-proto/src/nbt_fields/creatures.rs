@@ -20,7 +20,7 @@ use crate::behaviours::follow_caravan::Caravan;
 use crate::behaviours::invulnerable_charge::Charge;
 use crate::behaviours::swallow_item::Swallowable;
 use crate::behaviours::swim_to_treasure::Trip;
-use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING, SLEEPING as FOX_SLEEPING};
+use crate::behaviours::fox_state::{Crouch, FoxFlags, CROUCHING as FOX_CROUCHING, SITTING as FOX_SITTING};
 use crate::behaviours::swim_to_treasure::GotFish;
 use crate::behaviours::lay_egg::Carrying;
 use crate::behaviours::peek::Peek;
@@ -70,7 +70,7 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Trusting"), write: write_trusting, read: read_trusting, accepts: byte, owner: None },
     Field { key: Cow::Borrowed("CropsGrownSincePollination"), write: write_crops, read: read_crops, accepts: accept::int, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("PuffState"), write: write_puff, read: read_puff, accepts: accept::int, owner: Some(owner::<Puff>) },
-    Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<Occupied>) },
+    Field { key: Cow::Borrowed("Sitting"), write: write_sitting, read: read_sitting, accepts: byte, owner: Some(owner::<crate::behaviours::sit_when_ordered::SitRules>) },
     Field { key: Cow::Borrowed("flower_pos"), write: write_flower, read: read_flower, accepts: int_array, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("EggLayTime"), write: write_egg_time, read: read_egg_time, accepts: accept::int, owner: Some(owner::<Egg>) },
     Field { key: Cow::Borrowed("scute_time"), write: write_scute_time, read: read_scute_time, accepts: accept::int, owner: Some(owner::<crate::gift_drop::GiftDue>) },
@@ -80,7 +80,6 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Color"), write: write_wool_color, read: read_wool_color, accepts: byte, owner: Some(owner::<Wool>) },
     Field { key: Cow::Borrowed("Sitting"), write: write_fox_sitting, read: read_fox_sitting, accepts: byte, owner: Some(owner::<FoxFlags>) },
     Field { key: Cow::Borrowed("Crouching"), write: write_fox_crouching, read: read_fox_crouching, accepts: byte, owner: Some(owner::<FoxFlags>) },
-    Field { key: Cow::Borrowed("Sleeping"), write: write_fox_sleeping, read: read_fox_sleeping, accepts: byte, owner: Some(owner::<FoxFlags>) },
     Field { key: Cow::Borrowed("GotFish"), write: write_got_fish, read: read_got_fish, accepts: byte, owner: Some(owner::<Trip>) },
     Field { key: Cow::Borrowed("TicksSincePollination"), write: write_pollination, read: read_pollination, accepts: accept::int, owner: Some(owner::<Bee>) },
     Field { key: Cow::Borrowed("BatFlags"), write: write_bat_flags, read: read_bat_flags, accepts: byte, owner: Some(owner::<Flutter>) },
@@ -741,15 +740,6 @@ fn read_fox_crouching(w: &mut World, e: Entity, t: &Tag) -> bool {
         }
     }
     true
-}
-
-/// `Sleeping` of a fox: the sleeping bit of its flags.
-fn write_fox_sleeping(w: &World, e: Entity, c: &mut Compound) {
-    put_fox_bit(w, e, c, "Sleeping", FOX_SLEEPING);
-}
-
-fn read_fox_sleeping(w: &mut World, e: Entity, t: &Tag) -> bool {
-    set_fox_bit(w, e, t, FOX_SLEEPING)
 }
 
 /// `GotFish` of a dolphin: a byte of one while the marker is there.

@@ -220,7 +220,7 @@ pub fn insert_resources(world: &mut World) {
     world.insert_resource(HurtBy::default());
 }
 pub fn register(s: &mut bevy_ecs::schedule::Schedule) {
-    s.add_systems((sun_eval, sun_burn).chain().after(crate::cow::reindex));
+    s.add_systems((day_sync, sun_eval, sun_burn).chain().after(crate::cow::reindex));
 }
 
 /// The rule `sun_burn` (no params): the undead that burn in daylight (`Mob.isSunBurnTick`): the eye height they look at the sky from.
@@ -621,6 +621,15 @@ pub struct BurnsInDay {
 #[component(storage = "SparseSet")]
 pub struct Exposed {
     token: u64,
+}
+/// The level's day (`Level.isBrightOutside`, which the host gives in `MobWorld.daylight`) into `Daylight`: when it changes, every
+/// monster that burns looks at the sun again (a bool compared per tick, nothing else).
+fn day_sync(level: Res<Level>, mut day: ResMut<Daylight>, mut dirty: ResMut<SunDirty>, burners: Query<Entity, With<BurnsInDay>>) {
+    let now = level.mw.0.daylight;
+    if day.0 != now {
+        day.0 = now;
+        dirty.0.extend(burners.iter());
+    }
 }
 /// Looks at the sun again for the monsters an event names and those whose eye changed block: only the animals whose physics is
 /// active (`Moving`, a sparse marker) are looked at, not every burner each tick (`Changed<Bounds>` scanned them all).
