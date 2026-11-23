@@ -307,10 +307,14 @@ pub(crate) fn wall_check(
             (true, false) => {
                 cmd.insert(InWall);
             }
+            // `LivingEntity.baseTick` asks every tick: a creature in a wall is looked at again at the next one, until it is out.
             (false, true) => {
                 cmd.remove::<InWall>();
             }
             _ => {}
+        }
+        if inside {
+            cmd.insert(Recheck);
         }
     }
 }

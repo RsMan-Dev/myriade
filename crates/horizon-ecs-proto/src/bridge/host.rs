@@ -323,7 +323,11 @@ impl EcsWorld {
             // The place asked for, box and movement included: a creature summoned in the air falls (`cow::teleport` raises `Moving`).
             w.get::<Pos>(e)?;
             crate::cow::teleport(w, e, horizon_core::geometry::Vec3::new(at[0], at[1], at[2]));
-            // `Mob.checkDespawn` covers every mob, whoever made it: the creature gets its rule of going away, as a wild birth does.
+            // `Mob.checkDespawn` covers every mob, whoever made it: the creature gets its rule of going away, as a wild birth does. A
+            // `PersistenceRequired` creature far away is kept, not measured first: the marker goes on before the rule is given.
+            if nbt.is_some_and(|c| matches!(c.get(&"PersistenceRequired".into()), Some(horizon_core::nbt::Tag::Byte(v)) if *v != 0)) {
+                w.entity_mut(e).insert(crate::despawn::Persistent);
+            }
             if let Some(def) = crate::spawning::spawn_def(sp) {
                 let near = w.resource::<Online>().players().map(|p| (p.x - at[0]).powi(2) + (p.y - at[1]).powi(2) + (p.z - at[2]).powi(2)).fold(f64::INFINITY, f64::min);
                 crate::despawn::admit(w, e, def.despawn, near);
