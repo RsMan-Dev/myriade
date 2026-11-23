@@ -2,25 +2,13 @@
 
 /// Every launch reads the prepared game files (`horizon-prepare`'s output, whose
 /// manifest is `horizon-resources.json`): without them, say where they were
-/// looked for and how to get them, before a window or a loader starts. `get` is
-/// the page a hook sends the player to (`horizon_hooks::engine::get_the_game`).
-pub(in crate::game) fn missing_resources(
-    root: &std::path::Path,
-    get: Option<horizon_hooks::GetTheGame>,
-) -> Option<String> {
+/// looked for and how to get them, before a window or a loader starts.
+pub(in crate::game) fn missing_resources(root: &std::path::Path) -> Option<String> {
     let shown = std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf());
     if !root.join("horizon-resources.json").is_file() {
-        let launcher = get.map_or(String::new(), |get| {
-            format!(
-                "Horizon is started from its launcher: download it at {} (Download). It needs \
-                 your own Minecraft: Java Edition; the launcher signs you in and prepares the \
-                 game files.\nDevelopers: ",
-                get.address
-            )
-        });
         return Some(format!(
             "Horizon's prepared game files are missing: no horizon-resources.json in {}\n\
-             {launcher}horizon-prepare --prepare, or pass --resources <folder>",
+             horizon-prepare --prepare, or pass --resources <folder>",
             shown.display(),
         ));
     }

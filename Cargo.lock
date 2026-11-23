@@ -1300,10 +1300,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "horizon-hooks"
-version = "0.1.0"
-
-[[package]]
 name = "horizon-items"
 version = "0.1.0"
 dependencies = [
@@ -1344,7 +1340,6 @@ dependencies = [
  "horizon-bench",
  "horizon-core",
  "horizon-guest-stack",
- "horizon-hooks",
  "horizon-java-properties",
  "horizon-perf-format",
  "horizon-prepare",
@@ -2006,7 +2001,6 @@ dependencies = [
  "horizon-game-discovery",
  "horizon-gameplay",
  "horizon-guest-stack",
- "horizon-hooks",
  "horizon-items",
  "horizon-java-properties",
  "horizon-perf-format",
@@ -2048,7 +2042,6 @@ dependencies = [
  "horizon-core",
  "horizon-game-discovery",
  "horizon-guest-stack",
- "horizon-hooks",
  "horizon-items",
  "horizon-java-properties",
  "horizon-perf-format",
@@ -2083,7 +2076,6 @@ dependencies = [
  "horizon-assets",
  "horizon-command",
  "horizon-core",
- "horizon-guest-stack",
  "horizon-items",
  "horizon-protocol",
  "horizon-system",

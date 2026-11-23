@@ -18,7 +18,6 @@ path = "../myriade-engine/src/engine_lib.rs"
 [dependencies]
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std"] }
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-hooks = { path = "../horizon-hooks" }
 horizon-assets = { path = "../horizon-assets" }
 myriade-data = { path = "../myriade-data" }
 myriade-level = { path = "../myriade-level" }

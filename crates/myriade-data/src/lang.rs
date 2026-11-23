@@ -74,41 +74,6 @@ pub trait ResourceSource {
         vec!["minecraft".into()]
     }
 }
-/// Lang files crates above the engine ship (`horizon_hooks::lang`), each a list of
-/// (code, JSON) pairs. The game's entry installs them once, before any language loads.
-static CRATE_FILES: std::sync::OnceLock<&'static [&'static [(&'static str, &'static str)]]> =
-    std::sync::OnceLock::new();
-
-/// Installs the crates' lang files (`horizon_hooks::lang::engine::all()`). Only the first call
-/// counts.
-pub fn install_crate_files(files: &'static [&'static [(&'static str, &'static str)]]) {
-    let _ = CRATE_FILES.set(files);
-}
-
-/// The crates' entries for language `code` that the engine's own `horizon` file for it doesn't
-/// have: on a key both have, the engine wins.
-fn read_crate_files(files: &[&[(&str, &str)]], code: &str, map: &mut HashMap<String, String>) {
-    if files.is_empty() {
-        return;
-    }
-    let mut own = HashMap::new();
-    if let Some(bytes) = Bundled.read(&format!("assets/horizon/lang/{code}.json")) {
-        read_lang_file(&bytes, &mut own);
-    }
-    for (c, json) in files.iter().flat_map(|f| f.iter()) {
-        if *c != code {
-            continue;
-        }
-        let mut theirs = HashMap::new();
-        read_lang_file(json.as_bytes(), &mut theirs);
-        for (key, value) in theirs {
-            if !own.contains_key(&key) {
-                map.insert(key, value);
-            }
-        }
-    }
-}
-
 /// Horizon's own strings, compiled in so they need no prepared resources.
 struct Bundled;
 impl ResourceSource for Bundled {
@@ -220,16 +185,6 @@ impl Language {
     /// from every namespace and every source in priority order (later sources
     /// override).
     pub fn load(sources: &[&dyn ResourceSource], code: &str) -> Self {
-        let crate_files = CRATE_FILES.get().copied().unwrap_or_default();
-        Self::load_with(sources, code, crate_files)
-    }
-
-    /// [`Language::load`] with these crates' lang files.
-    fn load_with(
-        sources: &[&dyn ResourceSource],
-        code: &str,
-        crate_files: &[&[(&str, &str)]],
-    ) -> Self {
         let mut map = HashMap::new();
         let mut codes = vec![DEFAULT];
         if code != DEFAULT {
@@ -245,13 +200,9 @@ impl Language {
             sources.iter().flat_map(|s| s.namespaces()).collect();
         for c in codes {
             for namespace in &namespaces {
-                for (i, source) in sources.iter().enumerate() {
+                for source in sources {
                     if let Some(bytes) = source.read(&format!("assets/{namespace}/lang/{c}.json")) {
                         read_lang_file(&bytes, &mut map);
-                    }
-                    // The crates' text right after the engine's own (`Bundled`, the first source).
-                    if i == 0 && namespace == "horizon" {
-                        read_crate_files(crate_files, c, &mut map);
                     }
                 }
             }
@@ -516,30 +467,6 @@ mod tests {
     }
 
     #[test]
-    fn a_crates_text_loads_after_the_engines_and_before_packs() {
-        static CRATE: &[(&str, &str)] = &[(
-            "en_us",
-            r#"{"test.crate.hello": "Hello", "horizon.osk.close": "Shut", "test.crate.packed": "Crate"}"#,
-        )];
-        let pack = Mem(HashMap::from([(
-            "assets/horizon/lang/en_us.json".to_owned(),
-            br#"{"test.crate.packed": "Pack"}"#.to_vec(),
-        )]));
-        let load = |code| Language::load_with(&[&pack], code, &[CRATE]);
-        let en = load("en_us");
-        assert_eq!(en.get("test.crate.hello"), Some("Hello"));
-        // The engine's own file wins on a key both have; a pack wins over both.
-        assert_eq!(en.get("horizon.osk.close"), Some("Close"));
-        assert_eq!(en.get("test.crate.packed"), Some("Pack"));
-        // A language the crate lacks falls back to its English.
-        assert_eq!(load("pl_pl").get("test.crate.hello"), Some("Hello"));
-        // Without crate files, nothing changes.
-        let plain = Language::load_with(&[&pack], "en_us", &[]);
-        assert_eq!(plain.get("test.crate.hello"), None);
-        assert_eq!(plain.len() + 1, en.len());
-    }
-
-    #[test]
     fn a_scoped_language_is_the_calling_threads_and_reports_what_it_lacks() {
         let empty = Mem(HashMap::new());
         let outside = code();
@@ -595,8 +522,7 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../myriade-engine/assets/horizon/lang")
     }
-    /// The crates whose own lang files the game loads (`crates/<name>/assets/lang`,
-    /// registered through `horizon_hooks::lang`), with that folder.
+    /// The crates whose own lang files sit in `crates/<name>/assets/lang`, with that folder.
     fn crate_lang_dirs() -> Vec<(String, std::path::PathBuf)> {
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut dirs: Vec<_> = std::fs::read_dir(&crates)

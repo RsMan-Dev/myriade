@@ -15,7 +15,6 @@ horizon-game-discovery = { path = "../horizon-game-discovery" }
 [dependencies]
 bevy_ecs = { version = "0.20.1", default-features = false, features = ["std"] }
 horizon-guest-stack = { path = "../horizon-guest-stack" }
-horizon-hooks = { path = "../horizon-hooks" }
 myriade-engine-lib = { path = "../myriade-engine-lib", default-features = false }
 horizon-gameplay = { path = "../horizon-gameplay" }
 horizon-assets = { path = "../horizon-assets" }

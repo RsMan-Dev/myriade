@@ -3,7 +3,6 @@ exclude = ["crates/horizon-telemetry-server", "launcher", "crates/horizon-mod-re
 members = [
     "crates/horizon-guest-stack",
     "crates/horizon-game-discovery",
-    "crates/horizon-hooks",
     "crates/horizon-game",
 
     "crates/horizon-core",

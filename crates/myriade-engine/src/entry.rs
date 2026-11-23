@@ -34,11 +34,6 @@ pub fn start(startup: Startup) {
         });
     horizon_threads::configure_allocator();
     horizon_chat_filter::install();
-    // Crates above the engine registered their hooks before this (horizon-official's `main`),
-    // then the Horizon parts still in this crate; none registers after this point.
-    horizon_hooks::engine::seal();
-    // The text crates ship (`horizon_hooks::lang`), loaded with the game's own languages.
-    myriade_engine::lang::install_crate_files(horizon_hooks::lang::engine::all());
     myriade_engine::spans::startup::init(std::time::Instant::now());
     // The dedicated server logs in its own folder, as vanilla's does; the game in its home.
     let (side, thread) = ("server", "Server thread");
@@ -72,7 +67,6 @@ pub fn start(startup: Startup) {
             game::exit_code::ERROR
         });
     }
-    horizon_hooks::engine::shutdown();
     logging::flush();
 }
 
