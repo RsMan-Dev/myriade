@@ -885,7 +885,7 @@ impl Game<'_> {
                             let guest = &host.hub.guests[gi];
                             let (uuid, entity_id, name) =
                                 (guest.uuid, guest.entity_id, guest.name.clone());
-                            let actor = mod_api::GameRuleActor {
+                            let actor = myriade_types::GameRuleActor {
                                 uuid,
                                 entity_id,
                                 name: &name,

@@ -1579,7 +1579,7 @@ mod tests {
                 if self.offered.load(Ordering::Relaxed) {
                     event
                         .commands
-                        .push(mod_api::Command::new("fnmod [n:integer]"));
+                        .push(myriade_types::Command::new("fnmod [n:integer]"));
                 }
             }
             fn run_mod_command(
@@ -2185,7 +2185,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn refused_item_key_reload_keeps_previous_world_generation() {
-        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext};
+        use mod_api::Hooks;
+        use mod_api::ModEntry;
+        use mod_api::Registrar;
+        use mod_api::RegistrationContext;
 
         struct MissingItem;
         #[mod_api::__subscriptions]

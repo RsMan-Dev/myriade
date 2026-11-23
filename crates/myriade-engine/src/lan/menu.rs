@@ -611,10 +611,10 @@ impl View<'_> {
                 .unwrap_or_default();
             context.main_crafting = Some(crafting);
             if i < slots.len() && range.contains(&i) {
-                context.container = mod_api::MenuContainer::Grid;
+                context.container = myriade_types::MenuContainer::Grid;
                 index = i - range.start;
             } else if i < slots.len() && i == crafting.result {
-                context.container = mod_api::MenuContainer::Result;
+                context.container = myriade_types::MenuContainer::Result;
                 index = 0;
             }
         }
@@ -2042,7 +2042,7 @@ pub(crate) mod tests {
         let mut read = slots.read(&world, &g).unwrap();
         assert_eq!((&read[0], read[1].is_some()), (&planks, true));
         {
-            use mod_api::MenuContainer::{Grid, Main, Player, Result};
+            use myriade_types::MenuContainer::{Grid, Main, Player, Result};
             let mut view = View {
                 guest: &mut g,
                 container: Some(&mut read),
@@ -2069,7 +2069,7 @@ pub(crate) mod tests {
             let builds = std::cell::Cell::new(0);
             let build = || {
                 builds.set(builds.get() + 1);
-                mod_api::MenuSlotContext::new(None, None, Vec::new())
+                myriade_types::MenuSlotContext::new(None, None, Vec::new())
             };
             view.slot_snapshot.get_or_init(build);
             view.slot_snapshot.get_or_init(build);

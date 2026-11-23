@@ -451,7 +451,8 @@ mod tests {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use super::components;
         use myriade_engine::{chunk::Chunk, containers::BlockEntity};
-        use mod_api::{self, *};
+        use mod_api;
+        use mod_api::*;
         use std::sync::Arc;
 
         const CHILD: &str = "HORIZON_MOD_BLOCK_ENTITY_ITEM_CHILD";
@@ -491,7 +492,7 @@ mod tests {
             fn blocks(&self, _context: &mod_api::RegistrationContext, event: &mut BlocksEvent<'_>) {
                 event
                     .blocks
-                    .push(mod_api::Block::new(CRATE, "minecraft:white_banner"));
+                    .push(myriade_types::Block::new(CRATE, "minecraft:white_banner"));
             }
         }
         let mods: Mods = Arc::from([ModEntry::new("item_test", Box::new(TestMod))]);
@@ -587,7 +588,8 @@ mod tests {
     fn a_content_blocks_pick_item_is_what_pick_block_takes() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
         use myriade_engine::chunk::Chunk;
-        use mod_api::{self, *};
+        use mod_api;
+        use mod_api::*;
         use std::sync::Arc;
 
         const CHILD: &str = "HORIZON_MOD_PICK_ITEM_CHILD";
@@ -608,7 +610,7 @@ mod tests {
                     ("pick_test:plain", true, None),
                     ("pick_test:ghost", false, None),
                 ] {
-                    let mut block = mod_api::Block::new(id, "minecraft:stone");
+                    let mut block = myriade_types::Block::new(id, "minecraft:stone");
                     block.item = item;
                     block.pick_item = pick_item.map(Into::into);
                     event.blocks.push(block);

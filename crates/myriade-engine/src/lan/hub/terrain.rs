@@ -9,7 +9,9 @@ use crate::{
     world::World,
 };
 use horizon_protocol::packets::play::{self, Clientbound as C};
-use mod_api::{BlockState, TerrainView, TerrainViewError};
+use myriade_types::BlockState;
+use mod_api::TerrainView;
+use mod_api::TerrainViewError;
 use std::sync::Arc;
 
 #[derive(Default)]

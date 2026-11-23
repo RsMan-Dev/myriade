@@ -11,11 +11,11 @@ use myriade_engine::mobs::equip::CanEquip;
 /// converted). A listening stack that cannot be prepared refuses the decision.
 pub(in crate::game) struct EquipStack {
     _leases: Vec<Box<dyn std::any::Any>>,
-    reads: Vec<mod_api::EquipReadRow>,
+    reads: Vec<myriade_types::EquipReadRow>,
     read_indices: std::collections::HashMap<u32, usize>,
-    stack: Option<Box<mod_api::ItemStack>>,
+    stack: Option<Box<myriade_types::ItemStack>>,
     refused: bool,
-    epoch: Option<mod_api::WorldEpoch>,
+    epoch: Option<myriade_types::WorldEpoch>,
     admissions: std::collections::HashMap<u32, myriade_engine::join_seq::JoinSeq>,
     source: Option<(usize, myriade_engine::mobs::equip::EquipStamp)>,
 }
@@ -89,20 +89,20 @@ impl Game<'_> {
         }
     }
 
-    fn capture_equip_read(&self, id: u32) -> Option<mod_api::EquipReadRow> {
+    fn capture_equip_read(&self, id: u32) -> Option<myriade_types::EquipReadRow> {
         let entity = self.entity(id)?;
         let living = mod_api::LivingRef::new(entity);
         let slots = [
-            mod_api::EquipmentSlot::MainHand,
-            mod_api::EquipmentSlot::OffHand,
-            mod_api::EquipmentSlot::Feet,
-            mod_api::EquipmentSlot::Legs,
-            mod_api::EquipmentSlot::Chest,
-            mod_api::EquipmentSlot::Head,
-            mod_api::EquipmentSlot::Body,
-            mod_api::EquipmentSlot::Saddle,
+            myriade_types::EquipmentSlot::MainHand,
+            myriade_types::EquipmentSlot::OffHand,
+            myriade_types::EquipmentSlot::Feet,
+            myriade_types::EquipmentSlot::Legs,
+            myriade_types::EquipmentSlot::Chest,
+            myriade_types::EquipmentSlot::Head,
+            myriade_types::EquipmentSlot::Body,
+            myriade_types::EquipmentSlot::Saddle,
         ];
-        Some(mod_api::EquipReadRow {
+        Some(myriade_types::EquipReadRow {
             kind: self.entity_kind(entity),
             position: self.entity_position(entity),
             health: self.living_health(living),
@@ -113,7 +113,7 @@ impl Game<'_> {
                 self.living_equipment(living, slots[i])
                     .and_then(|stack| stack.try_into_api().ok())
             }),
-            ..mod_api::EquipReadRow::new(entity)
+            ..myriade_types::EquipReadRow::new(entity)
         })
     }
     pub(in crate::game) fn equip_can_apply(&self, prepared: &EquipStack, id: u32) -> bool {
@@ -334,8 +334,8 @@ mod tests {
             assert!(entity.kind(host).is_some());
             let _health = event.entity.health(host);
             let _alive = event.entity.alive(host);
-            let _equipment = event.entity.equipment(host, mod_api::EquipmentSlot::Head);
-            let _hand = event.entity.hand_item(host, mod_api::Hand::Main);
+            let _equipment = event.entity.equipment(host, myriade_types::EquipmentSlot::Head);
+            let _hand = event.entity.hand_item(host, myriade_types::Hand::Main);
             self.0.fetch_add(1, Ordering::Relaxed);
             event.can_equip = event.slot == "feet";
         }

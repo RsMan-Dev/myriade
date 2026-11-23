@@ -8,7 +8,7 @@ use super::path::PathType;
 use crate::blocks::{BlockFacts, Fluid};
 use horizon_assets::resource_source::ResourceRoot;
 use horizon_world::registry::BlockStateId;
-pub use mod_api::entity::mobs::PathComputationType;
+pub use myriade_types::PathComputationType;
 use serde_json::Value;
 use std::{
     collections::HashMap,
@@ -160,7 +160,7 @@ pub struct MobData {
     /// entity type id: resolved once at load by [`MobData::register_mod_spawn`],
     /// empty with no mod. Their placement type and heightmap sit in
     /// [`MobData::placements`] and [`MobData::heightmaps`] as vanilla's do.
-    pub mod_spawns: HashMap<String, mod_api::SpawnPlacementRule>,
+    pub mod_spawns: HashMap<String, myriade_types::SpawnPlacementRule>,
 }
 impl MobData {
     pub fn load(root: &ResourceRoot, facts: &BlockFacts) -> Self {
@@ -398,9 +398,9 @@ impl MobData {
         }
     }
     /// Take a mod's spawn rule for its entity type `id` (`SpawnPlacements.register`).
-    pub fn register_mod_spawn(&mut self, id: &str, rule: &mod_api::SpawnPlacementRule) {
-        use mod_api::Heightmap as H;
-        use mod_api::SpawnPlacementType as T;
+    pub fn register_mod_spawn(&mut self, id: &str, rule: &myriade_types::SpawnPlacementRule) {
+        use myriade_types::Heightmap as H;
+        use myriade_types::SpawnPlacementType as T;
         let placement = match rule.placement {
             T::OnGround => Placement::OnGround,
             T::InWater => Placement::InWater,

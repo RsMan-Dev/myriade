@@ -18,7 +18,7 @@ use myriade_engine::{containers::BlockEntity, entities::Experience, items::ItemS
         hub::TickCtx,
         menu::{Rules, Slots},
     }, motion::{MotionEvent, MotionWorld, PlayerMotion}, pose::Dimensions};
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use crate::hand_use::SwingAnimation;
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -29,7 +29,9 @@ use horizon_protocol::{
     text::literal,
 };
 use horizon_world::entity_move::EntityMoveWorld;
-use mod_api::{ActionRefused, GameMode, SoundSource};
+use mod_api::ActionRefused;
+use myriade_types::GameMode;
+use myriade_types::SoundSource;
 
 include!(concat!(env!("OUT_DIR"), "/lan_action_modules.rs"));
 include!("shared.rs");

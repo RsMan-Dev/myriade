@@ -7,7 +7,8 @@
 //! change it, and catches what its first slot doesn't take in its second.
 use super::{Game, HashMap, frame_token};
 use myriade_engine::items::ItemStack;
-use mod_api::{ItemPlace, Transaction};
+use myriade_types::ItemPlace;
+use mod_api::Transaction;
 use std::sync::Arc;
 
 /// One scratch stack: its item, fixed (none for a two-slot copy, whose item may change), what

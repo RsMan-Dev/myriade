@@ -4,15 +4,16 @@ mod panel;
 #[path = "mod_placement.rs"]
 mod placement;
 use super::RecipeBookCategory;
-use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
+use myriade_types::RecipeBookDisplay as Display;
+use myriade_types::RecipeSlotDisplay as Slot;
 pub use panel::ModBookPanel;
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Resource tables consulted at the load boundary, never while drawing tabs.
 pub trait DisplayResources {
-    fn book(&self, key: &mod_api::item::recipe_book::RecipeBookTypeKey) -> bool;
+    fn book(&self, key: &myriade_types::RecipeBookTypeKey) -> bool;
     fn item(&self, id: &str) -> bool;
-    fn stack(&self, stack: &mod_api::ItemStack) -> bool;
+    fn stack(&self, stack: &myriade_types::ItemStack) -> bool;
     fn tag(&self, id: &str) -> bool;
     fn component(&self, id: &str) -> bool;
     fn trim_pattern(&self, id: &str) -> bool;
@@ -54,8 +55,8 @@ impl ModBookIndex {
     ) -> Result<Self, DisplayLoadError> {
         placement::validate_batch(&mut declarations, resources)?;
         let mut index = Self::default();
-        for menu in mod_api::RecipeBookLayout::registered_menus() {
-            let Some((_, recipe_type, layout)) = mod_api::RecipeBookLayout::registered(&menu)
+        for menu in myriade_types::RecipeBookLayout::registered_menus() {
+            let Some((_, recipe_type, layout)) = myriade_types::RecipeBookLayout::registered(&menu)
             else {
                 continue;
             };
@@ -91,7 +92,7 @@ impl ModBookIndex {
                 return Err(unknown("menu", &category.target_menu));
             }
             if let Some((book, recipe_type, _)) =
-                mod_api::RecipeBookLayout::registered(&category.target_menu)
+                myriade_types::RecipeBookLayout::registered(&category.target_menu)
                 && (book != category.book || recipe_type != category.recipe_type)
             {
                 return Err(DisplayLoadError::ConflictingBook(category.target_menu));
@@ -134,7 +135,7 @@ impl ModBookIndex {
                     )));
                 }
                 if let Some(layout) = index.layouts.get(&category.target_menu) {
-                    let owner = mod_api::RecipeBookLayout::declaring_mod(&category.target_menu)
+                    let owner = myriade_types::RecipeBookLayout::declaring_mod(&category.target_menu)
                         .ok_or_else(|| {
                             DisplayLoadError::InvalidPlacement(format!(
                                 "menu {} has no declaring mod",

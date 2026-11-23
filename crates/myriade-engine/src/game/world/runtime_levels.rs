@@ -17,7 +17,10 @@ use horizon_world::{
         overrides::{DIMENSION_TYPES, DIMENSIONS, WorldgenOverrides, mod_dimensions},
     },
 };
-use mod_api::{LevelRef, RuntimeGenerator, RuntimeLevel, RuntimeLevelError};
+use mod_api::LevelRef;
+use mod_api::RuntimeGenerator;
+use mod_api::RuntimeLevel;
+use mod_api::RuntimeLevelError;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
@@ -744,8 +747,8 @@ impl Game<'_> {
     /// A handle to the server level `key`, of the generation it is open with.
     pub(in crate::game) fn level_ref(
         &self,
-        epoch: mod_api::WorldEpoch,
-        key: mod_api::DimensionKey,
+        epoch: myriade_types::WorldEpoch,
+        key: myriade_types::DimensionKey,
     ) -> LevelRef {
         let id = mod_api::__private::dimension_id(key).expect("the game's table made the key");
         LevelRef::with_generation(epoch, key, self.levels.runtime.generation_of(id))

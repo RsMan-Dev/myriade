@@ -16,7 +16,7 @@ use horizon_world::entity_move::MoverType;
 use horizon_world::move_gate::MoveGate;
 use horizon_world::native_load_context::LoopContext;
 use horizon_world::world_movement::EntityMovementWorld;
-use mod_api::MoveCause;
+use myriade_types::MoveCause;
 use std::borrow::Cow;
 use std::io;
 

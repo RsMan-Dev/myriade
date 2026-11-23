@@ -7,7 +7,9 @@ use super::cauldron_contents::{self, CauldronContent, CauldronContents, EMPTY_CA
 use myriade_engine::containers::{BlockEntity, ModFluidTanks};
 use horizon_core::geometry::Direction;
 use horizon_core::nbt::{Compound, JavaString, Tag};
-use mod_api::{BlockSide, FluidStack, Transaction};
+use mod_api::BlockSide;
+use mod_api::FluidStack;
+use mod_api::Transaction;
 use std::sync::Arc;
 
 /// What holds fluids at a position: a mod block's tanks, or a cauldron
@@ -542,7 +544,9 @@ mod tests {
     fn a_cauldron_move_the_target_takes_part_of_gives_the_whole_levels_that_fit() {
         use super::super::super::native_entity_refs::tests::with_game;
         use myriade_engine::chunk::Chunk;
-        use mod_api::{BlockUpdateFlags, FLUIDS, move_resources};
+        use myriade_types::BlockUpdateFlags;
+        use mod_api::FLUIDS;
+        use mod_api::move_resources;
         with_game(|game| {
             game.world
                 .chunks
@@ -587,10 +591,17 @@ mod tests {
             return;
         }
         use myriade_engine::chunk::Chunk;
-        use mod_api::{
-            BlockKey, BlockUpdateFlags, FLUIDS, FluidKey, FluidResource, Hooks, ModEntry, Mods,
-            RegisterCauldronFluidContentEvent, Registrar, RegistrationContext,
-        };
+        use myriade_types::BlockKey;
+        use myriade_types::BlockUpdateFlags;
+        use mod_api::FLUIDS;
+        use myriade_types::FluidKey;
+        use mod_api::FluidResource;
+        use mod_api::Hooks;
+        use mod_api::ModEntry;
+        use mod_api::Mods;
+        use mod_api::RegisterCauldronFluidContentEvent;
+        use mod_api::Registrar;
+        use mod_api::RegistrationContext;
 
         /// The keys the mod's `register` requested, as a real mod keeps them for its hooks.
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1001,10 +1012,14 @@ mod tests {
             containers::{ModBlockEntity, ModBlockEntityFields},
             fast_hash::FxHashMap,
         };
-        use mod_api::{
-            BlockUpdateFlags, FLUIDS, FluidResource, Hooks, ModEntry, Mods, Registrar,
-            move_resources,
-        };
+        use myriade_types::BlockUpdateFlags;
+        use mod_api::FLUIDS;
+        use mod_api::FluidResource;
+        use mod_api::Hooks;
+        use mod_api::ModEntry;
+        use mod_api::Mods;
+        use mod_api::Registrar;
+        use mod_api::move_resources;
 
         struct WaterTanks;
         #[mod_api::__subscriptions]
@@ -1035,7 +1050,7 @@ mod tests {
                 _: &mod_api::RegistrationContext,
                 event: &mut mod_api::BlocksEvent<'_>,
             ) {
-                event.blocks.push(mod_api::Block::new(
+                event.blocks.push(myriade_types::Block::new(
                     "fluid_filter_test:water_tank",
                     "minecraft:stone",
                 ));

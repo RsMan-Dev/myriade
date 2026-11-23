@@ -1,6 +1,6 @@
 //! Frozen authoritative requirements mapped to checked menu-owned destinations.
 use crate::{crafting::Placement, recipe_book::slot_layout::CheckedSlotLayout};
-use mod_api::RecipeBookLayout as L;
+use myriade_types::RecipeBookLayout as L;
 
 #[derive(Clone, Debug)]
 pub struct MenuPlacement {

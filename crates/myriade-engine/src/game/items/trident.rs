@@ -12,7 +12,7 @@ use myriade_engine::{
 };
 use horizon_core::geometry::Vec3;
 use horizon_ecs_proto::trident::Pickup;
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 
 pub(super) use horizon_gameplay::trident::ThrownTrident;
 

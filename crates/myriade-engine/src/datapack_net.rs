@@ -209,10 +209,12 @@ fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mod_api::{
-        DatapackCandidate, DatapackField, DatapackFieldKind, DatapackRegistryDeclaration,
-        DatapackRegistrySet, DatapackRegistrySync,
-    };
+    use mod_api::DatapackCandidate;
+    use mod_api::DatapackField;
+    use mod_api::DatapackFieldKind;
+    use mod_api::DatapackRegistryDeclaration;
+    use mod_api::DatapackRegistrySet;
+    use mod_api::DatapackRegistrySync;
 
     fn spell(sync: DatapackRegistrySync) -> DatapackRegistryDeclaration {
         DatapackRegistryDeclaration {

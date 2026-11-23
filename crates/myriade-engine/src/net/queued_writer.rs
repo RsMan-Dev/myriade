@@ -6,7 +6,9 @@ use horizon_protocol::{
     connection::{Closer, ConnWriter, Framing},
     frame::FrameSize,
 };
-use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError};
+use mod_api::PayloadFrameStage;
+use mod_api::PayloadId;
+use mod_api::PayloadSendError;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},

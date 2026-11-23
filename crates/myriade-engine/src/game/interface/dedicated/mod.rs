@@ -27,7 +27,7 @@ use myriade_engine::{
 use horizon_core::nbt::{JavaString, Tag};
 use horizon_perf_format::v1::{StopReason, Trigger};
 use horizon_protocol::text::translatable;
-use mod_api::PermissionLevel;
+use myriade_types::PermissionLevel;
 use std::{
     io::Write,
     path::PathBuf,

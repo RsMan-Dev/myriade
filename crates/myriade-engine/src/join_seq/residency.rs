@@ -1,7 +1,7 @@
 //! Structural events from the numbered entity owners of one game instance.
 //! Bindings ride with storage when dimensions are parked; no event holds Game.
 use super::JoinSeq;
-use mod_api::DimensionKey;
+use myriade_types::DimensionKey;
 #[cfg(any(test, feature = "test-residency-observer"))]
 use std::sync::OnceLock;
 use std::{

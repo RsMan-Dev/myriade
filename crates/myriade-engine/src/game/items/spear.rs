@@ -10,7 +10,7 @@
 use super::{Game, view_vector};
 pub(super) use myriade_engine::spear::hits_in_reach;
 use myriade_engine::{attack_strength::delay, collisions::SceneCollisions, items::ItemStack, mobs::Damage, spear::{HIT_FEEDBACK_TICKS, Kinetic, REACH}};
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use crate::hand_use::SwingAnimation;
 use horizon_core::{
     geometry::{Aabb, Vec3, traverse_blocks},

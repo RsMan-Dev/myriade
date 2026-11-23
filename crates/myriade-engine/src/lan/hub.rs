@@ -351,7 +351,7 @@ pub struct Hub {
     packet_drain: Option<PacketDrain>,
     deferred_payloads: std::collections::HashMap<Option<u32>, DeferredPayload>,
     /// Main-thread world identity used to bind typed network-context player handles.
-    pub payload_player_epoch: Option<mod_api::WorldEpoch>,
+    pub payload_player_epoch: Option<myriade_types::WorldEpoch>,
     /// Clicks on and closings of native mods' menus, for the game.
     pub native_menu_events: Vec<super::menu::NativeMenuEvent>,
     /// The chunks players started and stopped watching, for the mods
@@ -3295,7 +3295,7 @@ impl Hub {
             }
             T::Vibration => {
                 use horizon_protocol::entity_data::PositionSource as NetworkPositionSource;
-                use mod_api::client::particles::PositionSource;
+                use myriade_types::PositionSource;
                 let (source, _, ticks) = options.vibration.as_ref()?;
                 let source = match source {
                     PositionSource::Block(pos) => NetworkPositionSource::Block(*pos),

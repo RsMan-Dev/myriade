@@ -51,7 +51,7 @@ pub struct GuestList {
     identities: FxHashMap<(u128, u32), usize>,
     residency: Option<(
         crate::join_seq::residency::Journal,
-        fn(&str) -> mod_api::DimensionKey,
+        fn(&str) -> myriade_types::DimensionKey,
     )>,
     written: Mutex<Written>,
 }
@@ -97,7 +97,7 @@ impl GuestList {
     pub fn bind_residency(
         &mut self,
         journal: &crate::join_seq::residency::Journal,
-        dimension: fn(&str) -> mod_api::DimensionKey,
+        dimension: fn(&str) -> myriade_types::DimensionKey,
     ) {
         self.residency = Some((journal.clone(), dimension));
         for index in 0..self.rows.len() {
@@ -454,7 +454,7 @@ struct Edit<'a> {
     index: usize,
     before: (u32, u128, i32, bool),
     registration: Option<horizon_mod_runtime::attachments::AttachmentRegistration>,
-    dimension: Option<mod_api::DimensionKey>,
+    dimension: Option<myriade_types::DimensionKey>,
     released: bool,
 }
 fn index_fields(guest: &Guest) -> (u32, u128, i32, bool) {
@@ -617,7 +617,7 @@ mod tests {
                 let mut table =
                     crate::join_seq::residency::table::EntityTable::new(Default::default());
                 let mut list = GuestList::default();
-                list.bind_residency(&table.producer(), |_| mod_api::DimensionKey::OVERWORLD);
+                list.bind_residency(&table.producer(), |_| myriade_types::DimensionKey::OVERWORLD);
                 list.push(player);
                 list.update(0, |g| {
                     match field {
@@ -836,7 +836,7 @@ mod tests {
         };
         let mut list = GuestList::default();
         let mut table = EntityTable::new(Journal::default());
-        list.bind_residency(&table.producer(), |_| mod_api::DimensionKey::OVERWORLD);
+        list.bind_residency(&table.producer(), |_| myriade_types::DimensionKey::OVERWORLD);
         list.extend([guest(1), guest(2)]);
         list.update(1, |g| g.kind = crate::lan::guest::GuestKind::Fake);
         assert!(!list[0].placed);
@@ -898,7 +898,7 @@ mod tests {
         pending.entity_id = 0;
         let join = pending.residency.join();
         let mut table = EntityTable::new(Journal::default());
-        list.bind_residency(&table.producer(), |_| mod_api::DimensionKey::OVERWORLD);
+        list.bind_residency(&table.producer(), |_| myriade_types::DimensionKey::OVERWORLD);
         list.push(pending);
         assert_eq!(
             table.server_entity_lookup::<()>(0, |_| panic!("pending id is not admitted")),
@@ -913,7 +913,7 @@ mod tests {
         assert_eq!(details.known_uuid, Some([0, 0, 0, 101]));
         let saved = list.take_for_save(0);
         table.reset();
-        list.bind_residency(&table.producer(), |_| mod_api::DimensionKey::OVERWORLD);
+        list.bind_residency(&table.producer(), |_| myriade_types::DimensionKey::OVERWORLD);
         list.push(saved);
         let (at, state, details) = table
             .server_admitted_identity(31, |at| resident(&list, at))

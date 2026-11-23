@@ -1,6 +1,6 @@
 //! Prepared cauldron callbacks and their authoritative action savepoint.
 use super::*;
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use myriade_engine::cauldron::interactions::{Dispatcher, Entry};
 use mod_api::__private::game::RegistrationContextNew;
 use std::{cell::RefCell, sync::Arc};
@@ -47,7 +47,7 @@ struct Registrar<'a> {
 /// A tag as entries keep it: its resource location, without `#`.
 fn tag_id(tag: &str) -> Option<String> {
     let tag = tag.strip_prefix('#').unwrap_or(tag);
-    mod_api::Identifier::parse(tag)
+    myriade_types::Identifier::parse(tag)
         .ok()
         .map(|id| id.to_string())
 }
@@ -111,8 +111,8 @@ impl Registrar<'_> {
 impl mod_api::CauldronInteractions for Registrar<'_> {
     fn register(
         &mut self,
-        block: mod_api::BlockKey,
-        item: mod_api::ItemKey,
+        block: myriade_types::BlockKey,
+        item: myriade_types::ItemKey,
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         use mod_api::CauldronRegistrationError as Error;
@@ -138,7 +138,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
     }
     fn register_to_all(
         &mut self,
-        item: mod_api::ItemKey,
+        item: myriade_types::ItemKey,
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
         let Some(item) =
@@ -158,7 +158,7 @@ impl mod_api::CauldronInteractions for Registrar<'_> {
     }
     fn register_tag(
         &mut self,
-        block: mod_api::BlockKey,
+        block: myriade_types::BlockKey,
         tag: &str,
         handler: Arc<dyn mod_api::Interaction>,
     ) -> std::result::Result<(), mod_api::CauldronRegistrationError> {
@@ -254,7 +254,10 @@ impl Game<'_> {
         table: &Arc<Table>,
     ) -> bool {
         use crate::game::api_values::{TryIntoApi, TryIntoEngine};
-        use mod_api::{CauldronDecision, CauldronFire, CauldronPlan, CauldronUse};
+        use mod_api::CauldronDecision;
+        use mod_api::CauldronFire;
+        use mod_api::CauldronPlan;
+        use mod_api::CauldronUse;
         let Some(_active) = enter_decision() else {
             return true;
         };
@@ -268,13 +271,13 @@ impl Game<'_> {
                 let dimension = self.dim;
                 let actor = mod_api::EntityRef::new(epoch, self.native_acting_entity());
                 let input = CauldronUse {
-                    dimension: mod_api::Identifier::parse(self.dim.id()).map_err(|_| ())?,
+                    dimension: myriade_types::Identifier::parse(self.dim.id()).map_err(|_| ())?,
                     pos,
                     state: index.to_api(before).map_err(|_| ())?,
                     actor,
                     hand: match self.hand {
-                        Hand::Main => mod_api::Hand::Main,
-                        Hand::Off => mod_api::Hand::Off,
+                        Hand::Main => myriade_types::Hand::Main,
+                        Hand::Off => myriade_types::Hand::Off,
                     },
                     held: held.try_into_api().map_err(|_| ())?,
                     underwater: under_water,
@@ -294,8 +297,8 @@ impl Game<'_> {
                         && game.native_acting_id() == player
                         && game.hand
                             == match input.hand {
-                                mod_api::Hand::Main => Hand::Main,
-                                mod_api::Hand::Off => Hand::Off,
+                                myriade_types::Hand::Main => Hand::Main,
+                                myriade_types::Hand::Off => Hand::Off,
                             }
                         && game.world.block(pos[0], pos[1], pos[2]) == before
                         && game.held() == Some(&held)

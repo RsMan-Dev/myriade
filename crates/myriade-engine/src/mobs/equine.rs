@@ -250,7 +250,7 @@ pub fn hoof_steps(s: Species) -> bool {
 }
 /// `AbstractHorse.isWoodSoundType`: WOOD, NETHER_WOOD, STEM, CHERRY_WOOD and
 /// BAMBOO_WOOD (not HARD_CROP, which only shares WOOD's step).
-fn is_wood_sound_type(sounds: &mod_api::BlockSoundType) -> bool {
+fn is_wood_sound_type(sounds: &myriade_types::BlockSoundType) -> bool {
     let step = sounds
         .step
         .strip_prefix("minecraft:")

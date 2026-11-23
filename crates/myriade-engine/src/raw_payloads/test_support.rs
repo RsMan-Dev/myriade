@@ -1,9 +1,13 @@
 //! Scoped real registration/classification for resource-free actor routing tests.
 //! This supplies application handlers, never a fake payload context or World.
 use super::{Classified, Delivery, Endpoint, Incoming, Side, Transport};
-use mod_api::{
-    Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes, PayloadId, Registrar,
-};
+use mod_api::Hooks;
+use mod_api::IPayloadContext;
+use mod_api::IPayloadHandler;
+use mod_api::ModEntry;
+use mod_api::PayloadBytes;
+use mod_api::PayloadId;
+use mod_api::Registrar;
 use std::sync::Arc;
 pub(crate) const CHANNEL: &str = "raw_hub_probe:message";
 struct Probe;

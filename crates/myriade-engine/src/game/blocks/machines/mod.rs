@@ -21,9 +21,13 @@ use horizon_world::{
     level::{Behaviours, LevelAccess},
     registry::BlockStateId,
 };
-use mod_api::{
-    self, BlockSide, Capability, ENTITY_AUTOMATION, EntityRef, ItemResource, ResourceHandler,
-};
+use mod_api;
+use mod_api::BlockSide;
+use mod_api::Capability;
+use mod_api::ENTITY_AUTOMATION;
+use mod_api::EntityRef;
+use mod_api::ItemResource;
+use mod_api::ResourceHandler;
 use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
 
 type Pos = (i32, i32, i32);
@@ -2293,7 +2297,7 @@ mod part_front_tests {
     use myriade_engine::containers::BlockEntity;
     use myriade_engine::items::ItemStack;
     use horizon_core::position::BlockPos;
-    use mod_api::BlockUpdateFlags;
+    use myriade_types::BlockUpdateFlags;
     use std::sync::Arc;
 
     fn stack(item: &str, count: u32) -> ItemStack {

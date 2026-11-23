@@ -20,7 +20,7 @@ use horizon_core::{
     random::{LevelRandom, RandomSource},
 };
 use horizon_world::move_gate::MoveGate;
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 use std::fmt::Debug;
 
 const JUMP: usize = 0;

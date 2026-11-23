@@ -16,7 +16,7 @@ use horizon_core::{
 };
 use mod_api::ExplosionStart;
 #[cfg(test)]
-use mod_api::ItemDrop;
+use myriade_types::ItemDrop;
 use std::{cmp::Ordering, collections::HashSet, io};
 use {
     horizon_core::java_hash_map::{JavaHashMap, JavaKey},
@@ -824,7 +824,7 @@ impl Game<'_> {
         }
         self.combat.forget_noted(outcome.canceled);
         if raised {
-            let source = mod_api::entity::health::HurtSource {
+            let source = myriade_types::HurtSource {
                 damage_type,
                 causing: attacker.map_or(0, |(id, _)| *id as i32),
                 direct: 0,
@@ -1371,10 +1371,10 @@ impl Game<'_> {
             radius,
             fire,
             interaction: match interaction {
-                BlockInteraction::Keep => mod_api::BlockInteraction::Keep,
-                BlockInteraction::Destroy => mod_api::BlockInteraction::Destroy,
-                BlockInteraction::DestroyWithDecay => mod_api::BlockInteraction::DestroyWithDecay,
-                BlockInteraction::Trigger => mod_api::BlockInteraction::TriggerBlock,
+                BlockInteraction::Keep => myriade_types::BlockInteraction::Keep,
+                BlockInteraction::Destroy => myriade_types::BlockInteraction::Destroy,
+                BlockInteraction::DestroyWithDecay => myriade_types::BlockInteraction::DestroyWithDecay,
+                BlockInteraction::Trigger => myriade_types::BlockInteraction::TriggerBlock,
             },
             damage_type,
             source: self.combat.explosion_source,
@@ -2032,7 +2032,7 @@ mod tests {
                 center,
                 radius,
                 fire: false,
-                interaction: mod_api::BlockInteraction::Destroy,
+                interaction: myriade_types::BlockInteraction::Destroy,
                 damage_type: "minecraft:explosion",
                 source: None,
                 owner: None,

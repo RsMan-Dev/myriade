@@ -92,7 +92,7 @@ impl Game<'_> {
         // The levels' handles, which a world's opening publishes to mods.
         self.reset_entity_residency();
         self.native_lifecycle
-            .begin_open(mod_api::Authority::DedicatedServer);
+            .begin_open(myriade_types::Authority::DedicatedServer);
         let listening =
             std::env::var_os("HORIZON_HOT_PATHS_MODS").is_some_and(|mods| mods == "native");
         if !listening {

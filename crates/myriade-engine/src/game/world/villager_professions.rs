@@ -129,7 +129,7 @@ impl Game<'_> {
 
 fn profession_refusal(
     error: &mod_api::ProfessionRegistrationError,
-    declarations: &[(String, mod_api::ProfessionDefinition)],
+    declarations: &[(String, myriade_types::ProfessionDefinition)],
 ) -> String {
     use mod_api::ProfessionRegistrationError as E;
     let contexts = declarations

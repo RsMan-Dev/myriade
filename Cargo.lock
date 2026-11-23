@@ -1213,140 +1213,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "myriade-engine"
-version = "0.1.0"
-dependencies = [
- "bevy_ecs",
- "cap-fs-ext",
- "cap-std",
- "chrono",
- "crc32fast",
- "flate2",
- "fs4",
- "glam 0.30.10",
- "horizon-anticheat",
- "horizon-assets",
- "horizon-bench",
- "horizon-chat-filter",
- "myriade-data",
- "myriade-engine-lib",
- "myriade-level",
- "horizon-command",
- "horizon-core",
- "horizon-ecs-proto",
- "horizon-game-discovery",
- "horizon-gameplay",
- "horizon-guest-stack",
- "horizon-hooks",
- "horizon-items",
- "horizon-java-properties",
- "horizon-perf-format",
- "horizon-protocol",
- "horizon-server-files",
- "horizon-threads",
- "horizon-world",
- "log",
- "png",
- "rustix",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "toml",
- "wat",
- "zip",
-]
-
-[[package]]
-name = "myriade-data"
-version = "0.1.0"
-dependencies = [
- "horizon-assets",
- "horizon-core",
- "horizon-world",
- "serde_json",
-]
-
-[[package]]
-name = "myriade-engine-lib"
-version = "0.1.0"
-dependencies = [
- "bevy_ecs",
- "chrono",
- "crc32fast",
- "flate2",
- "fs4",
- "getrandom 0.3.4",
- "glam 0.30.10",
- "horizon-anticheat",
- "horizon-assets",
- "horizon-bench",
- "myriade-data",
- "myriade-level",
- "horizon-command",
- "horizon-core",
- "horizon-game-discovery",
- "horizon-guest-stack",
- "horizon-hooks",
- "horizon-items",
- "horizon-java-properties",
- "horizon-perf-format",
- "horizon-protocol",
- "horizon-server-files",
- "horizon-threads",
- "horizon-world",
- "log",
- "mio",
- "open",
- "png",
- "rayon",
- "rustix",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "xxhash-rust",
- "zip",
-]
-
-[[package]]
-name = "myriade-level"
-version = "0.1.0"
-dependencies = [
- "base64",
- "chrono",
- "flate2",
- "horizon-assets",
- "myriade-data",
- "horizon-command",
- "horizon-core",
- "horizon-guest-stack",
- "horizon-items",
- "horizon-protocol",
- "horizon-system",
- "horizon-threads",
- "horizon-world",
- "log",
- "png",
- "rustix",
- "serde",
- "serde_json",
- "sha2",
- "smallvec",
- "tempfile",
- "ureq",
- "zip",
-]
-
-[[package]]
 name = "horizon-command"
 version = "0.1.0"
 dependencies = [
- "myriade-data",
  "horizon-core",
  "horizon-items",
  "horizon-protocol",
  "horizon-world",
+ "myriade-data",
 ]
 
 [[package]]
@@ -1366,24 +1240,24 @@ dependencies = [
  "bevy_ecs",
  "bevy_tasks",
  "bevy_utils",
- "myriade-engine-lib",
- "myriade-level",
  "horizon-core",
  "horizon-items",
  "horizon-protocol",
  "horizon-world",
  "libc",
+ "myriade-engine-lib",
+ "myriade-level",
 ]
 
 [[package]]
 name = "horizon-game"
 version = "0.1.0"
 dependencies = [
- "myriade-engine",
  "horizon-core",
  "horizon-guest-stack",
  "horizon-protocol",
  "libloading",
+ "myriade-engine",
  "serde",
  "serde_json",
  "sha2",
@@ -1405,8 +1279,6 @@ name = "horizon-gameplay"
 version = "0.1.0"
 dependencies = [
  "horizon-assets",
- "myriade-data",
- "myriade-engine-lib",
  "horizon-command",
  "horizon-core",
  "horizon-items",
@@ -1414,6 +1286,8 @@ dependencies = [
  "horizon-threads",
  "horizon-world",
  "log",
+ "myriade-data",
+ "myriade-engine-lib",
  "serde_json",
 ]
 
@@ -1432,10 +1306,10 @@ version = "0.1.0"
 name = "horizon-items"
 version = "0.1.0"
 dependencies = [
- "myriade-data",
  "horizon-core",
  "horizon-world",
  "log",
+ "myriade-data",
  "serde",
  "serde_json",
 ]
@@ -2097,6 +1971,132 @@ dependencies = [
  "horizon-core",
  "horizon-protocol",
  "serde_json",
+]
+
+[[package]]
+name = "myriade-data"
+version = "0.1.0"
+dependencies = [
+ "horizon-assets",
+ "horizon-core",
+ "horizon-world",
+ "serde_json",
+]
+
+[[package]]
+name = "myriade-engine"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "cap-fs-ext",
+ "cap-std",
+ "chrono",
+ "crc32fast",
+ "flate2",
+ "fs4",
+ "glam 0.30.10",
+ "horizon-anticheat",
+ "horizon-assets",
+ "horizon-bench",
+ "horizon-chat-filter",
+ "horizon-command",
+ "horizon-core",
+ "horizon-ecs-proto",
+ "horizon-game-discovery",
+ "horizon-gameplay",
+ "horizon-guest-stack",
+ "horizon-hooks",
+ "horizon-items",
+ "horizon-java-properties",
+ "horizon-perf-format",
+ "horizon-protocol",
+ "horizon-server-files",
+ "horizon-threads",
+ "horizon-world",
+ "log",
+ "myriade-data",
+ "myriade-engine-lib",
+ "myriade-level",
+ "png",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "toml",
+ "wat",
+ "zip",
+]
+
+[[package]]
+name = "myriade-engine-lib"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "chrono",
+ "crc32fast",
+ "flate2",
+ "fs4",
+ "getrandom 0.3.4",
+ "glam 0.30.10",
+ "horizon-anticheat",
+ "horizon-assets",
+ "horizon-bench",
+ "horizon-command",
+ "horizon-core",
+ "horizon-game-discovery",
+ "horizon-guest-stack",
+ "horizon-hooks",
+ "horizon-items",
+ "horizon-java-properties",
+ "horizon-perf-format",
+ "horizon-protocol",
+ "horizon-server-files",
+ "horizon-threads",
+ "horizon-world",
+ "log",
+ "mio",
+ "myriade-data",
+ "myriade-level",
+ "open",
+ "png",
+ "rayon",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "xxhash-rust",
+ "zip",
+]
+
+[[package]]
+name = "myriade-level"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "flate2",
+ "horizon-assets",
+ "horizon-command",
+ "horizon-core",
+ "horizon-guest-stack",
+ "horizon-items",
+ "horizon-protocol",
+ "horizon-system",
+ "horizon-threads",
+ "horizon-world",
+ "log",
+ "myriade-data",
+ "png",
+ "rustix",
+ "serde",
+ "serde_json",
+ "sha2",
+ "smallvec",
+ "tempfile",
+ "ureq",
+ "zip",
 ]
 
 [[package]]

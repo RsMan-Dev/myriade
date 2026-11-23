@@ -13,7 +13,7 @@ pub struct Profession {
     acquire_names: std::collections::HashSet<String>,
     trade_keys: [Option<String>; 5],
     /// Complete declarative metadata, including explicit vanilla trade-level keys.
-    pub definition: Option<mod_api::ProfessionDefinition>,
+    pub definition: Option<myriade_types::ProfessionDefinition>,
     held: Option<horizon_world::poi::PoiType>,
     acquirable: Option<horizon_world::poi::PoiType>,
 }
@@ -137,8 +137,8 @@ impl ResolvedProfessions {
     /// Resolve a complete candidate without touching the active table. The caller installs
     /// this value together with its POI and trade resources only after all preparation succeeds.
     pub fn prepare(
-        mut declarations: Vec<(String, mod_api::ProfessionDefinition)>,
-        mut exists: impl FnMut(&str, &mod_api::Identifier) -> bool,
+        mut declarations: Vec<(String, myriade_types::ProfessionDefinition)>,
+        mut exists: impl FnMut(&str, &myriade_types::Identifier) -> bool,
     ) -> Result<Self, Vec<mod_api::ProfessionRegistrationError>> {
         use mod_api::ProfessionRegistrationError as E;
         use std::collections::BTreeMap;
@@ -147,7 +147,7 @@ impl ResolvedProfessions {
         let mut errors = Vec::new();
         let seed = Self::vanilla();
         let mut owners: BTreeMap<String, Vec<String>> = BTreeMap::new();
-        let mut pois: BTreeMap<String, Vec<mod_api::ProfessionKey>> = BTreeMap::new();
+        let mut pois: BTreeMap<String, Vec<myriade_types::ProfessionKey>> = BTreeMap::new();
         for (owner, definition) in &declarations {
             owners
                 .entry(definition.key.0.to_string())
@@ -215,8 +215,8 @@ impl ResolvedProfessions {
             if owners.len() > 1 {
                 owners.sort();
                 errors.push(E::DuplicateProfession {
-                    key: mod_api::ProfessionKey(
-                        mod_api::Identifier::parse(&key).expect("validated identifier"),
+                    key: myriade_types::ProfessionKey(
+                        myriade_types::Identifier::parse(&key).expect("validated identifier"),
                     ),
                     owners,
                 });
@@ -226,16 +226,16 @@ impl ResolvedProfessions {
             if let Some(index) =
                 horizon_world::poi::PoiType::from_id(&poi).and_then(|poi| seed.by_poi(poi))
             {
-                professions.push(mod_api::ProfessionKey(
-                    mod_api::Identifier::parse(&format!("minecraft:{}", seed.get(index).id))
+                professions.push(myriade_types::ProfessionKey(
+                    myriade_types::Identifier::parse(&format!("minecraft:{}", seed.get(index).id))
                         .expect("vanilla identity"),
                 ));
             }
             if professions.len() > 1 {
                 professions.sort_by_key(|p| p.0.to_string());
                 errors.push(E::OverlappingPoi {
-                    poi: mod_api::PoiKey(
-                        mod_api::Identifier::parse(&poi).expect("validated identifier"),
+                    poi: myriade_types::PoiKey(
+                        myriade_types::Identifier::parse(&poi).expect("validated identifier"),
                     ),
                     professions,
                 });
@@ -336,8 +336,12 @@ fn vanilla_definition(
     id: &str,
     trade_set: Option<&str>,
     poi: Option<horizon_world::poi::PoiType>,
-) -> mod_api::ProfessionDefinition {
-    use mod_api::{Identifier, PoiKey, ProfessionDefinition, ProfessionKey, TradeSetKey};
+) -> myriade_types::ProfessionDefinition {
+    use myriade_types::Identifier;
+    use myriade_types::PoiKey;
+    use myriade_types::ProfessionDefinition;
+    use myriade_types::ProfessionKey;
+    use myriade_types::TradeSetKey;
     let key = |name: &str| Identifier::parse(name).expect("vanilla resource identity");
     let job = poi
         .map(|p| PoiKey(key(p.id())))

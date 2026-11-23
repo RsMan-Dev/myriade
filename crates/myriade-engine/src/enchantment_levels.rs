@@ -4,7 +4,7 @@
 //! `get_enchantment_level` (`GetEnchantmentLevelEvent`).
 use horizon_items::item_data::Levels;
 use horizon_items::items::ItemStack;
-use mod_api::Identifier;
+use myriade_types::Identifier;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -83,7 +83,7 @@ mod tests {
     #[test]
     fn item_enchantments_edit_as_neoforges_mutable() {
         use mod_api::__private::game::{item_enchantments, item_enchantments_entries};
-        let unchanged = |e: mod_api::ItemEnchantments| !item_enchantments_entries(e).1;
+        let unchanged = |e: myriade_types::ItemEnchantments| !item_enchantments_entries(e).1;
         let mut e = item_enchantments(vec![(id("minecraft:sharpness"), 3)]);
         e.upgrade(id("minecraft:sharpness"), 2);
         e.set(id("minecraft:sharpness"), 3);

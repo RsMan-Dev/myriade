@@ -544,7 +544,12 @@ mod tests {
             menu::{Input, Kind, Menu},
         };
         use horizon_protocol::packets::play::{ContainerClick, Serverbound};
-        use mod_api::{Hooks, MenuPart, MenuSlotRulesEvent, ModEntry, Mods, Registrar};
+        use mod_api::Hooks;
+        use mod_api::MenuPart;
+        use mod_api::MenuSlotRulesEvent;
+        use mod_api::ModEntry;
+        use mod_api::Mods;
+        use mod_api::Registrar;
         use std::sync::Arc;
 
         struct Part;
@@ -987,7 +992,7 @@ mod tests {
     #[ignore = "daily"]
     fn block_menu_handle_and_use_each_count_the_guest_once() {
         use myriade_engine::chunk::Chunk;
-        use mod_api::BlockUpdateFlags;
+        use myriade_types::BlockUpdateFlags;
         use std::sync::Arc;
         super::super::native_guest_turn_tests::with_guests(|game| {            game.world
                 .chunks
@@ -1100,7 +1105,7 @@ mod tests {
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
         use myriade_engine::{chunk::Chunk, lan::guest::GuestKind};
-        use mod_api::BlockUpdateFlags;
+        use myriade_types::BlockUpdateFlags;
         use std::sync::Arc;
         super::super::native_guest_turn_tests::with_guests(|game| {            game.world
                 .chunks
@@ -1139,11 +1144,19 @@ mod tests {
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
         };
         use horizon_protocol::packets::{configuration::ClientInformation, play};
-        use mod_api::InteractionResult as Answer;
-        use mod_api::{
-            self, BlockPart, CloneItemStackEvent, Hooks, Host, ItemPart, ItemStack, Registrar,
-            ServerHost, UseItemOnEvent, UseOnEvent, UseWithoutItemEvent,
-        };
+        use myriade_types::InteractionResult as Answer;
+        use mod_api;
+        use mod_api::BlockPart;
+        use mod_api::CloneItemStackEvent;
+        use mod_api::Hooks;
+        use mod_api::Host;
+        use mod_api::ItemPart;
+        use myriade_types::ItemStack;
+        use mod_api::Registrar;
+        use mod_api::ServerHost;
+        use mod_api::UseItemOnEvent;
+        use mod_api::UseOnEvent;
+        use mod_api::UseWithoutItemEvent;
         use std::sync::{
             Arc, Mutex,
             atomic::{AtomicI32, AtomicUsize},
@@ -1159,7 +1172,7 @@ mod tests {
             ) -> Option<ItemStack> {
                 self.0.lock().unwrap().push(event.include_data);
                 event.include_data.then(|| {
-                    mod_api::ItemStack::new(
+                    myriade_types::ItemStack::new(
                         mod_api::__private::item_key("minecraft:diamond").unwrap(),
                         1,
                     )
@@ -1174,7 +1187,7 @@ mod tests {
             empty_answer: Arc<Mutex<Option<Answer>>>,
             empty_food: Arc<Mutex<Option<i32>>>,
             empty_clicks: Arc<Mutex<Vec<(horizon_world::registry::BlockStateId, u128)>>>,
-            clicks: Arc<Mutex<Vec<(u128, mod_api::client::first_person::Hand)>>>,
+            clicks: Arc<Mutex<Vec<(u128, myriade_types::Hand)>>>,
             item_uses: Arc<AtomicUsize>,
         }
         #[mod_api::horizon_part]
@@ -1192,7 +1205,7 @@ mod tests {
                             host,
                             event.click.pos,
                             state.try_into_api().unwrap(),
-                            mod_api::BlockUpdateFlags::KNOWN_SHAPE,
+                            myriade_types::BlockUpdateFlags::KNOWN_SHAPE,
                         ),
                         Ok(true)
                     );
@@ -1208,7 +1221,7 @@ mod tests {
                 host: &mut dyn ServerHost,
                 event: &mut UseWithoutItemEvent<'_>,
             ) -> Option<Answer> {
-                assert_eq!(event.click.hand, mod_api::client::first_person::Hand::Main);
+                assert_eq!(event.click.hand, myriade_types::Hand::Main);
                 if let Some(level) = self.empty_food.lock().unwrap().take() {
                     let player = host.player(event.click.player).unwrap();
                     assert!(player.set_food_level(host, level));
@@ -1343,7 +1356,7 @@ mod tests {
 
                 // BlockState.useItemOn replaces the template. Only TryWithEmptyHand
                 // reaches useWithoutItem, which toggles this lever on the main hand.
-                use mod_api::client::first_person::Hand;
+                use myriade_types::Hand;
                 use std::sync::atomic::Ordering::SeqCst;
                 let lever = game
                     .pack
@@ -1815,8 +1828,13 @@ mod tests {
     fn block_part_use_item_on_consumes_once() {
         use super::super::native_entity_refs::tests::with_game;
         use myriade_engine::chunk::Chunk;
-        use mod_api::InteractionResult as Answer;
-        use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseItemOnEvent};
+        use myriade_types::InteractionResult as Answer;
+        use mod_api;
+        use mod_api::BlockPart;
+        use mod_api::Hooks;
+        use mod_api::Registrar;
+        use mod_api::ServerHost;
+        use mod_api::UseItemOnEvent;
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering::SeqCst},
@@ -1881,8 +1899,13 @@ mod tests {
     fn replacing_empty_note_block_use_does_not_award_vanilla_stats() {
         use super::super::native_entity_refs::tests::with_game;
         use myriade_engine::chunk::Chunk;
-        use mod_api::InteractionResult as Answer;
-        use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseWithoutItemEvent};
+        use myriade_types::InteractionResult as Answer;
+        use mod_api;
+        use mod_api::BlockPart;
+        use mod_api::Hooks;
+        use mod_api::Registrar;
+        use mod_api::ServerHost;
+        use mod_api::UseWithoutItemEvent;
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering::SeqCst},
@@ -2098,10 +2121,12 @@ mod hotbar_tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use horizon_protocol::packets::play;
-    use mod_api::{
-        Flow, Hooks, ModEntry, PlayerSwitchHotbarSlotPostEvent, PlayerSwitchHotbarSlotPreEvent,
-        ServerHost,
-    };
+    use mod_api::Flow;
+    use mod_api::Hooks;
+    use mod_api::ModEntry;
+    use mod_api::PlayerSwitchHotbarSlotPostEvent;
+    use mod_api::PlayerSwitchHotbarSlotPreEvent;
+    use mod_api::ServerHost;
     use std::sync::{Arc, Mutex};
 
     /// What the hooks heard, as (pre or post, uuid, entity id, old, new).
@@ -2174,7 +2199,11 @@ mod respawn_position_tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::super::native_item_places::tests::{guest, open_to_lan};
     use myriade_engine::chunk::Chunk;
-    use mod_api::{Hooks, LevelDimension, ModEntry, PlayerRespawnPositionEvent, ServerHost};
+    use mod_api::Hooks;
+    use mod_api::LevelDimension;
+    use mod_api::ModEntry;
+    use mod_api::PlayerRespawnPositionEvent;
+    use mod_api::ServerHost;
     use std::sync::{Arc, Mutex};
 
     /// What the hook heard: the player's UUID, the original level and point,

@@ -102,7 +102,7 @@ impl Game<'_> {
 
     /// `ShelfBlock.useItemOn`: a single swap, or a connected hotbar swap while powered.
     pub(super) fn use_shelf(&mut self, hit: &Hit) -> Option<bool> {
-        use mod_api::client::first_person::Hand;
+        use myriade_types::Hand;
         if self.hand != Hand::Main {
             return None;
         }

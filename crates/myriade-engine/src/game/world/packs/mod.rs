@@ -2,7 +2,9 @@
 //! The client's resource pack selection and reload left with the client.
 use super::Game;
 use myriade_engine::datapack::DataPack;
-use mod_api::{__private::reload::ReloadFiles, FileToIdConverter, Identifier};
+use mod_api::__private::reload::ReloadFiles;
+use mod_api::FileToIdConverter;
+use myriade_types::Identifier;
 use std::path::PathBuf;
 
 impl Game<'_> {

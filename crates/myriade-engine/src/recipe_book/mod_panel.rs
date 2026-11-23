@@ -1,7 +1,7 @@
 //! Borrowed screen projection of a validated mod book. No callbacks or JSON
 //! interpretation occur while choosing tabs or searching a panel.
 use super::{ModBookIndex, RecipeBookCategory};
-use mod_api::item::recipe_book::RecipeBookTypeKey;
+use myriade_types::RecipeBookTypeKey;
 
 /// A panel is bound to both the screen's menu and its registered book identity.
 /// The negotiated settings snapshot must be available before enabling it.

@@ -6,20 +6,20 @@ use horizon_mod_package::content as engine;
 
 /// One vocabulary mapping for the content draft and the resolved simulation facts.
 pub fn push_reaction(
-    value: &mod_api::PushReaction,
+    value: &myriade_types::PushReaction,
 ) -> (engine::PushReaction, horizon_world::level::PushReaction) {
     use engine::PushReaction as Content;
     use horizon_world::level::PushReaction as World;
     match value {
-        mod_api::PushReaction::PushPull => (Content::PushPull, World::PushPull),
-        mod_api::PushReaction::Push => (Content::Push, World::Push),
-        mod_api::PushReaction::Popped => (Content::Popped, World::Popped),
-        mod_api::PushReaction::Immoveable => (Content::Immoveable, World::Immoveable),
-        mod_api::PushReaction::IgnoreEntity => (Content::IgnoreEntity, World::IgnoreEntity),
+        myriade_types::PushReaction::PushPull => (Content::PushPull, World::PushPull),
+        myriade_types::PushReaction::Push => (Content::Push, World::Push),
+        myriade_types::PushReaction::Popped => (Content::Popped, World::Popped),
+        myriade_types::PushReaction::Immoveable => (Content::Immoveable, World::Immoveable),
+        myriade_types::PushReaction::IgnoreEntity => (Content::IgnoreEntity, World::IgnoreEntity),
     }
 }
 
-impl TryIntoEngine<()> for mod_api::BlockProperties {
+impl TryIntoEngine<()> for myriade_types::BlockProperties {
     type Engine = engine::BlockProperties;
     type Error = String;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
@@ -33,18 +33,18 @@ impl TryIntoEngine<()> for mod_api::BlockProperties {
             map_color: self.map_color,
             sounds: self.sounds.clone(),
             random_ticks: self.random_ticks.as_ref().map(|v| match v {
-                mod_api::RandomTicks::All(b) => engine::RandomTicks::All(*b),
-                mod_api::RandomTicks::States { property, values } => engine::RandomTicks::States {
+                myriade_types::RandomTicks::All(b) => engine::RandomTicks::All(*b),
+                myriade_types::RandomTicks::States { property, values } => engine::RandomTicks::States {
                     property: property.clone(),
                     values: values.clone(),
                 },
             }),
             render_shape: self.render_shape.as_ref().map(|v| match v {
-                mod_api::RenderShape::Model => engine::RenderShape::Model,
-                mod_api::RenderShape::EntityblockAnimated => {
+                myriade_types::RenderShape::Model => engine::RenderShape::Model,
+                myriade_types::RenderShape::EntityblockAnimated => {
                     engine::RenderShape::EntityblockAnimated
                 }
-                mod_api::RenderShape::Invisible => engine::RenderShape::Invisible,
+                myriade_types::RenderShape::Invisible => engine::RenderShape::Invisible,
             }),
             push_reaction: self
                 .push_reaction
@@ -55,7 +55,7 @@ impl TryIntoEngine<()> for mod_api::BlockProperties {
         })
     }
 }
-impl TryIntoEngine<()> for mod_api::BlockShapes {
+impl TryIntoEngine<()> for myriade_types::BlockShapes {
     type Engine = engine::BlockShapes;
     type Error = String;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
@@ -67,7 +67,7 @@ impl TryIntoEngine<()> for mod_api::BlockShapes {
         }))
     }
 }
-impl TryIntoEngine<()> for mod_api::ShapeEntityKind {
+impl TryIntoEngine<()> for myriade_types::ShapeEntityKind {
     type Engine = engine::ShapeEntityKind;
     type Error = String;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
@@ -79,7 +79,7 @@ impl TryIntoEngine<()> for mod_api::ShapeEntityKind {
         })
     }
 }
-impl TryIntoEngine<()> for mod_api::Block {
+impl TryIntoEngine<()> for myriade_types::Block {
     type Engine = engine::Block;
     type Error = String;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
@@ -126,8 +126,8 @@ impl TryIntoEngine<()> for mod_api::Block {
                     (
                         k.clone(),
                         match v {
-                            mod_api::BlockStateProperty::Boolean => engine::StateProperty::Boolean,
-                            mod_api::BlockStateProperty::Enum { values } => {
+                            myriade_types::BlockStateProperty::Boolean => engine::StateProperty::Boolean,
+                            myriade_types::BlockStateProperty::Enum { values } => {
                                 engine::StateProperty::Enum {
                                     values: values.clone(),
                                 }
@@ -152,7 +152,7 @@ impl TryIntoEngine<()> for mod_api::Block {
         })
     }
 }
-impl TryIntoEngine<()> for mod_api::Item {
+impl TryIntoEngine<()> for myriade_types::Item {
     type Engine = engine::Item;
     type Error = String;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {
@@ -161,10 +161,10 @@ impl TryIntoEngine<()> for mod_api::Item {
             template: self.template.clone(),
             max_stack_size: self.max_stack_size,
             rarity: self.rarity.as_ref().map(|v| match v {
-                mod_api::Rarity::Common => engine::Rarity::Common,
-                mod_api::Rarity::Uncommon => engine::Rarity::Uncommon,
-                mod_api::Rarity::Rare => engine::Rarity::Rare,
-                mod_api::Rarity::Epic => engine::Rarity::Epic,
+                myriade_types::Rarity::Common => engine::Rarity::Common,
+                myriade_types::Rarity::Uncommon => engine::Rarity::Uncommon,
+                myriade_types::Rarity::Rare => engine::Rarity::Rare,
+                myriade_types::Rarity::Epic => engine::Rarity::Epic,
             }),
             components: component_patch("item", &self.id, &self.components)?,
             crafting_remainder: self.crafting_remainder.clone(),
@@ -180,7 +180,7 @@ impl TryIntoEngine<()> for mod_api::Item {
 fn component_patch(
     kind: &str,
     owner: &str,
-    patch: &[(String, Option<mod_api::Tag>)],
+    patch: &[(String, Option<myriade_types::Tag>)],
 ) -> Result<std::collections::BTreeMap<String, serde_json::Value>, String> {
     let mut seen = std::collections::BTreeSet::new();
     let mut result = std::collections::BTreeMap::new();
@@ -212,9 +212,9 @@ fn component_patch(
 }
 
 pub fn validate_decoded_effects(
-    patch: Option<&mod_api::Tag>,
+    patch: Option<&myriade_types::Tag>,
     stack: &horizon_items::items::ItemStack,
-) -> Result<(), mod_api::StackWriteError> {
+) -> Result<(), myriade_types::StackWriteError> {
     // The component codec already decoded each supplied value. Check that admission
     // succeeded rather than parsing untrusted component payloads a second time.
     if let Some(patch) = patch
@@ -222,12 +222,12 @@ pub fn validate_decoded_effects(
             || (patch.get("minecraft:death_protection").is_some()
                 && stack.death_protection(None).is_none()))
     {
-        return Err(mod_api::StackWriteError::InvalidEffectPayload);
+        return Err(myriade_types::StackWriteError::InvalidEffectPayload);
     }
     Ok(())
 }
 
-impl TryIntoEngine<()> for (String, mod_api::WorldFluid) {
+impl TryIntoEngine<()> for (String, myriade_types::WorldFluid) {
     type Engine = engine::FluidLook;
     type Error = std::convert::Infallible;
     fn try_into_engine(&self, _: &()) -> Result<Self::Engine, Self::Error> {

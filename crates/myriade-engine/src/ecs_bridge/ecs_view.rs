@@ -33,8 +33,17 @@ use horizon_ecs_proto::{
     targeting::Who,
     using::UsingItem,
 };
-use mod_api::client::first_person::Hand;
-use mod_api::{ClipHit, EffectKey, EntityRef, EquipmentSlot, LeashHolder, LivingRef, MobGoalEntry, MobRef, PathType, prelude::*};
+use myriade_types::Hand;
+use myriade_types::ClipHit;
+use myriade_types::EffectKey;
+use mod_api::EntityRef;
+use myriade_types::EquipmentSlot;
+use myriade_types::LeashHolder;
+use mod_api::LivingRef;
+use mod_api::MobGoalEntry;
+use mod_api::MobRef;
+use myriade_types::PathType;
+use mod_api::prelude::*;
 use super::level_goals::api_id;
 
 // The generated view is a child of this module, so that its `super::EcsCx` names the engine's context.
@@ -145,7 +154,7 @@ impl EcsCx<'_> {
     }
 
     /// `Entity.getSoundSource`: the category of the entity's species (`species::SoundCategory`).
-    pub(super) fn r_entity_sound_source(&self, entity: EntityRef) -> Option<mod_api::SoundSource> {
+    pub(super) fn r_entity_sound_source(&self, entity: EntityRef) -> Option<myriade_types::SoundSource> {
         match self.ecs_of(entity) {
             Some(e) => species_sound(self.world(), e),
             None => self.host.entity_sound_source(entity),
@@ -306,7 +315,7 @@ impl EcsCx<'_> {
     }
 
     /// The snapshot carries the species, not its type id: the species resolves to its type key.
-    pub(super) fn r_entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
+    pub(super) fn r_entity_kind(&self, entity: EntityRef) -> Option<myriade_types::EntityTypeKey> {
         match self.ecs_of(entity) {
             Some(e) => host_read::species(self.world(), e).and_then(mod_api::__private::resolved_entity_type_key),
             None => self.host.entity_kind(entity),
@@ -965,12 +974,12 @@ fn invulnerable_left(w: &World, e: Entity) -> i32 {
 }
 
 /// The sound source of the species of `e` (`Species.sound_source`).
-fn species_sound(w: &World, e: Entity) -> Option<mod_api::SoundSource> {
+fn species_sound(w: &World, e: Entity) -> Option<myriade_types::SoundSource> {
     let s = w.get::<SpeciesId>(e)?;
     Some(match w.get_resource::<SpeciesTable>()?.0.get(usize::from(s.0))?.sound_source {
-        SoundCategory::Neutral => mod_api::SoundSource::Neutral,
-        SoundCategory::Hostile => mod_api::SoundSource::Hostile,
-        SoundCategory::Ambient => mod_api::SoundSource::Ambient,
+        SoundCategory::Neutral => myriade_types::SoundSource::Neutral,
+        SoundCategory::Hostile => myriade_types::SoundSource::Hostile,
+        SoundCategory::Ambient => myriade_types::SoundSource::Ambient,
     })
 }
 

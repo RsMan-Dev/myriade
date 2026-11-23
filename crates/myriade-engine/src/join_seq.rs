@@ -1580,7 +1580,7 @@ mod tests {
     }
     fn journal_owner() -> residency::Owner {
         residency::Owner {
-            dimension: mod_api::DimensionKey::OVERWORLD,
+            dimension: myriade_types::DimensionKey::OVERWORLD,
             kind: residency::Kind::Mob,
         }
     }
@@ -1974,7 +1974,7 @@ mod tests {
             ..journal_owner()
         };
         let away = Owner {
-            dimension: mod_api::DimensionKey::NETHER,
+            dimension: myriade_types::DimensionKey::NETHER,
             ..home
         };
         let mut slot = super::ResidentSlot::default();
@@ -2052,7 +2052,7 @@ mod tests {
     }
 
     const SINGLETON_OWNER: residency::Owner = residency::Owner {
-        dimension: mod_api::DimensionKey::OVERWORLD,
+        dimension: myriade_types::DimensionKey::OVERWORLD,
         kind: residency::Kind::Dragon,
     };
 
@@ -2171,7 +2171,7 @@ mod tests {
         let keys: Vec<_> = source.iter().map(key).collect();
         changes(&journal);
         let destination = Owner {
-            dimension: mod_api::DimensionKey::NETHER,
+            dimension: myriade_types::DimensionKey::NETHER,
             kind: Kind::Other,
         };
         let mut target = JoinList::default();

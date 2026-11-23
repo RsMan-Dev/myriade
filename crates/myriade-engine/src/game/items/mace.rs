@@ -575,7 +575,7 @@ impl Game<'_> {
                     x: xd,
                     z: zd,
                 };
-                let source = mod_api::entity::health::HurtSource {
+                let source = myriade_types::HurtSource {
                     damage_type: "minecraft:player_attack",
                     causing: attack.attacker,
                     direct: attack.attacker,

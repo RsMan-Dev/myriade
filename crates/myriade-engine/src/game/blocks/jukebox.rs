@@ -190,8 +190,8 @@ impl Game<'_> {
         state: horizon_world::registry::BlockStateId,
         held: Option<&ItemStack>,
         branch: horizon_world::level::UseBranch,
-    ) -> Option<mod_api::InteractionResult> {
-        use mod_api::InteractionResult as Answer;
+    ) -> Option<myriade_types::InteractionResult> {
+        use myriade_types::InteractionResult as Answer;
         if &*self.res.facts().get(state).name != "minecraft:jukebox" {
             return None;
         }

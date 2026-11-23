@@ -1,6 +1,7 @@
 //! Physical process information, frozen before any mod is loaded.
 use horizon_mod_package::selection::{Argument, LaunchArguments};
-use mod_api::{Dist, RuntimeEnvironment};
+use mod_api::Dist;
+use mod_api::RuntimeEnvironment;
 use std::sync::OnceLock;
 
 static ENVIRONMENT: OnceLock<RuntimeEnvironment> = OnceLock::new();

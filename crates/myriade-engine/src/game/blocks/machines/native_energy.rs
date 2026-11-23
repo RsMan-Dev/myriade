@@ -6,7 +6,8 @@
 use super::Game;
 use myriade_engine::containers::{BlockEntity, ModEnergyBuffer};
 use horizon_core::nbt::{Compound, JavaString, Tag};
-use mod_api::{BlockSide, Transaction};
+use mod_api::BlockSide;
+use mod_api::Transaction;
 use std::sync::Arc;
 
 /// The amount in `nbt`: the int `energy`, as `SimpleEnergyHandler` saves it;
@@ -159,10 +160,13 @@ mod tests {
         use myriade_engine::entities::ArmorStand;
         use myriade_engine::fast_hash::FxHashMap;
         use horizon_core::geometry::{Direction, Vec3};
-        use mod_api::{
-            BlockUpdateFlags, ENERGY, ENTITY_ENERGY, ENTITY_FLUIDS, Holder, move_energy,
-            move_resources,
-        };
+        use myriade_types::BlockUpdateFlags;
+        use mod_api::ENERGY;
+        use mod_api::ENTITY_ENERGY;
+        use mod_api::ENTITY_FLUIDS;
+        use mod_api::Holder;
+        use mod_api::move_energy;
+        use mod_api::move_resources;
         use mod_platform::__private::part_tests::{ROBOT_FLUID, game_thread};
         with_game(|game| {
             let _mods = game_thread();
@@ -300,7 +304,9 @@ mod tests {
         use myriade_engine::containers::{ModBlockEntity, ModBlockEntityFields};
         use myriade_engine::fast_hash::FxHashMap;
         use horizon_core::geometry::Direction;
-        use mod_api::{BlockUpdateFlags, ENERGY, move_energy};
+        use myriade_types::BlockUpdateFlags;
+        use mod_api::ENERGY;
+        use mod_api::move_energy;
         with_game(|game| {
             game.world
                 .chunks

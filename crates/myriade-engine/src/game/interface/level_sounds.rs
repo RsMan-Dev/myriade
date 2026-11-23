@@ -3,7 +3,9 @@
 
 use std::borrow::Cow;
 
-use mod_api::{HookId, Identifier, SoundSource};
+use mod_api::HookId;
+use myriade_types::Identifier;
+use myriade_types::SoundSource;
 
 use super::Game;
 use super::native_hooks::level_sound_playable;
@@ -218,7 +220,8 @@ mod tests {
     use super::super::native_sound_refs::tests::{guest, packets};
     use myriade_engine::lan::{NetConfig, hub::HubConfig};
     use horizon_protocol::packets::play::Clientbound;
-    use mod_api::{HostSide, SoundSource};
+    use mod_api::HostSide;
+    use myriade_types::SoundSource;
     use std::sync::{Arc, Mutex};
 
     /// Quietens and moves the locked chest, cancels the pig, and turns a
@@ -256,7 +259,7 @@ mod tests {
                 .lock()
                 .unwrap()
                 .push(("entity", e.sound.to_string(), Some(e.entity.id())));
-            *e.sound = mod_api::Identifier::parse("minecraft:entity.cow.ambient").unwrap();
+            *e.sound = myriade_types::Identifier::parse("minecraft:entity.cow.ambient").unwrap();
             mod_api::Flow::Continue
         }
     }

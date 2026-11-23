@@ -2,7 +2,7 @@
 //! (`wear_armor`, `hurt_armor`, `hurt_equipment`, `hurt_player_equipment`) and the held stack's wear
 //! (`damage_held`, `damage_held_in_slot`, `hurt_held_without_breaking`).
 use super::*;
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use myriade_engine::motion::MotionEvent;
 
 impl Game<'_> {
@@ -177,11 +177,11 @@ impl Game<'_> {
         if false
             && let (Some(uuid), Some(player)) = (self.lan_acting_uuid, self.lan_acting_entity)
         {
-            let mut entries: Vec<mod_api::ArmorHurt> = eligible
+            let mut entries: Vec<myriade_types::ArmorHurt> = eligible
                 .iter()
                 .enumerate()
                 .filter_map(|(i, e)| {
-                    Some(mod_api::ArmorHurt {
+                    Some(myriade_types::ArmorHurt {
                         slot: armor_slot(i),
                         stack: e.as_ref()?.try_into_api().ok()?,
                         damage: durability_damage(damage),

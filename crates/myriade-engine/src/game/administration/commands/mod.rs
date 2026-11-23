@@ -1716,7 +1716,7 @@ impl Game<'_> {
         };
         // A fake player stays in its level. True: the teleport is taken, so no
         // same-level teleport stands in for it.
-        if Some(conn) == self.lan_acting && self.fake_blocks(mod_api::FakeEffect::ChangeDimension) {
+        if Some(conn) == self.lan_acting && self.fake_blocks(myriade_types::FakeEffect::ChangeDimension) {
             return Ok(true);
         }
         // A canceled travel keeps the player where they are.
@@ -3098,7 +3098,7 @@ impl Game<'_> {
         &mut self,
         rule: &gamerules::Rule,
         value: Value,
-        actor: Option<&mod_api::GameRuleActor<'_>>,
+        actor: Option<&myriade_types::GameRuleActor<'_>>,
     ) {
         if self.session.rules.set(&rule.name, value) {
             self.game_rule_changed(&rule.name, value, actor);

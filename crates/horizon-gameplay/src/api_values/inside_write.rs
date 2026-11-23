@@ -1,7 +1,9 @@
 //! Checked inside writes. Vector conversion stages the entire batch before dispatch commits it.
 use super::{TryIntoApi, TryIntoEngine};
 use horizon_world::{level::InsideWrite as EngineWrite, registry::BlockStateId};
-use mod_api::{BlockState, BlockStateError, InsideWrite};
+use myriade_types::BlockState;
+use myriade_types::BlockStateError;
+use myriade_types::InsideWrite;
 
 impl TryIntoApi for EngineWrite
 where

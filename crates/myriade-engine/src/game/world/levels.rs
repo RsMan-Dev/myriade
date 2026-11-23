@@ -39,7 +39,7 @@ use myriade_engine::{
     world::World,
 };
 use horizon_world::level::{LevelEvent, Ticks};
-use mod_api::DimensionKey;
+use myriade_types::DimensionKey;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -241,7 +241,7 @@ impl Game<'_> {
     /// call entity lookup or recursively enter this seam.
     pub(super) fn with_resident_slot<R>(
         &mut self,
-        dimension: &mod_api::DimensionKey,
+        dimension: &myriade_types::DimensionKey,
         id: std::num::NonZeroU32,
         visit: impl FnOnce(&mut horizon_mod_runtime::attachments::AttachmentLifetime) -> R,
     ) -> super::entity_residency::SlotAccess<R> {
@@ -282,9 +282,9 @@ impl Game<'_> {
             self.with_resident_owner_slot(location, visit)
         } else {
             let dim = match *dimension {
-                mod_api::DimensionKey::OVERWORLD => Dim::Overworld,
-                mod_api::DimensionKey::NETHER => Dim::Nether,
-                mod_api::DimensionKey::END => Dim::End,
+                myriade_types::DimensionKey::OVERWORLD => Dim::Overworld,
+                myriade_types::DimensionKey::NETHER => Dim::Nether,
+                myriade_types::DimensionKey::END => Dim::End,
                 key => Dim::Extra(key),
             };
             self.levels

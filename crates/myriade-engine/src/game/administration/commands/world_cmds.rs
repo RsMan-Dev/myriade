@@ -2366,7 +2366,7 @@ mod attribute_modifier_command_tests {
         with_game(|game| {
             game.reset_entity_residency();
             game.native_lifecycle
-                .begin_open(mod_api::Authority::DedicatedServer);
+                .begin_open(myriade_types::Authority::DedicatedServer);
             crate::game::native_entity_refs::tests::bind_local_player(game, 1, 1);
             crate::game::native_guest_turn_tests::lan_guests_on(game);
             crate::game::native_guest_turn_tests::with_acting_guest_on(

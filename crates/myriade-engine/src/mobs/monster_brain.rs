@@ -22,7 +22,7 @@ use horizon_core::{
     geometry::{Vec3, trig},
     random::{LegacyRandom, RandomSource},
 };
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 
 /// `Activity` (the ones these brains use).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

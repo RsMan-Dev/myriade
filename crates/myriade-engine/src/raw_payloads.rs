@@ -34,7 +34,10 @@ use horizon_protocol::{
     payload_negotiation::{self as negotiation, Flow, Manifest, Phase, RegistrationPhase},
 };
 use mod_api::__private::game::{PayloadReceiver, Payloads, installed_payloads};
-use mod_api::{PayloadDirection, PayloadId, PayloadProtocol, PayloadSendError};
+use mod_api::PayloadDirection;
+use mod_api::PayloadId;
+use mod_api::PayloadProtocol;
+use mod_api::PayloadSendError;
 use std::{
     collections::HashMap,
     sync::{

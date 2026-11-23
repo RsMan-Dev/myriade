@@ -241,10 +241,16 @@ mod tests {
     use crate::game::{Game, native_entity_refs::tests::with_game};
     use myriade_engine::{items::ItemStack, motion::PlayerMotion};
     use horizon_core::{equipment_slot::EquipmentSlot, geometry::Vec3};
-    use mod_api::{
-        ArmorHurtEvent, DamageItemEvent, Flow, Hooks, ItemPart, LevelRandomHost,
-        LivingIncomingDamageEvent, Registrar, RegistrationContext, ServerHost,
-    };
+    use mod_api::ArmorHurtEvent;
+    use mod_api::DamageItemEvent;
+    use mod_api::Flow;
+    use mod_api::Hooks;
+    use mod_api::ItemPart;
+    use mod_api::LevelRandomHost;
+    use mod_api::LivingIncomingDamageEvent;
+    use mod_api::Registrar;
+    use mod_api::RegistrationContext;
+    use mod_api::ServerHost;
     use std::sync::{Arc, Mutex};
 
     const ANVIL: &str = "minecraft:falling_anvil";

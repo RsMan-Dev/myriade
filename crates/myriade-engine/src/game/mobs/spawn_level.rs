@@ -28,7 +28,9 @@ use horizon_core::{
 use horizon_world::dimension_type::DimensionFacts;
 use horizon_ecs_proto::bridge::{host::Select, view};
 use horizon_ecs_proto::spawn_sheet::SpawnSheet;
-use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
+use myriade_types::SpawnCheck;
+use myriade_types::SpawnFlags;
+use myriade_types::SpawnLimits;
 use std::collections::HashMap;
 use std::sync::Arc;
 use horizon_world::registry::BlockStateId;
@@ -385,7 +387,7 @@ pub(super) struct Level<'g, H> {
     pub(super) costed: Vec<&'g str>,
     /// The spawner block whose tick this pass is, told to the spawn checks;
     /// None for natural spawning and the other passes.
-    pub(super) spawner: Option<mod_api::Spawner>,
+    pub(super) spawner: Option<myriade_types::Spawner>,
     /// The mob a listened position check created and lent, which the spawn
     /// that follows takes rather than creating it again ([`Checked`]).
     checked: std::cell::RefCell<Option<Checked>>,
@@ -762,7 +764,7 @@ fn spawn_cost_types(biomes: &myriade_engine::biome::Biomes) -> Vec<&str> {
 impl<'a> Game<'a> {
     /// The natural spawning policy of the level `dimension`: vanilla's until a
     /// mod sets one.
-    pub(super) fn spawn_policy(&self, dimension: mod_api::DimensionKey) -> SpawnPolicy {
+    pub(super) fn spawn_policy(&self, dimension: myriade_types::DimensionKey) -> SpawnPolicy {
         self.spawn_policies
             .get(&dimension)
             .copied()
@@ -1351,13 +1353,13 @@ mod tests {
         hook: &'static str,
         kind: String,
         level: mod_api::LevelRef,
-        spawner: Option<mod_api::Spawner>,
+        spawner: Option<myriade_types::Spawner>,
         mob: Option<MobReads>,
     }
     type MobReads = (
-        Result<mod_api::Identifier, mod_api::UnspawnedMobError>,
-        Result<[f64; 3], mod_api::UnspawnedMobError>,
-        Result<bool, mod_api::UnspawnedMobError>,
+        Result<myriade_types::Identifier, myriade_types::UnspawnedMobError>,
+        Result<[f64; 3], myriade_types::UnspawnedMobError>,
+        Result<bool, myriade_types::UnspawnedMobError>,
     );
     type Log = std::sync::Arc<std::sync::Mutex<Vec<Heard>>>;
     /// Records both spawn checks and answers the position check with `answer`, reading the lent
@@ -1390,7 +1392,7 @@ mod tests {
             let reads = (
                 mob.kind(host),
                 mob.position(host),
-                mob.equipment(host, mod_api::EquipmentSlot::Head)
+                mob.equipment(host, myriade_types::EquipmentSlot::Head)
                     .map(|e| e.is_none()),
             );
             self.log.lock().unwrap().push(Heard {
@@ -1500,7 +1502,7 @@ mod tests {
     }
 
     /// Records the kind and reason of every `finalize_spawn` event.
-    struct RecordFinalize(std::sync::Arc<std::sync::Mutex<Vec<(String, mod_api::SpawnReason)>>>);
+    struct RecordFinalize(std::sync::Arc<std::sync::Mutex<Vec<(String, myriade_types::SpawnReason)>>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for RecordFinalize {
         fn finalize_spawn(

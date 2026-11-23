@@ -393,7 +393,7 @@ fn plan(root: Source<'_>) -> Result<Vec<Node<'_>>, Error> {
         match task {
             Work::Finish(node) => nodes.push(node),
             Work::Enter(source, depth) => {
-                if depth > mod_api::text::MAX_TEXT_DEPTH {
+                if depth > myriade_types::MAX_TEXT_DEPTH {
                     return Err(Error::TooDeep);
                 }
                 let node = node(source)?;
@@ -584,7 +584,7 @@ fn profile(value: &Value) -> Result<TextProfile, Error> {
     Ok(profile)
 }
 fn take_data(tag: std::sync::Arc<Tag>) -> Result<Tag, Error> {
-    if !nbt::within_depth(&tag, mod_api::text::MAX_TEXT_DEPTH) {
+    if !nbt::within_depth(&tag, myriade_types::MAX_TEXT_DEPTH) {
         return Err(Error::TooDeep);
     }
     Ok(std::sync::Arc::try_unwrap(tag).unwrap_or_else(|tag| nbt::clone_tag(&tag)))
@@ -1444,7 +1444,7 @@ mod text_capture_tests {
             );
             let api = engine.try_into_api().unwrap();
             assert!(
-                matches!(&api.content, mod_api::text::TextContent::Translatable { fallback: Some(template), .. } if template == "Hi %s")
+                matches!(&api.content, myriade_types::TextContent::Translatable { fallback: Some(template), .. } if template == "Hi %s")
             );
             assert_eq!(api.try_into_engine(&()).unwrap().plain(), "Hi Steve");
         });
@@ -1463,7 +1463,7 @@ mod text_capture_tests {
                 &[],
             );
             let mut api = native.try_into_api().unwrap();
-            let listener = |_: &mut mod_api::text::Text| {};
+            let listener = |_: &mut myriade_types::Text| {};
             listener(&mut api);
             let actual = api.try_into_engine(&()).unwrap();
             assert_eq!(actual.plain(), "test.fallback");
@@ -1515,7 +1515,7 @@ mod text_capture_tests {
         assert!(api.metadata.get("click_event").is_none());
         assert!(api.style.metadata.get("click_event").is_none());
         assert!(api.children[0].style.click.is_none());
-        let listener = |_: &mut mod_api::text::Text| {};
+        let listener = |_: &mut myriade_types::Text| {};
         listener(&mut api);
         let engine = api.try_into_engine(&()).unwrap();
         assert!(engine.spans.iter().all(|span| span.style.click.is_none()));
@@ -1540,9 +1540,9 @@ mod text_capture_tests {
         );
         assert_eq!(
             api.style.metadata.get("click_event"),
-            Some(&mod_api::Tag::compound([(
+            Some(&myriade_types::Tag::compound([(
                 "test:trace",
-                mod_api::Tag::Byte(1)
+                myriade_types::Tag::Byte(1)
             )]))
         );
         assert_eq!(api.try_into_engine(&()).unwrap().component(), source);
@@ -1608,11 +1608,11 @@ mod text_capture_tests {
 
 #[cfg(test)]
 mod text_encoding_tests {
-    fn test_profile(signed: bool) -> mod_api::text::TextProfile {
-        let mut profile = mod_api::text::TextProfile::default();
+    fn test_profile(signed: bool) -> myriade_types::TextProfile {
+        let mut profile = myriade_types::TextProfile::default();
         profile.name = Some("Test".into());
         if signed {
-            let mut p = mod_api::text::TextProfileProperty::default();
+            let mut p = myriade_types::TextProfileProperty::default();
             p.name = "textures".into();
             p.value = "data".into();
             p.signature = Some("signed".into());
@@ -1631,17 +1631,17 @@ mod text_encoding_tests {
         text.style.color = Some("red".into());
         text.style.shadow_color = Some(0xff001122);
         text.style.click = Some(TextClick::RunCommand("/test".into()));
-        text.style.metadata = mod_api::Tag::compound([(
+        text.style.metadata = myriade_types::Tag::compound([(
             "click_event",
-            mod_api::Tag::compound([("test:extra", mod_api::Tag::Byte(1))]),
+            myriade_types::Tag::compound([("test:extra", myriade_types::Tag::Byte(1))]),
         )]);
-        text.metadata = mod_api::Tag::compound([(
+        text.metadata = myriade_types::Tag::compound([(
             "test:context",
-            mod_api::Tag::compound([("value", mod_api::Tag::Int(7))]),
+            myriade_types::Tag::compound([("value", myriade_types::Tag::Int(7))]),
         )]);
         text.children.push(Text::literal("first"));
         text.children.push(Text::literal("second"));
-        let engine: Result<myriade_data::text::Text, mod_api::text::TextFormError> =
+        let engine: Result<myriade_data::text::Text, myriade_types::TextFormError> =
             text.try_into_engine(&());
         assert_eq!(
             engine.unwrap().component(),
@@ -1743,14 +1743,14 @@ mod text_encoding_tests {
         let mut text = Text::literal("remote");
         for metadata in [&mut text.metadata, &mut text.style.metadata] {
             for field in ["click_event", "clickEvent"] {
-                let mod_api::Tag::Compound(fields) = metadata else {
+                let myriade_types::Tag::Compound(fields) = metadata else {
                     unreachable!()
                 };
                 fields.insert(
                     field.into(),
-                    mod_api::Tag::compound([
-                        ("action", mod_api::Tag::String("open_file".into())),
-                        ("path", mod_api::Tag::String("test-file".into())),
+                    myriade_types::Tag::compound([
+                        ("action", myriade_types::Tag::String("open_file".into())),
+                        ("path", myriade_types::Tag::String("test-file".into())),
                     ]),
                 );
             }
@@ -1777,9 +1777,9 @@ mod text_encoding_tests {
         text.style.hover = Some(TextHover::Item {
             id: "minecraft:stone".into(),
             count: 3,
-            components: Some(mod_api::Tag::compound([(
+            components: Some(myriade_types::Tag::compound([(
                 "!minecraft:custom_name",
-                mod_api::Tag::Compound(Default::default()),
+                myriade_types::Tag::Compound(Default::default()),
             )])),
         });
         let engine = text.try_into_engine(&()).unwrap();
@@ -1793,7 +1793,7 @@ mod text_encoding_tests {
 #[cfg(test)]
 mod iterative_tests {
     use super::*;
-    use mod_api::text::TextForm;
+    use myriade_types::TextForm;
     use serde_json::json;
 
     #[test]
@@ -1808,9 +1808,9 @@ mod iterative_tests {
             };
             builder
                 .spawn(|| {
-                    let mut text = mod_api::Text::literal("leaf");
+                    let mut text = myriade_types::Text::literal("leaf");
                     for _ in 1..512 {
-                        let mut parent = mod_api::Text::literal("parent");
+                        let mut parent = myriade_types::Text::literal("parent");
                         parent.children.push(text);
                         text = parent;
                     }
@@ -1857,15 +1857,15 @@ mod iterative_tests {
                 }
                 let engine = myriade_data::text::Text::empty().with_component(source);
                 if depth == 513 {
-                    assert!(matches!(engine.try_into_api(), Err(mod_api::text::TextFormError::TooDeep)));
-                    assert!(matches!(captured_text(&engine.component_view()), Err(mod_api::text::TextFormError::TooDeep)));
+                    assert!(matches!(engine.try_into_api(), Err(myriade_types::TextFormError::TooDeep)));
+                    assert!(matches!(captured_text(&engine.component_view()), Err(myriade_types::TextFormError::TooDeep)));
                     std::mem::forget(engine);
                     continue;
                 }
                 let api = engine.try_into_api().unwrap();
                 let expected = TextForm::try_from(&api).unwrap();
                 assert_eq!(expected.nodes.len(), 512);
-                assert!(matches!(&expected.nodes.last().unwrap().content, mod_api::text::TextNodeContent::Literal(s) if s == "leaf"));
+                assert!(matches!(&expected.nodes.last().unwrap().content, myriade_types::TextNodeContent::Literal(s) if s == "leaf"));
                 let emitted = api.try_into_engine(&()).unwrap();
                 let restored = emitted.try_into_api().unwrap();
                 let actual = TextForm::try_from(&restored).unwrap();
@@ -1884,9 +1884,9 @@ mod iterative_tests {
         for _ in 0..4096 {
             opaque = Tag::List(vec![opaque]);
         }
-        let mut api = mod_api::Text::literal("leaf");
+        let mut api = myriade_types::Text::literal("leaf");
         for _ in 1..513 {
-            api = mod_api::Text::literal("parent").append(api);
+            api = myriade_types::Text::literal("parent").append(api);
         }
         // Build the source separately without serde's recursive json! value serializer.
         let mut component = json!({"text":"leaf"});
@@ -1912,11 +1912,11 @@ mod iterative_tests {
             .spawn(move || {
                 assert!(matches!(
                     api.try_into_engine(&()),
-                    Err(mod_api::text::TextFormError::TooDeep)
+                    Err(myriade_types::TextFormError::TooDeep)
                 ));
                 assert!(matches!(
                     engine.try_into_api(),
-                    Err(mod_api::text::TextFormError::TooDeep)
+                    Err(myriade_types::TextFormError::TooDeep)
                 ));
                 std::mem::forget((api, engine));
             })
@@ -1944,7 +1944,7 @@ mod iterative_tests {
                     }
                     let api = text.try_into_api();
                     if depth == 513 {
-                        assert!(matches!(api, Err(mod_api::text::TextFormError::TooDeep)));
+                        assert!(matches!(api, Err(myriade_types::TextFormError::TooDeep)));
                     } else {
                         assert_eq!(
                             TextForm::try_from(api.as_ref().unwrap())

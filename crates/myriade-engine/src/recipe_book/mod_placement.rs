@@ -4,7 +4,8 @@ use crate::{
     crafting::{Ingredient, Placement},
     menu::place::custom_plan::{MenuPlacement, PlacementRefusal},
 };
-use mod_api::{PlacementInfo, RecipeBookDisplayEntry};
+use myriade_types::PlacementInfo;
+use myriade_types::RecipeBookDisplayEntry;
 
 // A rejected native declaration may contain a tree too deep even to drop recursively.
 // Drain every new placement value before its category batch is dropped on refusal.
@@ -107,7 +108,7 @@ fn validate(info: &PlacementInfo, resources: &dyn DisplayResources) -> Result<()
         // The shared codec below validates it; ingredient depth is not NBT depth.
         if let Some((shape, children)) = &ingredient.children {
             if children.is_empty()
-                || matches!(shape, mod_api::item::crafting::Shape::Difference)
+                || matches!(shape, myriade_types::Shape::Difference)
                     && children.len() != 2
             {
                 return Err("ingredient shape has invalid children".into());
@@ -161,7 +162,7 @@ pub(super) fn compile(
     }
 }
 // Only called after validate_batch accepted the shared Wire form.
-fn convert(value: &mod_api::Ingredient) -> Ingredient {
+fn convert(value: &myriade_types::Ingredient) -> Ingredient {
     Ingredient {
         items: value.items.clone(),
         order: value.order.clone(),
@@ -179,7 +180,7 @@ fn convert(value: &mod_api::Ingredient) -> Ingredient {
 }
 
 // Bound the walk before consulting an untrusted native provider's recursive tree.
-fn simple_ingredient(ingredient: &mod_api::Ingredient) -> bool {
+fn simple_ingredient(ingredient: &myriade_types::Ingredient) -> bool {
     let mut pending = vec![(ingredient, 0usize)];
     while let Some((ingredient, depth)) = pending.pop() {
         if depth > usize::from(mod_api::wire::MAX_DEPTH)

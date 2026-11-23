@@ -1,10 +1,10 @@
 //! Ingredient conversions retain concrete predicates and slot displays.
 use super::*;
 impl TryIntoApi for myriade_engine::crafting::Ingredient {
-    type Api = mod_api::Ingredient;
+    type Api = myriade_types::Ingredient;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::Ingredient {
+        Ok(myriade_types::Ingredient {
             items: self.items.clone(),
             order: self.order.clone(),
             custom: self.custom.clone(),
@@ -18,7 +18,7 @@ impl TryIntoApi for myriade_engine::crafting::Ingredient {
         })
     }
 }
-impl TryIntoEngine for mod_api::Ingredient {
+impl TryIntoEngine for myriade_types::Ingredient {
     type Engine = myriade_engine::crafting::Ingredient;
     type Error = StackWriteError;
     fn try_into_engine(&self, _items: &Items) -> Result<Self::Engine, Self::Error> {

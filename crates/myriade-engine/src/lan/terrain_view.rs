@@ -7,7 +7,10 @@ use crate::{
     world::World,
 };
 use horizon_core::nbt::Tag;
-use mod_api::{BlockState, TerrainPattern, TerrainView, TerrainViewError};
+use myriade_types::BlockState;
+use mod_api::TerrainPattern;
+use mod_api::TerrainView;
+use mod_api::TerrainViewError;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex, Weak, mpsc},

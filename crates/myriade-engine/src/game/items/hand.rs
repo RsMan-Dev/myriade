@@ -5,7 +5,7 @@
 //! (`FirstPersonHandsAndItems`) with the item swap ticker they read.
 use super::Game;
 use myriade_engine::{attack_strength::HeldStack, items::ItemStack};
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use crate::hand_use::SwingAnimation;
 
 use horizon_core::geometry::{Aabb, Vec3};
@@ -46,7 +46,7 @@ fn attack_range_contains(range: &serde_json::Value, distance: f64, creative: boo
 /// `attack_reach` (or `AttackRange.defaultFor`'s, from the entity interaction
 /// range): the eye's distance to the box, inclusive.
 fn in_attack_range(distance: f64, (min, max, margin): (f32, f32, f32), buffer: f64) -> bool {
-    mod_api::ItemAttackRange {
+    myriade_types::ItemAttackRange {
         min,
         max,
         hitbox_margin: margin,
@@ -121,7 +121,7 @@ impl Game<'_> {
         player: bool,
         creative: bool,
         default: f64,
-    ) -> mod_api::ItemAttackRange {
+    ) -> myriade_types::ItemAttackRange {
         let range = stack.and_then(|stack| self.attack_range_component(stack));
         let (mut min, mut max, hitbox_margin) = range
             .as_ref()
@@ -131,7 +131,7 @@ impl Game<'_> {
             min *= factor;
             max *= factor;
         }
-        mod_api::ItemAttackRange {
+        myriade_types::ItemAttackRange {
             min,
             max,
             hitbox_margin,

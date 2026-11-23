@@ -50,7 +50,7 @@ impl Game<'_> {
 mod tests {
     use crate::game::ecs::test_support::ecs_game_with;
     use myriade_engine::{items::ItemStack};
-    use mod_api::client::first_person::Hand;
+    use myriade_types::Hand;
     use horizon_ecs_proto::goals::Slot;
 
     #[test]

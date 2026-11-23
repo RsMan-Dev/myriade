@@ -58,7 +58,7 @@ mod inside_walk_tests {
     }
 
     /// What the fire's callback does, as a part's would.
-    fn fire_like_a_part(at: horizon_core::position::BlockPos, staged: &mut mod_api::InsideEffects) {
+    fn fire_like_a_part(at: horizon_core::position::BlockPos, staged: &mut myriade_types::InsideEffects) {
         let mut contacts = CONTACTS.lock().unwrap();
         contacts.push([at.x, at.y, at.z]);
         let seen = contacts.len();
@@ -68,20 +68,20 @@ mod inside_walk_tests {
         }
         if seen > KILL_AFTER.load(Ordering::SeqCst) {
             staged.run_after(
-                mod_api::InsideEffect::Freeze,
-                mod_api::EntityWrite::Hurt {
+                myriade_types::InsideEffect::Freeze,
+                myriade_types::EntityWrite::Hurt {
                     source: None,
                     amount: 1000.0,
                 },
             );
         }
         staged.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::Push([0.5, 0.0, 0.0]),
+            myriade_types::InsideEffect::Freeze,
+            myriade_types::EntityWrite::Push([0.5, 0.0, 0.0]),
         );
         staged.run_after(
-            mod_api::InsideEffect::Freeze,
-            mod_api::EntityWrite::AddEffect {
+            myriade_types::InsideEffect::Freeze,
+            myriade_types::EntityWrite::AddEffect {
                 effect: mod_api::__private::effect_key("minecraft:wither")
                     .expect("an effect key resolves"),
                 duration: 40,
@@ -627,7 +627,7 @@ impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
         state: horizon_world::registry::BlockStateId,
         _step: i32,
         precise: bool,
-        effects: &mut mod_api::InsideEffects,
+        effects: &mut myriade_types::InsideEffects,
     ) -> std::result::Result<(), ()> {
         let (x, y, z) = (at.x, at.y, at.z);
         let p = [x, y, z];
@@ -637,7 +637,7 @@ impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
             && let Some(dimension) = crate::block_contact::current_level()
             && (hooks.inside_listens)(state)
         {
-            let mut staged = mod_api::InsideEffects::default();
+            let mut staged = myriade_types::InsideEffects::default();
             let mut writes = Vec::new();
             let kind = self.m.kind.id.clone();
             let id = self.m.id as i32;

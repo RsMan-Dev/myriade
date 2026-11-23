@@ -1002,7 +1002,7 @@ impl Game<'_> {
                             cancel: &mut cancel,
                         });
                         // Validate all fields before applying any event writes.
-                        let converted: std::result::Result<_, mod_api::text::TextFormError> =
+                        let converted: std::result::Result<_, myriade_types::TextFormError> =
                             (|| {
                                 Ok((
                                     api_text.try_into_engine(&())?,
@@ -2241,28 +2241,28 @@ use level_event_targets::level_event_except;
 /// A client's settings as the mod API names them.
 pub(in crate::game) fn client_info(
     i: &horizon_protocol::packets::configuration::ClientInformation,
-) -> mod_api::ClientInfo {
-    mod_api::ClientInfo {
+) -> myriade_types::ClientInfo {
+    myriade_types::ClientInfo {
         language: i.language.clone(),
         view_distance: i.view_distance,
         chat_visibility: match i.chat_visibility.rem_euclid(3) {
-            0 => mod_api::ChatVisibility::Full,
-            1 => mod_api::ChatVisibility::System,
-            _ => mod_api::ChatVisibility::Hidden,
+            0 => myriade_types::ChatVisibility::Full,
+            1 => myriade_types::ChatVisibility::System,
+            _ => myriade_types::ChatVisibility::Hidden,
         },
         chat_colors: i.chat_colors,
         model_customisation: i.model_customisation,
         main_hand: if i.main_hand == 1 {
-            mod_api::MainHand::Right
+            myriade_types::MainHand::Right
         } else {
-            mod_api::MainHand::Left
+            myriade_types::MainHand::Left
         },
         text_filtering: i.text_filtering,
         allows_listing: i.allows_listing,
         particle_status: match i.particle_status.rem_euclid(3) {
-            0 => mod_api::ParticleStatus::All,
-            1 => mod_api::ParticleStatus::Decreased,
-            _ => mod_api::ParticleStatus::Minimal,
+            0 => myriade_types::ParticleStatus::All,
+            1 => myriade_types::ParticleStatus::Decreased,
+            _ => myriade_types::ParticleStatus::Minimal,
         },
     }
 }
@@ -2780,7 +2780,10 @@ mod tests {
         use myriade_engine::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
         use myriade_engine::text::Text;
         use horizon_protocol::packets::{configuration::ClientInformation, play};
-        use mod_api::{Flow, Hooks, ServerChatEvent, ServerHost};
+        use mod_api::Flow;
+        use mod_api::Hooks;
+        use mod_api::ServerChatEvent;
+        use mod_api::ServerHost;
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
         struct Replier;
@@ -2793,7 +2796,7 @@ mod tests {
             ) -> Flow {
                 event
                     .replies
-                    .push(mod_api::Text::literal(format!("heard {}", event.raw_text)));
+                    .push(myriade_types::Text::literal(format!("heard {}", event.raw_text)));
                 if event.raw_text == "secret" {
                     Flow::Cancel
                 } else {

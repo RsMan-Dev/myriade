@@ -1,7 +1,10 @@
 //! Vanilla keyframe animations (`AnimationDefinition`, `AnimationChannel`,
 //! `KeyframeAnimation`) exported from the client's animation definitions,
 //! applied to a pose map exactly like `KeyframeAnimation.Entry.apply`.
-use mod_api::{AnimationChannel, AnimationTarget, Interpolation, Keyframe};
+use myriade_types::AnimationChannel;
+use myriade_types::AnimationTarget;
+use myriade_types::Interpolation;
+use myriade_types::Keyframe;
 
 use serde_json::Value;
 

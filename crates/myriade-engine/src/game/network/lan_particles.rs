@@ -18,7 +18,8 @@ use horizon_protocol::{
     packets::play::{self, Clientbound as C},
 };
 use horizon_world::registry::BlockStateId;
-use mod_api::{SoundSource, client::particles::PositionSource};
+use myriade_types::SoundSource;
+use myriade_types::PositionSource;
 
 /// An explosion packet a guest's turn put off (`lan_explode`).
 pub(super) struct LanExplosion {

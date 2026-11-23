@@ -12,7 +12,7 @@ use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::position::BlockPos;
 
 /// The node kinds, moved to `mod_api` so mods can name them (arismoko/horizon#944).
-pub use mod_api::PathType;
+pub use myriade_types::PathType;
 pub const PATH_TYPES: usize = PathType::COUNT;
 
 thread_local! {

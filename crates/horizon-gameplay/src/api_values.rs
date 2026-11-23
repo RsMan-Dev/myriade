@@ -46,7 +46,7 @@ pub trait TryIntoEngine<Context: ?Sized = Items> {
 pub enum StackReadError {
     UnknownItem,
     Empty,
-    InvalidComponents(mod_api::StackError),
+    InvalidComponents(myriade_types::StackError),
 }
 
 impl StackReadError {
@@ -185,15 +185,15 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for [T] {
     }
 }
 impl TryIntoApi for (myriade_engine::text::Text, u32) {
-    type Api = (mod_api::Text, u32);
-    type Error = mod_api::text::TextFormError;
+    type Api = (myriade_types::Text, u32);
+    type Error = myriade_types::TextFormError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok((self.0.try_into_api()?, self.1))
     }
 }
-impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, u32) {
+impl<C: ?Sized> TryIntoEngine<C> for (myriade_types::Text, u32) {
     type Engine = (myriade_engine::text::Text, u32);
-    type Error = mod_api::text::TextFormError;
+    type Error = myriade_types::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((self.0.try_into_engine(context)?, self.1))
     }
@@ -206,9 +206,9 @@ impl<A: TryIntoApi, B: TryIntoApi<Error = A::Error>> TryIntoApi for (A, B) {
         Ok((self.0.try_into_api()?, self.1.try_into_api()?))
     }
 }
-impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
+impl<C: ?Sized> TryIntoEngine<C> for (myriade_types::Text, myriade_types::Text) {
     type Engine = (myriade_engine::text::Text, myriade_engine::text::Text);
-    type Error = mod_api::text::TextFormError;
+    type Error = myriade_types::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((
             self.0.try_into_engine(context)?,
@@ -217,12 +217,12 @@ impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
     }
 }
 
-impl TryIntoEngine for mod_api::ItemDisplayContext {
+impl TryIntoEngine for myriade_types::ItemDisplayContext {
     type Engine = horizon_assets::item_model::DisplayContext;
     type Error = ();
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
         use horizon_assets::item_model::DisplayContext as Engine;
-        use mod_api::ItemDisplayContext as Api;
+        use myriade_types::ItemDisplayContext as Api;
         Ok(match self {
             Api::None => Engine::None,
             Api::ThirdPersonLeftHand => Engine::ThirdPersonLeftHand,
@@ -240,13 +240,13 @@ impl TryIntoEngine for mod_api::ItemDisplayContext {
 }
 
 impl TryIntoApi for myriade_engine::merchant::ItemCost {
-    type Api = mod_api::ItemCost;
+    type Api = myriade_types::ItemCost;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::ItemCost::new(self.stack.try_into_api()?))
+        Ok(myriade_types::ItemCost::new(self.stack.try_into_api()?))
     }
 }
-impl TryIntoEngine for mod_api::ItemCost {
+impl TryIntoEngine for myriade_types::ItemCost {
     type Engine = myriade_engine::merchant::ItemCost;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -256,10 +256,10 @@ impl TryIntoEngine for mod_api::ItemCost {
     }
 }
 impl TryIntoApi for myriade_engine::merchant::MerchantOffer {
-    type Api = mod_api::MerchantOffer;
+    type Api = myriade_types::MerchantOffer;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let mut offer = mod_api::MerchantOffer::new(
+        let mut offer = myriade_types::MerchantOffer::new(
             self.base_cost_a.try_into_api()?,
             self.cost_b.try_into_api()?,
             self.result.try_into_api()?,
@@ -274,7 +274,7 @@ impl TryIntoApi for myriade_engine::merchant::MerchantOffer {
         Ok(offer)
     }
 }
-impl TryIntoEngine for mod_api::MerchantOffer {
+impl TryIntoEngine for myriade_types::MerchantOffer {
     type Engine = myriade_engine::merchant::MerchantOffer;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -384,11 +384,11 @@ fn encode_stack(
 }
 
 impl TryIntoApi for myriade_engine::crafting::RecipeRule {
-    type Api = mod_api::RecipeRule;
+    type Api = myriade_types::RecipeRule;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok(match self {
-            Self::Stonecutting { input, result } => mod_api::RecipeRule::Stonecutting {
+            Self::Stonecutting { input, result } => myriade_types::RecipeRule::Stonecutting {
                 input: input.try_into_api()?,
                 result: result.try_into_api()?,
             },
@@ -397,7 +397,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 base,
                 addition,
                 result,
-            } => mod_api::RecipeRule::SmithingTransform {
+            } => myriade_types::RecipeRule::SmithingTransform {
                 template: template.try_into_api()?,
                 base: base.try_into_api()?,
                 addition: addition.try_into_api()?,
@@ -408,13 +408,13 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 base,
                 addition,
                 pattern,
-            } => mod_api::RecipeRule::SmithingTrim {
+            } => myriade_types::RecipeRule::SmithingTrim {
                 template: template.try_into_api()?,
                 base: base.try_into_api()?,
                 addition: addition.try_into_api()?,
                 pattern: pattern.try_into_api()?,
             },
-            Self::BannerDuplicate { banner, result } => mod_api::RecipeRule::BannerDuplicate {
+            Self::BannerDuplicate { banner, result } => myriade_types::RecipeRule::BannerDuplicate {
                 banner: banner.try_into_api()?,
                 result: result.try_into_api()?,
             },
@@ -422,7 +422,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 banner,
                 target,
                 result,
-            } => mod_api::RecipeRule::ShieldDecoration {
+            } => myriade_types::RecipeRule::ShieldDecoration {
                 banner: banner.try_into_api()?,
                 target: target.try_into_api()?,
                 result: result.try_into_api()?,
@@ -434,7 +434,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 max,
                 add_count,
                 result,
-            } => mod_api::RecipeRule::Transmute {
+            } => myriade_types::RecipeRule::Transmute {
                 input: input.try_into_api()?,
                 material: material.try_into_api()?,
                 min: *min,
@@ -446,7 +446,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 target,
                 dye,
                 result,
-            } => mod_api::RecipeRule::Dye {
+            } => myriade_types::RecipeRule::Dye {
                 target: target.try_into_api()?,
                 dye: dye.try_into_api()?,
                 result: result.try_into_api()?,
@@ -455,7 +455,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 source,
                 material,
                 result,
-            } => mod_api::RecipeRule::Imbue {
+            } => myriade_types::RecipeRule::Imbue {
                 source: source.try_into_api()?,
                 material: material.try_into_api()?,
                 result: result.try_into_api()?,
@@ -466,7 +466,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 min,
                 max,
                 result,
-            } => mod_api::RecipeRule::BookCloning {
+            } => myriade_types::RecipeRule::BookCloning {
                 source: source.try_into_api()?,
                 material: material.try_into_api()?,
                 min: *min,
@@ -478,7 +478,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 fuel,
                 star,
                 result,
-            } => mod_api::RecipeRule::FireworkRocket {
+            } => myriade_types::RecipeRule::FireworkRocket {
                 shell: shell.try_into_api()?,
                 fuel: fuel.try_into_api()?,
                 star: star.try_into_api()?,
@@ -491,7 +491,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 twinkle,
                 shapes,
                 result,
-            } => mod_api::RecipeRule::FireworkStar {
+            } => myriade_types::RecipeRule::FireworkStar {
                 dye: dye.try_into_api()?,
                 fuel: fuel.try_into_api()?,
                 trail: trail.try_into_api()?,
@@ -503,7 +503,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 dye,
                 target,
                 result,
-            } => mod_api::RecipeRule::FireworkStarFade {
+            } => myriade_types::RecipeRule::FireworkStarFade {
                 dye: dye.try_into_api()?,
                 target: target.try_into_api()?,
                 result: result.try_into_api()?,
@@ -512,7 +512,7 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 map,
                 material,
                 result,
-            } => mod_api::RecipeRule::MapExtending {
+            } => myriade_types::RecipeRule::MapExtending {
                 map: map.try_into_api()?,
                 material: material.try_into_api()?,
                 result: result.try_into_api()?,
@@ -523,23 +523,23 @@ impl TryIntoApi for myriade_engine::crafting::RecipeRule {
                 right,
                 front,
                 result,
-            } => mod_api::RecipeRule::DecoratedPot {
+            } => myriade_types::RecipeRule::DecoratedPot {
                 back: back.try_into_api()?,
                 left: left.try_into_api()?,
                 right: right.try_into_api()?,
                 front: front.try_into_api()?,
                 result: result.try_into_api()?,
             },
-            Self::RepairItem => mod_api::RecipeRule::RepairItem,
+            Self::RepairItem => myriade_types::RecipeRule::RepairItem,
         })
     }
 }
 
 impl TryIntoApi for myriade_engine::crafting::RecipeTemplate {
-    type Api = mod_api::RecipeTemplate;
+    type Api = myriade_types::RecipeTemplate;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::RecipeTemplate::new(
+        Ok(myriade_types::RecipeTemplate::new(
             self.item.clone(),
             self.count,
             self.components.clone(),
@@ -547,16 +547,16 @@ impl TryIntoApi for myriade_engine::crafting::RecipeTemplate {
     }
 }
 impl TryIntoApi for myriade_engine::crafting::RecipeTrimPattern {
-    type Api = mod_api::RecipeTrimPattern;
+    type Api = myriade_types::RecipeTrimPattern;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok(match self {
-            Self::Reference(id) => mod_api::RecipeTrimPattern::Reference(id.clone()),
+            Self::Reference(id) => myriade_types::RecipeTrimPattern::Reference(id.clone()),
             Self::Inline {
                 asset_id,
                 description,
                 decal,
-            } => mod_api::RecipeTrimPattern::Inline {
+            } => myriade_types::RecipeTrimPattern::Inline {
                 asset_id: asset_id.clone(),
                 description: description.clone(),
                 decal: *decal,
@@ -565,21 +565,21 @@ impl TryIntoApi for myriade_engine::crafting::RecipeTrimPattern {
     }
 }
 impl TryIntoApi for myriade_engine::crafting::FireworkShapeIngredient {
-    type Api = mod_api::FireworkShapeIngredient;
+    type Api = myriade_types::FireworkShapeIngredient;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::FireworkShapeIngredient::new(
+        Ok(myriade_types::FireworkShapeIngredient::new(
             self.shape.try_into_api().unwrap(),
             self.ingredient.try_into_api()?,
         ))
     }
 }
 impl TryIntoApi for myriade_engine::crafting::RecipeSnapshot {
-    type Api = mod_api::Recipe;
+    type Api = myriade_types::Recipe;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         let mut result =
-            mod_api::Recipe::new(self.id.clone(), self.kind.clone(), self.json.clone());
+            myriade_types::Recipe::new(self.id.clone(), self.kind.clone(), self.json.clone());
         result.group = self.group.clone();
         result.ingredients = self.ingredients.try_into_api()?;
         result.results = self.results.try_into_api()?;
@@ -591,10 +591,10 @@ impl TryIntoApi for myriade_engine::crafting::RecipeSnapshot {
 }
 
 impl TryIntoApi for myriade_engine::stations::AnvilResult {
-    type Api = mod_api::item::stations::AnvilResult;
+    type Api = myriade_types::AnvilResult;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::stations::AnvilResult {
+        Ok(myriade_types::AnvilResult {
             result: self.result.try_into_api()?,
             cost: self.cost,
             repair_item_count_cost: self.repair_item_count_cost,
@@ -602,7 +602,7 @@ impl TryIntoApi for myriade_engine::stations::AnvilResult {
         })
     }
 }
-impl TryIntoEngine for mod_api::item::stations::AnvilResult {
+impl TryIntoEngine for myriade_types::AnvilResult {
     type Engine = myriade_engine::stations::AnvilResult;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -615,17 +615,17 @@ impl TryIntoEngine for mod_api::item::stations::AnvilResult {
     }
 }
 impl TryIntoApi for myriade_engine::menu::AnvilCraft {
-    type Api = mod_api::item::menu::AnvilCraft;
+    type Api = myriade_types::AnvilCraft;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::AnvilCraft {
+        Ok(myriade_types::AnvilCraft {
             left: self.left.try_into_api()?,
             right: self.right.try_into_api()?,
             output: self.output.try_into_api()?,
         })
     }
 }
-impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
+impl TryIntoEngine for myriade_types::AnvilCraft {
     type Engine = myriade_engine::menu::AnvilCraft;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -637,10 +637,10 @@ impl TryIntoEngine for mod_api::item::menu::AnvilCraft {
     }
 }
 impl TryIntoApi for myriade_engine::menu::GrindstonePlace {
-    type Api = mod_api::item::menu::GrindstonePlace;
+    type Api = myriade_types::GrindstonePlace;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstonePlace {
+        Ok(myriade_types::GrindstonePlace {
             top: self.top.try_into_api()?,
             bottom: self.bottom.try_into_api()?,
             vanilla_output: self.vanilla_output.try_into_api()?,
@@ -649,7 +649,7 @@ impl TryIntoApi for myriade_engine::menu::GrindstonePlace {
         })
     }
 }
-impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
+impl TryIntoEngine for myriade_types::GrindstonePlace {
     type Engine = myriade_engine::menu::GrindstonePlace;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -663,10 +663,10 @@ impl TryIntoEngine for mod_api::item::menu::GrindstonePlace {
     }
 }
 impl TryIntoApi for myriade_engine::menu::GrindstoneTake {
-    type Api = mod_api::item::menu::GrindstoneTake;
+    type Api = myriade_types::GrindstoneTake;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        Ok(mod_api::item::menu::GrindstoneTake {
+        Ok(myriade_types::GrindstoneTake {
             top: self.top.try_into_api()?,
             bottom: self.bottom.try_into_api()?,
             xp: self.xp,
@@ -675,7 +675,7 @@ impl TryIntoApi for myriade_engine::menu::GrindstoneTake {
         })
     }
 }
-impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
+impl TryIntoEngine for myriade_types::GrindstoneTake {
     type Engine = myriade_engine::menu::GrindstoneTake;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -690,16 +690,16 @@ impl TryIntoEngine for mod_api::item::menu::GrindstoneTake {
 }
 
 impl TryIntoApi for myriade_engine::menu::AnvilUpdate {
-    type Api = mod_api::item::menu::AnvilUpdate;
+    type Api = myriade_types::AnvilUpdate;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let vanilla = mod_api::item::stations::AnvilResult {
+        let vanilla = myriade_types::AnvilResult {
             result: self.vanilla.output.try_into_api()?,
             cost: self.vanilla.xp_cost,
             repair_item_count_cost: self.vanilla.material_cost.max(0) as u32,
             only_renaming: false,
         };
-        let mut result = mod_api::item::menu::AnvilUpdate::new(
+        let mut result = myriade_types::AnvilUpdate::new(
             self.left.try_into_api()?,
             self.right.try_into_api()?,
             self.name.clone(),
@@ -712,7 +712,7 @@ impl TryIntoApi for myriade_engine::menu::AnvilUpdate {
     }
 }
 
-impl TryIntoEngine for mod_api::item::menu::AnvilUpdate {
+impl TryIntoEngine for myriade_types::AnvilUpdate {
     type Engine = myriade_engine::menu::AnvilUpdate;
     type Error = StackWriteError;
     fn try_into_engine(&self, items: &Items) -> Result<Self::Engine, Self::Error> {
@@ -769,16 +769,16 @@ impl TryIntoApi for myriade_engine::containers::ModBlockEntity {
 }
 
 impl TryIntoApi for myriade_data::suggestion::Suggestion {
-    type Api = mod_api::Suggestion;
+    type Api = myriade_types::Suggestion;
     type Error = std::convert::Infallible;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
-        let mut value = mod_api::Suggestion::new(self.range, self.text.clone());
+        let mut value = myriade_types::Suggestion::new(self.range, self.text.clone());
         value.tooltip.clone_from(&self.tooltip);
         value.int_value = self.int_value;
         Ok(value)
     }
 }
-impl TryIntoEngine for mod_api::Suggestion {
+impl TryIntoEngine for myriade_types::Suggestion {
     type Engine = myriade_data::suggestion::Suggestion;
     type Error = StackWriteError;
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
@@ -802,7 +802,7 @@ impl TryIntoEngine<()> for mod_api::BlockEntityTypeDecl {
     }
 }
 impl TryIntoApi for horizon_world::level::PlacementContext {
-    type Api = mod_api::PlacementContext;
+    type Api = myriade_types::PlacementContext;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         let item = if self.item.is_empty() {
@@ -810,7 +810,7 @@ impl TryIntoApi for horizon_world::level::PlacementContext {
         } else {
             Some(mod_api::__private::item_key(&self.item).ok_or(StackReadError::UnknownItem)?)
         };
-        let mut snapshot = mod_api::PlacementContext::new(self.pos, self.face, item);
+        let mut snapshot = myriade_types::PlacementContext::new(self.pos, self.face, item);
         snapshot.hit_pos = self.hit_pos;
         snapshot.hit = [self.hit.x, self.hit.y, self.hit.z];
         snapshot.inside = self.inside;
@@ -823,17 +823,17 @@ impl TryIntoApi for horizon_world::level::PlacementContext {
 }
 
 impl TryIntoApi for myriade_data::gamerules::Value {
-    type Api = mod_api::GameRuleValue;
+    type Api = myriade_types::GameRuleValue;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         Ok(match *self {
-            Self::Bool(value) => mod_api::GameRuleValue::Bool(value),
-            Self::Int(value) => mod_api::GameRuleValue::Int(value),
+            Self::Bool(value) => myriade_types::GameRuleValue::Bool(value),
+            Self::Int(value) => myriade_types::GameRuleValue::Int(value),
         })
     }
 }
 
-impl TryIntoEngine for mod_api::GameRuleValue {
+impl TryIntoEngine for myriade_types::GameRuleValue {
     type Engine = myriade_data::gamerules::Value;
     type Error = ();
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
@@ -847,21 +847,21 @@ impl TryIntoEngine for mod_api::GameRuleValue {
 }
 
 impl TryIntoApi for horizon_world::chunk::BlockState {
-    type Api = mod_api::BlockState;
-    type Error = mod_api::BlockStateError;
+    type Api = myriade_types::BlockState;
+    type Error = myriade_types::BlockStateError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
         let block = mod_api::__private::block_key(&self.name)
-            .ok_or(mod_api::BlockStateError::UnknownBlock)?;
+            .ok_or(myriade_types::BlockStateError::UnknownBlock)?;
         let properties: Vec<_> = self
             .properties
             .iter()
-            .map(|(name, value)| mod_api::StateConstraint::new(name.clone(), value.clone()))
+            .map(|(name, value)| myriade_types::StateConstraint::new(name.clone(), value.clone()))
             .collect();
-        mod_api::BlockState::of(block_metadata_table()?, block, &properties)
+        myriade_types::BlockState::of(block_metadata_table()?, block, &properties)
     }
 }
 
 pub fn block_metadata_table()
--> Result<&'static horizon_mod_runtime::block_definitions::Blocks, mod_api::BlockStateError> {
-    mod_api::__private::block_definitions().ok_or(mod_api::BlockStateError::Unavailable)
+-> Result<&'static horizon_mod_runtime::block_definitions::Blocks, myriade_types::BlockStateError> {
+    mod_api::__private::block_definitions().ok_or(myriade_types::BlockStateError::Unavailable)
 }

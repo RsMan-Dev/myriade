@@ -1,13 +1,14 @@
 //! Owning-thread, load-bound numeric bridge. Workers receive prepared values instead.
 use super::{TryIntoApi, TryIntoEngine};
 use horizon_world::registry::{BlockRegistry, BlockStateId};
-use mod_api::{BlockState, BlockStateError};
+use myriade_types::BlockState;
+use myriade_types::BlockStateError;
 use std::{cell::RefCell, sync::Arc};
 
 /// A fully checked index, inert until explicitly installed by the owning game thread.
 pub struct Index {
     forward: Vec<BlockState>,
-    reverse: std::collections::HashMap<mod_api::BlockKey, Vec<Option<BlockStateId>>>,
+    reverse: std::collections::HashMap<myriade_types::BlockKey, Vec<Option<BlockStateId>>>,
 }
 thread_local! {
     static INDEX: RefCell<Option<Arc<Index>>> = const { RefCell::new(None) };

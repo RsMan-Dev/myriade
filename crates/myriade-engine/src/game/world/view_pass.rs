@@ -729,9 +729,9 @@ pub(in crate::game) mod tests {
         assert!(all.sounds.is_empty());
         // A mod's handle needs the world's epoch, which this test world never began.
         game.native_lifecycle
-            .begin_open(mod_api::Authority::DedicatedServer);
+            .begin_open(myriade_types::Authority::DedicatedServer);
         let nether = game.level(Dim::Nether.id()).unwrap();
-        let blocks = mod_api::SoundSource::Blocks;
+        let blocks = myriade_types::SoundSource::Blocks;
         let at = [648.5, 70.0, 650.25];
         assert!(game.level_play_sound(nether, "minecraft:block.bell.use", at, blocks, 1.0, 0.75));
         game.tick_server(false).unwrap();

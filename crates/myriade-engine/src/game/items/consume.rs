@@ -25,7 +25,7 @@ type ItemConsumable = Consumable<String, ConsumeEffect>;
 /// Capture once per effect, not once per attempted destination. A consuming stack
 /// is normally registry-resolved; a saved stack with an unregistered id has no
 /// public snapshot, so the listener callback is skipped instead of panicking.
-fn consumed_snapshot(stack: &ItemStack) -> Option<mod_api::ItemStack> {
+fn consumed_snapshot(stack: &ItemStack) -> Option<myriade_types::ItemStack> {
     if !false {
         return None;
     }
@@ -398,7 +398,7 @@ impl EmissionWorld for Emitter<'_, '_> {
 }
 
 /// The local player as `TeleportRandomlyConsumeEffect`'s user.
-struct Teleporter<'a, 'g>(&'a mut Game<'g>, Option<&'a mod_api::ItemStack>);
+struct Teleporter<'a, 'g>(&'a mut Game<'g>, Option<&'a myriade_types::ItemStack>);
 impl Teleporter<'_, '_> {
     fn at(&self) -> Vec3 {
         self.0.player.as_ref().map_or(Vec3::ZERO, |p| p.position)
@@ -534,7 +534,7 @@ struct EcsHeldTeleporter<'a, 'g> {
     from: Vec3,
     rng: &'a mut LegacyRandom,
     dim: Dim,
-    consumed: Option<&'a mod_api::ItemStack>,
+    consumed: Option<&'a myriade_types::ItemStack>,
 }
 impl EcsHeldTeleporter<'_, '_> {
     fn at(&self) -> Result<Vec3, ()> {
@@ -735,13 +735,17 @@ mod teleport_hook_tests {
     use super::*;
     use crate::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
-    use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
+    use mod_api::Flow;
+    use mod_api::Hooks;
+    use mod_api::ItemConsumptionTeleportEvent;
+    use mod_api::ModEntry;
+    use mod_api::ServerHost;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
 
-    struct ConsumptionProbe(Arc<Mutex<Vec<mod_api::ItemStack>>>, Arc<AtomicBool>);
+    struct ConsumptionProbe(Arc<Mutex<Vec<myriade_types::ItemStack>>>, Arc<AtomicBool>);
     #[mod_api::__subscriptions]
     impl Hooks for ConsumptionProbe {
         fn item_consumption_teleport(

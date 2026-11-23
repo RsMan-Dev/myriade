@@ -6,7 +6,8 @@ use crate::{
 use horizon_protocol::{
     connection::Connection, packets::configuration as cfg, payload_negotiation::Phase,
 };
-use mod_api::{PayloadId, PayloadSendError};
+use mod_api::PayloadId;
+use mod_api::PayloadSendError;
 use std::sync::Arc;
 
 #[derive(Clone)]

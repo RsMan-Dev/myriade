@@ -487,7 +487,7 @@ impl Game<'_> {
         }
         let yaw = match site {
             SpawnSite::Finalizing(myriade_engine::mobs::spawn_rules::Reason::Command) => 0.0,
-            _ => mod_api::client::camera::wrap_degrees(self.world.random.next_float() * 360.0),
+            _ => myriade_types::wrap_degrees(self.world.random.next_float() * 360.0),
         };
         let mut sheet = horizon_ecs_proto::spawn_sheet::SpawnSheet::default();
         let finalized = match site {

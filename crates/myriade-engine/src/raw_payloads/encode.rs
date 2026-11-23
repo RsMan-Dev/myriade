@@ -1,6 +1,7 @@
 use super::Side;
 use horizon_protocol::{buf::Writer, ids, payload_negotiation::Phase};
-use mod_api::{PayloadBytes, PayloadId};
+use mod_api::PayloadBytes;
+use mod_api::PayloadId;
 
 /// Encode vanilla packet id + declared channel + exact body, with no mod envelope.
 /// Call only after resolving the declaration against the connection's frozen table.

@@ -1,7 +1,7 @@
 //! The local player's hand: the arm swing (`LivingEntity.SwingState`,
 //! `getModifiedSwingDuration`), the use results of `startUseItem` and the
 //! [`HandWorld`] the click handling reads and changes.
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 
 /// `SwingAnimation`: its type (`SwingAnimationType` ordinal) and duration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -1305,7 +1305,10 @@ mod order_tests {
     #[test]
     #[ignore = "daily"]
     fn a_cancelled_push_spends_none_of_the_piston_budget() {
-        use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext};
+        use mod_api::EntityMoveEvent;
+        use mod_api::Flow;
+        use mod_api::Hooks;
+        use mod_api::LoopContext;
         struct Gate(std::sync::Arc<std::sync::atomic::AtomicBool>);
         #[mod_api::__subscriptions]
         impl Hooks for Gate {
@@ -1632,7 +1635,7 @@ mod h255_mob_piston_ground_tests {
             )
             .unwrap();
             game.native_lifecycle
-                .begin_open(mod_api::Authority::DedicatedServer);
+                .begin_open(myriade_types::Authority::DedicatedServer);
             game.build_registries();
             game.ecs = game.test_ecs_level();
             game.set_allow_commands(true);

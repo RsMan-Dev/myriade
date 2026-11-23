@@ -59,14 +59,14 @@ pub struct LocalDifficulty {
     /// `Difficulty.getId`: 0 peaceful to 3 hard.
     pub id: u8,
 }
-impl From<LocalDifficulty> for mod_api::Difficulty {
+impl From<LocalDifficulty> for myriade_types::Difficulty {
     fn from(d: LocalDifficulty) -> Self {
         Self::new(d.base, d.effective)
     }
 }
-impl From<mod_api::Difficulty> for LocalDifficulty {
+impl From<myriade_types::Difficulty> for LocalDifficulty {
     /// A mod's difficulty; a base past hard is hard.
-    fn from(d: mod_api::Difficulty) -> Self {
+    fn from(d: myriade_types::Difficulty) -> Self {
         let base = d.base.min(3);
         Self {
             base,
@@ -130,7 +130,7 @@ impl LocalDifficulty {
     }
     /// `getSpecialMultiplier`.
     pub fn special(&self) -> f32 {
-        mod_api::Difficulty::from(*self).special_multiplier()
+        myriade_types::Difficulty::from(*self).special_multiplier()
     }
 }
 /// VillagerType.byBiome

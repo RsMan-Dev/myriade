@@ -5,7 +5,7 @@
 use super::*;
 use horizon_protocol::packets::configuration::CustomPayload;
 use horizon_protocol::passage_sync::{self, Message};
-use mod_api::PassageCrossRefusal as Refusal;
+use myriade_types::PassageCrossRefusal as Refusal;
 
 /// How far from the nearest point of the opening a crossing may start, in blocks: Immersive
 /// Portals' `getDistanceToNearestPointInPortal` limit.

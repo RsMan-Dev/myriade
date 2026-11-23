@@ -88,7 +88,7 @@ impl TryIntoEngine for ApiStack {
             || {
                 u32::try_from(stack.effective_damage(Some(definition))).map_err(|_| {
                     StackWriteError::InvalidComponents {
-                        reason: mod_api::StackError::InvalidDamage,
+                        reason: myriade_types::StackError::InvalidDamage,
                     }
                 })
             },
@@ -99,7 +99,7 @@ impl TryIntoEngine for ApiStack {
         }
         if i32::try_from(damage).is_err() {
             return Err(StackWriteError::InvalidComponents {
-                reason: mod_api::StackError::InvalidDamage,
+                reason: myriade_types::StackError::InvalidDamage,
             });
         }
         Ok(stack)

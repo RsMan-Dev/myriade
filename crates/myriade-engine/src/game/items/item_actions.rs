@@ -2,7 +2,7 @@
 //! `Player.interactOn`), the context a block's use sees, and the mod hooks that cancel a placement
 //! or an emptied bucket.
 use super::*;
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 
 impl Game<'_> {
     /// The hand whose use ended the click, if any.
@@ -153,7 +153,7 @@ impl Game<'_> {
             if let Some(answer) = result
                 && !matches!(
                     answer,
-                    mod_api::InteractionResult::Pass | mod_api::InteractionResult::TryWithEmptyHand
+                    myriade_types::InteractionResult::Pass | myriade_types::InteractionResult::TryWithEmptyHand
                 )
             {
                 return Ok(self.interaction_consumed(answer));

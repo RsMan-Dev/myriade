@@ -2,7 +2,9 @@
 //! `ClockAdjustment` from `sleep_finished_time` (NeoForge's `SleepFinishedTimeEvent`), and the
 //! clock time markers both read.
 use super::{Dim, Game};
-use mod_api::{ClockAdjustment, Identifier, LevelRef};
+use myriade_types::ClockAdjustment;
+use myriade_types::Identifier;
+use mod_api::LevelRef;
 
 /// Vanilla's wake-up time marker, where sleeping through the night moves the clock
 /// (`ClockTimeMarkers.WAKE_UP_FROM_SLEEP`).
@@ -129,7 +131,8 @@ fn wake_time(
 #[cfg(test)]
 mod tests {
     use super::{OVERWORLD_CLOCK, Refused, TimeMarker, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
-    use mod_api::{ClockAdjustment, Identifier};
+    use myriade_types::ClockAdjustment;
+    use myriade_types::Identifier;
 
     const NOW: i64 = 13_000;
 

@@ -5,9 +5,11 @@
 //! stack's modifiers goes through here.
 use horizon_items::item_data::ModifierRow;
 use horizon_items::items::{ItemStack, Items};
-use mod_api::{
-    AttributeModifier, AttributeOperation, EquipmentSlotGroup, Identifier, ItemAttributeModifier,
-};
+use myriade_types::AttributeModifier;
+use myriade_types::AttributeOperation;
+use myriade_types::EquipmentSlotGroup;
+use myriade_types::Identifier;
+use myriade_types::ItemAttributeModifier;
 use std::borrow::Cow;
 
 /// The modifiers `stack` grants, with its item's from `items`.

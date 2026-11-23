@@ -505,9 +505,9 @@ pub fn advertise_viewer_channels(g: &super::guest::Guest) {
 /// A viewer transfer's result as the engine's menu gives it.
 pub fn transfer_result(
     result: Result<(), crate::menu::place::TransferError>,
-) -> mod_api::RecipeTransferResult {
+) -> myriade_types::RecipeTransferResult {
     use crate::menu::place::TransferError;
-    use mod_api::RecipeTransferResult as R;
+    use myriade_types::RecipeTransferResult as R;
     match result {
         Ok(()) => R::Moves,
         Err(TransferError::Missing) => R::Missing,
@@ -518,10 +518,10 @@ pub fn transfer_result(
 
 /// A `menu_transfer` part's answer as the engine's transfer result (`transfer_result` back).
 pub fn transfer_outcome(
-    result: mod_api::RecipeTransferResult,
+    result: myriade_types::RecipeTransferResult,
 ) -> Result<(), crate::menu::place::TransferError> {
     use crate::menu::place::TransferError;
-    use mod_api::RecipeTransferResult as R;
+    use myriade_types::RecipeTransferResult as R;
     match result {
         R::Moves => Ok(()),
         R::Missing => Err(TransferError::Missing),
@@ -531,8 +531,8 @@ pub fn transfer_outcome(
 }
 
 /// The byte both transfer channels carry a result as.
-pub fn result_byte(result: mod_api::RecipeTransferResult) -> u8 {
-    use mod_api::RecipeTransferResult as R;
+pub fn result_byte(result: myriade_types::RecipeTransferResult) -> u8 {
+    use myriade_types::RecipeTransferResult as R;
     match result {
         R::Moves => 0,
         R::Missing => 1,
@@ -542,8 +542,8 @@ pub fn result_byte(result: mod_api::RecipeTransferResult) -> u8 {
 }
 
 /// The result a transfer channel's byte names; None for any other byte.
-pub fn byte_result(byte: u8) -> Option<mod_api::RecipeTransferResult> {
-    use mod_api::RecipeTransferResult as R;
+pub fn byte_result(byte: u8) -> Option<myriade_types::RecipeTransferResult> {
+    use myriade_types::RecipeTransferResult as R;
     Some(match byte {
         0 => R::Moves,
         1 => R::Missing,
@@ -701,7 +701,7 @@ mod content_tests {
         ) {
             self.0.lock().unwrap().push(context.origin());
             let add = |set: &str, items: &[&str]| {
-                mod_api::RecipePropertyAddition::new(
+                myriade_types::RecipePropertyAddition::new(
                     set,
                     items.iter().map(|i| (*i).to_owned()).collect(),
                 )

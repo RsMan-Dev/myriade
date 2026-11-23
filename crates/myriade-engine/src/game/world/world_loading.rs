@@ -1383,7 +1383,11 @@ mod tests {
             Level,
             level_mods::{ModRecord, set_loaded},
         };
-        use mod_api::{Hooks, HostSide, ModEntry, ModMismatch, ModMismatchEvent};
+        use mod_api::Hooks;
+        use mod_api::HostSide;
+        use mod_api::ModEntry;
+        use mod_api::ModMismatch;
+        use mod_api::ModMismatchEvent;
         use std::sync::{Arc, Mutex};
 
         struct Migrating(Arc<Mutex<Vec<Vec<ModMismatch>>>>);
@@ -1657,10 +1661,10 @@ mod tests {
                 registrar
                     .declare_biome_region(
                         "ice",
-                        mod_api::BiomeRegion::new(
+                        myriade_types::BiomeRegion::new(
                             "minecraft:overworld".into(),
                             3,
-                            vec![mod_api::BiomePoint {
+                            vec![myriade_types::BiomePoint {
                                 biome: "minecraft:ice_spikes".into(),
                                 temperature: (-2., 2.),
                                 humidity: (-2., 2.),

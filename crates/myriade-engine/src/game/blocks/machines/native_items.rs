@@ -7,7 +7,9 @@ use crate::game::transactions::After;
 use myriade_engine::items::ItemStack;
 use horizon_core::geometry::Direction;
 use mod_api::__private::game::CapabilityChecked;
-use mod_api::{BlockSide, LevelRef, Transaction};
+use mod_api::BlockSide;
+use mod_api::LevelRef;
+use mod_api::Transaction;
 
 impl View {
     /// Composter capability ports keep one slot as their level changes; hopper views retain

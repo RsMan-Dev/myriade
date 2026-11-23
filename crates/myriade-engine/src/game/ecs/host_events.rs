@@ -186,7 +186,7 @@ impl Game<'_> {
             if g.creative {
                 return;
             }
-            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+            for hand in [myriade_types::Hand::Main, myriade_types::Hand::Off] {
                 if g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name)) {
                     g.with_hand(hand, |g| {
                         let slot = g.acting_hand_slot();
@@ -218,7 +218,7 @@ impl Game<'_> {
                 }
                 return;
             }
-            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+            for hand in [myriade_types::Hand::Main, myriade_types::Hand::Off] {
                 if g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name)) {
                     g.with_hand(hand, Game::consume_held);
                     g.with_hand(hand, |g| g.add_stack_to_inventory(to));
@@ -232,7 +232,7 @@ impl Game<'_> {
     fn ecs_held_used(&mut self, player: u32, item: u32) {
         let Some(name) = horizon_ecs_proto::items::item_name(item) else { return };
         self.with_player(player, |g| {
-            for hand in [mod_api::Hand::Main, mod_api::Hand::Off] {
+            for hand in [myriade_types::Hand::Main, myriade_types::Hand::Off] {
                 let held = g.with_hand(hand, |g| g.held().is_some_and(|s| &*s.item == name));
                 if held {
                     g.with_hand(hand, Game::consume_held);

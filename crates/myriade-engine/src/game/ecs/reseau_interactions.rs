@@ -187,7 +187,7 @@ impl Game<'_> {
             },
         };
         let Some(conn) = self.acting_player_uuid_id() else { return false };
-        let hand = u8::from(self.hand != mod_api::Hand::Main);
+        let hand = u8::from(self.hand != myriade_types::Hand::Main);
         let used = self.ecs_interact(id as i32, hand, conn) == Some(true);
         if used {
             // `Mob.interact`: a use that consumed the action posts `ENTITY_INTERACT` at the entity, for the player.

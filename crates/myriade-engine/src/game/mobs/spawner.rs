@@ -120,12 +120,12 @@ impl Game<'_> {
         // A minecart spawner has no block.
         let source = cart
             .is_none()
-            .then(|| mod_api::SpawnSource::Block(mod_api::BlockPos::new(key.0, key.1, key.2)));
+            .then(|| myriade_types::SpawnSource::Block(myriade_types::BlockPos::new(key.0, key.1, key.2)));
         let rides = {
             let mut level = self.natural_level();
             // A minecart spawner has no block to tell the spawn checks of.
-            level.spawner = cart.is_none().then_some(mod_api::Spawner::Block {
-                pos: mod_api::BlockPos::new(key.0, key.1, key.2),
+            level.spawner = cart.is_none().then_some(myriade_types::Spawner::Block {
+                pos: myriade_types::BlockPos::new(key.0, key.1, key.2),
             });
             let mut spawn = |l: &super::spawn_level::GameLevel,
                              _rng: &mut LevelRandom,
@@ -178,7 +178,7 @@ impl Game<'_> {
         &self,
         l: &super::spawn_level::GameLevel,
         r: &SpawnerSpawn,
-        source: Option<mod_api::SpawnSource>,
+        source: Option<myriade_types::SpawnSource>,
         planned: &mut Vec<Planned>,
     ) -> Option<SpawnerAdded> {
         let kind = self.res.mob_types().get(r.id)?.clone();

@@ -2,7 +2,9 @@
 //! (`ServerLevel.tickCustomSpawners`): vanilla's, minus what a mod's
 //! `modify_custom_spawners` took out, plus the mod spawners it added.
 use super::Game;
-use mod_api::{CustomSpawners, SpawnerEntry, SpawnerKind};
+use mod_api::CustomSpawners;
+use mod_api::SpawnerEntry;
+use mod_api::SpawnerKind;
 
 impl Game<'_> {
     /// The level's list, built (and `modify_custom_spawners` fired) on first use.

@@ -206,7 +206,12 @@ mod tests {
     use super::{Arc, Game, build_live_features, install_live_features};
     use myriade_engine::items::ItemStack;
     use horizon_core::{geometry::Direction, position::BlockPos};
-    use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
+    use mod_api;
+    use mod_api::BonemealEvent;
+    use myriade_types::BonemealSource;
+    use mod_api::Flow;
+    use mod_api::Hooks;
+    use mod_api::HostSide;
     use std::sync::{Mutex, MutexGuard, PoisonError};
 
     /// What each `bonemeal` listener heard: the player, the target check

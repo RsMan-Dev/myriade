@@ -27,7 +27,9 @@ use horizon_protocol::{
     payload_negotiation::Phase,
     text::translatable,
 };
-use mod_api::{PayloadFrameStage, PayloadId, PayloadSendError};
+use mod_api::PayloadFrameStage;
+use mod_api::PayloadId;
+use mod_api::PayloadSendError;
 use std::{
     cell::Cell,
     net::TcpStream,
@@ -1106,11 +1108,11 @@ fn utf16_units(text: &str) -> usize {
 }
 
 /// The login's own properties as the mod API's, for `player_login_profile`.
-fn api_profile_properties(properties: &[login::Property]) -> Vec<mod_api::ProfileProperty> {
+fn api_profile_properties(properties: &[login::Property]) -> Vec<myriade_types::ProfileProperty> {
     properties
         .iter()
         .map(|property| {
-            mod_api::ProfileProperty::new(
+            myriade_types::ProfileProperty::new(
                 property.name.clone(),
                 property.value.clone(),
                 property.signature.clone(),
@@ -1122,7 +1124,7 @@ fn api_profile_properties(properties: &[login::Property]) -> Vec<mod_api::Profil
 /// The properties a `player_login_profile` listener left, as the login's own, or None when the
 /// list is past the profile's wire limits: the login's own properties are sent then.
 fn login_profile_properties(
-    changed: Vec<mod_api::ProfileProperty>,
+    changed: Vec<myriade_types::ProfileProperty>,
 ) -> Option<Vec<login::Property>> {
     if changed.len() > MAX_LOGIN_PROPERTIES {
         return None;
@@ -1157,7 +1159,7 @@ fn login_profile_properties(
 pub fn native_player_login_profile(
     player: u128,
     name: &str,
-    properties: &mut Vec<mod_api::ProfileProperty>,
+    properties: &mut Vec<myriade_types::ProfileProperty>,
 ) {
     crate::native_level_hooks::player_login_profile(player, name, properties);
 }
@@ -2776,7 +2778,7 @@ mod tests {
     #[test]
     fn a_modded_login_profile_keeps_the_profiles_wire_limits() {
         let property = |name: &str, value: &str, signature: Option<&str>| {
-            mod_api::ProfileProperty::new(name.into(), value.into(), signature.map(str::to_owned))
+            myriade_types::ProfileProperty::new(name.into(), value.into(), signature.map(str::to_owned))
         };
         assert_eq!(
             login_profile_properties(vec![property("textures", "e30=", Some("s"))]),
@@ -2820,7 +2822,9 @@ mod tests {
     /// name; a list past the profile limits falls back to the login's own properties.
     #[test]
     fn a_modded_login_profile_reaches_the_login_success() {
-        use mod_api::{Hooks, ModEntry, ProfileProperty};
+        use mod_api::Hooks;
+        use mod_api::ModEntry;
+        use myriade_types::ProfileProperty;
 
         // The library's test adapter installs process-wide, once; it must dispatch this hook.
         crate::native_level_hooks::test_hooks::install();

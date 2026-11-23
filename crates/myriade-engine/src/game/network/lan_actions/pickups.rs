@@ -29,11 +29,11 @@ impl Game<'_> {
             // `item_picked_up` is asked before the take: a refusal leaves the stack where it lay.
             let refused = self
                 .as_guest(conn, |g| {
-                    let mut can = mod_api::TriState::Default;
+                    let mut can = myriade_types::TriState::Default;
                     if let Some(handle) = g.native_item_handle(item) {
                         g.native_item_picked_up(uuid, handle, &mut can);
                     }
-                    can == mod_api::TriState::False
+                    can == myriade_types::TriState::False
                 })
                 .unwrap_or(false);
             if refused {

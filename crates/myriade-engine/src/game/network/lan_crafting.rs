@@ -807,7 +807,7 @@ impl Game<'_> {
         recipe: &str,
         max: bool,
         dry_run: bool,
-    ) -> Option<mod_api::RecipeTransferResult> {
+    ) -> Option<myriade_types::RecipeTransferResult> {
         if !false {
             return None;
         }
@@ -2328,10 +2328,10 @@ mod empty_ingredient_placement_tests {
                         assert!(host.recipe_ingredient("[]").unwrap().is_none());
                         let mut writer = Writer::default();
                         empty.put(&mut writer);
-                        let decoded: mod_api::Ingredient =
+                        let decoded: myriade_types::Ingredient =
                             Reader::decode(&writer.into_bytes()).unwrap();
                         assert_eq!(decoded, empty);
-                        let stone = mod_api::ItemStack::of(
+                        let stone = myriade_types::ItemStack::of(
                             mod_api::__private::item_key("minecraft:stone").unwrap(),
                         );
                         assert!(!decoded.test(host, &stone));

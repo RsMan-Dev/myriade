@@ -410,8 +410,8 @@ impl Game<'_> {
         }
         self.adv.tree = advancements;
         self.adv.reset_tree();
-        self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: true });
-        self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
+        self.announce_data_bound(myriade_types::TagsUpdateCause::ServerDataLoad { reload: true });
+        self.announce_data_maps_updated(myriade_types::DataMapsUpdateCause::ServerReload);
     }
 
     pub(in crate::game) fn join_world_rest(&mut self) -> Result<()> {
@@ -596,7 +596,8 @@ impl Game<'_> {
     }
     pub(super) fn resolve_block_paths(&self) {
         use myriade_engine::mobs::data::PartAnswers;
-        use mod_api::{HookId, PathComputationType};
+        use mod_api::HookId;
+        use myriade_types::PathComputationType;
         let data = self.res.mob_data();
         let pathfindable =
             Self::resolve_per_state(HookId::IsPathfindable, data.states.len(), |state| {

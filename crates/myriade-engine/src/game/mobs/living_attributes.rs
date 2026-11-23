@@ -303,7 +303,7 @@ mod tests {
     use crate::game::native_merchant_refs::tests::spawn_id;
     use myriade_engine::{entities::ArmorStand, items::ItemStack};
     use horizon_core::geometry::Vec3;
-    use mod_api::EquipmentSlot;
+    use myriade_types::EquipmentSlot;
 
     fn stack(item: &str) -> Option<ItemStack> {
         Some(ItemStack::new(item, 1))
@@ -767,7 +767,10 @@ mod tests {
             .collect()
     }
 
-    use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
+    use myriade_types::AttributeModifier;
+    use myriade_types::AttributeOperation;
+    use myriade_types::Identifier;
+    use myriade_types::ModifierLifetime;
 
     /// A mob's movement speed is kept where its gameplay reads it: a mod's
     /// permanent modifier is saved, a transient one is not, both count at once.
@@ -953,7 +956,7 @@ mod tests {
             event.modifiers.add(
                 id("minecraft:knockback_resistance"),
                 modifier("test:plated", 0.4, AttributeOperation::AddValue),
-                mod_api::EquipmentSlotGroup::Chest,
+                myriade_types::EquipmentSlotGroup::Chest,
             );
             event
                 .modifiers

@@ -46,7 +46,7 @@ impl Game<'_> {
             pos: hit.pos,
             face: hit.face,
             click: hit.point,
-            ability: mod_api::ToolAbility::ShovelDouse,
+            ability: myriade_types::ToolAbility::ShovelDouse,
             simulated: false,
         });
         let mut state = Some(unlit);

@@ -493,7 +493,7 @@ mod use_tests;
 // Player knockback (`LivingEntity.knockback` on the player), moved from the old mob module: it only concerns the host player.
 use myriade_engine::{health::{Hurting, Knock}, mobs::Who};
 use horizon_core::geometry::Vec3 as KnockVec3;
-use mod_api::KnockbackEntry;
+use myriade_types::KnockbackEntry;
 
 impl Game<'_> {
     /// `LivingEntity.knockback` on the player: pushed `power` away from the

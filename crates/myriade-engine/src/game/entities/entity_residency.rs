@@ -7,7 +7,7 @@ use myriade_engine::join_seq::{
         table::{Location, SourceEntity},
     },
 };
-use mod_api::DimensionKey;
+use myriade_types::DimensionKey;
 
 /// Assign a stored zero-id entity through its residency boundary exactly once.
 macro_rules! assign_resident_id {

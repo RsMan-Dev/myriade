@@ -1,6 +1,7 @@
 //! The game's side of the `services` area (`horizon-mod-api/src/host/services.rs`).
 use crate::game::{Game, api_values::TryIntoEngine};
-use mod_api::{prelude::*, *};
+use mod_api::prelude::*;
+use mod_api::*;
 
 impl Commands for Game<'_> {
     fn refresh_commands(&mut self) {
@@ -10,7 +11,7 @@ impl Commands for Game<'_> {
         );
         self.native_refresh_commands()
     }
-    fn feedback(&mut self, line: Text) -> Result<(), mod_api::text::TextFormError> {
+    fn feedback(&mut self, line: Text) -> Result<(), myriade_types::TextFormError> {
         mod_api::__private::check_access("feedback", mod_api::__private::LoadAccess::WorldOnly);
         self.native_feedback(line.try_into_engine(&())?);
         Ok(())
@@ -19,7 +20,7 @@ impl Commands for Game<'_> {
         mod_api::__private::check_access("run_command", mod_api::__private::LoadAccess::WorldOnly);
         self.native_run_command(line)
     }
-    fn run_command_with_output(&mut self, line: &str) -> mod_api::CommandResult {
+    fn run_command_with_output(&mut self, line: &str) -> myriade_types::CommandResult {
         mod_api::__private::check_access(
             "run_command_with_output",
             mod_api::__private::LoadAccess::WorldOnly,
@@ -38,7 +39,7 @@ impl Messages for Game<'_> {
         mod_api::__private::check_access("text_allowed", mod_api::__private::LoadAccess::WorldOnly);
         self.native_text_allowed(text)
     }
-    fn broadcast(&self, line: Text) -> Result<(), mod_api::text::TextFormError> {
+    fn broadcast(&self, line: Text) -> Result<(), myriade_types::TextFormError> {
         mod_api::__private::check_access("broadcast", mod_api::__private::LoadAccess::WorldOnly);
         self.native_broadcast(line.try_into_engine(&())?);
         Ok(())

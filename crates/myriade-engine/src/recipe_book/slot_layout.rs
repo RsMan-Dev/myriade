@@ -5,7 +5,9 @@
 #[cfg(test)]
 #[path = "slot_layout_tests.rs"]
 mod tests;
-use mod_api::{RecipeBookDisplay, RecipeBookLayout as SlotLayout, RecipeSlotDisplay};
+use myriade_types::RecipeBookDisplay;
+use myriade_types::RecipeBookLayout as SlotLayout;
+use myriade_types::RecipeSlotDisplay;
 
 /// A layout frozen after validating against a menu's container slot count.
 #[derive(Clone, Debug)]

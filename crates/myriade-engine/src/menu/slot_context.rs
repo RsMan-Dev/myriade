@@ -4,7 +4,8 @@
 use super::{
     CONTAINER_MAX, Env, GRID, ItemStack, MAIN, Menu, PLAYER, RESULT, SlotContext, SlotRules,
 };
-use mod_api::{MenuContainer, MenuSlotContext};
+use myriade_types::MenuContainer;
+use myriade_types::MenuSlotContext;
 use std::cell::OnceCell;
 
 /// The parts' copy of a menu's slots (`MenuSlotContext`) for one click plan: empty until the

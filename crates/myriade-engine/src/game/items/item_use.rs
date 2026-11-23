@@ -7,7 +7,7 @@
 //! `native_on_use_tick`, `native_living_entity_use_item_stop`, `native_release_using`).
 use super::{Game, shield::OFFHAND_SLOT};
 use myriade_engine::{items::{ItemInfo, ItemStack}, mobs::spear_use};
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use horizon_core::use_animation::UseAnimation;
 
 /// Resolve USE_EFFECTS through the stack's component patch.

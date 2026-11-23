@@ -3175,7 +3175,9 @@ mod tests {
 
     #[test]
     fn a_player_handle_keeps_its_identity_when_respawn_resets_the_body() {
-        use mod_api::{__private::game::player_ref, EntityRef, WorldEpoch};
+        use mod_api::__private::game::player_ref;
+        use mod_api::EntityRef;
+        use myriade_types::WorldEpoch;
         let mut guest = guest_at([0.5, 64.0, 0.5]);
         guest.death_time = 20;
         guest.death_canceled = true;

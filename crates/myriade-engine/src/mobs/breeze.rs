@@ -11,7 +11,7 @@ use horizon_core::{
     jmath,
     random::RandomSource,
 };
-use mod_api::Pose;
+use myriade_types::Pose;
 use std::collections::HashMap;
 
 // `variant3` is the pose, `variant` the pose the animations last saw,

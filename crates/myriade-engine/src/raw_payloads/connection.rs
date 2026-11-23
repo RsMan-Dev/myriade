@@ -4,7 +4,8 @@ pub(super) use payload_queue::PayloadTurn;
 use super::{Local, Peer, Side};
 use horizon_mod_runtime::byte_channel;
 use horizon_protocol::payload_negotiation::{Entry, Phase};
-use mod_api::{PayloadSendError, PlayerRef};
+use mod_api::PayloadSendError;
+use mod_api::PlayerRef;
 use std::sync::{
     Arc, Condvar, Mutex,
     atomic::{AtomicBool, Ordering},

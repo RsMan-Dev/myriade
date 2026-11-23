@@ -96,7 +96,7 @@ pub enum Frame {
     },
     Start {
         identity: CatalogIdentity,
-        layout: mod_api::RecipeBookLayout,
+        layout: myriade_types::RecipeBookLayout,
         storage: super::menu_layout::MenuLayoutMetadata,
         total: u32,
     },
@@ -132,7 +132,7 @@ pub fn schema() -> u64 {
     *VALUE.get_or_init(|| {
         let hash = mod_api::wire::layout_mix(
             Frame::layout(&mut Vec::new()),
-            Vec::<mod_api::RecipeBookCategory>::layout(&mut Vec::new()),
+            Vec::<myriade_types::RecipeBookCategory>::layout(&mut Vec::new()),
         );
         let hash = mod_api::wire::layout_mix(hash, CHUNK_BYTES as u64);
         let hash = mod_api::wire::layout_mix(hash, MAX_CATALOG_BYTES as u64);
@@ -154,13 +154,13 @@ struct PendingCatalog {
 }
 struct Incoming {
     identity: CatalogIdentity,
-    layout: mod_api::RecipeBookLayout,
+    layout: myriade_types::RecipeBookLayout,
     total: usize,
     bytes: Vec<u8>,
 }
 pub struct CatalogBytes {
     pub identity: CatalogIdentity,
-    pub layout: mod_api::RecipeBookLayout,
+    pub layout: myriade_types::RecipeBookLayout,
     pub bytes: Vec<u8>,
 }
 #[derive(Default)]
@@ -259,7 +259,7 @@ impl Client {
     pub fn start(
         &mut self,
         identity: CatalogIdentity,
-        layout: mod_api::RecipeBookLayout,
+        layout: myriade_types::RecipeBookLayout,
         total: u32,
     ) -> Result<(), Refusal> {
         let pending = self.pending.as_mut().ok_or(Refusal::Stale)?;

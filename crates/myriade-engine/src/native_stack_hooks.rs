@@ -1,7 +1,9 @@
 //! Engine-stack callbacks installed by the game at its API boundary.
 use horizon_items::items::ItemStack;
 use horizon_world::native_load_context::LoopContext;
-use mod_api::{Identifier, ItemAttributeModifiers, ItemEnchantments};
+use myriade_types::Identifier;
+use myriade_types::ItemAttributeModifiers;
+use myriade_types::ItemEnchantments;
 use std::sync::OnceLock;
 
 /// Stack-bearing hooks whose API snapshots are made by the game.

@@ -3387,7 +3387,7 @@ pub(crate) mod tests {
             event: &mut mod_api::RecipePropertySetsEvent<'_>,
         ) {
             for set in ["furnace_input", "brewing_reagent", "smithing_addition"] {
-                event.additions.push(mod_api::RecipePropertyAddition::new(
+                event.additions.push(myriade_types::RecipePropertyAddition::new(
                     set,
                     vec!["minecraft:apple".to_owned()],
                 ));
@@ -4372,7 +4372,7 @@ pub(crate) mod tests {
             ("minecraft:block.stone.step".to_owned(), 1.0),
             ("rules_mod:block.rules.step".to_owned(), 2.0),
         );
-        use mod_api::BlockSoundCause::{Place, Step};
+        use myriade_types::BlockSoundCause::{Place, Step};
         assert_eq!(step(&before, "minecraft:player", Step), own);
         assert_eq!(step(&after, "minecraft:player", Step), answered);
         assert_eq!(step(&after, "minecraft:cow", Step), own);

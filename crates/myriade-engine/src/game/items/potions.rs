@@ -24,7 +24,11 @@ use horizon_core::{
     geometry::{Aabb, Axis, Direction, Vec3},
     random::{EntityRandom, LegacyRandom, RandomSource},
 };
-use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
+use myriade_types::EffectApplicable;
+use myriade_types::EffectTickChange;
+use mod_api::EntityRef;
+use mod_api::LivingRef;
+use mod_api::PlayerFood;
 
 /// Per-cloud settings; natural lingering clouds keep their creation defaults.
 pub(super) struct CloudSettings {
@@ -936,7 +940,7 @@ impl Game<'_> {
         entity: Option<i32>,
         kind: &str,
         effect: &str,
-        key: Option<mod_api::EffectKey>,
+        key: Option<myriade_types::EffectKey>,
     ) -> bool {
         let mut answered = None;
         if let Some(living) = self.effect_living_ref(entity)
@@ -1048,7 +1052,7 @@ impl Game<'_> {
     /// Dispatch an already resolved effect's added notices, without a registry name lookup.
     pub(super) fn mod_effect_added_resolved(
         &mut self,
-        effect: mod_api::EffectKey,
+        effect: myriade_types::EffectKey,
         entity: Option<i32>,
         amplifier: i32,
         new: bool,
@@ -1069,7 +1073,7 @@ impl Game<'_> {
     /// may end it. Whether it stays.
     fn mod_effect_tick(
         &self,
-        effect: mod_api::EffectKey,
+        effect: myriade_types::EffectKey,
         entity: Option<i32>,
         tick_count: i32,
         amplifier: i32,
@@ -1694,7 +1698,8 @@ mod tests {
     use super::*;
     use myriade_engine::motion::PlayerMotion;
     fn effect_test_mod() {
-        use mod_api::{self, *};
+        use mod_api;
+        use mod_api::*;
         struct TestMod;
         #[mod_api::__subscriptions]
         impl Hooks for TestMod {

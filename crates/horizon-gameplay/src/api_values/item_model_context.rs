@@ -4,9 +4,12 @@ use super::TryIntoApi;
 use horizon_assets::item_model::{
     DisplayContext, GlobalPos as EngineGlobalPos, LevelState, OwnerState,
 };
-use mod_api::{
-    BlockPos, GlobalPos, Identifier, ItemDisplayContext, ItemModelLevel, ItemModelOwner,
-};
+use myriade_types::BlockPos;
+use myriade_types::GlobalPos;
+use myriade_types::Identifier;
+use myriade_types::ItemDisplayContext;
+use myriade_types::ItemModelLevel;
+use myriade_types::ItemModelOwner;
 
 impl TryIntoApi for DisplayContext {
     type Api = ItemDisplayContext;

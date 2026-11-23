@@ -456,12 +456,12 @@ impl Game<'_> {
                         [position.x, position.y, position.z],
                         state,
                         entity,
-                        mod_api::BlockSoundCause::Fall,
+                        myriade_types::BlockSoundCause::Fall,
                     );
                     self.send_level_sound(
                         // `Player.playSound` plays in the players' source.
                         LevelSound::new(&sound.fall, at, sound.volume * 0.5, sound.pitch * 0.75)
-                            .in_source(mod_api::SoundSource::Players),
+                            .in_source(myriade_types::SoundSource::Players),
                         Some(conn),
                     );
                 }

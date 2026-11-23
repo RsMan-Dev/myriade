@@ -4,10 +4,9 @@
 use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::Game;
 use myriade_engine::{items::ItemStack, mobs::Who};
-use mod_api::{
-    PlayerRef,
-    content::crash::{ModCall, enter_native_mod},
-};
+use mod_api::PlayerRef;
+use mod_api::content::crash::ModCall;
+use mod_api::content::crash::enter_native_mod;
 
 impl Game<'_> {
     /// `part_shearable` for the creature `id` of type `kind` on the ECS level: the parts are read
@@ -50,7 +49,7 @@ impl Game<'_> {
         part: usize,
         player: Option<PlayerRef>,
         shears: &ItemStack,
-    ) -> Vec<mod_api::ItemStack> {
+    ) -> Vec<myriade_types::ItemStack> {
         let parts = mod_api::__private::entity_parts();
         let (Some(attached), Some(entity), Ok(shears)) = (
             parts.entity_parts(kind).get(part),

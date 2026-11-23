@@ -9,12 +9,30 @@ use horizon_ecs_proto::{
     mod_goals::{self, ModEntry, ModGoalHost, NewBehaviour, NewGoal},
     targeting::Who,
 };
-use mod_api::{
-    Activity, Behavior, BehaviorCx, BehaviorCxBackend, BehaviorRefusal, BehaviorRegistrar, BehaviorRegistrarBackend, BrainMemory,
-    BrainWalkTarget, EntityRef, Goal, GoalCxBackend, GoalRegistrarBackend, Host, LegacyRandom, LivingRef, MemoryStatus, MobRef,
-    MoveToPathError, PathNode, RegisteredBehavior, WorldEpoch,
-    content::crash::{ModCall, enter_native_mod},
-};
+use mod_api::Activity;
+use mod_api::Behavior;
+use mod_api::BehaviorCx;
+use mod_api::BehaviorCxBackend;
+use mod_api::BehaviorRefusal;
+use mod_api::BehaviorRegistrar;
+use mod_api::BehaviorRegistrarBackend;
+use mod_api::BrainMemory;
+use mod_api::BrainWalkTarget;
+use mod_api::EntityRef;
+use mod_api::Goal;
+use mod_api::GoalCxBackend;
+use mod_api::GoalRegistrarBackend;
+use mod_api::Host;
+use myriade_types::LegacyRandom;
+use mod_api::LivingRef;
+use mod_api::MemoryStatus;
+use mod_api::MobRef;
+use myriade_types::MoveToPathError;
+use myriade_types::PathNode;
+use mod_api::RegisteredBehavior;
+use myriade_types::WorldEpoch;
+use mod_api::content::crash::ModCall;
+use mod_api::content::crash::enter_native_mod;
 
 /// The host of the mod goals of one step: `None` epoch (no native attempt) refuses every call; `game` answers the reads the step holds no data for.
 pub struct ModGoalsHost<'g> {

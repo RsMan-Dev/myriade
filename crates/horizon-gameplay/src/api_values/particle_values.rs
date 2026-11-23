@@ -1,7 +1,8 @@
 //! Particle keys cross the game boundary through the load-resolved provider table.
 use super::{TryIntoApi, TryIntoEngine};
 use myriade_engine::particles::{ParticleOptions as EngineOptions, ParticleType};
-use mod_api::{__private::ParticleKind, ParticleOptions as ApiOptions};
+use mod_api::__private::ParticleKind;
+use myriade_types::ParticleOptions as ApiOptions;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ParticleValueError {
@@ -24,8 +25,8 @@ fn finite(options: &ApiOptions) -> bool {
         && options.vibration.as_ref().is_none_or(|(source, at, _)| {
             at.iter().all(|v| v.is_finite())
                 && match source {
-                    mod_api::client::particles::PositionSource::Block(_) => true,
-                    mod_api::client::particles::PositionSource::Entity { y_offset, .. } => {
+                    myriade_types::PositionSource::Block(_) => true,
+                    myriade_types::PositionSource::Entity { y_offset, .. } => {
                         y_offset.is_finite()
                     }
                     _ => false,
@@ -132,7 +133,7 @@ impl TryIntoApi for EngineOptions {
         })
     }
 }
-impl TryIntoEngine<()> for mod_api::FireworkExplosion {
+impl TryIntoEngine<()> for myriade_types::FireworkExplosion {
     type Engine = horizon_items::firework::FireworkExplosion;
     type Error = std::convert::Infallible;
     fn try_into_engine(&self, context: &()) -> Result<Self::Engine, Self::Error> {

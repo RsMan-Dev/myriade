@@ -1,7 +1,9 @@
 //! Scalar-only damage snapshots at the subscribed combat boundary.
 use super::{TryIntoApi, TryIntoEngine};
 use horizon_world::living_damage as engine;
-use mod_api::{DamageContainer, DamageValues, Reduction};
+use myriade_types::DamageContainer;
+use myriade_types::DamageValues;
+use myriade_types::Reduction;
 impl TryIntoApi for engine::DamageContainer {
     type Api = DamageContainer;
     type Error = std::convert::Infallible;
@@ -25,12 +27,12 @@ impl TryIntoApi for engine::DamageContainer {
                         _ => unreachable!("unknown engine reduction"),
                     },
                     match c {
-                        engine::ReductionChange::Add(v) => mod_api::ReductionChange::Add(*v),
-                        engine::ReductionChange::Scale(v) => mod_api::ReductionChange::Scale(*v),
+                        engine::ReductionChange::Add(v) => myriade_types::ReductionChange::Add(*v),
+                        engine::ReductionChange::Scale(v) => myriade_types::ReductionChange::Scale(*v),
                         engine::ReductionChange::AtLeast(v) => {
-                            mod_api::ReductionChange::AtLeast(*v)
+                            myriade_types::ReductionChange::AtLeast(*v)
                         }
-                        engine::ReductionChange::AtMost(v) => mod_api::ReductionChange::AtMost(*v),
+                        engine::ReductionChange::AtMost(v) => myriade_types::ReductionChange::AtMost(*v),
                     },
                 )
             })
@@ -92,14 +94,14 @@ impl TryIntoEngine<()> for DamageContainer {
                             _ => unreachable!("unknown API reduction"),
                         },
                         match c {
-                            mod_api::ReductionChange::Add(v) => engine::ReductionChange::Add(*v),
-                            mod_api::ReductionChange::Scale(v) => {
+                            myriade_types::ReductionChange::Add(v) => engine::ReductionChange::Add(*v),
+                            myriade_types::ReductionChange::Scale(v) => {
                                 engine::ReductionChange::Scale(*v)
                             }
-                            mod_api::ReductionChange::AtLeast(v) => {
+                            myriade_types::ReductionChange::AtLeast(v) => {
                                 engine::ReductionChange::AtLeast(*v)
                             }
-                            mod_api::ReductionChange::AtMost(v) => {
+                            myriade_types::ReductionChange::AtMost(v) => {
                                 engine::ReductionChange::AtMost(*v)
                             }
                             _ => unreachable!("unknown API modifier"),
@@ -155,9 +157,9 @@ mod tests {
         let mut api = engine.try_into_api().unwrap();
         assert_eq!(
             api.reduction_modifiers().collect::<Vec<_>>(),
-            vec![(Reduction::Armor, mod_api::ReductionChange::Scale(0.5))]
+            vec![(Reduction::Armor, myriade_types::ReductionChange::Scale(0.5))]
         );
-        api.add_reduction_modifier(Reduction::Armor, mod_api::ReductionChange::Add(2.0));
+        api.add_reduction_modifier(Reduction::Armor, myriade_types::ReductionChange::Add(2.0));
         let adjusted = api.try_into_engine(&()).unwrap();
         assert_eq!(
             engine::DamageValues::from(&adjusted).reduction_modifiers,

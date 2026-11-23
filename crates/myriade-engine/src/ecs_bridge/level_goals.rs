@@ -10,7 +10,9 @@ use horizon_ecs_proto::behaviours::{
     try_find_water,
 };
 use myriade_engine_lib::mobs::MobWorld;
-use mod_api::{GoalSpec, MobFilter, MobGoalEntry};
+use mod_api::GoalSpec;
+use mod_api::MobFilter;
+use mod_api::MobGoalEntry;
 use std::{any::Any, collections::HashMap, sync::Mutex};
 
 /// The API id of each module a `GoalSpec` builds (and the species' own goals of those modules); another module reads under its name.

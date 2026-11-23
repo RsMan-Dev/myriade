@@ -4,7 +4,7 @@
 
 use myriade_engine::particles::{ParticleOptions, ParticleType};
 use horizon_core::nbt::{Compound, Tag};
-use mod_api::client::particles::PositionSource;
+use myriade_types::PositionSource;
 
 /// A number tag as a float.
 fn tag_f32(tag: &Tag) -> Option<f32> {

@@ -122,7 +122,7 @@ pub struct DamageLevel<'a> {
     client_side: bool,
     /// Which entry of `LivingEntity.knockback` a push in progress came through, for
     /// `living_knockback` ([`Self::through_short_knockback`]).
-    knock_entry: mod_api::KnockbackEntry,
+    knock_entry: myriade_types::KnockbackEntry,
 }
 impl<'a> DamageLevel<'a> {
     /// The level of `world`, whose blocks `registry` names.
@@ -155,7 +155,7 @@ impl<'a> DamageLevel<'a> {
             hooks,
             attack: &NO_ATTACK,
             client_side: false,
-            knock_entry: mod_api::KnockbackEntry::Full,
+            knock_entry: myriade_types::KnockbackEntry::Full,
         }
     }
     /// The level of `world`, with the random and attachments `lent` took out of it.
@@ -180,7 +180,7 @@ impl<'a> DamageLevel<'a> {
             hooks,
             attack: &NO_ATTACK,
             client_side: false,
-            knock_entry: mod_api::KnockbackEntry::Full,
+            knock_entry: myriade_types::KnockbackEntry::Full,
         }
     }
     /// The same level, for a shorter borrow.
@@ -227,13 +227,13 @@ impl<'a> DamageLevel<'a> {
     /// its listener the push came in as [`mod_api::KnockbackEntry::Short`]. A direct call of the
     /// full entry stays `Full`.
     pub fn through_short_knockback<R>(&mut self, push: impl FnOnce(&mut Self) -> R) -> R {
-        let before = std::mem::replace(&mut self.knock_entry, mod_api::KnockbackEntry::Short);
+        let before = std::mem::replace(&mut self.knock_entry, myriade_types::KnockbackEntry::Short);
         let out = push(self);
         self.knock_entry = before;
         out
     }
     /// Which entry of `LivingEntity.knockback` the push in progress came through.
-    pub fn knockback_entry(&self) -> mod_api::KnockbackEntry {
+    pub fn knockback_entry(&self) -> myriade_types::KnockbackEntry {
         self.knock_entry
     }
     /// The same level, on a client when `client_side`: a hook asked on both sides tells its

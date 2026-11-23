@@ -4,7 +4,8 @@ use crate::blocks::{BlockFacts, Sounds};
 use crate::mobs::{MobWorld};
 use horizon_core::position::BlockPos;
 use horizon_world::{native_load_context::LoopContext, registry::BlockStateId};
-use mod_api::{BlockSoundCause, BlockSoundType};
+use myriade_types::BlockSoundCause;
+use myriade_types::BlockSoundType;
 use std::sync::Arc;
 
 /// The sound type of a block state (`IBlockExtension.getSoundType`) is being read to play the

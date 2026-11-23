@@ -1,7 +1,7 @@
 //! Resource-backed resolution of mod recipe displays.
 use crate::game::{Game, api_values::TryIntoEngine};
 use myriade_engine::items::ItemStack;
-use mod_api::RecipeSlotDisplay as Slot;
+use myriade_types::RecipeSlotDisplay as Slot;
 
 pub(super) struct Resolver<'a, 'w> {
     game: &'a Game<'w>,

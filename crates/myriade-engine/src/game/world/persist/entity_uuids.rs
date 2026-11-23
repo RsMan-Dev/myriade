@@ -1,6 +1,6 @@
 //! Saved UUIDs by runtime ID. The level publishes changes to the residency index.
 use myriade_engine::join_seq::residency::Journal;
-use mod_api::DimensionKey;
+use myriade_types::DimensionKey;
 use std::{collections::HashMap, ops::Deref};
 
 #[derive(Default)]

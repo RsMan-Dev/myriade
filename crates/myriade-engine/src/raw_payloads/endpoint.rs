@@ -5,7 +5,11 @@ use crate::{
     net::{Event, PreparedPayload, queued_writer::QueuedWriter},
 };
 use horizon_protocol::{connection::Framing, frame, payload_negotiation::Phase};
-use mod_api::{PayloadBytes, PayloadFrameStage, PayloadId, PayloadSendError, Text};
+use mod_api::PayloadBytes;
+use mod_api::PayloadFrameStage;
+use mod_api::PayloadId;
+use mod_api::PayloadSendError;
+use myriade_types::Text;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},

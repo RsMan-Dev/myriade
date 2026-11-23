@@ -11,7 +11,8 @@
 
 use super::After as Effect;
 use myriade_engine::items::ItemStack;
-use mod_api::{EntityRef, WorldEpoch};
+use mod_api::EntityRef;
+use myriade_types::WorldEpoch;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[path = "menu_owner.rs"]

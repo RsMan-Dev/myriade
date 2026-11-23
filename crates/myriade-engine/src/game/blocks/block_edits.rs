@@ -13,9 +13,9 @@ use myriade_engine::{
 use horizon_world::{
     heightmap::HeightmapType, registry::BlockStateId, worldgen::terrain::TerrainBlockStates,
 };
-use mod_api::BlockEdit;
-use mod_api::ColumnBlocks;
-use mod_api::Heightmap;
+use myriade_types::BlockEdit;
+use myriade_types::ColumnBlocks;
+use myriade_types::Heightmap;
 use std::sync::Arc;
 
 /// A change `World::edit_runs` reported: position, previous and new state.
@@ -422,15 +422,16 @@ fn replace_block_entities(
 mod tests {
     use super::*;
     use myriade_engine::chunk::Chunk;
-    use mod_api::BlockRun;
+    use myriade_types::BlockRun;
 
     #[test]
     #[ignore = "daily"]
     fn typed_bulk_late_refusals_preserve_the_world_and_emit_no_changes() {
         use crate::game::api_values::TryIntoApi;
-        use mod_api::{
-            StateConstraint, StatePredicate, StatePredicateRecord, StatePredicateTarget,
-        };
+        use myriade_types::StateConstraint;
+        use myriade_types::StatePredicate;
+        use myriade_types::StatePredicateRecord;
+        use myriade_types::StatePredicateTarget;
         crate::game::native_entity_refs::tests::with_game(|game| {
             // The shared fixture is unticked; expose the dedicated-server bulk surface.            let dimension = game.dim.id().to_owned();
             game.world
@@ -473,7 +474,7 @@ mod tests {
 
             edit.filters.pop();
             edit.palette
-                .push(mod_api::BlockStateRecord::new(api_stone.block(), u16::MAX).into());
+                .push(myriade_types::BlockStateRecord::new(api_stone.block(), u16::MAX).into());
             let refused = game.edit_blocks(&dimension, &edit);
             assert_eq!(
                 game.world.block(0, 64, 0),

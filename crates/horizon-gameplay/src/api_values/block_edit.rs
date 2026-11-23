@@ -2,7 +2,7 @@
 use super::{TryIntoApi, TryIntoEngine, block_metadata_table};
 use horizon_command::args::BlockInput;
 use horizon_world::registry::BlockStateId;
-use mod_api::BlockMetadata;
+use myriade_types::BlockMetadata;
 
 pub struct PreparedBlockEdit {
     pub palette: Vec<u32>,
@@ -10,7 +10,7 @@ pub struct PreparedBlockEdit {
 }
 
 /// Resolve every palette state and compile every filter before a world mutation is possible.
-pub fn prepare(edit: &mod_api::BlockEdit) -> Result<PreparedBlockEdit, String> {
+pub fn prepare(edit: &myriade_types::BlockEdit) -> Result<PreparedBlockEdit, String> {
     if edit.filters.len() > 65_536 {
         return Err("more than 65536 filters".into());
     }
@@ -37,20 +37,20 @@ pub fn prepare(edit: &mod_api::BlockEdit) -> Result<PreparedBlockEdit, String> {
 }
 
 /// Compile into the existing command matcher; do not create a second predicate algorithm.
-pub fn compile_filter(predicate: &mod_api::StatePredicate) -> Result<BlockInput, String> {
+pub fn compile_filter(predicate: &myriade_types::StatePredicate) -> Result<BlockInput, String> {
     let metadata = block_metadata_table().map_err(|error| format!("block metadata: {error:?}"))?;
     mod_api::__private::validate_state_predicate(metadata, predicate)
         .map_err(|error| format!("predicate: {error:?}"))?;
-    let record = mod_api::StatePredicateRecord::from(predicate);
+    let record = myriade_types::StatePredicateRecord::from(predicate);
     let (id, tag) = match record.target {
-        mod_api::StatePredicateTarget::Block(key) => (
+        myriade_types::StatePredicateTarget::Block(key) => (
             metadata
                 .name(key)
                 .map_err(|error| format!("block: {error:?}"))?
                 .to_owned(),
             false,
         ),
-        mod_api::StatePredicateTarget::Tag(key) => (
+        myriade_types::StatePredicateTarget::Tag(key) => (
             mod_api::__private::with_tag_name(key, |name| name.map(str::to_owned))
                 .ok_or("block tag is unavailable")?,
             true,
@@ -69,7 +69,7 @@ pub fn compile_filter(predicate: &mod_api::StatePredicate) -> Result<BlockInput,
 }
 
 /// Convert only the distinct numeric palette entries, preserving complete property states.
-pub fn column_palette(palette: Vec<BlockStateId>) -> Result<Vec<mod_api::BlockState>, String> {
+pub fn column_palette(palette: Vec<BlockStateId>) -> Result<Vec<myriade_types::BlockState>, String> {
     palette
         .try_into_api()
         .map_err(|error| format!("column palette: {error:?}"))

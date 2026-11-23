@@ -1,7 +1,9 @@
 //! Checked landing writes. Vector conversion stages the entire batch before dispatch commits it.
 use super::{TryIntoApi, TryIntoEngine};
 use horizon_world::{level::LandingWrite as EngineWrite, registry::BlockStateId};
-use mod_api::{BlockState, BlockStateError, LandingWrite};
+use myriade_types::BlockState;
+use myriade_types::BlockStateError;
+use myriade_types::LandingWrite;
 
 impl TryIntoApi for EngineWrite
 where

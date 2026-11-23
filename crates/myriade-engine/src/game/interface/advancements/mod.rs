@@ -11,7 +11,7 @@ use myriade_engine::{
 use horizon_core::geometry::Vec3;
 use horizon_core::random::RandomSource;
 use horizon_protocol::packets::play::Clientbound as C;
-use mod_api::ProgressType;
+use myriade_types::ProgressType;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,13 +21,13 @@ use std::{
 
 
 /// Capture the owning progress without changing its dates or requirement semantics.
-fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> mod_api::AdvancementProgress {
+fn progress_snapshot(a: &adv::Advancement, progress: &Progress) -> myriade_types::AdvancementProgress {
     let obtained = progress.criteria.get(&a.id);
-    mod_api::AdvancementProgress::new(
+    myriade_types::AdvancementProgress::new(
         a.criteria
             .iter()
             .map(|criterion| {
-                mod_api::CriterionProgress::new(
+                myriade_types::CriterionProgress::new(
                     criterion.name.clone(),
                     obtained
                         .and_then(|criteria| criteria.get(&criterion.name))

@@ -20,7 +20,7 @@ use horizon_core::{
 use horizon_world::{
     collision_context::CollisionContext, level::data::state_flags, registry::BlockStateId,
 };
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 
 /// `ServerPlayer.RespawnConfig`: a respawn point other than the world spawn
 /// that the game resolves through its block (a respawn anchor).

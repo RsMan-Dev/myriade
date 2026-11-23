@@ -808,7 +808,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn anvil_subscriber_probe_and_answer_cache() {
-        use mod_api::{self, AnvilUpdateEvent, Flow, HookId, Hooks, HostSide, ModEntry};
+        use mod_api;
+        use mod_api::AnvilUpdateEvent;
+        use mod_api::Flow;
+        use mod_api::HookId;
+        use mod_api::Hooks;
+        use mod_api::HostSide;
+        use mod_api::ModEntry;
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},

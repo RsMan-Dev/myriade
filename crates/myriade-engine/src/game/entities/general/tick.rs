@@ -32,7 +32,7 @@ impl Game<'_> {
     /// their counters and listener edits — and nothing leaves the row. The
     /// next entity ticks as if nothing happened; a panicking subscriber is
     /// reported, not disabled.
-    fn dispatch_general_tick(&mut self, kind: &str, epoch: mod_api::WorldEpoch, id: u32) {
+    fn dispatch_general_tick(&mut self, kind: &str, epoch: myriade_types::WorldEpoch, id: u32) {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             mod_api::run_transaction(self, |game, _| {
                 let before = game.wasm_dispatch_failures.get();

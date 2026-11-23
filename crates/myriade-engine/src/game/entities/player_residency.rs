@@ -31,7 +31,7 @@ impl Game<'_> {
     /// even through a real loan. Public I access applies its policy beforehand.
     pub(super) fn known_resident_entity_uuid_at(
         &self,
-        dimension: mod_api::DimensionKey,
+        dimension: myriade_types::DimensionKey,
         id: u32,
     ) -> Option<[i32; 4]> {
         let mut table = self.resident_entities.table.borrow_mut();

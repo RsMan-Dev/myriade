@@ -14,7 +14,7 @@ use myriade_engine::{
     mobs::{Species, equip::equippable, sulfur_cube},
     projectiles::{Projectile, ProjectileKind},
 };
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 // Its old home, for mixin code that names it here.
 use horizon_core::{
     geometry::{Aabb, Direction, Vec3},
@@ -112,7 +112,7 @@ fn shrink(mut stack: ItemStack) -> Option<ItemStack> {
 pub(super) type Dispensed = (Option<ItemStack>, i32);
 
 /// None keeps vanilla's behaviour; an explicit empty remainder consumes the stack.
-fn mod_dispensed(answer: Option<mod_api::Dispensed>, items: &Items) -> Option<Dispensed> {
+fn mod_dispensed(answer: Option<myriade_types::Dispensed>, items: &Items) -> Option<Dispensed> {
     use super::api_values::TryIntoEngine;
     answer.and_then(|(stack, event)| Some((stack.try_into_engine(items).ok()?, event)))
 }
@@ -1760,7 +1760,7 @@ impl Game<'_> {
                 preview.pos,
                 preview.state,
                 against,
-                mod_api::Placement::Single,
+                myriade_types::Placement::Single,
                 &mut canceled,
             );
             if canceled {
@@ -2239,7 +2239,7 @@ mod tests {
             &self,
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::DispenseMethodEvent<'_>,
-        ) -> Option<mod_api::Dispensed> {
+        ) -> Option<myriade_types::Dispensed> {
             let state = crate::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
                 .unwrap()
                 .0;
@@ -2260,7 +2260,7 @@ mod tests {
             &self,
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::DispenseItemEvent<'_>,
-        ) -> Option<mod_api::Dispensed> {
+        ) -> Option<myriade_types::Dispensed> {
             self.0.record("item", event.pos, 0);
             Some((None, CLICK))
         }
@@ -2571,7 +2571,7 @@ mod tests {
             let mut game = server_with_guest(&mut resources);
             // Open the world and admit the guest as a join does, so its handle resolves.
             game.native_lifecycle
-                .begin_open(mod_api::Authority::DedicatedServer);
+                .begin_open(myriade_types::Authority::DedicatedServer);
             game.reset_entity_residency();
             let guest = game.lan.as_ref().unwrap().hub.guest(2).unwrap().entity_id as u32;
             assert_eq!(

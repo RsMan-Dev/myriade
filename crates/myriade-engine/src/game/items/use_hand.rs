@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 
 impl Game<'_> {
     /// `Level.playSound(player, ...)`: a guest's client already predicted the
@@ -33,8 +33,8 @@ impl Game<'_> {
         // its PASS goes on to Item.use, which a guest's UseItem asks for.
         // A slow tick's line names the phase of a use that took it (#8669): the
         // mods' hook, the block's own use, then the item's.
-        use mod_api::InteractionResult as Answer;
-        use mod_api::TriState;
+        use myriade_types::InteractionResult as Answer;
+        use myriade_types::TriState;
         let on_block = matches!(self.guest_use, Some(GuestUse::OnBlock(_)));
         let mut block_hit = block_hit;
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
@@ -85,7 +85,7 @@ impl Game<'_> {
         {
             let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
             let mut block_answer =
-                self.use_item_on_block(hit, self.hand, held.as_ref(), mod_api::UsePhase::Block);
+                self.use_item_on_block(hit, self.hand, held.as_ref(), myriade_types::UsePhase::Block);
             if block_answer.is_none()
                 && false
                 && api_values::block_state::block_listens(mod_api::HookId::UseItemOn, state)
@@ -378,7 +378,7 @@ impl Game<'_> {
                 hit,
                 self.hand,
                 stack.as_ref(),
-                mod_api::UsePhase::ItemAfterBlock,
+                myriade_types::UsePhase::ItemAfterBlock,
             )
         {
             if answer.consumes_action() {
@@ -790,7 +790,7 @@ impl Game<'_> {
                 let level = self.level(self.dim.id())?;
                 let source = match mob {
                     Some(living) => self.entity_sound_source(living.entity())?,
-                    None => mod_api::SoundSource::Players,
+                    None => myriade_types::SoundSource::Players,
                 };
                 self.native_queue_sound(level, sound, at, source, 1.0, 1.0, None)?;
                 true

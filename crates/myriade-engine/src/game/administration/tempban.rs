@@ -21,7 +21,7 @@ pub(super) const TEMPBAN_COMMANDS: [&str; 2] = ["tempban", "tempbanlist"];
 /// Horizon's moderation commands in operators' command trees (`command_tree`'s usages, for operators of
 /// `/ban`'s level): the mute commands when the server filters chat (`chat_filter`), `/tempban` and
 /// `/tempbanlist` on a dedicated server (`dedicated`), where the game runs them.
-pub(super) fn moderation_commands(chat_filter: bool, dedicated: bool) -> Vec<mod_api::Command> {
+pub(super) fn moderation_commands(chat_filter: bool, dedicated: bool) -> Vec<myriade_types::Command> {
     let mut usages = Vec::new();
     if chat_filter {
         usages.extend(super::chat_filter::MUTE_USAGES);
@@ -34,7 +34,7 @@ pub(super) fn moderation_commands(chat_filter: bool, dedicated: bool) -> Vec<mod
     }
     usages
         .into_iter()
-        .map(|usage| mod_api::Command::op(usage, TEMPBAN_LEVEL))
+        .map(|usage| myriade_types::Command::op(usage, TEMPBAN_LEVEL))
         .collect()
 }
 

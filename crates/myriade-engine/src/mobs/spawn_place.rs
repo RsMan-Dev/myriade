@@ -9,7 +9,9 @@ use horizon_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
-use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
+use myriade_types::SpawnCheck;
+use myriade_types::SpawnFlags;
+use myriade_types::SpawnLimits;
 use serde_json::Value;
 use std::{
     borrow::{Borrow, Cow},

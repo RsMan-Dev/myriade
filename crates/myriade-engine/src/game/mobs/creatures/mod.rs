@@ -36,7 +36,7 @@ use horizon_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource, XoroshiroRandom},
 };
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 use std::sync::Arc;
 
 pub(super) type SpawnReason = myriade_engine::mobs::spawn_rules::Reason;
@@ -500,7 +500,7 @@ impl Game<'_> {
             && let Ok(body_snapshot) = body.try_into_api()
         {
             let kind = self.ecs.kind(id).unwrap_or_default().to_owned();
-            let mut entries = vec![mod_api::ArmorHurt {
+            let mut entries = vec![myriade_types::ArmorHurt {
                 slot: EquipmentSlot::Body,
                 stack: body_snapshot,
                 damage: super::durability_damage(damage),
@@ -623,7 +623,7 @@ impl Game<'_> {
         kind: &str,
         at: [f64; 3],
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<myriade_types::SpawnSource>,
         sheet: &mut SpawnSheet,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let difficulty = self.local_difficulty(at);
@@ -642,7 +642,7 @@ impl Game<'_> {
         at: [f64; 3],
         sheet: Option<&mut SpawnSheet>,
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<myriade_types::SpawnSource>,
         vanilla: u32,
     ) -> Option<u32> {
         if !mod_api::__private::has_entity_parts() {
@@ -675,7 +675,7 @@ impl Game<'_> {
         kind: &str,
         at: [f64; 3],
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<myriade_types::SpawnSource>,
         sheet: Option<&mut SpawnSheet>,
     ) -> (Finalized, spawning::LocalDifficulty) {
         let difficulty = self.local_difficulty(at);
@@ -692,11 +692,11 @@ impl Game<'_> {
         kind: &str,
         at: [f64; 3],
         reason: SpawnReason,
-        spawner: Option<mod_api::SpawnSource>,
+        spawner: Option<myriade_types::SpawnSource>,
         difficulty: spawning::LocalDifficulty,
         mut sheet: Option<&mut SpawnSheet>,
     ) -> (Finalized, spawning::LocalDifficulty) {
-        let mut heard = mod_api::Difficulty::from(difficulty);
+        let mut heard = myriade_types::Difficulty::from(difficulty);
         let (mut spawn_cancelled, mut skip) = (false, false);
         let given = sheet
             .as_ref()
@@ -3121,7 +3121,8 @@ mod mob_subscription_tests {
     #[test]
     #[ignore = "daily"]
     fn empty_mod_never_defers_taming_or_block_destruction() {
-        use mod_api::{self, Hooks};
+        use mod_api;
+        use mod_api::Hooks;
         struct Empty;
         #[mod_api::__subscriptions]
         impl Hooks for Empty {}
@@ -3305,7 +3306,11 @@ impl myriade_engine::arrows::OwnerLookup for Game<'_> {
 #[cfg(test)]
 mod conversion_subscriber_tests {
     use super::*;
-    use mod_api::{self, Hooks, LivingConversionPostEvent, ModEntry, ServerHost};
+    use mod_api;
+    use mod_api::Hooks;
+    use mod_api::LivingConversionPostEvent;
+    use mod_api::ModEntry;
+    use mod_api::ServerHost;
     use std::sync::Mutex;
 
     #[test]

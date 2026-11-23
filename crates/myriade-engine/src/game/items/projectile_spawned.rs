@@ -255,7 +255,7 @@ impl Game<'_> {
                 let volume = volume.sample(&mut random);
                 let pitch = pitch.sample(&mut random);
                 self.audio.play_on(
-                    mod_api::SoundSource::Neutral as usize,
+                    myriade_types::SoundSource::Neutral as usize,
                     sound,
                     Some([at.x, at.y, at.z]),
                     volume,

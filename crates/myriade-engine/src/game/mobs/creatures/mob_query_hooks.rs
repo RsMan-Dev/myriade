@@ -4,7 +4,7 @@ impl myriade_engine::mobs::MobHooks for Game<'_> {
         &self,
         state: horizon_world::registry::BlockStateId,
         pos: [i32; 3],
-    ) -> Option<mod_api::PathType> {
+    ) -> Option<myriade_types::PathType> {
         if !crate::game::api_values::block_state::block_listens(
             mod_api::HookId::BlockPathType,
             state,
@@ -28,9 +28,9 @@ impl myriade_engine::mobs::MobHooks for Game<'_> {
         &self,
         state: horizon_world::registry::BlockStateId,
         pos: [i32; 3],
-        path_type: mod_api::PathType,
-        default: Option<mod_api::PathType>,
-    ) -> Option<mod_api::PathType> {
+        path_type: myriade_types::PathType,
+        default: Option<myriade_types::PathType>,
+    ) -> Option<myriade_types::PathType> {
         if !crate::game::api_values::block_state::block_listens(
             mod_api::HookId::AdjacentBlockPathType,
             state,

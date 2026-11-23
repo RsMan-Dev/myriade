@@ -16,7 +16,7 @@ impl GameRuleHost for Game<'_> {
             self.lan_acting_entity,
             name.as_deref(),
         ) {
-            (Some(uuid), Some(entity_id), Some(name)) => Some(mod_api::GameRuleActor {
+            (Some(uuid), Some(entity_id), Some(name)) => Some(myriade_types::GameRuleActor {
                 uuid,
                 entity_id: entity_id as i32,
                 name,

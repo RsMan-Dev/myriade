@@ -29,7 +29,9 @@
 use super::{BlockEntity, BlockStateId, Game, machines::HopperState};
 use myriade_engine::{items::ItemStack, world::BlockEntityExtras};
 use horizon_mod_runtime::attachments::{Attachments, Holder};
-use mod_api::{Transaction, TransactionLifecycle, TransactionSeal};
+use mod_api::Transaction;
+use mod_api::TransactionLifecycle;
+use mod_api::TransactionSeal;
 use std::collections::HashMap;
 
 #[path = "transactions/decision.rs"]
@@ -42,7 +44,7 @@ mod scratch;
 
 type Pos = (i32, i32, i32);
 type ComposterRandoms =
-    HashMap<(mod_api::DimensionKey, (i32, i32)), HashMap<Pos, horizon_core::random::LegacyRandom>>;
+    HashMap<(myriade_types::DimensionKey, (i32, i32)), HashMap<Pos, horizon_core::random::LegacyRandom>>;
 
 /// The open transactions, innermost last, and which close is running, if any: what
 /// `transaction_lifecycle` reads.
@@ -53,7 +55,7 @@ pub(super) struct OpenTransactions {
     /// The root commits telling their joins and leaves, outermost first: a listener's command in
     /// another level can commit a transaction there while this level's commit is told.
     committing: Vec<entities::Committing>,
-    composter_epoch: Option<mod_api::WorldEpoch>,
+    composter_epoch: Option<myriade_types::WorldEpoch>,
     /// Each composter port owns its transactional random stream, independently of Level.random.
     composter_randoms: ComposterRandoms,
     #[cfg(test)]
@@ -604,7 +606,7 @@ impl Game<'_> {
     /// Retire only an unloading chunk's cached owners and their pending savepoints.
     pub(super) fn forget_composter_chunk(
         &mut self,
-        dimension: mod_api::DimensionKey,
+        dimension: myriade_types::DimensionKey,
         chunk: [i32; 2],
     ) {
         let key = (dimension, (chunk[0], chunk[1]));
@@ -1262,9 +1264,11 @@ mod tests {
     use myriade_engine::{chunk::Chunk, items::ItemStack};
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
-    use mod_api::{
-        BlockSide, BlockUpdateFlags, ITEMS, ItemResource, Transaction,
-    };
+    use mod_api::BlockSide;
+    use myriade_types::BlockUpdateFlags;
+    use mod_api::ITEMS;
+    use mod_api::ItemResource;
+    use mod_api::Transaction;
     use std::{sync::Arc, time::Instant};
 
     #[test]
@@ -1272,9 +1276,13 @@ mod tests {
     fn cauldron_stat_listener_observes_committed_state_and_can_cancel() {
         use super::super::native_entity_refs::tests::run_fresh_cases;
         use crate::game::api_values::TryIntoApi;
-        use mod_api::{
-            Flow, Hooks, ItemSpawnEvent, ItemTossEvent, ModEntry, Mods, PlayerStatAwardEvent,
-        };
+        use mod_api::Flow;
+        use mod_api::Hooks;
+        use mod_api::ItemSpawnEvent;
+        use mod_api::ItemTossEvent;
+        use mod_api::ModEntry;
+        use mod_api::Mods;
+        use mod_api::PlayerStatAwardEvent;
         use std::sync::Mutex;
         if run_fresh_cases(
             "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
@@ -1284,8 +1292,8 @@ mod tests {
             return;
         }
         struct Listener {
-            seen: Arc<Mutex<Vec<(Option<mod_api::BlockState>, Option<String>)>>>,
-            drops: Arc<Mutex<Vec<(&'static str, Option<mod_api::BlockState>)>>>,
+            seen: Arc<Mutex<Vec<(Option<myriade_types::BlockState>, Option<String>)>>>,
+            drops: Arc<Mutex<Vec<(&'static str, Option<myriade_types::BlockState>)>>>,
         }
         #[mod_api::__subscriptions]
         impl Hooks for Listener {
@@ -1298,9 +1306,9 @@ mod tests {
                     return Flow::Continue;
                 }
                 let level = host.level("minecraft:overworld").unwrap();
-                let hand = mod_api::ItemPlace::PlayerHand {
+                let hand = myriade_types::ItemPlace::PlayerHand {
                     player: event.player,
-                    hand: mod_api::client::first_person::Hand::Main,
+                    hand: myriade_types::Hand::Main,
                 };
                 self.seen.lock().unwrap().push((
                     level.block_state(host, [2, 64, 2]),
@@ -1553,7 +1561,7 @@ mod tests {
             let menu = game.player_container_menu(player).unwrap();
             let stone = ItemStack::new("minecraft:stone", 4);
             *game.native_menu_storage(menu, 1).unwrap() = Some(stone.clone());
-            let place = mod_api::ItemPlace::MenuSlot { menu, slot: 1 };
+            let place = myriade_types::ItemPlace::MenuSlot { menu, slot: 1 };
             let resource = ItemResource::of(&stone.try_into_api().unwrap());
             let aborted: Result<(), ()> = game.transaction(|game, tx| {
                 assert_eq!(place.insert(game, tx, &resource, 2), 2);
@@ -1606,7 +1614,10 @@ mod mod_capability_tests {
     use myriade_engine::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
     use horizon_core::nbt::{Compound, Tag};
     use mod_api::ServerHost;
-    use mod_api::{BlockSide, HostTransaction, ResourceHandler, move_resources};
+    use mod_api::BlockSide;
+    use mod_api::HostTransaction;
+    use mod_api::ResourceHandler;
+    use mod_api::move_resources;
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
     use std::sync::Arc;
 
@@ -1695,7 +1706,8 @@ mod mod_capability_tests {
     fn entity_and_player_attachments_stay_on_commit_and_go_back_on_abort() {
         use myriade_engine::entities::ArmorStand;
         use horizon_core::geometry::Vec3;
-        use mod_api::{AttachmentType, Holder};
+        use mod_api::AttachmentType;
+        use mod_api::Holder;
         const ENERGY: AttachmentType<i32> = AttachmentType {
             namespace: "robot",
             name: "energy",

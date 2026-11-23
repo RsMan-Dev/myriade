@@ -1,6 +1,8 @@
 //! Registered serializer resolution, fatal unknown IDs of code mods and shared grid dispatch.
 use super::*;
-use mod_api::{CraftingGrid, CraftingRecipeHandler, CraftingRecipeValue};
+use mod_api::CraftingGrid;
+use mod_api::CraftingRecipeHandler;
+use mod_api::CraftingRecipeValue;
 use std::result::Result;
 
 #[derive(Clone)]
@@ -127,9 +129,9 @@ fn snapshot_dimensions(
     CraftingGrid::new(width as u32, height as u32, cells).ok()
 }
 
-fn to_api(stack: &ItemStack) -> Option<mod_api::ItemStack> {
+fn to_api(stack: &ItemStack) -> Option<myriade_types::ItemStack> {
     let key = mod_api::__private::item_key(&stack.item)?;
-    let mut out = mod_api::ItemStack::new(key, stack.count)?;
+    let mut out = myriade_types::ItemStack::new(key, stack.count)?;
     if stack.carries_component(None, "minecraft:damage") {
         out.set_damage(stack.damage);
     }
@@ -138,7 +140,7 @@ fn to_api(stack: &ItemStack) -> Option<mod_api::ItemStack> {
     }
     Some(out)
 }
-fn from_api(stack: mod_api::ItemStack) -> Option<ItemStack> {
+fn from_api(stack: myriade_types::ItemStack) -> Option<ItemStack> {
     let item = mod_api::__private::item_key_id(stack.item())?;
     if stack.count() > 99 {
         return None;

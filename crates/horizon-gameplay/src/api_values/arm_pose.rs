@@ -1,6 +1,6 @@
 use super::super::{TryIntoApi, TryIntoEngine};
 use horizon_core::arm_pose::ArmPose as Engine;
-use mod_api::ArmPose as Api;
+use myriade_types::ArmPose as Api;
 
 macro_rules! poses {
     ($($pose:ident),* $(,)?) => {

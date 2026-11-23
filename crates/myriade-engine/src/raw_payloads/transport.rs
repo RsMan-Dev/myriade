@@ -4,7 +4,8 @@ use super::{
     connection::{Connection, Epoch, IngressLease},
 };
 use horizon_protocol::payload_negotiation::Entry;
-use mod_api::{PayloadSendError, PlayerRef};
+use mod_api::PayloadSendError;
+use mod_api::PlayerRef;
 use std::sync::{Arc, OnceLock};
 
 pub struct Transport {

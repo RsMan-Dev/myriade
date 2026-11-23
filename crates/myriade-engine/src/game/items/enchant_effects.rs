@@ -66,8 +66,8 @@ impl PlayerSlot {
             Self::Armor(i) => ["head", "chest", "legs", "feet"][i],
         }
     }
-    fn equipment_slot(self) -> mod_api::EquipmentSlot {
-        use mod_api::EquipmentSlot;
+    fn equipment_slot(self) -> myriade_types::EquipmentSlot {
+        use myriade_types::EquipmentSlot;
         match self {
             Self::Main => EquipmentSlot::MainHand,
             Self::Off => EquipmentSlot::OffHand,
@@ -326,7 +326,7 @@ impl Game<'_> {
                 };
                 effect.apply(
                     self,
-                    &mod_api::EnchantmentDamageContext {
+                    &myriade_types::EnchantmentDamageContext {
                         attacker: mod_api::LivingRef::new(attacker),
                         victim,
                         weapon,
@@ -1188,7 +1188,7 @@ impl Game<'_> {
     /// Unbreaking applies, and they break when worn out.
     fn wear_boots(&mut self, amount: u32) {
         self.damage_player_equipment(
-            mod_api::EquipmentSlot::Feet,
+            myriade_types::EquipmentSlot::Feet,
             amount.min(i32::MAX as u32) as i32,
         );
     }

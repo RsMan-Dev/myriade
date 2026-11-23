@@ -1603,7 +1603,7 @@ impl MotionWorld<'_, '_, '_> {
             }
         }
         let mut visited = crate::fast_hash::FxHashSet::default();
-        let mut effects = mod_api::InsideEffects::default();
+        let mut effects = myriade_types::InsideEffects::default();
         let mut inside = PlayerInside {
             m: self,
             pass,
@@ -1617,7 +1617,8 @@ impl MotionWorld<'_, '_, '_> {
             if self.player.health.dead_or_dying() {
                 break;
             }
-            use mod_api::{InsideEffect, PlannedInside};
+            use myriade_types::InsideEffect;
+            use myriade_types::PlannedInside;
             match planned {
                 PlannedInside::Effect(InsideEffect::Freeze) => {
                     self.player.in_powder_snow = true;
@@ -1666,7 +1667,7 @@ impl MotionWorld<'_, '_, '_> {
         state: BlockStateId,
         p: BlockPos,
         precise: bool,
-        effects: &mut mod_api::InsideEffects,
+        effects: &mut myriade_types::InsideEffects,
     ) {
         let entity = self.player.entity_id;
         let Some(dimension) = crate::block_contact::current_level() else {
@@ -1682,7 +1683,7 @@ impl MotionWorld<'_, '_, '_> {
         // staged into a fresh collector and write list by the fire: only an
         // answering callback's writes join the walk, and a panic there is
         // contained, leaving the player's tick as it was.
-        let mut staged = mod_api::InsideEffects::default();
+        let mut staged = myriade_types::InsideEffects::default();
         let mut writes = Vec::new();
         let mut level = crate::health::DamageLevel::of(
             &mut *self.scene,
@@ -1710,24 +1711,24 @@ impl MotionWorld<'_, '_, '_> {
 
     /// A typed entity write an `entity_inside` part queued, applied to this
     /// player inside its own tick, in the collector's flush order.
-    fn apply_entity_write(&mut self, write: mod_api::EntityWrite) -> Result<()> {
+    fn apply_entity_write(&mut self, write: myriade_types::EntityWrite) -> Result<()> {
         let triple = |v: [f64; 3]| Vec3::new(v[0], v[1], v[2]);
         match write {
-            mod_api::EntityWrite::Push(v) => {
+            myriade_types::EntityWrite::Push(v) => {
                 self.player.velocity = self.player.velocity.add_vector(triple(v));
             }
-            mod_api::EntityWrite::SetMovement(v) => self.player.velocity = triple(v),
-            mod_api::EntityWrite::StuckIn(v) => {
+            myriade_types::EntityWrite::SetMovement(v) => self.player.velocity = triple(v),
+            myriade_types::EntityWrite::StuckIn(v) => {
                 self.make_stuck_in_block(triple(v));
             }
             // The damage source's entity row is the game's to resolve when the
             // write applies; the player's own hurt takes the amount.
-            mod_api::EntityWrite::Hurt { amount, .. } => {
+            myriade_types::EntityWrite::Hurt { amount, .. } => {
                 self.environment_hurt("minecraft:generic", amount)?;
             }
-            mod_api::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
-            mod_api::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
-            mod_api::EntityWrite::AddEffect {
+            myriade_types::EntityWrite::ResetFallDistance => self.player.fall_distance = 0.0,
+            myriade_types::EntityWrite::SetFireTicks(ticks) => self.player.fire_ticks = ticks,
+            myriade_types::EntityWrite::AddEffect {
                 effect,
                 duration,
                 amplifier,
@@ -2988,7 +2989,7 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
         state: BlockStateId,
         step: i32,
         precise: bool,
-        effects: &mut mod_api::InsideEffects,
+        effects: &mut myriade_types::InsideEffects,
     ) -> std::result::Result<(), Self::Error> {
         let Some(definition) = self.m.assets.registry.state(state) else {
             return Ok(());
@@ -3056,8 +3057,8 @@ impl crate::block_contact::InsideWalk for PlayerInside<'_, '_, '_, '_> {
                 } else {
                     self.m.powder_snow_inside(p)?;
                 }
-                effects.apply(mod_api::InsideEffect::Freeze);
-                effects.apply(mod_api::InsideEffect::Extinguish);
+                effects.apply(myriade_types::InsideEffect::Freeze);
+                effects.apply(myriade_types::InsideEffect::Extinguish);
                 // The burning player melts the snow it is told about, at the
                 // contact, as vanilla destroys it there; the collector's
                 // extinguish applies at the flush, after every contact.

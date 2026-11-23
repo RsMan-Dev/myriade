@@ -12,7 +12,9 @@ use horizon_ecs_proto::{
     goals::Head,
 };
 use horizon_world::attribute_map::ValueKind;
-use mod_api::{AttributeModifier, AttributeOperation, Identifier};
+use myriade_types::AttributeModifier;
+use myriade_types::AttributeOperation;
+use myriade_types::Identifier;
 
 /// The kind of the registry effect at `index`, with its definition; None for a mod's effect (its name is not `minecraft:`).
 fn kind_at(index: usize) -> Option<(&'static EffectDef, Kind)> {

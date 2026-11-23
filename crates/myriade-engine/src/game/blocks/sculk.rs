@@ -20,7 +20,7 @@ use horizon_core::{
     random::RandomSource,
 };
 use horizon_world::registry::BlockStateId;
-use mod_api::client::particles::PositionSource;
+use myriade_types::PositionSource;
 use crate::game::cosmetic_random::cosmetic_random;
 use std::collections::HashSet;
 
@@ -1765,8 +1765,8 @@ impl Game<'_> {
         &mut self,
         pos: [i32; 3],
         held: Option<&myriade_engine::items::ItemStack>,
-    ) -> Result<Option<mod_api::InteractionResult>> {
-        use mod_api::InteractionResult as Answer;
+    ) -> Result<Option<myriade_types::InteractionResult>> {
+        use myriade_types::InteractionResult as Answer;
         if !matches!(
             &*self.block_name(pos),
             "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore"
@@ -2178,7 +2178,9 @@ mod tests {
     #[ignore = "daily"]
     fn vanilla_game_event_carries_the_affected_state() {
         use crate::game::native_entity_refs::tests::with_game;
-        use mod_api::{Hooks, ModEntry, VanillaGameEventEvent};
+        use mod_api::Hooks;
+        use mod_api::ModEntry;
+        use mod_api::VanillaGameEventEvent;
         use mod_platform::testing::with_mods;
         use std::sync::{Arc, Mutex};
 

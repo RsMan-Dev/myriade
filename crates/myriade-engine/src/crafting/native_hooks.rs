@@ -1,6 +1,6 @@
 //! Load and match hook adapters at the engine boundary.
 use horizon_world::native_load_context::LoadContext;
-use mod_api::RecipePropertyAddition;
+use myriade_types::RecipePropertyAddition;
 /// A recipe ingredient of a mod's own kind: the entry named a type in a
 /// namespace outside `minecraft:`, and the loader kept it for this call.
 /// The kind and the converted NBT data the file wrote are here; fill `items` with the
@@ -57,7 +57,7 @@ pub fn native_ingredient_test(
     context: &horizon_world::native_load_context::LoopContext,
     kind: &str,
     data: &horizon_core::nbt::Compound,
-    stack: &mod_api::ItemStack,
+    stack: &myriade_types::ItemStack,
     accept: &mut bool,
 ) {
     mod_api::dispatch_ingredient_test(
@@ -75,7 +75,7 @@ pub fn native_ingredient_test(
 #[inline(never)]
 pub fn native_is_combine_repairable(
     context: &horizon_world::native_load_context::LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: &myriade_types::ItemStack,
     repairable: &mut bool,
 ) {
     mod_api::dispatch_is_combine_repairable(

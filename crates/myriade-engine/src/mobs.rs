@@ -1532,7 +1532,7 @@ pub enum MobEvent {
     BoundSound {
         mob: u32,
         sound: &'static str,
-        source: mod_api::SoundSource,
+        source: myriade_types::SoundSource,
         at: [f64; 3],
         volume: f32,
         pitch: f32,

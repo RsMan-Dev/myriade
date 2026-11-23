@@ -347,24 +347,24 @@ pub(super) fn with_mod_attributes(
                 syncable: declared.syncable,
                 tooltip: horizon_world::attributes::Tooltip {
                     sentiment: match declared.sentiment {
-                        mod_api::Sentiment::Positive => {
+                        myriade_types::Sentiment::Positive => {
                             horizon_world::attributes::Sentiment::Positive
                         }
-                        mod_api::Sentiment::Negative => {
+                        myriade_types::Sentiment::Negative => {
                             horizon_world::attributes::Sentiment::Negative
                         }
-                        mod_api::Sentiment::Neutral => {
+                        myriade_types::Sentiment::Neutral => {
                             horizon_world::attributes::Sentiment::Neutral
                         }
                     },
                     display: match declared.tooltip.display {
-                        mod_api::AttributeDisplay::Ranged => {
+                        myriade_types::AttributeDisplay::Ranged => {
                             horizon_world::attributes::Display::Ranged
                         }
-                        mod_api::AttributeDisplay::Percentage => {
+                        myriade_types::AttributeDisplay::Percentage => {
                             horizon_world::attributes::Display::Percentage
                         }
-                        mod_api::AttributeDisplay::Boolean => {
+                        myriade_types::AttributeDisplay::Boolean => {
                             horizon_world::attributes::Display::Boolean
                         }
                     },

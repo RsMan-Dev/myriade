@@ -1,5 +1,5 @@
 use crate::game::{Game, api_values::TryIntoApi};
-use mod_api::HurtSource;
+use myriade_types::HurtSource;
 
 impl Game<'_> {
     /// A veto belongs to the guest's living body, not its replaceable combat history.

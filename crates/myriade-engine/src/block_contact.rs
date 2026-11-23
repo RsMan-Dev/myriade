@@ -74,14 +74,14 @@ pub trait InsideWalk {
         state: BlockStateId,
         step: i32,
         precise: bool,
-        effects: &mut mod_api::InsideEffects,
+        effects: &mut myriade_types::InsideEffects,
     ) -> Result<(), Self::Error>;
     /// `advanceStep` → `fluidState.entityInside`.
     fn fluid_inside(
         &mut self,
         _at: BlockPos,
         _step: i32,
-        _effects: &mut mod_api::InsideEffects,
+        _effects: &mut myriade_types::InsideEffects,
     ) -> Result<(), Self::Error> {
         Ok(())
     }
@@ -98,7 +98,7 @@ pub fn sweep_inside_blocks<W: InsideWalk>(
     from: horizon_core::geometry::Vec3,
     to: horizon_core::geometry::Vec3,
     visited: &mut crate::fast_hash::FxHashSet<i64>,
-    effects: &mut mod_api::InsideEffects,
+    effects: &mut myriade_types::InsideEffects,
     max_iterations: i32,
 ) -> Result<i32, W::Error> {
     let deflated = walk
@@ -162,7 +162,7 @@ pub fn sweep_movements<W: InsideWalk>(
     walk: &mut W,
     movements: &[horizon_world::entity_move::MovementRecord],
     visited: &mut crate::fast_hash::FxHashSet<i64>,
-    effects: &mut mod_api::InsideEffects,
+    effects: &mut myriade_types::InsideEffects,
 ) -> Result<(), W::Error> {
     use horizon_core::geometry::{Axis, Direction};
     for movement in movements {
@@ -234,7 +234,7 @@ pub struct Hooks {
         BlockStateId,
         BlockPos,
         bool,
-        &mut mod_api::InsideEffects,
+        &mut myriade_types::InsideEffects,
         &mut Vec<InsideWrite>,
     ),
 }
@@ -575,7 +575,7 @@ mod tests {
             _: BlockStateId,
             step: i32,
             precise: bool,
-            _: &mut mod_api::InsideEffects,
+            _: &mut myriade_types::InsideEffects,
         ) -> Result<(), ()> {
             self.visits.push((
                 step,
@@ -588,7 +588,7 @@ mod tests {
             &mut self,
             at: BlockPos,
             step: i32,
-            _: &mut mod_api::InsideEffects,
+            _: &mut myriade_types::InsideEffects,
         ) -> Result<(), ()> {
             self.visits.push((step, [at.x, at.y, at.z], "fluid"));
             Ok(())

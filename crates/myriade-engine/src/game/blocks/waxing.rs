@@ -28,17 +28,17 @@ impl Game<'_> {
         &self,
         transformer: &str,
         block: BlockStateId,
-    ) -> Option<(BlockStateId, mod_api::ToolAbility)> {
+    ) -> Option<(BlockStateId, myriade_types::ToolAbility)> {
         if transformer != "minecraft:axe" {
             return None;
         }
         let behaviours = self.res.behaviours();
         let scraped = behaviours.mapped_scraped(block);
         scraped
-            .map(|state| (state, mod_api::ToolAbility::AxeScrape))
+            .map(|state| (state, myriade_types::ToolAbility::AxeScrape))
             .or_else(|| {
                 let unwaxed = behaviours.mapped_unwaxed(block)?;
-                Some((unwaxed, mod_api::ToolAbility::AxeWaxOff))
+                Some((unwaxed, myriade_types::ToolAbility::AxeWaxOff))
             })
     }
 
@@ -46,9 +46,9 @@ impl Game<'_> {
     /// and particle, no loot, one point of damage and no transform type.
     pub(in crate::game) fn tool_ability_result(
         new: BlockStateId,
-        ability: mod_api::ToolAbility,
+        ability: myriade_types::ToolAbility,
     ) -> (BlockStateId, String, Option<String>, u32, String, String) {
-        use mod_api::ToolAbility::*;
+        use myriade_types::ToolAbility::*;
         let (sound, particle) = match ability {
             AxeStrip => ("minecraft:item.axe.strip", "none"),
             AxeScrape => ("minecraft:item.axe.scrape", "scrape"),

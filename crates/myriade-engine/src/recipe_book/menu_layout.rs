@@ -1,6 +1,6 @@
 //! Load-boundary agreement between menu storage and recipe-book destinations.
 use super::slot_layout::{CheckedSlotLayout, LayoutError};
-use mod_api::RecipeBookLayout;
+use myriade_types::RecipeBookLayout;
 
 /// Content-owned menu metadata, independent of a mod's layout declaration.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, mod_api::Wire)]

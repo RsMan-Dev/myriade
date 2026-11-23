@@ -2,18 +2,18 @@
 
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
-static EXTRA_DIMS: std::sync::RwLock<Vec<mod_api::DimensionKey>> =
+static EXTRA_DIMS: std::sync::RwLock<Vec<myriade_types::DimensionKey>> =
     std::sync::RwLock::new(Vec::new());
 
 /// The extra dimensions as they were at [`Dim::snapshot_extras`], for a test to put back.
 /// Opaque, so a crate can't put a key there that a [`Dim`] variant already names.
 #[doc(hidden)]
-pub struct ExtraDimsSnapshot(Vec<mod_api::DimensionKey>);
+pub struct ExtraDimsSnapshot(Vec<myriade_types::DimensionKey>);
 
 /// The table of extra dimensions held for writing, for a test that checks a reader doesn't wait on it.
 #[doc(hidden)]
 pub struct ExtraDimsHeld(
-    #[allow(dead_code)] std::sync::RwLockWriteGuard<'static, Vec<mod_api::DimensionKey>>,
+    #[allow(dead_code)] std::sync::RwLockWriteGuard<'static, Vec<myriade_types::DimensionKey>>,
 );
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -22,7 +22,7 @@ pub enum Dim {
     Nether,
     End,
     /// A dimension past vanilla's three, from a data pack or a mod.
-    Extra(mod_api::DimensionKey),
+    Extra(myriade_types::DimensionKey),
 }
 impl Dim {
     /// The level as block behaviour and the mods name it.
@@ -109,11 +109,11 @@ impl Dim {
         }
     }
     /// The dimension as mods' level handles name it.
-    pub fn key(self) -> mod_api::DimensionKey {
+    pub fn key(self) -> myriade_types::DimensionKey {
         match self {
-            Self::Overworld => mod_api::DimensionKey::OVERWORLD,
-            Self::Nether => mod_api::DimensionKey::NETHER,
-            Self::End => mod_api::DimensionKey::END,
+            Self::Overworld => myriade_types::DimensionKey::OVERWORLD,
+            Self::Nether => myriade_types::DimensionKey::NETHER,
+            Self::End => myriade_types::DimensionKey::END,
             Self::Extra(key) => key,
         }
     }

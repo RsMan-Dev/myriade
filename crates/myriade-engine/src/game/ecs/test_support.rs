@@ -30,7 +30,7 @@ pub(in crate::game) fn ecs_game_with(kind: &str, at: [f64; 3]) -> (Game<'static>
     )
     .unwrap();
     game.reset_entity_residency();
-    game.native_lifecycle.begin_open(mod_api::Authority::DedicatedServer);
+    game.native_lifecycle.begin_open(myriade_types::Authority::DedicatedServer);
     game.ecs = game.test_ecs_level();
     let id = game.ecs_spawn(kind, at, None).expect("a known species");
     (game, id)

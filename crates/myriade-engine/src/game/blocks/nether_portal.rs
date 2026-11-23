@@ -1444,7 +1444,7 @@ impl Game<'_> {
         // Construction and join callbacks can insert, cancel, or remove rows.
         // Resolve the surviving arrival by the resident UUID index after them.
         let Some(entity) = uuid.and_then(|uuid| {
-            self.entity_by_uuid(mod_api::EntityUuid(
+            self.entity_by_uuid(myriade_types::EntityUuid(
                 myriade_engine::lan::playerdata::ints_uuid(uuid),
             ))
         }) else {

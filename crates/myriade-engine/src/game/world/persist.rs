@@ -355,8 +355,8 @@ pub(super) struct ItemDisplayTransformation {
     right_rotation: [f32; 4],
 }
 
-impl From<mod_api::Transformation> for ItemDisplayTransformation {
-    fn from(value: mod_api::Transformation) -> Self {
+impl From<myriade_types::Transformation> for ItemDisplayTransformation {
+    fn from(value: myriade_types::Transformation) -> Self {
         Self {
             translation: value.translation,
             left_rotation: value.left_rotation,
@@ -1737,7 +1737,7 @@ mod item_display_saved_transform_tests {
         )
         .unwrap();
         game.native_lifecycle
-            .begin_open(mod_api::Authority::DedicatedServer);
+            .begin_open(myriade_types::Authority::DedicatedServer);
         game.build_registries();
         game.set_allow_commands(true);
 
@@ -1880,7 +1880,7 @@ mod item_display_saved_transform_tests {
     #[test]
     #[ignore = "daily"]
     fn existing_native_item_display_setter_carries_only_transform_state() {
-        use mod_api::Transformation;
+        use myriade_types::Transformation;
         with_game(|game| {
             let id = summon(game, 4, None);
             let uuid = game.ecs.uuid_words(id);

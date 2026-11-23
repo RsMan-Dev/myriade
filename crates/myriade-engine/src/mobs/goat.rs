@@ -10,7 +10,7 @@ use super::{
     goals::{Cx, Goal, LOOK, MOVE, goal_clone},
 };
 use horizon_core::{geometry::Vec3, random::RandomSource};
-use mod_api::SoundSource;
+use myriade_types::SoundSource;
 
 /// `GoatAi.TIME_BETWEEN_RAMS` and `TIME_BETWEEN_RAMS_SCREAMER`.
 const RAMS: (i32, i32) = (600, 6000);

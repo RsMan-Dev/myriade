@@ -521,7 +521,7 @@ pub fn can_grindstone_repair(context: &LoopContext, items: &Items, stack: &ItemS
 #[inline(never)]
 pub fn native_can_grindstone_repair(
     context: &LoopContext,
-    stack: &mod_api::ItemStack,
+    stack: &myriade_types::ItemStack,
     can_repair: &mut bool,
 ) {
     mod_api::dispatch_can_grindstone_repair(

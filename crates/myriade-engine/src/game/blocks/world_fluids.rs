@@ -10,9 +10,13 @@ use horizon_world::{
     fluid::FluidKind,
     level::{FluidWrite, fluid_empty_sound, fluid_pickup_sound},
 };
-use mod_api::{
-    FluidKey, FluidStack, GameEventContext, LevelRef, PlayerRef, SoundSource, Transaction,
-};
+use myriade_types::FluidKey;
+use mod_api::FluidStack;
+use myriade_types::GameEventContext;
+use mod_api::LevelRef;
+use mod_api::PlayerRef;
+use myriade_types::SoundSource;
+use mod_api::Transaction;
 
 /// `FluidType.BUCKET_VOLUME`: what one source block holds.
 const BUCKET: u32 = 1000;

@@ -110,7 +110,7 @@ use hand::interact_location;
 pub(crate) use hit::Hit;
 use myriade_engine::random_source;
 use myriade_engine::hand_use::SwingAnimation;
-use mod_api::client::first_person::Hand;
+use myriade_types::Hand;
 use resource_loader::Loaded;
 use self::api_values::TryIntoApi;
 pub(crate) use api_values::{block_jump_factor, block_speed_factor, is_ladder};
@@ -187,10 +187,10 @@ use {
 fn vanilla_tool_state(
     transformer: &str,
     particle: &str,
-    ability: mod_api::ToolAbility,
+    ability: myriade_types::ToolAbility,
     state: BlockStateId,
 ) -> Option<BlockStateId> {
-    use mod_api::ToolAbility::*;
+    use myriade_types::ToolAbility::*;
     let action = match transformer {
         "minecraft:axe" => match particle {
             "scrape" => AxeScrape,
@@ -215,7 +215,7 @@ struct Mining {
 struct TransformContext<'a> {
     world: &'a World,
     player: Option<u32>,
-    hand: mod_api::Hand,
+    hand: myriade_types::Hand,
     blocking: bool,
     simulated: bool,
 }
@@ -497,7 +497,7 @@ struct WorldTables {
 
 struct PreparedParts {
     block_states: Arc<api_values::block_state::Index>,
-    tags: HashMap<String, HashSet<mod_api::BlockKey>>,
+    tags: HashMap<String, HashSet<myriade_types::BlockKey>>,
     parts: Option<mod_api::Parts>,
     cauldrons: Arc<cauldron_interactions::Table>,
 }
@@ -521,7 +521,7 @@ pub(super) fn durability_damage(damage: f32) -> f32 {
 /// The durability damage a mod left for `slot` (`mod_api::ArmorHurt::new_damage`, cast to int
 /// as vanilla casts it); an entry it removed keeps vanilla's `fallback`.
 pub(super) fn answered_wear(
-    entries: &[mod_api::ArmorHurt],
+    entries: &[myriade_types::ArmorHurt],
     slot: horizon_core::equipment_slot::EquipmentSlot,
     fallback: u32,
 ) -> u32 {
@@ -961,7 +961,7 @@ struct Game<'a> {
     game_tests: game_tests::GameTests,
     /// The natural spawning policy mods set on each level (`LevelRef::set_spawn_limits`,
     /// `set_spawn_flags`); a level with none spawns as vanilla. Kept while the world is open.
-    spawn_policies: HashMap<mod_api::DimensionKey, spawn_level::SpawnPolicy>,
+    spawn_policies: HashMap<myriade_types::DimensionKey, spawn_level::SpawnPolicy>,
     /// The passages mods registered in each level, and a client's copy (`native_passages.rs`).
     passages: native_passages::Passages,
     /// MultiPlayerGameMode.previousLocalPlayerMode (F3+N goes back to it).
@@ -2415,7 +2415,7 @@ impl Game<'_> {
     }
     /// Menus opened by PlayerEffect::OpenMenu.
     fn open_block_effect_menu(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(mod_api::FakeEffect::Menu) {
+        if self.fake_blocks(myriade_types::FakeEffect::Menu) {
             return;
         }
         let name = self
@@ -3451,8 +3451,8 @@ impl Game<'_> {
         {
             self.read_raids();
         }
-        self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: false });
-        self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
+        self.announce_data_bound(myriade_types::TagsUpdateCause::ServerDataLoad { reload: false });
+        self.announce_data_maps_updated(myriade_types::DataMapsUpdateCause::ServerReload);
         self.sync_recipe_content();
         reset_world_progress(&mut self.adv, &mut self.stats);
         self.prefetch_advancement_tree(&stack);
@@ -3782,7 +3782,7 @@ impl Game<'_> {
             let (new, t) = vanilla?;
             return Some(result(new, t));
         }
-        use mod_api::ToolAbility::*;
+        use myriade_types::ToolAbility::*;
         let actions: &[_] = match id.as_str() {
             "minecraft:axe" => &[AxeStrip, AxeScrape, AxeWaxOff],
             "minecraft:shovel" => &[ShovelFlatten],
@@ -4293,7 +4293,7 @@ impl Game<'_> {
     /// and (outside creative) no monsters within 8 blocks; the bed becomes the
     /// respawn point either way.
     fn try_sleep(&mut self, pos: [i32; 3]) {
-        if self.fake_blocks(mod_api::FakeEffect::Sleep) {
+        if self.fake_blocks(myriade_types::FakeEffect::Sleep) {
             return;
         }
         let Some((position, yaw)) = self.player.as_ref().map(|p| (p.position, p.yaw)) else {
@@ -4650,7 +4650,7 @@ impl Game<'_> {
         let level = &mut self.level;
         level.creative = self.creative;
         level.game_mode = mode;
-        level.previous_game_mode = self.previous_mode.map(mod_api::GameMode::id);
+        level.previous_game_mode = self.previous_mode.map(myriade_types::GameMode::id);
         level.spawn = self.spawn.map(|s| [s.x, s.y, s.z]);
         level.respawn_elsewhere = self.respawn_config.map(|c| c.saved());
         level.rotation = [self.yaw, self.pitch];

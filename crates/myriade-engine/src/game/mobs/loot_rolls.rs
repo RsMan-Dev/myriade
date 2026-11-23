@@ -7,8 +7,9 @@ use myriade_engine::items::{ItemStack, Items};
 use myriade_engine::mobs::drops::{DeathRolls, roll_asked};
 use myriade_engine::random_sequences::RandomSequences;
 use horizon_core::random::LegacyRandom;
-use mod_api::entity::health::HurtSource;
-use mod_api::{EntityRef, LivingRef};
+use myriade_types::HurtSource;
+use mod_api::EntityRef;
+use mod_api::LivingRef;
 
 /// A table's rolls with a mod listening to `enchanted_entity_loot`: the
 /// randoms stay in the game, where the listener's host reaches them.
@@ -31,7 +32,7 @@ impl DeathRolls for ListenedRolls<'_, '_, '_> {
         true
     }
     fn enchanted_level(&mut self, enchantment: &str, level: i32) -> i32 {
-        let Ok(id) = mod_api::Identifier::parse(enchantment) else {
+        let Ok(id) = myriade_types::Identifier::parse(enchantment) else {
             return level;
         };
         let mut asked = level.max(0) as u32;

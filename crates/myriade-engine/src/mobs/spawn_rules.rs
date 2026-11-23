@@ -9,7 +9,7 @@ use horizon_core::random::{RandomSource, slime_chunk_random};
 use horizon_world::{dimension_type::DimensionFacts, registry::BlockStateId};
 
 /// `EntitySpawnReason`: the mod API's own enum.
-pub use mod_api::SpawnReason as Reason;
+pub use myriade_types::SpawnReason as Reason;
 /// `EntitySpawnReason.isSpawner`.
 pub fn is_spawner(reason: Reason) -> bool {
     matches!(reason, Reason::Spawner | Reason::TrialSpawner)
@@ -325,7 +325,7 @@ pub fn check_spawn_rules<L: SpawnLevel>(
 /// A mod type's spawn predicate (`SpawnPlacements.Data.predicate`): the ground
 /// tag, the biome tag, then the light, which draws last as vanilla's do.
 fn mod_predicate<L: SpawnLevel>(
-    rule: &mod_api::SpawnPlacementRule,
+    rule: &myriade_types::SpawnPlacementRule,
     l: &L,
     reason: Reason,
     random: &mut impl RandomSource,
@@ -333,7 +333,7 @@ fn mod_predicate<L: SpawnLevel>(
     y: i32,
     z: i32,
 ) -> bool {
-    use mod_api::SpawnLight as Light;
+    use myriade_types::SpawnLight as Light;
     rule.spawnable_on
         .as_deref()
         .is_none_or(|on| tag(l, on, x, y - 1, z))
@@ -807,7 +807,9 @@ mod mod_spawn_rule_tests {
     use super::*;
     use crate::blocks::{RenderShape, Sounds, StateFacts};
     use horizon_core::random::LegacyRandom;
-    use mod_api::{SpawnLight, SpawnPlacementRule, SpawnPlacementType};
+    use myriade_types::SpawnLight;
+    use myriade_types::SpawnPlacementRule;
+    use myriade_types::SpawnPlacementType;
     use std::{cell::RefCell, sync::Arc};
 
     const AIR: BlockStateId = BlockStateId(0);
@@ -974,7 +976,7 @@ mod mod_spawn_rule_tests {
     fn rule(light: SpawnLight) -> SpawnPlacementRule {
         SpawnPlacementRule {
             placement: SpawnPlacementType::OnGround,
-            heightmap: mod_api::Heightmap::OceanFloor,
+            heightmap: myriade_types::Heightmap::OceanFloor,
             spawnable_on: Some("test:ghoul_ground".to_owned()),
             light,
             biome_tag: Some("test:haunted".to_owned()),

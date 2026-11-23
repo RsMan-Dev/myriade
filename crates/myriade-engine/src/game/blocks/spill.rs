@@ -254,7 +254,7 @@ pub(crate) struct DropState {
 
 impl DropState {
     /// The state `drop` asks for.
-    pub(crate) fn of(drop: &mod_api::ItemDrop) -> Self {
+    pub(crate) fn of(drop: &myriade_types::ItemDrop) -> Self {
         Self {
             thrower: drop.thrower,
             target: drop.target,
@@ -263,7 +263,7 @@ impl DropState {
         }
     }
     /// `drop` with this state.
-    pub(crate) fn to_api(self, drop: mod_api::ItemDrop) -> mod_api::ItemDrop {
+    pub(crate) fn to_api(self, drop: myriade_types::ItemDrop) -> myriade_types::ItemDrop {
         drop.with_thrower(self.thrower)
             .with_target(self.target)
             .with_no_gravity(self.no_gravity)
@@ -332,7 +332,7 @@ pub(crate) struct BlockItemDrop {
 
 impl BlockItemDrop {
     /// The drop as the mods hear and edit it.
-    pub(super) fn from_api(drop: &mod_api::ItemDrop, stack: ItemStack) -> Self {
+    pub(super) fn from_api(drop: &myriade_types::ItemDrop, stack: ItemStack) -> Self {
         Self {
             random: None,
             stack,

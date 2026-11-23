@@ -194,7 +194,7 @@ impl TryIntoApi for engine::LootContext<'_> {
     }
 }
 
-pub fn queried_stack(stack: &engine::LootStack) -> Result<mod_api::ItemStack, LootValueError> {
+pub fn queried_stack(stack: &engine::LootStack) -> Result<myriade_types::ItemStack, LootValueError> {
     if stack.count <= 0 || stack.damage < 0 {
         return Err(LootValueError::InvalidPatch);
     }

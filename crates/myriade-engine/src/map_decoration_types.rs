@@ -2,7 +2,8 @@
 //! `Registries.MAP_DECORATION_TYPE`), frozen once at start. A type's id and sprite live for the
 //! rest of the process, as the vanilla table's do, so a decoration holds them as `&'static str`.
 
-use mod_api::{Identifier, MapDecorationType};
+use myriade_types::Identifier;
+use myriade_types::MapDecorationType;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 

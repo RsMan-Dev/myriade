@@ -39,7 +39,7 @@ impl Game<'_> {
             .map(|&(x, y, z)| {
                 let at = [f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5];
                 let state = self.world.block(x, y, z);
-                let place = mod_api::BlockSoundCause::Place;
+                let place = myriade_types::BlockSoundCause::Place;
                 let name = self.block_sound_type([x, y, z], state, placer, place).place;
                 (at, name.trim_start_matches("minecraft:").to_owned())
             })
@@ -154,10 +154,10 @@ impl Game<'_> {
         mut captured: myriade_engine::audio::CapturedSound,
         except: Option<u32>,
     ) {
-        let source = mod_api::SoundSource::ALL
+        let source = myriade_types::SoundSource::ALL
             .get(captured.source)
             .copied()
-            .unwrap_or(mod_api::SoundSource::Master);
+            .unwrap_or(myriade_types::SoundSource::Master);
         let sound = LevelSound {
             name: &captured.event,
             at: captured.position,

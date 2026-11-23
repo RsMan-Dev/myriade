@@ -46,7 +46,7 @@ pub struct StackedOnOther<'a> {
 pub struct SlotContext<'a> {
     pub player: Option<u128>,
     pub pos: Option<[i32; 3]>,
-    pub container: mod_api::MenuContainer,
+    pub container: myriade_types::MenuContainer,
     pub slots: &'a [Option<ItemStack>],
     /// A flattened LAN container stores grid/result values in Main's unused positions.
     /// These positions are empty in the prediction's separate Main container.

@@ -174,7 +174,7 @@ impl LevelAccess for GameLevel<'_> {
         if !false {
             return vanilla;
         }
-        let mut result = mod_api::TriState::Default;
+        let mut result = myriade_types::TriState::Default;
         self.native_crop_grow_pre(self.dimension, pos, state, &mut result);
         result.or(vanilla)
     }
@@ -217,10 +217,10 @@ impl LevelAccess for GameLevel<'_> {
         mut new: i32,
     ) -> Option<i32> {
         let mut cancel = false;
-        let context = mod_api::NoteBlockChange {
+        let context = myriade_types::NoteBlockChange {
             dimension: self.dimension,
             pos,
-            instrument: mod_api::NoteInstrument::ALL[usize::from(instrument)],
+            instrument: myriade_types::NoteInstrument::ALL[usize::from(instrument)],
             old_note: old,
         };
         self.native_note_block_change(&context, &mut new, &mut cancel);
@@ -233,7 +233,7 @@ impl LevelAccess for GameLevel<'_> {
         instrument: &mut u8,
         note: &mut i32,
     ) -> bool {
-        use mod_api::NoteInstrument;
+        use myriade_types::NoteInstrument;
         if !false {
             return true;
         }

@@ -460,7 +460,7 @@ impl Game<'_> {
             center,
             radius,
             fire: false,
-            interaction: mod_api::BlockInteraction::TriggerBlock,
+            interaction: myriade_types::BlockInteraction::TriggerBlock,
             // `DamageSources.explosion(source, owner)`.
             damage_type: if cause.source.is_some() && cause.owner.is_some() {
                 "minecraft:player_explosion"

@@ -11,7 +11,8 @@ use myriade_engine::{
     menu::place::PostPlace,
     recipe_book::{Book, BookType, ClientBook, Entry, GhostTarget},
 };
-use mod_api::{RecipeTransferCheck, RecipeTransferResult};
+use myriade_types::RecipeTransferCheck;
+use myriade_types::RecipeTransferResult;
 use std::collections::BTreeSet;
 
 /// A ghost recipe slot: the items it cycles through.
@@ -343,7 +344,7 @@ impl Game<'_> {
     /// The stacks a mod recipe book's slot display stands for, with no stock in hand.
     pub(in crate::game) fn resolve_mod_book_declaration_slot(
         &self,
-        slot: &mod_api::RecipeSlotDisplay,
+        slot: &myriade_types::RecipeSlotDisplay,
     ) -> Vec<ItemStack> {
         resolve::Resolver::new(self).resolve(slot)
     }
