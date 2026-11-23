@@ -11,5 +11,3 @@ horizon-core = { path = "../horizon-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["raw_value"] }
 log = "0.4"
-bytemuck = { version = "1.24", features = ["derive"] }
-glam = "0.30"

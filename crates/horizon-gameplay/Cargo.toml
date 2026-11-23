@@ -7,13 +7,10 @@ rust-version.workspace = true
 description = "Vanilla's logical side: the gameplay the server jar holds, common code included"
 
 [dependencies]
-horizon-assets = { path = "../horizon-assets" }
 myriade-data = { path = "../myriade-data" }
 myriade-engine-lib = { path = "../myriade-engine-lib", default-features = false }
-horizon-command = { path = "../horizon-command" }
 horizon-core = { path = "../horizon-core" }
 myriade-types = { path = "../myriade-types" }
-horizon-items = { path = "../horizon-items" }
 horizon-protocol = { path = "../horizon-protocol" }
 horizon-threads = { path = "../horizon-threads" }
 horizon-world = { path = "../horizon-world" }

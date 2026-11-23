@@ -750,8 +750,6 @@ fn sync(body: &mut PlayerMotion, server: &PlayerMotion) {
         server.burn_from_stepping_immune,
     );
     body.border = server.border.clone();
-    // The keys already hold the client's auto-jump.
-    (body.auto_jump_enabled, body.auto_jump_time) = (false, 0);
     (body.client_side, body.server_copy) = (true, false);
 }
 

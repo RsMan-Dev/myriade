@@ -8,7 +8,6 @@ description = "Shared server configuration, installation layout and dedicated-en
 
 [dependencies]
 horizon-platform = { path = "../horizon-platform", features = ["server-files"] }
-horizon-server-files = { path = "../horizon-server-files" }
 horizon-anticheat = { path = "../horizon-anticheat" }
 horizon-chat-filter = { path = "../horizon-chat-filter" }
 horizon-core = { path = "../horizon-core" }

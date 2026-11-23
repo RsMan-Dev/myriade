@@ -33,7 +33,6 @@ pub use myriade_level::{
 };
 pub mod attack_strength;
 pub mod attribute_updates;
-pub mod auto_jump;
 pub mod banner;
 pub mod beehive;
 pub mod block_entity_item;

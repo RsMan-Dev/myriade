@@ -30,7 +30,6 @@ members = [
     "crates/horizon-server-launch",
     "crates/horizon-assets",
     "crates/horizon-protocol",
-    "crates/horizon-theme",
     "crates/horizon-prepare",
     "crates/horizon-system",
     "crates/horizon-bench",

@@ -78,7 +78,6 @@ mod entity_move_fixture;
 mod entity_obstruction_fixture;
 mod extra_items_fixture;
 mod face_support_fixture;
-mod face_visibility_fixture;
 mod fall_damage_fixture;
 mod feature_catalog_fixture;
 mod feature_graph_fixture;
@@ -254,7 +253,6 @@ probes! {
     entity_obstruction_fixture,
     extra_items_fixture,
     face_support_fixture,
-    face_visibility_fixture,
     fall_damage_fixture,
     feature_catalog_fixture,
     feature_graph_fixture,

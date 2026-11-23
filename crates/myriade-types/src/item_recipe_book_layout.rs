@@ -28,52 +28,6 @@ pub enum RecipeBookLayout {
 }
 
 impl RecipeBookLayout {
-    /// Validate typed screen geometry at the same registration boundary as roles.
-    pub fn validate_screen(&self, screen: &crate::Screen) -> Result<(), String> {
-        if ![screen.width, screen.height]
-            .into_iter()
-            .all(|size| size.is_finite() && size > 0.0)
-            || ![screen.inventory_x, screen.inventory_y]
-                .into_iter()
-                .all(f32::is_finite)
-            || screen.slots.len() > 256
-            || screen
-                .slots
-                .iter()
-                .flatten()
-                .any(|pos| pos.iter().any(|n| !n.is_finite()))
-        {
-            return Err("screen dimensions, inventory coordinates and slot geometry must be finite and fit the menu bound".into());
-        }
-        let roles = match self {
-            Self::Crafting { slots, result, .. } => {
-                slots.iter().copied().chain([*result]).collect::<Vec<_>>()
-            }
-            Self::Furnace {
-                input,
-                fuel,
-                result,
-            } => vec![*input, *fuel, *result],
-            Self::Stonecutter { input, result } => vec![*input, *result],
-            Self::Smithing {
-                template,
-                base,
-                addition,
-                result,
-            } => vec![*template, *base, *addition, *result],
-        };
-        for slot in roles {
-            if screen
-                .slots
-                .get(usize::from(slot))
-                .is_none_or(Option::is_none)
-            {
-                return Err(format!("screen omits mapped slot {slot}"));
-            }
-        }
-        Ok(())
-    }
-
     /// Check role indices against the content menu's container slot count.
     /// Loading must call this with the actual count, before publishing a layout.
     pub fn validate(&self, slot_count: u16) -> Result<(), String> {

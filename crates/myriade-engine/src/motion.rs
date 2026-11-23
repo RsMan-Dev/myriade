@@ -114,7 +114,6 @@ pub(crate) fn pushing_flow<W: horizon_world::fluid_flow::FluidFlowWorld>(
     Ok(Vec3::new(edited[0], edited[1], edited[2]))
 }
 
-mod auto_jump;
 pub(crate) mod environment;
 use environment::fly_into_wall_damage;
 mod fluids;
@@ -411,11 +410,6 @@ pub struct PlayerMotion {
     pub flying_speed: f32,
     /// The jump key last tick (LocalPlayer.aiStep's wasJumping).
     pub was_jumping: bool,
-    /// `LocalPlayer.autoJumpEnabled` (the Auto-Jump option) and
-    /// `autoJumpTime`; `was_auto_jump` is this tick's `wasAutoJump`.
-    pub auto_jump_enabled: bool,
-    pub auto_jump_time: i32,
-    pub was_auto_jump: bool,
     /// `input.getMoveVector()` this tick (before `modifyInput`).
     pub move_vector: [f32; 2],
     /// `LocalPlayer.xxa` / `zza`: the move vector after `modifyInput`.
@@ -1083,7 +1077,7 @@ impl MotionWorld<'_, '_, '_> {
         if self.player.spectator {
             self.player.flying = true;
             self.player.ground.on_ground = false;
-        } else if self.player.may_fly && !was_jumping && jumping && !self.player.was_auto_jump {
+        } else if self.player.may_fly && !was_jumping && jumping {
             // `LocalPlayer.aiStep`: mayfly gates the flight toggle, not the
             // flying state independently supplied by the server's abilities.
             if self.player.jump_trigger_time == 0 {
@@ -1268,14 +1262,6 @@ impl MotionWorld<'_, '_, '_> {
         self.player.health.advance_clock();
         self.fluid_base_tick()?;
         self.update_local_crouching()?;
-        let mut keys = keys;
-        // LocalPlayer.aiStep: a pending auto-jump presses jump for this tick
-        // (input.makeJump) and keeps the jump from toggling flight.
-        self.player.was_auto_jump = self.player.auto_jump_time > 0;
-        if self.player.was_auto_jump {
-            self.player.auto_jump_time -= 1;
-            keys.jump = true;
-        }
         sprint(self.player, keys)?;
         self.player.shift_key_down = keys.shift;
         let direction = keys.direction();
@@ -1946,47 +1932,14 @@ impl MotionWorld<'_, '_, '_> {
         }
         entity_move::move_entity(self, mover, gate.delta())
     }
-    /// `LocalPlayer.move`: the move, then `updateAutoJump` with the float
-    /// horizontal displacement. The gate is this invocation's (arismoko/horizon#2414), armed
+    /// `LocalPlayer.move`. The gate is this invocation's (arismoko/horizon#2414), armed
     /// here before the move's own handling, no-physics included.
     pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
         crate::move_gate::arm(gate, MoverType::SelfMovement, movement);
         if gate.skipped() {
             return Ok(());
         }
-        let before = self.player.position;
-        entity_move::move_entity(self, MoverType::SelfMovement, gate.delta())?;
-        let dx = (self.player.position.x - before.x) as f32;
-        let dz = (self.player.position.z - before.z) as f32;
-        self.update_auto_jump(dx, dz)
-    }
-}
-impl crate::auto_jump::AutoJumpWorld for MotionWorld<'_, '_, '_> {
-    type Error = Box<dyn std::error::Error>;
-    fn collision_shape(&mut self, p: BlockPos) -> Result<horizon_core::geometry::VoxelShape> {
-        let context = self.context();
-        let state = self.block(p);
-        let binding = self.collision_binding;
-        Ok(binding.collision_shape_with_context(&mut self.collisions(), state, p, &context)?)
-    }
-    fn collision_boxes(&mut self, bounds: Aabb) -> Result<Vec<Aabb>> {
-        // EntityGetter.getEntityCollisions queries with a small inflation, and
-        // CollisionGetter.getCollisions returns these before block shapes.
-        let query = bounds.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
-        let mut boxes: Vec<_> = self
-            .entities
-            .iter()
-            .copied()
-            .filter(|b| b.intersects(query))
-            .collect();
-        let context = self.context();
-        let mut scene = self.collisions();
-        for hit in horizon_world::block_collision_scan::BlockCollisionScan::new(
-            &mut scene, context, bounds, false, 1_000_000,
-        )? {
-            boxes.extend_from_slice(hit?.shape.boxes());
-        }
-        Ok(boxes)
+        entity_move::move_entity(self, MoverType::SelfMovement, gate.delta())
     }
 }
 // Current resident movement domain: dry, standing, no vehicles or gliding.
@@ -3200,43 +3153,6 @@ mod tests {
         assert_eq!(base(&mut back, "minecraft:max_health"), 30.0);
         assert_eq!(back.attribute("minecraft:max_health").unwrap(), 45.0);
         assert_eq!(back.health.health(), 40.0);
-    }
-
-    #[test]
-    #[ignore = "daily"]
-    fn auto_jump_detects_collidable_entities() {
-        let root = std::path::PathBuf::from(
-            std::env::var_os("HORIZON_TEST_RESOURCES").expect("HORIZON_TEST_RESOURCES"),
-        );
-        let Some(v) = crate::test_fixtures::vanilla() else {
-            panic!("no prepared resources at {}", root.display());
-        };
-        let (assets, render, binding, resources) = (&v.assets, &v.render, &v.collision, &v.motion);
-        let mut scene = World::test_scene(assets, render, 1).unwrap();
-        let mut player = PlayerMotion::new(resources, Vec3::new(10.0, 100.0, 10.0)).unwrap();
-        player.auto_jump_enabled = true;
-        player.ground.on_ground = true;
-        player.move_vector = [0.0, 1.0];
-        let entities = [Aabb::new(
-            Vec3::new(9.5, 100.0, 10.5),
-            Vec3::new(10.5, 100.8, 11.5),
-        )];
-        MotionWorld {
-            tag_items: None,
-            block_registries: None,
-            loop_context: crate::test_resources::server_loop_context(),
-            damage_hooks: &crate::health::DamageHooks::NONE,
-            entities: &entities,
-            player: &mut player,
-            scene: &mut scene,
-            assets,
-            collision_binding: binding,
-            resources,
-            health: &resources.health,
-        }
-        .update_auto_jump(0.0, 0.1)
-        .unwrap();
-        assert_eq!(player.auto_jump_time, 1);
     }
 
     #[test]

@@ -14,7 +14,6 @@ pub mod block_entity_push;
 pub mod block_landing;
 pub mod block_placement;
 pub mod block_properties;
-pub mod block_render;
 pub mod block_state_properties;
 pub mod block_support;
 pub mod block_survival;

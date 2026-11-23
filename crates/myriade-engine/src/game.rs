@@ -597,11 +597,7 @@ struct Game<'a> {
     sneak_held: bool,
     left: bool,
     right: bool,
-    cursor: (f32, f32),
-    debug: bool,
     started: Instant,
-    previous: Instant,
-    frames: u64,
     ticks: u64,
     /// What ends the game with an error; kept as it is, so main can tell a debug crash.
     error: Option<Box<dyn std::error::Error>>,
@@ -4482,10 +4478,6 @@ impl Game<'_> {
 fn autosave_interval(rate: f32) -> i64 {
     i64::from((rate * 300.0) as i32).max(100)
 }
-/// winit's events for a window's game, with any loop: a headless client (#4951) has no
-/// winit loop and calls these from its own.
-impl Game<'_> {
-}
 impl<'a> Game<'a> {
     /// A game with no world open, over the loaded resources: the window's,
     /// or an integrated server's on its own thread.
@@ -4559,11 +4551,7 @@ impl<'a> Game<'a> {
             sneak_held: false,
             left: false,
             right: false,
-            cursor: (0.0, 0.0),
-            debug: false,
             started: now,
-            previous: now,
-            frames: 0,
             ticks: 0,
             error: None,
             message: None,

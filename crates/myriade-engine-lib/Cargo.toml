@@ -43,18 +43,13 @@ getrandom = "0.3"
 # The dedicated server's anticheat, off unless server.toml's [anticheat] turns it on (docs/anticheat.md).
 horizon-anticheat = { path = "../horizon-anticheat" }
 # The narrator (GameNarrator): text-to-speech of chat, system messages and screens.
-# Horizon mods: sandboxed WebAssembly components, off unless installed and turned on (docs/modding/src/how-to/content-mods.md).
-# Their runtime is the `mods` feature.
 glam = "0.30"
 png = "0.18"
 sha2 = "0.10.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["raw_value"] }
-# hlsl-out: the gfx.rs tests translate every shader as wgpu's DirectX 12 backend does. A normal feature,
-# not a dev-dependency's, so builds, tests and examples share one build of naga, wgpu and this crate.
 log = "0.4"
 chrono = { version = "0.4.42", default-features = false, features = ["clock", "std"] }
-flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs", "runtime_detection"] }
 # The network threads of a server's players: epoll, kqueue or Windows' AFD (lan/io_pool.rs).
 mio = { version = "1.2.4", features = ["os-poll", "net"] }
 # Shared chunk frames are found by one keyed 128-bit hash of their body (lan/conn.rs SharedFrames).
@@ -97,7 +92,6 @@ tempfile = "3"
 myriade-level = { path = "../myriade-level", features = ["test-support"] }
 horizon-items = { path = "../horizon-items", features = ["test-support"] }
 # Reads back the captures the server_perf tests write.
-# Every WGSL shader translated as wgpu's DirectX 12 backend does (gfx.rs tests).
 
 [[example]]
 name = "gen_light_bench"
