@@ -5,19 +5,6 @@ use horizon_core::{
 };
 use horizon_world::native_load_context::LoopContext;
 
-/// An enderman or a shulker is about to teleport on its own
-/// (`EntityTeleportEvent.EnderEntity`). A mod may move `target` or cancel.
-#[inline(never)]
-pub fn native_ender_entity_teleport(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
-    from: [f64; 3],
-    target: &mut [f64; 3],
-    cancel: &mut bool,
-) {
-    crate::native_level_hooks::ender_entity_teleport(context, entity, kind, from, target, cancel);
-}
 /// EndermanFreezeWhenLookedAt
 #[derive(Clone, Debug)]
 struct FreezeWhenLookedAt;

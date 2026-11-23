@@ -17,13 +17,6 @@ use horizon_world::{
     synced_floats::SyncedFloats,
 };
 
-/// A living entity is about to heal. Mods may change the amount or cancel.
-/// `entity` identifies the affected entity.
-#[inline(never)]
-pub fn native_living_heal(context: &LoopContext, entity: u32, amount: &mut f32, cancel: &mut bool) {
-    crate::native_level_hooks::living_heal(context, entity, amount, cancel);
-}
-
 impl PlayerMotion {
     /// Player.causeFoodExhaustion: creative and spectator abilities suppress
     /// exhaustion from movement, attacks and effects.
@@ -48,9 +41,8 @@ impl PlayerMotion {
             let health = self.health.health();
             let maximum = self.attribute("minecraft:max_health")? as f32;
             if health < maximum {
-                let mut amount = 1.0;
-                let mut cancel = false;
-                native_living_heal(context, self.entity_id as u32, &mut amount, &mut cancel);
+                let amount = 1.0;
+                let cancel = false;
                 if !cancel {
                     let h = &mut self.health;
                     let mut observer = Updates(&mut self.events);
@@ -158,9 +150,8 @@ impl FoodWorld for TickWorld<'_> {
         )?
         .is_hurt()?)
     }
-    fn heal(&mut self, _: &mut FoodData, mut amount: f32) -> Result<()> {
-        let mut cancel = false;
-        native_living_heal(self.context, self.entity as u32, &mut amount, &mut cancel);
+    fn heal(&mut self, _: &mut FoodData, amount: f32) -> Result<()> {
+        let cancel = false;
         if cancel {
             return Ok(());
         }

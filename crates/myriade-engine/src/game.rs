@@ -1652,20 +1652,6 @@ impl Game<'_> {
         }
         result
     }
-    /// No mod vetoes an ignition: it is allowed.
-    pub(super) fn native_block_ignite_allowed(&mut self, _pos: BlockPos, _cause: &'static str) -> bool {
-        true
-    }
-    /// No mod vetoes a cauldron level change: it is allowed.
-    pub(super) fn native_cauldron_level_change_allowed(
-        &mut self,
-        _pos: BlockPos,
-        _from: i32,
-        _to: i32,
-        _reason: &'static str,
-    ) -> bool {
-        true
-    }
     /// Level.setBlock(pos, state, UPDATE_ALL) with neighbour/shape updates.
     fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
         self.level_set_with_flags(pos, state, level_flags::UPDATE_ALL)

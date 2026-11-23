@@ -217,11 +217,6 @@ impl Game<'_> {
             ),
             ("insertion".into(), name.into()),
         ]);
-        myriade_engine::lan::hub::native_player_name_format(
-            &self.loop_context,
-            &Text::literal(name),
-            &mut shown,
-        );
         shown
     }
 

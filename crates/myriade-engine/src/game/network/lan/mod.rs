@@ -922,31 +922,6 @@ impl Game<'_> {
                 HostEvent::PlayerChat { sender, text } => {
                     self.lan_player_chatted(sender, &text);
                 }
-                HostEvent::ChatSubmitted {
-                    message,
-                    bound,
-                    name,
-                } => {
-                    let host = self.lan.as_ref()?;
-                    if !host
-                        .hub
-                        .guests
-                        .iter()
-                        .any(|g| g.placed && g.participates_online() && g.uuid == message.sender)
-                    {
-                        continue;
-                    }
-                    let message = *message;
-                    let sender = message.sender;
-                    let raw = message.content.clone();
-                    let line = format!("<{name}> {raw}");
-                    self.lan_broadcast_chat(&message, &bound, line, &name, &raw)?;
-                    self.lan_player_chatted(sender, &raw);
-                }
-                HostEvent::ChatSessionStarted(update) => {
-                    let host = self.lan.as_mut()?;
-                    host.hub.broadcast(&C::PlayerInfoUpdate(*update));
-                }
                 HostEvent::Joined(conn) => {
                     let host = self.lan.as_mut()?;
                     // PlayerList.placeNewPlayer: the name the user cache knew,

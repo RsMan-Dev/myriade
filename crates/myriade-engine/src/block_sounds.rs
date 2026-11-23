@@ -8,24 +8,6 @@ use myriade_types::BlockSoundCause;
 use myriade_types::BlockSoundType;
 use std::sync::Arc;
 
-/// The sound type of a block state (`IBlockExtension.getSoundType`) is being read to play the
-/// sound `cause` names. `sound` starts as the state's own and the block's parts may change it; an
-/// answer whose volume or pitch is not finite and at least 0, or with an event that is not a
-/// `namespace:path` id, is dropped whole for the state's own. `entity` is the stepping, landing,
-/// placing or digging entity's id and type, `None` for a break or a placement by no entity. Fires
-/// on the side that plays the sound, so a listener must be a pure function of its inputs.
-#[inline(never)]
-pub fn native_sound_type(
-    context: &LoopContext,
-    pos: BlockPos,
-    state: BlockStateId,
-    entity: Option<(u32, &str)>,
-    cause: BlockSoundCause,
-    sound: &mut BlockSoundType,
-) {
-    crate::native_level_hooks::sound_type(context, pos, state, entity, cause, sound);
-}
-
 /// `sounds`, a state's own sound type (`BlockState.getSoundType()`), as the mod API's record.
 pub fn own(sounds: &Sounds) -> BlockSoundType {
     BlockSoundType {
@@ -49,8 +31,7 @@ pub fn sound_type(
     entity: Option<(u32, &str)>,
     cause: BlockSoundCause,
 ) -> BlockSoundType {
-    let mut sound = own(&facts.get(state).sounds);
-    native_sound_type(context, pos, state, entity, cause, &mut sound);
+    let sound = own(&facts.get(state).sounds);
     sound
 }
 

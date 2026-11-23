@@ -434,7 +434,6 @@ impl Hub {
                 mod_type,
                 craft: None,
                 links: Vec::new(),
-                asks_still_valid: super::menu::asks_still_valid(mod_type, menu_kind),
             });
             window
         });
@@ -496,7 +495,6 @@ impl Hub {
                 mod_type: None,
                 craft: None,
                 links: Vec::new(),
-                asks_still_valid: false,
             });
             window
         });

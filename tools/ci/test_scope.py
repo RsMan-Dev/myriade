@@ -55,9 +55,7 @@ READERS = {
     "myriade-engine-lib": HORIZON_CLIENT,
     # lang.rs embeds the bundled English file.
     "myriade-data": ["crates/myriade-engine/assets/horizon/lang"],
-    "myriade-level": [
-        "crates/myriade-engine/assets/horizon/lang", "crates/myriade-engine/assets/horizon/textures/gui",
-    ],
+    "myriade-level": ["crates/myriade-engine/assets/horizon/lang"],
     # The daily Character comparator reads the original public-JDK API helper.
     "horizon-core": ["tools/JavaCharacterTables.java"],
     # The build scripts hand the repository root to the generator.

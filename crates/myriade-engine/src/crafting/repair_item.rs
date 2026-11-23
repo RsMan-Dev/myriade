@@ -24,8 +24,7 @@ fn combine_repairable(ctx: &Context, stack: &ItemStack) -> bool {
     let info = ctx.facts(stack).map(|f| &f.info);
     let vanilla = stack.carries_component(info, "minecraft:max_damage")
         && stack.carries_component(info, "minecraft:damage");
-    let mut repairable = vanilla;
-    crate::native_level_hooks::is_combine_repairable(ctx.context, stack, &mut repairable);
+    let repairable = vanilla;
     if repairable && !vanilla && stack.max_damage(info) <= 0 {
         refuse_no_durability(&stack.item);
         return vanilla;
@@ -89,7 +88,3 @@ pub(super) fn assemble(ctx: &Context, stacks: &[&ItemStack]) -> Option<ItemStack
 #[cfg(test)]
 #[path = "repair_item_tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "combine_repair_part_tests.rs"]
-mod part_tests;

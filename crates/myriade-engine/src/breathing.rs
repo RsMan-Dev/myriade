@@ -21,73 +21,14 @@ pub struct Breath {
     pub refill: i32,
 }
 
-/// An entity's breathing this tick (`LivingBreatheEvent`, posted from
-/// `LivingEntity.baseTick` every tick for a living entity with the generic
-/// air logic): `entity` is its ID and `kind` its type (`minecraft:player`,
-/// `minecraft:zombie`). `can_breathe`, `consume` and `refill` come in as
-/// Horizon does it today (a mod-free game changes nothing); set them to
-/// change this tick. With `can_breathe` the air rises by `refill`, up to its
-/// maximum (300; 4800 for a dolphin); without, it falls by `consume`, and at -20
-/// it is set to 0 and the entity takes 2 drowning damage. Negative amounts count
-/// as 0.
-/// Asked on servers for players and mobs. Water animals, axolotls and
-/// nautiluses come in with their own air logic's answer ([`own_air`]).
-#[inline(never)]
-pub fn native_living_breathe(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
-    can_breathe: &mut bool,
-    consume: &mut i32,
-    refill: &mut i32,
-) {
-    crate::native_level_hooks::living_breathe(context, entity, kind, can_breathe, consume, refill);
-}
-
 /// `vanilla`'s breathing after the mods have had their say.
 pub fn breathe(context: &LoopContext, entity: u32, kind: &str, vanilla: Breath) -> Breath {
-    let mut now = vanilla;
-    native_living_breathe(
-        context,
-        entity,
-        kind,
-        &mut now.can_breathe,
-        &mut now.consume,
-        &mut now.refill,
-    );
+    let now = vanilla;
     Breath {
         can_breathe: now.can_breathe,
         consume: now.consume.max(0),
         refill: now.refill.max(0),
     }
-}
-
-/// An entity that can't breathe and has no air (`LivingDrownEvent`, posted
-/// from `LivingEntity.baseTick`), with vanilla's answers as the defaults: it
-/// drowns at -20 air, for 2 damage and 8 bubbles. Eight bubbles are the
-/// vanilla entity event; another positive count is sent as that many bubble
-/// particles, and none sends nothing. Asked on servers, for the entities
-/// `native_living_breathe` is; water animals, axolotls and nautiluses show no
-/// bubbles, as in vanilla.
-#[inline(never)]
-pub fn native_living_drown(
-    context: &LoopContext,
-    entity: u32,
-    kind: &str,
-    is_drowning: &mut bool,
-    damage_amount: &mut f32,
-    bubble_count: &mut i32,
-    cancel: &mut bool,
-) {
-    crate::native_level_hooks::living_drown(
-        context,
-        entity,
-        kind,
-        is_drowning,
-        damage_amount,
-        bubble_count,
-        cancel,
-    );
 }
 
 /// The most bubbles a mod's `bubble_count` draws and sends: a larger count
@@ -121,17 +62,8 @@ pub fn drown(
     } else {
         next
     };
-    let (mut drowning, mut damage, mut bubbles, mut cancel) = (drowned, 2.0, 8, false);
+    let (drowning, damage, bubbles, cancel) = (drowned, 2.0, 8, false);
     if server && !breath.can_breathe && *air <= 0 {
-        native_living_drown(
-            context,
-            entity,
-            kind,
-            &mut drowning,
-            &mut damage,
-            &mut bubbles,
-            &mut cancel,
-        );
     }
     if cancel || !drowning {
         return None;

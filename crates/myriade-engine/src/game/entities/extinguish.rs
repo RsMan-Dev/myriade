@@ -65,37 +65,6 @@ impl Game<'_> {
         let Ok(new) = registry.resolve(&myriade_engine::cauldron::extinguished(&old)) else {
             return;
         };
-        let level = |state: &horizon_world::chunk::BlockState| {
-            if matches!(state.name.as_str(), "minecraft:cauldron") {
-                0
-            } else if state.name == "minecraft:lava_cauldron" {
-                3
-            } else {
-                state
-                    .properties
-                    .get("level")
-                    .and_then(|level| level.parse().ok())
-                    .unwrap_or(1)
-            }
-        };
-        let Some(new_state) = registry.state(new).cloned() else {
-            return;
-        };
-        if !self.native_cauldron_level_change_allowed(
-            pos,
-            level(&old),
-            level(&new_state),
-            "extinguishing",
-        ) {
-            return;
-        }
-        // The hook had `&mut self`: the block must still be the one it judged.
-        let unchanged = registry
-            .state(self.world.block(at[0], at[1], at[2]))
-            .is_some_and(|now| now.name == old.name && now.properties == old.properties);
-        if !unchanged {
-            return;
-        }
         if self.level_set(at, new).is_ok() {
             self.post_block_game_event("minecraft:block_change", at, None, Some(new));
         }

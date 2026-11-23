@@ -34,7 +34,6 @@ fn ender_menu(window: i32) -> Menu {
         registry_id: "minecraft:generic_9x3".into(),
         craft: None,
         links: Vec::new(),
-        asks_still_valid: false,
     }
 }
 

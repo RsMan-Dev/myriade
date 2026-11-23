@@ -959,75 +959,6 @@ fn authenticate(
     }
 }
 
-/// The profile property limits the login success keeps (`ExtraCodecs.GAME_PROFILE_PROPERTIES`):
-/// 16 properties, names of 64 UTF-16 units, values of 32767 and signatures of 1024.
-const MAX_LOGIN_PROPERTIES: usize = 16;
-const MAX_LOGIN_PROPERTY_NAME: usize = 64;
-const MAX_LOGIN_PROPERTY_VALUE: usize = 32767;
-const MAX_LOGIN_PROPERTY_SIGNATURE: usize = 1024;
-
-/// A string's length in UTF-16 code units, what the profile's wire limits count.
-fn utf16_units(text: &str) -> usize {
-    text.encode_utf16().count()
-}
-
-/// The login's own properties as the mod API's, for `player_login_profile`.
-fn api_profile_properties(properties: &[login::Property]) -> Vec<myriade_types::ProfileProperty> {
-    properties
-        .iter()
-        .map(|property| {
-            myriade_types::ProfileProperty::new(
-                property.name.clone(),
-                property.value.clone(),
-                property.signature.clone(),
-            )
-        })
-        .collect()
-}
-
-/// The properties a `player_login_profile` listener left, as the login's own, or None when the
-/// list is past the profile's wire limits: the login's own properties are sent then.
-fn login_profile_properties(
-    changed: Vec<myriade_types::ProfileProperty>,
-) -> Option<Vec<login::Property>> {
-    if changed.len() > MAX_LOGIN_PROPERTIES {
-        return None;
-    }
-    changed
-        .into_iter()
-        .map(|property| {
-            if property.name.is_empty()
-                || utf16_units(&property.name) > MAX_LOGIN_PROPERTY_NAME
-                || utf16_units(&property.value) > MAX_LOGIN_PROPERTY_VALUE
-                || property
-                    .signature
-                    .as_deref()
-                    .is_some_and(|signature| utf16_units(signature) > MAX_LOGIN_PROPERTY_SIGNATURE)
-            {
-                return None;
-            }
-            Some(login::Property {
-                name: property.name,
-                value: property.value,
-                signature: property.signature,
-            })
-        })
-        .collect()
-}
-
-/// A player's game profile at login, before the server sends it (`player_login_profile`): the
-/// UUID and name the login authenticated and the properties it would send. The mods may change
-/// the properties; a list past the profile limits leaves the login's own. Runs on the connection
-/// thread, so the callback it reaches has no host.
-#[inline(never)]
-pub fn native_player_login_profile(
-    player: u128,
-    name: &str,
-    properties: &mut Vec<myriade_types::ProfileProperty>,
-) {
-    crate::native_level_hooks::player_login_profile(player, name, properties);
-}
-
 /// Holds an admitted login's uuid until the login reaches play. Dropping it while armed releases
 /// the uuid, including while a panic unwinds.
 struct Admission<'a> {
@@ -1117,7 +1048,7 @@ fn serve_login(
         .as_ref()
         .filter(|(owner_name, _)| c.is_memory() && hello.name.eq_ignore_ascii_case(owner_name))
         .map(|(owner_name, uuid)| (owner_name.clone(), *uuid));
-    let (uuid, mut properties) = match (online, forwarding) {
+    let (uuid, properties) = match (online, forwarding) {
         (Some(online), _) => {
             match authenticate(&mut c, shared, online, &hello.name, address, &user) {
                 Ok(Ok(profile)) => profile,

@@ -247,14 +247,6 @@ impl Hub {
         };
         // The `ServerChatEvent` counterpart runs here:
         // the game tells the mods, then broadcasts what they left.
-        if crate::native_level_hooks::has_mods() {
-            events.push(HostEvent::ChatSubmitted {
-                message: Box::new(message),
-                bound: Box::new(bound),
-                name,
-            });
-            return;
-        }
         let line = format!("<{name}> {}", message.content);
         // No mods here (`has_mods` above), so no `chat_recipient` listener hides anyone.
         self.broadcast_chat(&message, &bound, line, &[], events);
@@ -264,25 +256,13 @@ impl Hub {
         });
     }
 
-    /// Announces a new chat session to everyone. Vanilla runs this on the same
-    /// `chatMessageChain` as chat, so a message that came first is relayed
-    /// first. A message the game still has to hand to the mods
-    /// (`HostEvent::ChatSubmitted`) is relayed when the game reaches it, so
-    /// the announcement then waits behind it: clients would check that
-    /// message against the new session and mark the sender's chain broken.
+    /// Announces a new chat session to everyone.
     pub(super) fn announce_chat_session(
         &mut self,
         update: play::PlayerInfoUpdate,
-        events: &mut Vec<HostEvent>,
+        _events: &mut Vec<HostEvent>,
     ) {
-        if events
-            .iter()
-            .any(|e| matches!(e, HostEvent::ChatSubmitted { .. }))
-        {
-            events.push(HostEvent::ChatSessionStarted(Box::new(update)));
-        } else {
-            self.broadcast(&C::PlayerInfoUpdate(update));
-        }
+        self.broadcast(&C::PlayerInfoUpdate(update));
     }
 
     /// handleChatSessionUpdate: a new profile key, validated against the

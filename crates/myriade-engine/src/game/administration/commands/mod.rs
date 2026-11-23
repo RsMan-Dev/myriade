@@ -441,11 +441,6 @@ impl Game<'_> {
             return self.player_text(name, uuid);
         }
         let mut displayname = self.target_name(Target::Player);
-        myriade_engine::lan::hub::native_player_name_format(
-            &self.loop_context,
-            &Text::literal(name),
-            &mut displayname,
-        );
         displayname
     }
     pub(super) fn source_position(&self) -> [f64; 3] {

@@ -252,36 +252,7 @@ impl Menu {
     /// plain click, ending with `slot.setChanged()`.
     pub(super) fn pickup(&mut self, env: &Env, s: usize, primary: bool) {
         self.touch();
-        let mut canceled = false;
-        let mut handled = false;
-        if crate::native_level_hooks::has_mods() {
-            let slot = self.state.slots[s];
-            let mut carried = self.state.carried.take();
-            let mut view = MenuSlotView {
-                menu: self,
-                env,
-                slot: s,
-            };
-            let mut event = StackedOnOther {
-                player: env.player,
-                player_entity_id: env.player_entity_id,
-                slot: s,
-                container: slot.container,
-                container_slot: slot.index,
-                primary,
-                carried: CarriedAccess(&mut carried),
-                clicked: &mut view,
-                cancellation_result: false,
-            };
-            native_item_stacked_on_other(env.loop_context, &mut event, &mut canceled);
-            handled = event.cancellation_result;
-            self.state.carried = carried;
-        }
-        let handled = if canceled {
-            handled
-        } else {
-            self.bundle_click(env, s, primary)
-        };
+        let handled = self.bundle_click(env, s, primary);
         if !handled {
             self.pickup_inner(env, s, primary);
         }

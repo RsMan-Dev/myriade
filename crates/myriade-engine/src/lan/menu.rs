@@ -85,9 +85,6 @@ pub struct Menu {
     /// A mod menu type's linked slots (`links`): the containers a native mod
     /// links them to (`native_menu_links`), in order, asked again each tick.
     pub links: Vec<(i32, i32, i32)>,
-    /// Whether a part on this mod menu type answers `menu_still_valid`,
-    /// resolved when it opened; vanilla menu types never ask one.
-    pub asks_still_valid: bool,
 }
 
 /// What a mod menu type's crafting grid makes (`ResultContainer`), and the
@@ -99,55 +96,11 @@ pub struct ModCraft {
     pub result: Option<ItemStack>,
 }
 
-/// Dispatch a mod menu type's `stillValid` answer for a player's block
-/// menu: `valid` arrives as the game's own answer and the scoped part may change it.
-#[inline(always)]
-pub fn native_menu_still_valid(
-    context: &LoopContext,
-    player: u128,
-    menu: &str,
-    pos: [i32; 3],
-    eye: [f64; 3],
-    valid: &mut bool,
-) {
-    crate::native_level_hooks::menu_still_valid(context, player, menu, pos, eye, valid);
-}
-
-/// Whether a menu of this type asks its parts `menu_still_valid`: only a mod
-/// menu type, and only when a part on it answers. Resolved once, when it opens.
-pub fn asks_still_valid(mod_type: Option<&crate::containers::ModMenuType>, menu: &str) -> bool {
-    mod_type.is_some() && crate::native_level_hooks::menu_still_valid_listens(menu)
-}
-
 impl Menu {
     /// `AbstractContainerMenu.stillValid` of this menu for the guest: its
-    /// slots' own answer (`Slots::still_valid`), which the parts on its mod
-    /// menu type may change (`menu_still_valid`). Vanilla menu types, menus
-    /// with no block behind them (a chest vehicle, a native mod's menu) and
-    /// menus whose type no part answers are not asked, nor is one whose block
-    /// entities are gone: it closes.
-    pub fn still_valid(&self, context: &LoopContext, world: &World, guest: &Guest) -> bool {
-        let block = match self.slots {
-            Slots::Block(k) | Slots::Double(k, _) => Some(k),
-            Slots::Ender => self.pos,
-            Slots::Native => None,
-        };
-        let Some(k) = block.filter(|k| self.asks_still_valid && k.1 != VEHICLE_KEY_Y) else {
-            return self.slots.still_valid(world, guest, self.pos);
-        };
-        if !self.slots.valid(world) {
-            return false;
-        }
-        let mut valid = self.slots.in_reach(guest, self.pos);
-        native_menu_still_valid(
-            context,
-            guest.uuid,
-            &self.registry_id,
-            [k.0, k.1, k.2],
-            guest.eye(),
-            &mut valid,
-        );
-        valid
+    /// slots' own answer (`Slots::still_valid`).
+    pub fn still_valid(&self, _context: &LoopContext, world: &World, guest: &Guest) -> bool {
+        self.slots.still_valid(world, guest, self.pos)
     }
 
     /// A mod menu type's linked slots and the containers behind them.
@@ -1072,53 +1025,7 @@ fn pickup(view: &mut View, slot: i32, button: i32, rules: &dyn Rules) {
         return;
     }
     let right = button == 1;
-    let mut canceled = false;
-    let mut handled = false;
-    if crate::native_level_hooks::has_mods() {
-        let (container, container_slot) = match &view.container {
-            Some(c) if i < c.len() => (crate::menu::MAIN, i),
-            Some(c) => (crate::menu::PLAYER, player_slot(i - c.len())),
-            None => (
-                crate::menu::PLAYER,
-                match i {
-                    5..=8 => 44 - i,
-                    9..=35 => i,
-                    36..=44 => i - 36,
-                    45 => 40,
-                    _ => i,
-                },
-            ),
-        };
-        let context = view.loop_context;
-        let player = view.guest.uuid;
-        let player_entity_id = view.guest.entity_id;
-        let mut carried = view.guest.carried.take();
-        let mut slot_view = HostedSlotView {
-            view,
-            slot: i,
-            rules,
-            staged: None,
-        };
-        let mut event = crate::menu::StackedOnOther {
-            player: Some(player),
-            player_entity_id: Some(player_entity_id),
-            slot: i,
-            container,
-            container_slot,
-            primary: !right,
-            carried: crate::menu::CarriedAccess(&mut carried),
-            clicked: &mut slot_view,
-            cancellation_result: false,
-        };
-        crate::menu::native_item_stacked_on_other(context, &mut event, &mut canceled);
-        handled = event.cancellation_result;
-        view.guest.carried = carried;
-    }
-    let handled = if canceled {
-        handled
-    } else {
-        bundle_click(view, i, right, rules)
-    };
+    let handled = bundle_click(view, i, right, rules);
     if handled {
         return;
     }
@@ -2017,7 +1924,6 @@ pub(crate) mod tests {
             registry_id: "test:station".into(),
             craft: None,
             links: Vec::new(),
-            asks_still_valid: false,
         });
         // Nothing made yet: nothing shown.
         assert_eq!(slots.get(&world, &g, 0), None);
@@ -2141,7 +2047,6 @@ pub(crate) mod tests {
             mod_type: Some(t),
             craft: None,
             links: Vec::new(),
-            asks_still_valid: false,
         });
         // Nothing linked yet: the linked slots are empty and all left out.
         let read = slots.read(&world, &g).unwrap();

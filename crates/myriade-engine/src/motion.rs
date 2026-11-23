@@ -52,55 +52,6 @@ use std::{
 mod exclusions;
 mod restitution;
 
-/// A living entity jumped (`LivingEvent.LivingJumpEvent`).
-#[inline(never)]
-pub fn native_living_jump(context: &LoopContext, entity: u32, kind: &str) {
-    crate::native_level_hooks::living_jump(context, entity, kind);
-}
-
-/// A living entity's jump power is about to be used (beyond NeoForge: there is no counterpart).
-/// Mods may change it. Fires on replayed ticks too, so a listener must be a pure function of its inputs.
-#[inline(never)]
-pub fn native_living_jump_power(context: &LoopContext, entity: u32, kind: &str, power: &mut f32) {
-    crate::native_level_hooks::living_jump_power(context, entity, kind, power);
-}
-
-/// A living entity's movement speed is about to drive its travel (beyond NeoForge: there is no
-/// counterpart). Mods may change it. Fires on replayed ticks too, so a listener must be a pure
-/// function of its inputs.
-#[inline(never)]
-pub fn native_living_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_level_hooks::living_speed(context, entity, kind, speed);
-}
-
-/// A living entity's airborne acceleration is about to be used (beyond NeoForge: there is no
-/// counterpart). Mods may change it. Fires on replayed ticks too, so a listener must be a pure
-/// function of its inputs.
-#[inline(never)]
-pub fn native_living_flying_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
-    crate::native_level_hooks::living_flying_speed(context, entity, kind, speed);
-}
-
-/// The player's crouch edge backoff asks whether it is staying on the ground surface
-/// (`Player.isStayingOnGroundSurface`; beyond NeoForge: there is no counterpart). Mods may change it.
-/// Fires on replayed ticks too, so a listener must be a pure function of its inputs.
-#[inline(never)]
-pub fn native_player_stays_on_ground_surface(
-    context: &LoopContext,
-    entity: u32,
-    staying: &mut bool,
-) {
-    crate::native_level_hooks::player_stays_on_ground_surface(context, entity, staying);
-}
-
-/// The current a fluid block pushes with (`FlowingFluid.getFlow`) is about to push an entity
-/// (beyond NeoForge: there is no counterpart). Mods may change it. Fires on replayed ticks too, so a
-/// listener must be a pure function of its inputs.
-#[inline(never)]
-pub fn native_fluid_flow(context: &LoopContext, fluid: &str, pos: BlockPos, flow: &mut [f64; 3]) {
-    crate::native_level_hooks::fluid_flow(context, fluid, pos, flow);
-}
-
 /// `FlowingFluid.getFlow` as it pushes an entity: the vanilla vector, then `fluid_flow`.
 pub(crate) fn pushing_flow<W: horizon_world::fluid_flow::FluidFlowWorld>(
     context: &LoopContext,
@@ -109,8 +60,7 @@ pub(crate) fn pushing_flow<W: horizon_world::fluid_flow::FluidFlowWorld>(
     pos: BlockPos,
 ) -> std::result::Result<Vec3, W::Error> {
     let flow = horizon_world::fluid_flow::flow_at(world, state, pos)?;
-    let mut edited = [flow.x, flow.y, flow.z];
-    native_fluid_flow(context, state.kind().name(), pos, &mut edited);
+    let edited = [flow.x, flow.y, flow.z];
     Ok(Vec3::new(edited[0], edited[1], edited[2]))
 }
 
@@ -124,10 +74,7 @@ pub use fluids::{
     bubble_column_at, bubble_column_push, bubble_column_push_over, bubble_column_surfaces,
 };
 pub(crate) use surface::ModBlockFactors;
-pub use surface::{
-    block_friction, native_block_jump_factor, native_block_speed_factor, native_friction,
-    native_is_ladder,
-};
+pub use surface::block_friction;
 
 pub struct MotionResources {
     pub attributes: Arc<Catalog>,
@@ -1840,11 +1787,6 @@ impl MotionWorld<'_, '_, '_> {
     pub fn jump_from_ground(&mut self) -> Result<()> {
         living_motion::jump_from_ground(self)?;
         if !self.player.replaying {
-            native_living_jump(
-                self.loop_context,
-                self.player.entity_id as u32,
-                "minecraft:player",
-            );
         }
         self.player
             .events
@@ -2000,12 +1942,7 @@ impl EdgeBackoffWorld for MotionWorld<'_, '_, '_> {
         Ok(self.player.attribute("minecraft:step_height")? as f32)
     }
     fn staying_on_ground_surface(&mut self) -> Result<bool> {
-        let mut staying = self.player.shift_key_down;
-        native_player_stays_on_ground_surface(
-            self.loop_context,
-            self.player.entity_id as u32,
-            &mut staying,
-        );
+        let staying = self.player.shift_key_down;
         Ok(staying)
     }
     fn on_ground(&mut self) -> Result<bool> {
@@ -2489,13 +2426,7 @@ impl LivingMotionWorld for MotionWorld<'_, '_, '_> {
         self.player.velocity = v;
         Ok(())
     }
-    fn adjust_jump_power(&mut self, mut power: f32) -> f32 {
-        native_living_jump_power(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut power,
-        );
+    fn adjust_jump_power(&mut self, power: f32) -> f32 {
         power
     }
     fn jump_strength(&mut self) -> Result<f64> {

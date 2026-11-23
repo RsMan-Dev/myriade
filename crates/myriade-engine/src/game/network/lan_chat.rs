@@ -156,28 +156,6 @@ impl Game<'_> {
         }
     }
 
-    /// A player's chat line, once `server_chat` has left it: `chat_recipient` is asked of each
-    /// receiver (`shown` is what players read), the line goes to everyone it keeps nobody from,
-    /// and the log keeps it. None when there is no hub.
-    pub(super) fn lan_broadcast_chat(
-        &mut self,
-        message: &ChatMessage,
-        bound: &play::ChatTypeBound,
-        line: String,
-        name: &str,
-        shown: &str,
-    ) -> Option<()> {
-        let hidden = Vec::new();
-        let mut chat = Vec::new();
-        let host = self.lan.as_mut()?;
-        host.hub
-            .broadcast_chat(message, bound, line, &hidden, &mut chat);
-        for event in chat {
-            self.lan_log_event(event);
-        }
-        Some(())
-    }
-
     /// SayCommand, EmoteCommands and MsgCommand for a guest: chat to the
     /// players, signed when the guest signed it (a disguised chat after an
     /// unsigned command packet). False when the command is another one, or

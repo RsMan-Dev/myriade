@@ -228,19 +228,6 @@ pub enum HostEvent {
         sender: u128,
         text: String,
     },
-    /// A chat message the sender's chain and the chat filter let through,
-    /// not yet broadcast: with server mods loaded, the game tells them
-    /// (`native_server_chat`, NeoForge's `ServerChatEvent`) and then
-    /// broadcasts it with `Hub::broadcast_chat`.
-    ChatSubmitted {
-        message: Box<chat::ChatMessage>,
-        bound: Box<play::ChatTypeBound>,
-        name: String,
-    },
-    /// A new chat session's announcement (`PlayerInfoUpdate` with
-    /// INITIALIZE_CHAT) held behind a `ChatSubmitted` of the same tick: the
-    /// game broadcasts it once it has relayed that message.
-    ChatSessionStarted(Box<play::PlayerInfoUpdate>),
     /// A player's text the chat filter refused (docs/chat-filter.md): relayed to nobody, for the
     /// game to log and to carry out `action`.
     ChatFiltered {
@@ -436,28 +423,6 @@ fn string(s: &str) -> Tag {
     Tag::String(JavaString::from(s))
 }
 
-/// A player's display name was formatted. Replace `displayname` to change it. Both sides.
-#[inline(never)]
-pub fn native_player_name_format(context: &LoopContext, username: &Text, displayname: &mut Text) {
-    crate::native_level_hooks::player_name_format(context, username, displayname);
-}
-
-fn formatted_player_name(context: &LoopContext, name: &str, component: Tag) -> Tag {
-    if !crate::native_level_hooks::has_mods() {
-        return component;
-    }
-    let username = crate::text::Text::literal(name);
-    let original = crate::scoreboard::tag_to_json(&component);
-    let mut displayname = crate::scoreboard::comp_text(&original).with_component(original.clone());
-    native_player_name_format(context, &username, &mut displayname);
-    let result = displayname.component();
-    if result == original {
-        component
-    } else {
-        crate::scoreboard::component_tag(&result)
-    }
-}
-
 /// Player.getDisplayName for a player in no team: the name, suggesting
 /// `/tell NAME `, showing the player on hover and inserting the name.
 pub fn display_name(context: &LoopContext, uuid: u128, name: &str) -> Tag {
@@ -487,20 +452,7 @@ pub fn display_name(context: &LoopContext, uuid: u128, name: &str) -> Tag {
         ),
         ("insertion", string(name)),
     ]);
-    formatted_player_name(context, name, component)
-}
-
-/// ServerPlayer.getTabListDisplayName: the name the Tab list shows for
-/// `player`, None to let the client choose it. Replace `display_name` to
-/// change it.
-#[inline(never)]
-pub fn native_player_tab_list_name_format(
-    context: &LoopContext,
-    player: u128,
-    name: &str,
-    display_name: &mut Option<Text>,
-) {
-    crate::native_level_hooks::player_tab_list_name_format(context, player, name, display_name);
+    component
 }
 
 /// `LivingEntity.DATA_ARROW_COUNT_ID` (12) and `DATA_STINGER_COUNT_ID` (13):
@@ -576,11 +528,7 @@ impl Hub {
         c["hover_event"] = serde_json::json!({"action": "show_entity", "id": "minecraft:player",
             "uuid": horizon_protocol::crypto::uuid_string(uuid), "name": name});
         c["insertion"] = name.into();
-        formatted_player_name(
-            &self.loop_context,
-            name,
-            crate::scoreboard::component_tag(&c),
-        )
+        crate::scoreboard::component_tag(&c)
     }
 }
 
@@ -1423,8 +1371,7 @@ impl Hub {
             .or_else(|| self.nicknames.get(&uuid).map(crate::text::Text::literal))
     }
     fn tab_list_name(&self, uuid: u128, name: &str) -> Option<Tag> {
-        let mut display_name = self.tab_list_base(uuid);
-        native_player_tab_list_name_format(&self.loop_context, uuid, name, &mut display_name);
+        let display_name = self.tab_list_base(uuid);
         display_name.map(|text| crate::scoreboard::component_tag(&text.component()))
     }
     /// ClientboundPlayerInfoUpdatePacket.createPlayerInitializing: every action.
@@ -6484,7 +6431,6 @@ mod tests {
                     registry_id: "test:kept".into(),
                     craft: None,
                     links: Vec::new(),
-                    asks_still_valid: true,
                 });
             });
         };
@@ -6991,50 +6937,6 @@ mod tests {
         assert_eq!(sent(&bob_rx), [data(101, &[&particles(&[])])]);
     }
 
-    /// `handleChatSessionUpdate` shares `chatMessageChain` with chat: a new
-    /// session is announced after a message that came before it. With mods
-    /// loaded that message waits for the game (`ChatSubmitted`), so the
-    /// announcement waits behind it; with nothing held it goes out at once.
-    #[test]
-    fn a_new_chat_session_waits_behind_chat_the_mods_hold() {
-        let (mut hub, rx) = hub_with_a_guest();
-        let update = || play::PlayerInfoUpdate {
-            actions: 2,
-            entries: vec![play::PlayerInfo {
-                uuid: 1,
-                ..Default::default()
-            }],
-        };
-        let mut events = Vec::new();
-        hub.announce_chat_session(update(), &mut events);
-        assert!(events.is_empty());
-        assert_eq!(rx.try_iter().count(), 1, "announced at once");
-
-        let mut events = vec![HostEvent::ChatSubmitted {
-            message: Box::new(chat::ChatMessage {
-                sender: 1,
-                index: 0,
-                signature: None,
-                content: "hi".into(),
-                timestamp: 0,
-                salt: 0,
-                last_seen: Vec::new(),
-                unsigned_content: None,
-            }),
-            bound: Box::new(play::ChatTypeBound {
-                chat_type: 0,
-                name: horizon_core::nbt::Tag::String("Bob".into()),
-                target: None,
-            }),
-            name: "Bob".into(),
-        }];
-        hub.announce_chat_session(update(), &mut events);
-        assert_eq!(rx.try_iter().count(), 0, "held behind the chat");
-        assert!(matches!(
-            events.as_slice(),
-            [HostEvent::ChatSubmitted { .. }, HostEvent::ChatSessionStarted(u)] if **u == update()
-        ));
-    }
     /// The tabs the guest was sent in `ClientboundSelectAdvancementsTabPacket`s, in order.
     fn sent_tabs(rx: &std::sync::mpsc::Receiver<crate::lan::Out>) -> Vec<Option<String>> {
         let mut sent = Vec::new();
