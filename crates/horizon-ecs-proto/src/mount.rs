@@ -683,3 +683,25 @@ pub(crate) fn seats(
 pub fn eject_passengers(w: &mut World, mount: Entity) {
     while dismount(w, mount).is_some() {}
 }
+
+/// `Entity.remove` -> `stopRiding` and `ejectPassengers`: an entity that leaves the level lets go of its vehicle (the seat it held is
+/// free, the mount is no longer `Ridden`) and sets its own riders down, so no mount keeps a link to a removed entity.
+pub fn leave(w: &mut World, e: Entity) {
+    if let Some(Riding(m)) = w.get::<Riding>(e).copied()
+        && w.get_entity(m).is_ok()
+    {
+        let seat = w.get::<Mount>(m).map(|x| (x.rider == Some(Who::Entity(e)), x.passenger == Some(Who::Entity(e))));
+        match seat {
+            Some((true, _)) => {
+                dismount(w, m);
+            }
+            Some((_, true)) => {
+                dismount_passenger(w, m);
+            }
+            _ => {}
+        }
+    }
+    if w.get::<Mount>(e).is_some() {
+        eject_passengers(w, e);
+    }
+}

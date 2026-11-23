@@ -31,10 +31,10 @@ pub const FIELDS: &[Field] = &[
     Field { key: Cow::Borrowed("Age"), write: write_item_age, read: read_item_age, accepts: accept::numeric, owner: Some(owner::<Item>) },
     Field { key: Cow::Borrowed("PickupDelay"), write: write_pickup_delay, read: read_pickup_delay, accepts: accept::numeric, owner: Some(owner::<Item>) },
     Field { key: Cow::Borrowed("Owner"), write: owners::write_owner, read: owners::read_owner, accepts: owners::uuid_tag, owner: None },
-    Field { key: Cow::Borrowed("Value"), write: write_value, read: read_value, accepts: accept::short, owner: Some(owner::<Orb>) },
+    Field { key: Cow::Borrowed("Value"), write: write_value, read: read_value, accepts: accept::numeric, owner: Some(owner::<Orb>) },
     Field { key: Cow::Borrowed("Count"), write: write_count, read: read_count, accepts: accept::int, owner: Some(owner::<Orb>) },
-    Field { key: Cow::Borrowed("Age"), write: write_orb_age, read: read_orb_age, accepts: accept::short, owner: Some(owner::<Orb>) },
-    Field { key: Cow::Borrowed("fuse"), write: write_fuse, read: read_fuse, accepts: accept::short, owner: Some(owner::<Primed>) },
+    Field { key: Cow::Borrowed("Age"), write: write_orb_age, read: read_orb_age, accepts: accept::numeric, owner: Some(owner::<Orb>) },
+    Field { key: Cow::Borrowed("fuse"), write: write_fuse, read: read_fuse, accepts: accept::numeric, owner: Some(owner::<Primed>) },
     Field { key: Cow::Borrowed("explosion_power"), write: write_power, read: read_power, accepts: accept::float, owner: Some(owner::<Primed>) },
     Field { key: Cow::Borrowed("ShowBottom"), write: write_show_bottom, read: read_show_bottom, accepts: byte, owner: Some(owner::<EndCrystal>) },
     Field { key: Cow::Borrowed("DealtDamage"), write: write_dealt, read: read_dealt, accepts: byte, owner: Some(owner::<Trident>) },
@@ -146,9 +146,9 @@ fn write_value(w: &World, e: Entity, c: &mut Compound) {
 }
 
 fn read_value(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Short(v) = t else { return false };
+    let Some(v) = crate::nbt::short_of(t) else { return false };
     let Some(mut o) = w.get_mut::<Orb>(e) else { return false };
-    o.value = i32::from(*v);
+    o.value = i32::from(v);
     true
 }
 
@@ -190,10 +190,10 @@ fn write_fuse(w: &World, e: Entity, c: &mut Compound) {
 }
 
 fn read_fuse(w: &mut World, e: Entity, t: &Tag) -> bool {
-    let Tag::Short(v) = t else { return false };
+    let Some(v) = crate::nbt::short_of(t) else { return false };
     let now = now_of(w, e);
     let Some(mut p) = w.get_mut::<Primed>(e) else { return false };
-    p.fuse_at = now + i64::from(*v).max(0) as u64;
+    p.fuse_at = now + i64::from(v).max(0) as u64;
     true
 }
 
@@ -553,6 +553,14 @@ fn tag<'a>(c: &'a Compound, key: &str) -> Option<&'a Tag> {
     c.get(&JavaString::from(key))
 }
 
+/// `CompoundTag.getShortOr`: any numeric tag reads as a short (a summon's `{fuse:40}` is an int); `Err` for a tag that is no number.
+fn short_or(c: &Compound, key: &str, default: i32) -> Result<i32, ()> {
+    match tag(c, key) {
+        None => Ok(default),
+        Some(t) => crate::nbt::short_of(t).map(i32::from).ok_or(()),
+    }
+}
+
 /// The constructors: the creation function of each sort, given what the NBT holds. None when a datum it needs is missing.
 fn build_item(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     let stack = item_from_nbt(tag(c, "Item")?)?;
@@ -561,14 +569,14 @@ fn build_item(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
 
 fn build_orb(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     // `ExperienceOrb.readAdditionalSaveData`: Value defaults to 0, Count to 1.
-    let value = match tag(c, "Value") { Some(Tag::Short(v)) => i32::from(*v), None => 0, _ => return None };
+    let value = short_or(c, "Value", 0).ok()?;
     let count = match tag(c, "Count") { Some(Tag::Int(n)) => u32::try_from(*n).ok()?, None => 1, _ => return None };
     Some(spawn_orb(w, value, count, at, Vec3::ZERO))
 }
 
 fn build_tnt(w: &mut World, at: Vec3, c: &Compound) -> Option<Entity> {
     // `PrimedTnt`: `DEFAULT_FUSE` 80 and `DEFAULT_EXPLOSION_POWER` 4.0 when the keys are absent (a summon without data).
-    let fuse = match tag(c, "fuse") { Some(Tag::Short(f)) => i32::from(*f), None => 80, _ => return None };
+    let fuse = short_or(c, "fuse", 80).ok()?;
     let power = match tag(c, "explosion_power") { Some(Tag::Float(p)) => f32::from_bits(*p), None => 4.0, _ => return None };
     Some(spawn_primed(w, at, Vec3::ZERO, fuse, power))
 }

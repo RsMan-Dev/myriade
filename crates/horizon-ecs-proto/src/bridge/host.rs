@@ -380,6 +380,7 @@ impl EcsWorld {
     }
 
     pub fn despawn(&mut self, e: Entity) {
+        mount::leave(&mut self.world, e);
         self.world.despawn(e);
     }
 

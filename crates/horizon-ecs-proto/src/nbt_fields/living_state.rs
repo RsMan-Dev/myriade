@@ -23,7 +23,7 @@ pub const FIELDS: &[Field] = &[];
 pub const CREATORS: &[Field] = &[
     Field { key: Cow::Borrowed("AbsorptionAmount"), write: write_absorption, read: read_absorption, accepts: accept::float, owner: Some(owner::<Absorption>) },
     Field { key: Cow::Borrowed("attributes"), write: write_attributes, read: read_attributes, accepts: is_list, owner: Some(owner::<AttrMods>) },
-    Field { key: Cow::Borrowed("equipment"), write: write_equipment, read: read_equipment, accepts: is_compound, owner: Some(owner::<Equipment>) },
+    Field { key: Cow::Borrowed("equipment"), write: write_equipment, read: read_equipment, accepts: is_compound, owner: None },
     Field { key: Cow::Borrowed("drop_chances"), write: write_drop_chances, read: read_drop_chances, accepts: is_compound, owner: Some(owner::<DropChances>) },
     Field { key: Cow::Borrowed("CustomName"), write: write_name, read: read_name, accepts: accept_name, owner: Some(owner::<CustomName>) },
     Field { key: Cow::Borrowed("CustomNameVisible"), write: write_name_visible, read: read_name_visible, accepts: is_byte, owner: Some(owner::<NameVisible>) },
@@ -148,9 +148,16 @@ fn read_attributes(w: &mut World, e: Entity, t: &Tag) -> bool {
 
 /// `equipment`: a compound with a stack per worn or held slot that holds one, the stack as `item_to_nbt` writes it.
 fn write_equipment(w: &World, e: Entity, c: &mut Compound) {
-    let Some(q) = w.get::<Equipment>(e) else { return };
+    let mut slots = w.get::<Equipment>(e).map_or_else(Default::default, |q| q.slots.clone());
+    // A mouth that eats what it holds (the fox) keeps its stack beside the slots: it is the main hand of the save, whatever the slots say.
+    if w.get::<crate::behaviours::eat_held::Eats>(e).is_some() {
+        slots[0] = crate::goals::main_hand(w, e).cloned();
+    }
+    if slots.iter().all(Option::is_none) {
+        return;
+    }
     let mut m = Compound::default();
-    for (key, stack) in SLOT_KEYS.iter().zip(&q.slots) {
+    for (key, stack) in SLOT_KEYS.iter().zip(&slots) {
         if let Some(s) = stack {
             m.insert((*key).into(), item_to_nbt(s));
         }
@@ -175,7 +182,13 @@ fn read_equipment(w: &mut World, e: Entity, t: &Tag) -> bool {
         for (i, s) in slots.iter().enumerate() {
             crate::equip_attrs::changed(w, e, i, s.as_ref());
         }
+        let mouth = slots[0].clone();
         w.entity_mut(e).insert(Equipment { slots });
+        // `Fox.ticksSinceEaten` is not saved: a mouth loaded with food starts its count at the load.
+        if w.get::<crate::behaviours::eat_held::Eats>(e).is_some() {
+            crate::goals::set_main_hand(w, e, mouth);
+            crate::behaviours::eat_held::restart(w, e);
+        }
     }
     true
 }
