@@ -881,8 +881,9 @@ impl Game<'_> {
 
     /// `Block.newBlockEntity` for the state a placed item leaves. No constructor from a
     /// state exists in the tree, so none is made.
-    pub(in crate::game) fn new_block_entity_for_state(&mut self, _state: horizon_world::registry::BlockStateId) -> Option<BlockEntity> {
-        None
+    pub(in crate::game) fn new_block_entity_for_state(&mut self, state: horizon_world::registry::BlockStateId) -> Option<BlockEntity> {
+        let name = self.pack.assets.registry.state(state)?.name.clone();
+        BlockEntity::for_block(&name)
     }
 }
 

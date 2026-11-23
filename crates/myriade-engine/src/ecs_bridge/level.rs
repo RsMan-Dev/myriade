@@ -24,6 +24,20 @@ use horizon_ecs_proto::{
     targeting::Who,
 };
 use std::path::Path;
+use horizon_ecs_proto::sound_slots::{self, Overrides};
+
+/// The hurt voice of each species, as the slots the ECS reads: one table per load, shared by all entities. The hurt is the species' own
+/// (`sounds[1]`); the other slots are inherited, and the death is left inherited: `Mob.die` plays no sound on the server.
+fn species_sound_table(types: &'static MobTypes) -> std::collections::HashMap<&'static str, Overrides> {
+    types
+        .types
+        .iter()
+        .map(|(id, t)| {
+            let hurt = if t.sounds[1].is_empty() { sound_slots::Slot::Inherit } else { sound_slots::Slot::Id(t.sounds[1]) };
+            (id.as_str(), Overrides { hurt, ..Default::default() })
+        })
+        .collect()
+}
 
 /// The flags a saved mob carries that are components: the AI pause (`ai_paused`) and `CanPickUpLoot`.
 fn restore_mob_flags(w: &mut EcsWorld, e: Entity, c: &Compound) {
@@ -83,7 +97,11 @@ impl EcsLevel {
         Self { inner: None, date: None, structures: ChunkStructures::default() }
     }
     pub fn new(setup: &HostSetup, mw: &MobWorld<'_>, types: &'static MobTypes, tags: &Path) -> Self {
-        Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None, structures: ChunkStructures::default() }
+        let mut level = Self { inner: Some(Box::new(EcsWorld::new(setup, mw, types, tags))), date: None, structures: ChunkStructures::default() };
+        if let Some(w) = level.world_mut() {
+            sound_slots::replace(w, species_sound_table(types));
+        }
+        level
     }
     /// The natural spawning of this level (`install_spawning`): the biome tables of `mw` with `seed`, the rules, and the structures' lists
     /// and source. Nothing when inert.

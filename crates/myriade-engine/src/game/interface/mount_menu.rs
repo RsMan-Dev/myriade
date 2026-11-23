@@ -16,11 +16,17 @@ pub(in crate::game) const CHEST: usize = 710;
 const CHEST_SIZE: usize = 15;
 const COLUMNS: usize = 5;
 
-/// `AbstractHorse` without the llamas: the horses and donkeys and mules, undead horses included.
+/// `AbstractHorse` without the llamas: the horses and donkeys and mules, undead horses included, and the camels.
 pub(in crate::game) fn is_equine(species: Species) -> bool {
     matches!(
         species,
-        Species::Horse | Species::Donkey | Species::Mule | Species::SkeletonHorse | Species::ZombieHorse
+        Species::Horse
+            | Species::Donkey
+            | Species::Mule
+            | Species::SkeletonHorse
+            | Species::ZombieHorse
+            | Species::Camel
+            | Species::CamelHusk
     )
 }
 /// `Llama` and `TraderLlama`.

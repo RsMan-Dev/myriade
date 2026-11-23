@@ -163,7 +163,7 @@ impl Game<'_> {
 
     /// `apply_fox_consumption` for the ECS creature `mob`: the same steps, the mob side through the bridge. `seed` seeds the random of
     /// the sounds and of the teleport (P's own generator is not a `LegacyRandom`).
-    fn apply_held_consumption_ecs(&mut self, mob: u32, stack: &ItemStack, seed: i64, _silent: bool) -> bool {
+    fn apply_held_consumption_ecs(&mut self, mob: u32, stack: &ItemStack, seed: i64, silent: bool) -> bool {
         if !self.ecs.held_use_valid(mob, stack, None) || self.ecs_view(mob).is_none() {
             return false;
         }
@@ -180,10 +180,15 @@ impl Game<'_> {
                 return Ok(false);
             };
             let mut rng = LegacyRandom::new(seed);
-            // `emitParticlesAndSounds(random, user, stack, 16)`, then `FoodProperties.onConsume`'s draw for the sound's pitch (its sound is not played: no mob events).
-            let _ = consumable.emit(&mut HeldEater { rng: &mut rng }, (), stack.clone(), 16);
+            let mut events = Vec::new();
+            // `emitParticlesAndSounds(random, user, stack, 16)`, then `FoodProperties.onConsume`'s sound at full volume.
+            let _ = consumable.emit(&mut HeldEater { rng: &mut rng, at, silent, events: &mut events }, (), stack.clone(), 16);
             if food.is_some() {
-                let _ = rng.triangle_float(1.0, 0.4);
+                let pitch = rng.triangle_float(1.0, 0.4);
+                events.push(myriade_engine::mobs::MobEvent::SoundId(consumable.sound.clone(), at, 1.0, pitch));
+            }
+            if game.handle_mob_events(events).is_err() {
+                return Ok(false);
             }
             for effect in &consumable.effects {
                 if let ConsumeEffect::TeleportRandomly(teleport) = effect {
@@ -194,6 +199,18 @@ impl Game<'_> {
                 } else if game.apply_consume_effect(effect, Some(mob)).is_none() {
                     return Ok(false);
                 }
+            }
+            let Some(at) = game.ecs.position(mob) else {
+                return Ok(false);
+            };
+            let event = myriade_engine::mobs::MobEvent::GameEvent {
+                event: if consumable.animation == UseAnimation::Drink { "minecraft:drink" } else { "minecraft:eat" },
+                at,
+                source: mob,
+                state: horizon_world::registry::BlockStateId(0),
+            };
+            if game.handle_mob_events(vec![event]).is_err() {
+                return Ok(false);
             }
             let remainder = remainder.clone().map(|name| ItemStack::new(&name, 1));
             Ok(game.ecs.finish_held_use(mob, stack, remainder))
@@ -559,6 +576,9 @@ impl TeleportConsumeWorld for EcsHeldTeleporter<'_, '_> {
 /// The eating creature as `Consumable`'s user: a random seeded by P, and its own ears (a silent one is not heard).
 struct HeldEater<'a> {
     rng: &'a mut LegacyRandom,
+    at: [f64; 3],
+    silent: bool,
+    events: &'a mut Vec<myriade_engine::mobs::MobEvent>,
 }
 impl EmissionWorld for HeldEater<'_> {
     type Error = Infallible;
@@ -579,8 +599,11 @@ impl EmissionWorld for HeldEater<'_> {
     fn consume_sound(&mut self, _: ItemStack) -> Result<String, Infallible> {
         unreachable!("the consumable plays its own sound")
     }
-    /// `Entity.playSound` of the creature: not played, the mob events being gone.
-    fn play_sound(&mut self, _: String, _: f32, _: f32) -> Result<(), Infallible> {
+    /// `Entity.playSound`: at the creature's feet, and nothing from a silent one.
+    fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
+        if !self.silent {
+            self.events.push(myriade_engine::mobs::MobEvent::SoundId(sound, self.at, volume, pitch));
+        }
         Ok(())
     }
 }

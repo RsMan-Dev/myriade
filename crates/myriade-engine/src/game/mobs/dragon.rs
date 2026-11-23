@@ -247,6 +247,9 @@ impl Game<'_> {
         cause: Option<Target>,
         position: Option<[f64; 3]>,
     ) -> bool {
+        if is_fire(kind) {
+            return false;
+        }
         if matches!(cause, Some(Target::Dragon(_))) {
             return false;
         }
