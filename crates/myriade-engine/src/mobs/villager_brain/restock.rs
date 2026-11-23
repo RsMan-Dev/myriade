@@ -1,5 +1,3 @@
-//! Work-site restocking and the trading-player refresh event.
-use super::{MobEvent, MobWorld};
 
 
 #[cfg(test)]

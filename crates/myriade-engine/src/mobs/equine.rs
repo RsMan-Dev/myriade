@@ -1,15 +1,3 @@
-//! Horses, donkeys, mules and the undead horses (`AbstractHorse`): random
-//! stats, coat colours and markings, eating, rearing, taming by riding,
-//! the ridden movement and jump, offspring stats and `AbstractEquineModel`.
-use super::finalize::{Attr, set_base};
-use super::{
-    MobEvent, MobWorld, Seen, Species,
-    anim::{Poses, State},
-    goals::{
-        Breed, Cx, Float, FollowParent, Goal, LookAtPlayer, MOVE, Panic, RandomLookAround, Stroll,
-        Tempt, goal_clone, reduced,
-    },
-};
 use horizon_core::geometry::Vec3;
 use horizon_core::geometry::trig::Mth;
 use horizon_core::random::RandomSource;
@@ -89,51 +77,6 @@ pub fn saved_variant(loaded: Option<i32>, coat: u8, markings: u8) -> i32 {
         .unwrap_or(i32::from(coat) | i32::from(markings) << 8)
 }
 
-pub fn is_equine(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Horse
-            | Species::Donkey
-            | Species::Mule
-            | Species::SkeletonHorse
-            | Species::ZombieHorse
-            | Species::Camel
-            | Species::CamelHusk
-            | Species::Llama
-            | Species::TraderLlama
-    )
-}
-/// `AbstractChestedHorse`: donkeys, mules and llamas.
-pub fn is_chested(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Donkey | Species::Mule | Species::Llama | Species::TraderLlama
-    )
-}
-/// `Entity.canSprint`: false everywhere but the camel (`Camel.canSprint`). A
-/// rider's `LocalPlayer.isSprintingPossible` asks its vehicle.
-pub fn can_sprint(s: Species) -> bool {
-    matches!(s, Species::Camel | Species::CamelHusk)
-}
-/// `AbstractHorse.getMaxTemper`: 100, 30 for llamas.
-pub fn max_temper(s: Species) -> i32 {
-    if super::llama::is_llama(s) {
-        super::llama::MAX_TEMPER
-    } else {
-        100
-    }
-}
-/// `canPerformRearing`: every `AbstractHorse` but llamas (and camels).
-fn can_rear(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Horse
-            | Species::Donkey
-            | Species::Mule
-            | Species::SkeletonHorse
-            | Species::ZombieHorse
-    )
-}
 /// `PlayerRideableJumping.getPlayerJumpPendingScale`: the charge `data` out of
 /// 100 as the scale a mount leaps or dashes with (a full bar is 1.0 and the
 /// shortest is 0.4).
@@ -176,22 +119,6 @@ pub struct Offspring {
     /// Horse markings or llama strength; unused for donkeys and mules.
     pub variant2: u8,
 }
-/// Saddled equines (not llamas), pigs and striders: the controlling player
-/// moves the mount on their own client
-/// (`Entity.isLocalInstanceAuthoritative`, `LivingEntity.travelRidden`) and
-/// sends the moves (`ServerboundMoveVehiclePacket`).
-pub fn moved_by_rider(s: Species) -> bool {
-    matches!(s, Species::Pig | Species::Strider) || (is_equine(s) && !super::llama::is_llama(s))
-}
-/// `AbstractHorse.MountPanicGoal`: only without a rider.
-#[derive(Clone, Debug)]
-struct MountPanic(Panic);
-impl Goal for MountPanic {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 /// `RunAroundLikeCrazyGoal`: an untamed horse with a rider bolts about until
 /// it is tamed (temper) or throws the rider off.
 #[derive(Clone, Debug)]
@@ -206,12 +133,6 @@ impl RunAroundLikeCrazy {
 }
 
 
-impl Goal for RunAroundLikeCrazy {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// What `Horse`, `AbstractChestedHorse` (donkeys, mules, llamas) and
 /// `ZombieHorse.mobInteract` do with a held item before
 /// `AbstractHorse.mobInteract`.
@@ -226,27 +147,6 @@ pub enum HeldItem {
 #[derive(Clone, Debug)]
 struct RandomStand {
     next: i32,
-}
-impl Goal for RandomStand {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "RandomStandGoal"
-    }
-    fn flags(&self) -> u8 {
-        0
-    }
-}
-/// Horses that step with `AbstractHorse.playStepSound` (llamas and camels
-/// have their own).
-pub fn hoof_steps(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Horse
-            | Species::Donkey
-            | Species::Mule
-            | Species::SkeletonHorse
-            | Species::ZombieHorse
-    )
 }
 /// `AbstractHorse.isWoodSoundType`: WOOD, NETHER_WOOD, STEM, CHERRY_WOOD and
 /// BAMBOO_WOOD (not HARD_CROP, which only shares WOOD's step).
@@ -275,23 +175,6 @@ fn is_wood_sound_type(sounds: &myriade_types::BlockSoundType) -> bool {
 /// `stand_tick`, so a counter of 1 would end the rear a tick after the flag
 /// arrived, long before the jump lands. The next flags without the bit end it.
 const CLIENT_STANDING: i32 = 1 << 20;
-/// Whether `ai_step` above runs this species' grazing and rearing, so that
-/// the server's flags 16 and 32 mean eating and standing.
-pub fn grazes(s: Species) -> bool {
-    is_equine(s) && !super::camel::is_camel(s) && !super::llama::is_llama(s)
-}
-/// The model key prefix for the species.
-pub fn model_name(s: Species) -> &'static str {
-    match s {
-        Species::Horse => "horse",
-        Species::Donkey => "donkey",
-        Species::Mule => "mule",
-        Species::SkeletonHorse => "skeleton_horse",
-        // CamelHuskRenderer: the camel's model (and its saddle layer).
-        Species::Camel | Species::CamelHusk => "camel",
-        _ => "zombie_horse",
-    }
-}
 
 /// The `horse_body` texture of a horse armour item (its id without the
 /// namespace): the item's `equippable.asset_id`, which names the

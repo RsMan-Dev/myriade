@@ -1,16 +1,3 @@
-//! Water mobs: squid and glow squid (tentacle propulsion), cod, salmon,
-//! tropical fish and pufferfish (`AbstractFish`, puffing), and dolphins
-//! (breathing, smooth swimming).
-use super::{
-    Damage, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    control::MoveKind,
-    goals::{
-        Avoid, AvoidEntity, BreathAir, Cx, Goal, HurtByTarget, LookAtPlayer, MeleeAttack, Panic,
-        RandomLookAround, Stroll, TryFindWater, goal_clone, reduced,
-    },
-    nav::NavKind,
-};
 use crate::blocks::Fluid;
 use crate::health::DamageLevel;
 use crate::join_seq::JoinList;
@@ -45,27 +32,6 @@ pub fn puff_scale(state: i32) -> f64 {
     }
 }
 
-/// `EntityTypeTags.NOT_SCARY_FOR_PUFFERFISH`: the mobs a pufferfish leaves
-/// alone, its own kind and the water mobs it shares a tank with.
-pub fn not_scary_for_pufferfish(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Cod
-            | Species::Salmon
-            | Species::TropicalFish
-            | Species::Pufferfish
-            | Species::Squid
-            | Species::GlowSquid
-            | Species::Dolphin
-            | Species::Turtle
-            | Species::Guardian
-            | Species::ElderGuardian
-            | Species::Tadpole
-            | Species::Nautilus
-            | Species::ZombieNautilus
-            | Species::SulfurCube
-    )
-}
 
 
 
@@ -80,55 +46,10 @@ pub fn not_scary_for_pufferfish(s: Species) -> bool {
 /// Squid.SquidRandomMovementGoal
 #[derive(Clone, Debug)]
 pub struct SquidRandomMovement;
-impl Goal for SquidRandomMovement {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 /// Squid.SquidFleeGoal (keeps vanilla's discarded normalize()).
 #[derive(Clone, Debug)]
 pub struct SquidFlee {
     ticks: i32,
-}
-impl Goal for SquidFlee {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
-/// `AbstractSchoolingFish`: cod, salmon and tropical fish.
-fn schooling(s: Species) -> bool {
-    matches!(s, Species::Cod | Species::Salmon | Species::TropicalFish)
-}
-/// `getMaxSchoolSize`: `AbstractFish.getMaxSpawnClusterSize` (8), a salmon's
-/// own 5.
-fn max_school_size(s: Species) -> i32 {
-    if s == Species::Salmon { 5 } else { 8 }
-}
-/// `isFollower`: its leader is alive.
-fn follows(w: &MobWorld, leader: Option<u32>) -> bool {
-    leader.and_then(|l| w.seen(l)).is_some_and(|s| s.alive)
-}
-/// `canBeFollowed`: it has followers and room for more.
-fn can_be_followed(s: Species, followers: i32) -> bool {
-    followers > 0 && followers + 1 < max_school_size(s)
-}
-/// `AbstractFish.FishSwimGoal`: random swimming, which a schooling fish
-/// that follows a leader leaves (`canRandomSwim`).
-#[derive(Clone, Debug)]
-pub struct FishSwim(Stroll);
-impl Goal for FishSwim {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "FishSwimGoal"
-    }
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
 }
 /// `FollowFlockLeaderGoal`: a fish with no school, every ten seconds or so,
 /// joins a school nearby that has room, or gathers the fish around it that
@@ -147,27 +68,9 @@ impl FollowFlockLeader {
         }
     }
 }
-impl Goal for FollowFlockLeader {
-    goal_clone!();
-    fn set_start_delay(&mut self, ticks: i32) {
-        self.next_start = ticks;
-    }
-    fn name(&self) -> &'static str {
-        "FollowFlockLeaderGoal"
-    }
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 /// Pufferfish.PufferfishPuffGoal: inflate when a mob or player is within 2.
 #[derive(Clone, Debug)]
 pub struct PufferfishPuff;
-impl Goal for PufferfishPuff {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 /// finalizeSpawn variants (tropical fish patterns and colours).
 /// TropicalFish.COMMON_VARIANTS: (pattern index, base colour, pattern colour).
 pub const COMMON_TROPICAL: [(u8, u8, u8); 22] = [

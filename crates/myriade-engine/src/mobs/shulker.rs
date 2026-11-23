@@ -1,16 +1,3 @@
-//! Shulkers (`Shulker`): fixed to a block face, peeking out of their shell,
-//! firing homing bullets at players within 20 blocks, teleporting when
-//! their face is lost or when badly hurt, and shrugging off arrows while
-//! closed.
-use super::{
-    Damage, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    control::LookKind,
-    goals::{
-        Cx, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, NearestTarget, RandomLookAround,
-        goal_clone, reduced,
-    },
-};
 use crate::projectiles::{Projectile, ProjectileWorld, STEPS};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{
@@ -96,58 +83,16 @@ fn pack_diff(pos: [i32; 3], to: [i32; 3]) -> i32 {
 fn physical_peek(amount: f32) -> f32 {
     0.5 - ((0.5 + amount) * PI).msin() * 0.5
 }
-/// A ProjectileWorld over the mob world, for aiming a new bullet.
-struct Probe<'a, 'w> {
-    w: &'a MobWorld<'w>,
-    targets: Vec<(Who, Aabb)>,
-}
-impl ProjectileWorld for Probe<'_, '_> {
-    fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
-        None
-    }
-    fn in_water(&self, _: Aabb) -> bool {
-        false
-    }
-    fn targets(&self) -> &[(Who, Aabb)] {
-        &self.targets
-    }
-    fn empty(&self, p: [i32; 3]) -> bool {
-        self.w.facts.is_air(self.w.world.block(p[0], p[1], p[2]))
-    }
-    fn can_stand_on(&self, p: [i32; 3], entity_y: f64) -> bool {
-        crate::collisions::projectile_can_stand_on(
-            self.w.world,
-            self.w.collision,
-            horizon_core::position::BlockPos::new(p[0], p[1], p[2]),
-            entity_y,
-        )
-    }
-}
 /// `ShulkerAttackGoal`: open up and fire a bullet every one to five and a
 /// half seconds at a target within 20 blocks.
 #[derive(Clone, Debug)]
 struct ShulkerAttack {
     attack_time: i32,
 }
-impl Goal for ShulkerAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `ShulkerPeekGoal`: idle peeks of one to three seconds.
 #[derive(Clone, Debug)]
 struct Peek {
     time: i32,
-}
-impl Goal for Peek {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
 }
 /// `attachFace.getOpposite().getRotation()` by attach face: the open
 /// direction's rotation (`Direction.getRotation` of `face ^ 1`).

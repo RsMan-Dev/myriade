@@ -1,17 +1,3 @@
-//! Armadillos (`Armadillo`, `ArmadilloAi`): a player who sprints or rides
-//! nearby, an undead mob or the last attacker scares one into a ball (IDLE,
-//! ROLLING, SCARED, UNROLLING); it peeks out now and then, and a ball takes
-//! less damage. The brain's `ARMADILLO_SCARE_DETECTED` sensor, its
-//! `DANGER_DETECTED_RECENTLY` memory and the `ArmadilloBallUp` behaviour are
-//! kept in `State`; the walking behaviours are the goals of `register`.
-//! AnimState states: roll out, roll up, peek.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, Who,
-    goals::{
-        AnimalPanic, Breed, Cx, Float, Goal, LOOK, LookAtPlayer, MOVE, RandomLookAround, Stroll,
-        Tempt, goal_clone,
-    },
-};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
 pub const IDLE: u8 = 0;
@@ -72,15 +58,6 @@ const FOLLOW_SPEED: f64 = 1.25;
 const FOLLOW_RANGE: f64 = 16.0;
 impl BabyFollowAdult {
 }
-impl Goal for BabyFollowAdult {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 /// `ArmadilloState`'s name (`StringRepresentable`, which its `CODEC` writes):
 /// what `Armadillo.addAdditionalSaveData` stores under `state`.
@@ -103,102 +80,19 @@ pub fn state_by_name(name: Option<&str>) -> u8 {
     }
 }
 
-/// `DamageTypeTags.PANIC_ENVIRONMENTAL_CAUSES`.
-pub fn environmental(kind: DamageKind) -> bool {
-    matches!(
-        kind,
-        DamageKind::Cactus
-            | DamageKind::OnFire
-            | DamageKind::InFire
-            | DamageKind::Lava
-            | DamageKind::LightningBolt
-            | DamageKind::HotFloor
-            | DamageKind::Freeze
-            | DamageKind::SulfurCubeHot
-    )
-}
-
-/// `EntityTypeTags.UNDEAD`.
-fn undead(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Skeleton
-            | Species::Stray
-            | Species::WitherSkeleton
-            | Species::SkeletonHorse
-            | Species::Bogged
-            | Species::Parched
-            | Species::ZombieHorse
-            | Species::CamelHusk
-            | Species::Zombie
-            | Species::ZombieVillager
-            | Species::ZombifiedPiglin
-            | Species::Zoglin
-            | Species::Drowned
-            | Species::Husk
-            | Species::ZombieNautilus
-            | Species::Wither
-            | Species::Phantom
-    )
-}
 
 
 
-/// `ArmadilloAi.ArmadilloPanic`: it unrolls, then runs.
-#[derive(Clone, Debug)]
-struct ArmadilloPanic(AnimalPanic);
-impl Goal for ArmadilloPanic {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        "Panic"
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
+
 /// A behaviour of the IDLE activity: `ArmadilloAi.updateActivity` picks
 /// PANIC over it while danger is in mind and it is not panicking, and a
 /// ball does not walk (`ArmadilloAi$1`, its `MoveToTargetSink`).
 #[derive(Clone, Debug)]
 struct Idle<G>(G);
-impl<G: Goal + Clone + 'static> Goal for Idle<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
-/// `FollowTemptation` with `ArmadilloAi.initIdleActivity`'s close enough
-/// distance: 1 block for a baby, 2 for an adult.
-#[derive(Clone, Debug)]
-struct ArmadilloTempt(Tempt);
-impl Goal for ArmadilloTempt {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-}
 /// The behaviours that do not run while the armadillo is a ball: its
 /// `MoveToTargetSink` and the idle activity's walking and looking.
 #[derive(Clone, Debug)]
 struct Rolled;
-impl Goal for Rolled {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 
 #[cfg(test)]
 mod tests {

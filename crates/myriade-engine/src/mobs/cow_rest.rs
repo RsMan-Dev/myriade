@@ -1,11 +1,3 @@
-//! Rest of a cow on `Mob` (the hand-written memo, the same key and outputs as `ecs_cow/rest.rs`): a tick that starts from the very state the previous one started from, in unchanged
-//! surroundings, ends where it ended (79 % of the ticks of a cow on flat ground). The step that
-//! moves it (`travel`: the physics, the collisions, the fluids, the fall) is then not made again: its
-//! outputs, kept from the tick that made them, are put back. Invisible by construction of the key and
-//! by the equality test: the key holds everything `travel` reads, and a tick that drew a random, raised an
-//! event or hurt the cow is never kept. It is a comparison of values (the same on a plain struct): the
-//! bevy change ticks are not usable here, every step of the tick writes its fields.
-use super::{MobEvent, MobWorld};
 use crate::health::DamageLevel;
 use myriade_level::world::RegionStamp;
 use horizon_core::geometry::Vec3;

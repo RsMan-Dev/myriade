@@ -1,14 +1,3 @@
-//! Goats (`Goat`, `GoatAi`): the lowered head (`lowerHeadTick`, entity
-//! events 58 and 59) and the ram activity: `PrepareRamNearestTarget` picks
-//! the nearest living thing it can see, walks to a spot four to seven
-//! blocks away in a straight line and waits there 20 ticks with its head
-//! down; `RamTarget` then charges at it, knocks it back, or breaks a horn
-//! on a log, stone or ore. Both are one goal here. The long jump activity is
-//! the frog's goal (frog.rs) with the goat's numbers.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Who,
-    goals::{Cx, Goal, LOOK, MOVE, goal_clone},
-};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use myriade_types::SoundSource;
 
@@ -33,29 +22,7 @@ enum Phase {
     RamStart,
     Ram,
 }
-#[derive(Clone, Copy, Debug)]
-struct Candidate {
-    start: [i32; 3],
-    target_pos: [i32; 3],
-    target: Who,
-}
 
-/// The lowered head and the ram behaviours' state. `RAM_COOLDOWN_TICKS` is a
-/// brain memory (`ram_cooldown_ticks`), saved with the others.
-#[derive(Clone, Debug, Default)]
-pub struct State {
-    lower_head_tick: i32,
-    lowering_head: bool,
-    phase: Phase,
-    candidate: Option<Candidate>,
-    reached_at: Option<i32>,
-    /// `RAM_TARGET`, and the direction of the charge.
-    ram_target: Option<Vec3>,
-    ram_direction: Vec3,
-    time: i32,
-    /// `LivingEntity.discardFriction`, set through the long jump.
-    pub discard_friction: bool,
-}
 
 
 const RAM_COOLDOWN: &str = "ram_cooldown_ticks";
@@ -67,15 +34,6 @@ fn block_of(p: Vec3) -> [i32; 3] {
 /// `PrepareRamNearestTarget` and `RamTarget` of the ram activity.
 #[derive(Clone, Debug)]
 struct Ram;
-impl Goal for Ram {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 fn sign(v: i32) -> i32 {
     v.signum()
 }

@@ -1058,16 +1058,6 @@ impl Hub {
                     .chain([&c.is_triggered()])
                     .map(|&d| i32::from(d))
                     .collect(),
-                // A mod's menu: the data slots its tick set. A mod menu type's
-                // `ContainerData` has as many as it declares, all sent on open
-                // (`sendInitialData`), 0 where the tick set none.
-                Some(BlockEntity::Mod(e)) if m.mod_type.is_some() || !e.data.is_empty() => {
-                    let mut data = e.data.clone();
-                    if let Some(t) = m.mod_type {
-                        data.resize(t.data_slots, 0);
-                    }
-                    data
-                }
                 _ => return,
             }
             .into_iter()

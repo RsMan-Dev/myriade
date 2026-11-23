@@ -7,17 +7,6 @@ use horizon_core::nbt::{Compound, Tag};
 
 pub fn encode(p: (i32, i32, i32), e: &crate::containers::BlockEntity, block: &str) -> Tag {
     use crate::containers::BlockEntity;
-    if let BlockEntity::Mod(m) = e {
-        let mut map = m.nbt.clone();
-        map.insert("id".into(), string(m.id()));
-        if m.items.iter().any(Option::is_some) {
-            map.insert("Items".into(), encode_items(&m.items));
-        }
-        for (key, v) in [("x", p.0), ("y", p.1), ("z", p.2)] {
-            map.insert(key.into(), Tag::Int(v));
-        }
-        return Tag::Compound(map);
-    }
     let components = match e {
         BlockEntity::Banner(b) => b.components.clone(),
         BlockEntity::CopperGolemStatue(components) => components.clone(),
@@ -186,8 +175,7 @@ pub fn encode(p: (i32, i32, i32), e: &crate::containers::BlockEntity, block: &st
         | BlockEntity::Bell
         | BlockEntity::EndPortal
         | BlockEntity::EnchantingTable
-        | BlockEntity::CopperGolemStatue(_)
-        | BlockEntity::Mod(_) => {}
+        | BlockEntity::CopperGolemStatue(_) => {}
         // PotentSulfurBlockEntity.saveAdditional.
         BlockEntity::PotentSulfur(sulfur) => {
             entries.push(("countdown", Tag::Int(sulfur.waiting_countdown)))

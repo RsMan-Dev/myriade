@@ -1,14 +1,3 @@
-//! The wandering trader (`WanderingTrader`): drinking invisibility at night
-//! and milk by day, fleeing monsters, walking to the place it came to
-//! visit, staying within its home, trading and leaving after its despawn
-//! delay.
-use super::{
-    MobEvent, MobWorld, Species,
-    goals::{
-        Avoid, AvoidEntity, Cx, Float, Goal, JUMP, LOOK, LookAtPlayer, MOVE, Panic, Stroll,
-        goal_clone,
-    },
-};
 use horizon_core::random::RandomSource;
 
 // Trader state: `point` the wander target, `ints[5]` the despawn delay, `flag2` whether
@@ -29,48 +18,18 @@ struct DrinkItem {
     finish_sound: &'static str,
     dark: bool,
 }
-impl Goal for DrinkItem {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `TradeWithPlayerGoal`: stand still while trading.
 #[derive(Clone, Debug)]
 struct TradeWithPlayer;
-impl Goal for TradeWithPlayer {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-}
 /// `LookAtTradingPlayerGoal`.
 #[derive(Clone, Debug)]
 struct LookAtTradingPlayer;
-impl Goal for LookAtTradingPlayer {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `WanderingTrader.WanderToPositionGoal`: head for the wander target, in
 /// hops of ten blocks while it is far.
 #[derive(Clone, Debug)]
 struct WanderToPosition {
     stop: f64,
     speed: f64,
-}
-impl Goal for WanderToPosition {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
 }
 /// `MoveTowardsRestrictionGoal`, also the guardian's priority-5 goal.
 #[derive(Clone, Debug)]
@@ -91,12 +50,6 @@ impl MoveTowardsRestriction {
     pub(crate) fn looking(mut self) -> Self {
         self.look = true;
         self
-    }
-}
-impl Goal for MoveTowardsRestriction {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        if self.look { MOVE | LOOK } else { MOVE }
     }
 }
 #[cfg(test)]

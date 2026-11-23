@@ -1,13 +1,3 @@
-//! Allays (`Allay`): given an item, they fetch matching drops within 32
-//! blocks and bring them to their player (or a liked note block), dance to
-//! jukeboxes and duplicate when given an amethyst shard mid-dance.
-use super::{
-    MobEvent, MobWorld,
-    anim::{Poses, State as AnimState},
-    control::MoveKind,
-    goals::{AnimalPanic, Cx, Goal, LookAtPlayer, MOVE, RandomLookAround, Stroll, goal_clone},
-    nav::NavKind,
-};
 use crate::health::DamageLevel;
 use crate::items::ItemStack;
 use crate::sculk::{self, Context, Info};
@@ -47,10 +37,6 @@ impl GlobalPos {
 /// The identifier of a dimension as a `'static` string, for loading saves.
 pub fn dimension_id(id: &str) -> &'static str {
     horizon_core::LevelKey::builtin_or_overworld(id).id()
-}
-/// `Level.dimension` of the level the mob ticks in.
-pub fn dimension(w: &MobWorld) -> &'static str {
-    w.level.id()
 }
 
 /// `AllayAi.allayConsidersItemEqual`: the same item (`ItemStack.isSameItem`)
@@ -138,31 +124,13 @@ impl State {
 /// `GoToWantedItem`: fly to the wanted drop.
 #[derive(Clone, Debug)]
 struct Fetch;
-impl Goal for Fetch {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `GoAndGiveItemsToTarget`: carry the load to the deposit and throw it.
 #[derive(Clone, Debug)]
 struct Deliver;
-impl Goal for Deliver {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `StayCloseToTarget.create(.., 4, 16, 2.25)`: acts only once the deposit is
 /// 16 blocks away or more, then walks until within 4.
 #[derive(Clone, Debug)]
 struct StayClose;
-impl Goal for StayClose {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 #[cfg(test)]
 mod allay_parity_tests {
     use super::*;

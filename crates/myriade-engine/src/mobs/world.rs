@@ -530,6 +530,18 @@ impl MobWorld<'_> {
             .ok()?
             .bounds()
     }
+    /// The boxes of the collision shape of the block at `(x, y, z)`, relative to the block.
+    pub fn collision_boxes(&self, x: i32, y: i32, z: i32) -> Vec<horizon_core::geometry::Aabb> {
+        let mut scene = SceneCollisions {
+            world: self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let state = self.world.block(x, y, z);
+        self.collision
+            .collision_shape(&mut scene, state, [x, y, z])
+            .map_or_else(|_| Vec::new(), |shape| shape.boxes().to_vec())
+    }
     /// `Block.isFaceFull(state.getCollisionShape(level, pos), Direction.UP)`:
     /// the state at `p` covers its whole top face, as a full block does, as a
     /// top slab and upside-down stairs do, and as a 14/16 snow layer does not.
@@ -890,61 +902,10 @@ pub fn visual_clip<W: DynamicCollisionWorld>(
 }
 
 
-/// Runs `f` with an empty overworld (`others` its mobs) and the mob types,
-/// both from the extracted vanilla data; false, without running it, when
-/// that data is missing.
-#[cfg(any(test, feature = "proto"))]
-pub fn with_test_world(
-    others: &[Seen],
-    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
-) -> bool {
-    with_built_test_world(others, |_, _| {}, f)
-}
 /// A test's level random (`Level.random`), seeded.
 #[cfg(any(test, feature = "proto"))]
 pub fn level_random(seed: i64) -> horizon_core::random::LevelRandom {
     horizon_core::random::LevelRandom::for_level(horizon_core::random::LegacyRandom::new(seed))
-}
-/// `with_test_world` with `build` placing blocks first.
-#[cfg(any(test, feature = "proto"))]
-pub fn with_built_test_world(
-    others: &[Seen],
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
-) -> bool {
-    with_built_test_world_rules(others, true, true, build, f)
-}
-/// `with_built_test_world` with the `mob_griefing` game rule the world reports.
-#[cfg(any(test, feature = "proto"))]
-pub fn with_built_test_world_rules(
-    others: &[Seen],
-    mob_griefing: bool,
-    mob_drops: bool,
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
-) -> bool {
-    let Some(resources) = TestResources::vanilla() else {
-        crate::test_fixtures::report_missing();
-        return false;
-    };
-    run_test_world(resources, others, mob_griefing, mob_drops, build, f)
-}
-/// The same mob world loaded from a content mod's resource root.
-#[cfg(any(test, feature = "proto"))]
-pub fn with_resource_test_world(
-    root: &std::path::Path,
-    others: &[Seen],
-    mob_griefing: bool,
-    mob_drops: bool,
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
-) -> bool {
-    // A mod's root is a scratch folder the test wrote: read it as it is now.
-    let Some(resources) = TestResources::load(root) else {
-        crate::test_fixtures::report_missing();
-        return false;
-    };
-    run_test_world(&resources, others, mob_griefing, mob_drops, build, f)
 }
 /// What every mob test world reads from its resource root. Tests only read
 /// it (each builds its own `World` over it), so the vanilla root's copy is
@@ -966,66 +927,6 @@ struct TestResources {
 }
 #[cfg(any(test, feature = "proto"))]
 impl TestResources {
-    /// `None` when `root` has no prepared vanilla data.
-    fn load(root: &std::path::Path) -> Option<Self> {
-        if !root.join("entity-types.json").exists()
-            || !root.join("movement-properties.nbt").exists()
-        {
-            return None;
-        }
-        let assets = crate::assets::Assets::load(root).unwrap();
-        let registry = assets.registry;
-        let facts = BlockFacts::load(root, registry).unwrap();
-        let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
-        let source = horizon_assets::resource_source::ResourceRoot::directory(root.to_path_buf());
-        let data = super::MobData::load(&source, &facts);
-        let types = super::MobTypes::load(root).unwrap();
-        let biomes = crate::biome::Biomes::load(&source).unwrap();
-        let defaults = horizon_world::item_defaults::read(root).unwrap();
-        let items = crate::items::Items::load(
-            root,
-            registry,
-            &facts,
-            &horizon_world::loot::PackOverlay::NONE,
-            &defaults,
-        )
-        .unwrap();
-        let collision = std::sync::Arc::new(crate::collisions::load(root, registry).unwrap());
-        let suffocation =
-            super::suffocation::bind(collision.clone(), &motion.causes_suffocation).unwrap();
-        #[cfg(feature = "proto")]
-        let light = crate::light::LightTables::load(root, registry, &facts).unwrap();
-        Some(Self {
-            assets,
-            facts,
-            motion,
-            data,
-            types,
-            biomes,
-            items,
-            collision,
-            suffocation,
-            #[cfg(feature = "proto")]
-            light,
-        })
-    }
-    /// The checkout's prepared vanilla data, loaded on first use; `None`
-    /// when it is missing.
-    fn vanilla() -> Option<&'static Self> {
-        static VANILLA: std::sync::OnceLock<Option<TestResources>> = std::sync::OnceLock::new();
-        VANILLA
-            .get_or_init(|| {
-                let root = std::env::var_os("HORIZON_TEST_RESOURCES")
-                    .map(std::path::PathBuf::from)
-                    .unwrap_or_else(|| {
-                        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                            .join("../../.local/myriade-engine")
-                            .join(horizon_core::VANILLA_VERSION)
-                    });
-                Self::load(&root)
-            })
-            .as_ref()
-    }
 }
 /// Lights every chunk of the prototype's world with the real light engine (the sky light of an open column is 15, a roof
 /// shades what is under it); `relight_test_world` keeps it right after a block change.
@@ -1053,13 +954,6 @@ fn light_test_world(world: &mut crate::world::World, tables: &crate::light::Ligh
             chunk.lit = true;
         }
     }
-}
-/// After blocks of the leaked prototype world changed (the caller promises that no system runs): the real engine's relight.
-#[cfg(feature = "proto")]
-pub fn relight_test_world(world: &mut crate::world::World, positions: &[(i32, i32, i32)]) {
-    let Some(resources) = TestResources::vanilla() else { return };
-    let mut changed = crate::light::LightChanges::default();
-    crate::light::relight(&mut world.chunks, &resources.light, true, positions, false, &mut changed);
 }
 /// Runs `f` over a fresh `World` (`build` places its blocks) on `resources`.
 #[cfg(any(test, feature = "proto"))]
@@ -1281,104 +1175,7 @@ mod missing_data_report_tests {
 #[path = "visual_sight_tests.rs"]
 mod visual_sight_tests;
 
-/// The world of a bench or a prototype: the prepared vanilla data, a `World` that `build` fills, and everything
-/// leaked, so that the `MobWorld` and what it borrows live for the whole process (`None`: no prepared data).
-#[cfg(feature = "proto")]
-pub fn leaked_test_world(
-    mob_drops: bool,
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes)> {
-    leaked_test_world_mut(mob_drops, build).map(|(w, t, _)| (w, t))
-}
-/// `leaked_test_world`, with a pointer to the leaked `World` for a prototype that changes blocks between steps (the
-/// caller promises that no system runs while it does).
-#[cfg(feature = "proto")]
-pub fn leaked_test_world_mut(
-    mob_drops: bool,
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
-    leaked_test_world_bordered(mob_drops, None, build)
-}
 
-/// `leaked_test_world_mut` with the world border of the level (`None`: no border), for the walls a mob meets at the border.
-#[cfg(feature = "proto")]
-pub fn leaked_test_world_bordered(
-    mob_drops: bool,
-    border: Option<horizon_core::geometry::border::BorderGeometry>,
-    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
-) -> Option<(&'static MobWorld<'static>, &'static super::MobTypes, *mut crate::world::World)> {
-    let resources: &'static TestResources = TestResources::vanilla()?;
-    let TestResources { assets, facts, motion, data, types, biomes, items, collision, suffocation, .. } = resources;
-    let registry = assets.registry;
-    let air = registry.default_state("minecraft:air").unwrap();
-    let mut world = crate::world::World::new(air, 0);
-    build(&mut world, registry);
-    light_test_world(&mut world, &resources.light);
-    let leaked: &'static mut crate::world::World = Box::leak(Box::new(world));
-    let blocks: *mut crate::world::World = &mut *leaked;
-    let world: &'static crate::world::World = leaked;
-    let lid_openers: &'static std::collections::HashMap<(i32, i32, i32), i32> =
-        Box::leak(Box::new(std::collections::HashMap::new()));
-    let w = MobWorld {
-        mob_maps: myriade_engine::neoforge_mob_maps::NeoForgeMobMaps::vanilla(),
-        teams: Default::default(),
-        professions: crate::mobs::villager::profession_table(),
-        loop_context: crate::test_resources::server_loop_context(),
-        world,
-        registry,
-        facts,
-        fluid_tables: &motion.fluids,
-        attributes: &motion.attributes,
-        movement: &motion.blocks,
-        collision,
-        suffocation,
-        data,
-        player: None,
-        player_identity: None,
-        player_selection: None,
-        controlling_player_movement: None,
-        nearest_player: None,
-        others: &[],
-        live_mobs: None,
-        dragon: None,
-        who_lookup: None,
-        foreign: None,
-        others_grid: None,
-        others_index: None,
-        passenger_objects: &[],
-        others_villagers: None,
-        species_slots: None,
-        others_solid: Some(&[]),
-        daylight: true,
-        monsters_burn: false,
-        game_time: 1000,
-        day_time: 18000,
-        raining: false,
-        thundering: false,
-        level: horizon_core::LevelKey::OVERWORLD,
-        block_tags: &items.block_tags,
-        landing: &motion.landing,
-        biomes,
-        mob_griefing: true,
-        universal_anger: false,
-        mob_drops,
-        max_entity_cramming: 24,
-        difficulty: super::spawning::LocalDifficulty::new(2, 18000, 0, 0.0),
-        dimension_type: horizon_world::dimension_type::DimensionFacts::overworld(),
-        world_seed: 0,
-        sea_level: 63,
-        items: Some(items),
-        lid_openers,
-        mod_effects: None,
-        mob_hooks: None,
-        asks_animal_tame: false,
-        asks_living_destroy_block: false,
-        asks_baby_spawn: false,
-        border,
-        section_writer: None,
-    };
-    Some((Box::leak(Box::new(w)), types, blocks))
-}
 
 /// One of two iterators of the same items.
 pub enum Either<A, B> {

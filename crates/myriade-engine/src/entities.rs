@@ -4868,7 +4868,6 @@ crate::impl_joined!(
     Cushion,
     ItemFrame
 );
-);
 
 
 #[cfg(test)]

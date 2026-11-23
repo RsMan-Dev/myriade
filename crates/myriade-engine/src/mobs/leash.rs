@@ -1,8 +1,3 @@
-//! Leads (`Leashable`): who holds a mob's lead and the elastic physics of
-//! `Leashable.tickLeash` (a pull once the rope stretches past six blocks,
-//! the lead snapping past twelve, `PathfinderMob`'s walk toward the holder
-//! while the rope is slack).
-use super::{MobEvent, MobWorld, Species, Who};
 use horizon_core::geometry::Vec3;
 use horizon_core::nbt::Tag;
 
@@ -11,24 +6,7 @@ pub const ELASTIC: f64 = 6.0;
 /// `Leashable.LEASH_TOO_FAR_DIST`.
 pub const SNAP: f64 = 12.0;
 
-/// `Leashable.leashSnapDistance`: the `Ghast` family snaps its lead further
-/// out than the default.
-pub fn snap_distance(species: Species) -> f64 {
-    if matches!(species, Species::Ghast | Species::HappyGhast) {
-        16.0
-    } else {
-        SNAP
-    }
-}
 
-/// `Leashable.leashElasticDistance`.
-pub fn elastic_distance(species: Species) -> f64 {
-    if matches!(species, Species::Ghast | Species::HappyGhast) {
-        10.0
-    } else {
-        ELASTIC
-    }
-}
 
 /// What holds the other end of a lead.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,13 +19,6 @@ pub enum Holder {
     Knot([i32; 3]),
 }
 impl Holder {
-    pub fn who(self) -> Option<Who> {
-        match self {
-            Holder::Player => Some(Who::Player),
-            Holder::Mob(id) => Some(Who::Mob(id)),
-            Holder::Boat(_) | Holder::Knot(_) => None,
-        }
-    }
 }
 /// A holder read from a save that is not in the world yet (the entity may
 /// load later): the holder's UUID, or the fence knot's block.
@@ -96,45 +67,6 @@ pub fn knot_state(pos: [i32; 3]) -> HolderState {
         height: 0.5,
         yaw: 0.0,
         velocity: Vec3::ZERO,
-    }
-}
-/// The holder's state, or `None` when it is gone.
-pub fn holder_state(w: &MobWorld, holder: Holder) -> Option<HolderState> {
-    match holder {
-        Holder::Player => {
-            let p = w.selected_player()?;
-            let size = p.bounds.max_position().subtract(p.bounds.min_position());
-            Some(HolderState {
-                position: p.position,
-                center: Vec3::new(p.position.x, p.position.y + size.y / 2.0, p.position.z),
-                width: size.x,
-                height: size.y,
-                yaw: p.yaw,
-                velocity: p.velocity,
-            })
-        }
-        Holder::Mob(id) => {
-            let s = w.seen(id).filter(|s| s.alive)?;
-            let lo = s.bounds.min_position();
-            let hi = s.bounds.max_position();
-            Some(HolderState {
-                position: s.position,
-                center: Vec3::new(
-                    (lo.x + hi.x) / 2.0,
-                    (lo.y + hi.y) / 2.0,
-                    (lo.z + hi.z) / 2.0,
-                ),
-                width: hi.x - lo.x,
-                height: hi.y - lo.y,
-                yaw: s.yaw,
-                velocity: s.velocity,
-            })
-        }
-        Holder::Boat(_) => None,
-        Holder::Knot(pos) => {
-            let fence = w.has_tag("minecraft:fences", w.block_name(pos[0], pos[1], pos[2]));
-            fence.then(|| knot_state(pos))
-        }
     }
 }
 /// A rotation about the Y axis with exact trigonometry (the leash pull uses
@@ -325,23 +257,6 @@ pub fn create_quad_leash_offsets(
         [left_right, y, -front_back + front],
         [left_right, y, front_back + front],
     ]
-}
-/// `Leashable.supportQuadLeash`: `AbstractHorse` (horses, donkeys, mules, the
-/// undead horses, camels), `Sniffer` and `AbstractBoat` say yes; `Llama`
-/// overrides `AbstractHorse` back to no. Boats are not mobs here.
-pub fn supports_quad_leash(s: Species) -> bool {
-    use Species as S;
-    matches!(
-        s,
-        S::Horse
-            | S::Donkey
-            | S::Mule
-            | S::SkeletonHorse
-            | S::ZombieHorse
-            | S::Camel
-            | S::CamelHusk
-            | S::Sniffer
-    )
 }
 /// `AbstractBoat.getLeashOffset` for a boat or raft (1.375 by 0.5625).
 pub fn boat_leash_offset() -> [f64; 3] {

@@ -1,6 +1,3 @@
-//! Vanilla's `GoalSelector` (priorities, MOVE/LOOK/JUMP/TARGET control flags,
-//! interruption) and the shared goals of `net.minecraft.world.entity.ai.goal`.
-use super::{MobEvent, MobWorld, Seen, Species, Who, world::TargetInfo};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     jmath,
@@ -13,39 +10,7 @@ pub const LOOK: u8 = 2;
 pub const JUMP: u8 = 4;
 pub const TARGET: u8 = 8;
 
-/// The facts of a target one mob may take, as far as [`Mob::valid_target`]
-/// reads them (arismoko/horizon#1175): another mob — what a tick's snapshot carries, or the
-/// game's own state — or a player. One rule set; both the write handle and a
-/// goal tick's view fill these from where they stand.
-pub enum TargetFacts {
-    /// A mob target: `asValidTarget`'s facts of it.
-    Mob {
-        id: u32,
-        species: Species,
-        alive: bool,
-        /// `invulnerable_flag`, the flag `asValidTarget` refuses.
-        invulnerable: bool,
-        baby: bool,
-    },
-    /// A player target: its survival liveness, its `invulnerable` ability,
-    /// the modes that cannot be attacked (creative, spectator) and its uuid.
-    Player {
-        alive: bool,
-        invulnerable: bool,
-        creative: bool,
-        spectator: bool,
-        uuid: [i32; 4],
-    },
-}
 
-/// What goals may read and emit during a tick.
-pub struct Cx<'a, 'w, 'l> {
-    pub w: &'a MobWorld<'w>,
-    /// The level: its random (`level.getRandom()`), for the draws vanilla's
-    /// behaviours make from it rather than from the mob's own, and the damage hooks.
-    pub level: &'a mut crate::health::DamageLevel<'l>,
-    pub events: &'a mut Vec<MobEvent>,
-}
 pub trait Goal: std::fmt::Debug + Send + Sync {
     fn flags(&self) -> u8;
     /// A goal that draws its first start delay in its constructor (a schooling fish's
@@ -165,26 +130,6 @@ impl GoalSelector {
 
 // --- random positions (DefaultRandomPos / LandRandomPos / RandomPos) -------
 
-/// RandomPos.moveUpToAboveSolid: out of the solid blocks, then up to
-/// `above` more blocks of air.
-fn move_up_to_above_solid(w: &MobWorld, mut p: [i32; 3], above: i32) -> [i32; 3] {
-    if !w.solid(p[0], p[1], p[2]) {
-        return p;
-    }
-    p[1] += 1;
-    while p[1] < w.world.top_y() && w.solid(p[0], p[1], p[2]) {
-        p[1] += 1;
-    }
-    let first = p[1];
-    while p[1] < w.world.top_y() && p[1] - first < above {
-        p[1] += 1;
-        if w.solid(p[0], p[1], p[2]) {
-            p[1] -= 1;
-            break;
-        }
-    }
-    p
-}
 /// `Mob.isWithinHome(BlockPos)`: `Vec3i.distSqr` in doubles, so no
 /// coordinate pair overflows, against the radius squared as a Java `int`
 /// (which wraps past 46 340, as vanilla's does).
@@ -250,7 +195,6 @@ impl Panic {
 }
 #[path = "animal_panic.rs"]
 mod animal_panic;
-pub use animal_panic::{AnimalPanic, water_pos};
 
 impl Goal for Panic {
     goal_clone!();
@@ -261,86 +205,6 @@ impl Goal for Panic {
 #[path = "goals/stroll.rs"]
 mod stroll;
 pub use stroll::Stroll;
-/// LookAtPlayerGoal (player targets only).
-#[derive(Clone, Debug)]
-pub struct LookAtPlayer {
-    pub range: f32,
-    pub probability: f32,
-    pub only_horizontal: bool,
-    /// `LookAtPlayerGoal(Mob.class, ...)`: the nearest mob, not the player.
-    pub mobs: bool,
-    /// `LookAtPlayerGoal(<species class>, ...)`: only these species, subclasses too.
-    pub only: &'static [Species],
-    /// InteractGoal: LOOK and MOVE.
-    pub interact: bool,
-    look_at: Option<Who>,
-    look_time: i32,
-}
-impl LookAtPlayer {
-    pub fn new(range: f32) -> Self {
-        Self {
-            range,
-            probability: 0.02,
-            only_horizontal: false,
-            mobs: false,
-            only: &[],
-            interact: false,
-            look_at: None,
-            look_time: 0,
-        }
-    }
-    /// `LookAtPlayerGoal(this, Mob.class, range)`.
-    pub fn mobs(range: f32) -> Self {
-        Self {
-            mobs: true,
-            ..Self::new(range)
-        }
-    }
-    /// `LookAtPlayerGoal(this, <species class>, range)`.
-    pub fn species(list: &'static [Species], range: f32) -> Self {
-        Self {
-            only: list,
-            ..Self::mobs(range)
-        }
-    }
-    /// `InteractGoal(this, Player.class, range, probability)`.
-    pub fn interact(range: f32, probability: f32) -> Self {
-        Self {
-            interact: true,
-            ..Self::new(range).probability(probability)
-        }
-    }
-    pub fn probability(mut self, p: f32) -> Self {
-        self.probability = p;
-        self
-    }
-    /// The goal's look target, alive, with its position and eye height.
-    fn look_target(&self, w: &MobWorld) -> Option<(Vec3, f64)> {
-        match self.look_at? {
-            Who::Player => w
-                .selected_player()
-                .filter(|p| p.alive)
-                .map(|p| (p.position, p.eye[1])),
-            Who::Mob(id) => w
-                .seen(id)
-                .filter(|s| s.alive)
-                .map(|s| (s.position, s.eye_y)),
-        }
-    }
-}
-impl Goal for LookAtPlayer {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        if self.interact { LOOK | MOVE } else { LOOK }
-    }
-    fn name(&self) -> &'static str {
-        if self.interact {
-            "InteractGoal"
-        } else {
-            "LookAtPlayer"
-        }
-    }
-}
 /// RandomLookAroundGoal.
 #[derive(Clone, Debug, Default)]
 pub struct RandomLookAround {
@@ -446,27 +310,6 @@ impl Goal for LeapAtTarget {
         JUMP | MOVE
     }
 }
-/// What a target goal hunts.
-#[derive(Clone, Debug)]
-pub enum Prey {
-    Player,
-    Species(Vec<Species>),
-    /// Any mob matching a predicate on its snapshot.
-    Filter(fn(&Seen) -> bool),
-}
-/// NearestAttackableTargetGoal (+ TargetGoal's continue rules).
-#[derive(Clone, Debug)]
-pub struct NearestTarget {
-    pub prey: Prey,
-    pub must_see: bool,
-    pub must_reach: bool,
-    pub interval: i32,    /// Mobs closer than this squared distance are not picked
-    /// (`GuardianAttackSelector`: `distanceToSqr > 9`).
-    pub beyond_sqr: Option<f64>,    /// The vanilla class name of a subclass (`Goal::name`).
-    pub label: Option<&'static str>,
-    found: Option<Who>,
-    target_goal: TargetState,
-}
 #[derive(Clone, Debug)]
 pub struct TargetState {
     unseen: i32,
@@ -481,194 +324,6 @@ impl Default for TargetState {
             unseen_memory: 0,
             follow_scale: 1.0,
         }
-    }
-}
-impl NearestTarget {
-    pub fn new(prey: Prey, must_see: bool) -> Self {
-        Self {
-            prey,
-            must_see,
-            must_reach: false,
-            interval: reduced(10),
-            when: None,
-            beyond_sqr: None,
-            gate: None,
-            label: None,
-            found: None,
-            target_goal: TargetState {
-                unseen_memory: 60,
-                ..Default::default()
-            },
-        }
-    }
-    pub fn player(must_see: bool) -> Self {
-        Self::new(Prey::Player, must_see)
-    }
-    pub fn species(list: &[Species], must_see: bool) -> Self {
-        Self::new(Prey::Species(list.to_vec()), must_see)
-    }
-    pub fn interval(mut self, i: i32) -> Self {
-        self.interval = reduced(i);
-        self
-    }
-    /// `TargetGoal.setUnseenMemoryTicks`.
-    pub fn unseen_memory(mut self, ticks: i32) -> Self {
-        self.target_goal.unseen_memory = ticks;
-        self
-    }
-    /// Scale the follow distance (llamas hunt wolves within a quarter of it).
-    pub fn follow_scale(mut self, scale: f64) -> Self {
-        self.target_goal.follow_scale = scale;
-        self
-    }
-    pub fn reach(mut self) -> Self {
-        self.must_reach = true;
-        self
-    }
-    pub fn beyond(mut self, distance_sqr: f64) -> Self {
-        self.beyond_sqr = Some(distance_sqr);
-        self
-    }
-    /// A subclass's name, e.g. `NearestAttackableWitchTargetGoal`.
-    pub fn named(mut self, label: &'static str) -> Self {
-        self.label = Some(label);
-        self
-    }
-}
-/// `AbstractIllager.canAttack`: a baby `AbstractVillager` is never attacked.
-fn illager_spares(attacker: Species, target: &Seen) -> bool {
-    matches!(
-        attacker,
-        Species::Pillager | Species::Vindicator | Species::Evoker | Species::Illusioner
-    ) && target.baby
-        && matches!(target.species, Species::Villager | Species::WanderingTrader)
-}
-impl Goal for NearestTarget {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        self.label.unwrap_or("NearestTarget")
-    }
-    fn flags(&self) -> u8 {
-        TARGET
-    }
-}
-/// HurtByTargetGoal (optionally alerting others of the same species).
-#[derive(Clone, Debug)]
-pub struct HurtByTarget {
-    pub alert: bool,
-    /// Species that should not be alerted.
-    pub alert_except: Vec<Species>,
-    /// Attackers ignored (e.g. zombified piglins ignore other zombified piglins).
-    pub ignore: Vec<Species>,
-    /// `Bee.BeeHurtByOtherGoal`: kept only while angry, and alerting others
-    /// only when the attacker is in sight.
-    pub bee: bool,
-    /// Whom `alertOther` calls: a filter on the mob (`PandaHurtByTargetGoal`
-    /// calls aggressive pandas only).
-    pub alert_if: Option<fn(&Seen) -> bool>,
-    /// `PolarBear.PolarBearHurtByTargetGoal`: a hurt cub only calls the
-    /// adult bears and drops the target itself.
-    pub polar_bear: bool,
-    timestamp: i32,
-    st: TargetState,
-}
-impl HurtByTarget {
-    pub fn new() -> Self {
-        Self {
-            alert: false,
-            alert_except: vec![],
-            ignore: vec![],
-            bee: false,
-            alert_if: None,
-            polar_bear: false,
-            timestamp: 0,
-            st: TargetState {
-                unseen_memory: 300,
-                ..Default::default()
-            },
-        }
-    }
-    pub fn alert(mut self) -> Self {
-        self.alert = true;
-        self
-    }
-    pub fn ignoring(mut self, s: &[Species]) -> Self {
-        self.ignore = s.to_vec();
-        self
-    }
-    pub fn bee(mut self) -> Self {
-        self.bee = true;
-        self
-    }
-    pub fn alert_if(mut self, f: fn(&Seen) -> bool) -> Self {
-        self.alert_if = Some(f);
-        self
-    }
-    pub fn polar_bear(mut self) -> Self {
-        self.polar_bear = true;
-        self
-    }
-}
-impl Default for HurtByTarget {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl Goal for HurtByTarget {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        if self.bee {
-            "BeeHurtByOtherGoal"
-        } else if self.polar_bear {
-            "PolarBearHurtByTargetGoal"
-        } else {
-            "HurtByTarget"
-        }
-    }
-    fn flags(&self) -> u8 {
-        TARGET
-    }
-}
-/// What an AvoidEntityGoal flees from.
-#[derive(Clone, Debug)]
-pub enum Avoid {
-    Player,
-    Species(Vec<Species>),
-}
-/// AvoidEntityGoal.
-#[derive(Clone, Debug)]
-pub struct AvoidEntity {
-    pub what: Avoid,
-    pub max_dist: f32,
-    pub walk: f64,
-    pub sprint: f64,pub seen_when: Option<fn(&Seen) -> bool>,
-    from: Vec3,
-    /// The mob being avoided (`toAvoid`), when it is one.
-    pub found: Option<u32>,
-}
-impl AvoidEntity {
-    pub fn new(what: Avoid, max_dist: f32, walk: f64, sprint: f64) -> Self {
-        Self {
-            what,
-            max_dist,
-            walk,
-            sprint,
-            when: None,
-            player_when: None,
-            seen_when: None,
-            from: Vec3::ZERO,
-            found: None,
-        }
-    }
-    pub fn seen_when(mut self, f: fn(&Seen) -> bool) -> Self {
-        self.seen_when = Some(f);
-        self
-    }
-}
-impl Goal for AvoidEntity {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
     }
 }
 /// TemptGoal: follow a player holding one of the items.
@@ -944,9 +599,6 @@ impl MoveToBlock {
                 base[2].saturating_add(reach),
             ],
         ))
-    }
-    pub fn can_continue(&self, w: &MobWorld, valid: impl Fn(&MobWorld, [i32; 3]) -> bool) -> bool {
-        self.try_ticks >= -self.max_stay && self.try_ticks <= 1200 && valid(w, self.block)
     }
 }
 

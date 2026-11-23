@@ -1,17 +1,3 @@
-//! Mobs using a spear (`KineticWeapon`): `startUsingItem` of the main hand,
-//! the stab of every tick of the use (`KineticWeapon.damageEntities`) and
-//! what makes a mob use it: `SpearUseGoal` of zombies and zombified piglins,
-//! and the fight activity's `SpearApproach`, `SpearAttack` and `SpearRetreat`
-//! of piglins.
-//! A mob's `using_item` counts the ticks of the use up from 1, which the
-//! living entity flags tell the clients (`mob_meta`), so the arm and the
-//! spear are drawn charging for them as well.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, Who,
-    brain::Timed,
-    gear,
-    goals::{Cx, Goal, LOOK, MOVE, goal_clone, reduced},
-};
 use crate::spear::{Kinetic, REACH, hits_in_reach};
 use horizon_core::geometry::{Aabb, Vec3, trig::Mth};
 
@@ -22,12 +8,6 @@ use horizon_core::geometry::{Aabb, Vec3, trig::Mth};
 
 
 
-/// What a stab can meet: who, where and how fast it moves per second.
-struct Candidate {
-    who: Who,
-    bounds: Aabb,
-    speed: Vec3,
-}
 
 
 
@@ -119,12 +99,6 @@ impl SpearUse {
 
 
 }
-impl Goal for SpearUse {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 
 /// `SpearAttack.SpearStatus`: where a piglin is in its charge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,73 +141,11 @@ pub struct Memories {
 
 
 
-/// The spear behaviours of a piglin's fight activity, `SpearApproach`,
-/// `SpearAttack` and `SpearRetreat`: each starts on the `SPEAR_STATUS` the
-/// one before it leaves. The goal runs them in the order of `Brain.tick`:
-/// the ones not running try to start, then the running ones tick or stop.
-/// Fight is the activity while the piglin has a target; a piglin with a
-/// spear never melees (`NoMeleeWithSpear`).
-#[derive(Clone, Debug)]
-pub struct PiglinSpear {
-    approach: Timed,
-    attack: Timed,
-    retreat: Timed,
-}
-impl PiglinSpear {
-    /// `new SpearApproach(1.0, 10.0F)`: the squared approach distance.
-    const APPROACH_DISTANCE_SQ: f32 = 10.0 * 10.0;
-    /// `new SpearAttack(1.0, 1.0, 2.0F)`: the speed charging and the squared
-    /// radius around the target that ends the run at it.
-    const SPEED_MODIFIER_WHEN_CHARGING: f64 = 1.0;
-    const TARGET_IN_RANGE_RADIUS_SQ: f32 = 2.0 * 2.0;
-    /// The `speedModifierWhenRepositioning` of the three behaviours.
-    const SPEED_MODIFIER_WHEN_REPOSITIONING: f64 = 1.0;
-
-    pub fn new() -> Self {
-        Self {
-            // `Behavior(Map)`: a duration of 60 ticks (which `timedOut` ignores).
-            approach: Timed::new(60, 60),
-            attack: Timed::new(60, 60),
-            // `super(Map, 100)`: a timeout of 100 ticks.
-            retreat: Timed::new(100, 100),
-        }
-    }
-
-}
-impl Default for PiglinSpear {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-impl Goal for PiglinSpear {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 /// `MeleeAttack.isHoldingUsableNonMeleeWeapon`: a piglin holding a kinetic
 /// weapon (`canUseNonMeleeWeapon`) never melees; its spear behaviours attack.
 #[derive(Clone, Debug)]
 pub struct NoMeleeWithSpear<G>(pub G);
-impl<G: Goal + Clone + 'static> Goal for NoMeleeWithSpear<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-    fn interruptable(&self) -> bool {
-        self.0.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 
 #[cfg(test)]
 mod tests {

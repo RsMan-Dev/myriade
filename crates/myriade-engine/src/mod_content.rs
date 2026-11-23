@@ -25,7 +25,7 @@ impl<'de> Deserialize<'de> for J {
         struct V;
         impl<'de> de::Visitor<'de> for V {
             type Value = J;
-            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 f.write_str("JSON")
             }
             fn visit_unit<E>(self) -> std::result::Result<J, E> {
@@ -145,28 +145,6 @@ impl J {
         match self {
             J::Str(s) => Some(s),
             _ => None,
-        }
-    }
-    /// Renames strings and, with `ids`, moves state ids, everywhere inside.
-    fn rename(&mut self, r: &Rename, ids: bool) {
-        match self {
-            J::Str(s) => {
-                if let Some(new) = r.string(s) {
-                    *s = new;
-                }
-            }
-            J::Num(n) if ids => {
-                if let Some(new) = n
-                    .as_u64()
-                    .and_then(|v| u32::try_from(v).ok())
-                    .and_then(|id| r.id(id))
-                {
-                    *n = new.into();
-                }
-            }
-            J::Arr(a) => a.iter_mut().for_each(|v| v.rename(r, ids)),
-            J::Obj(o) => o.iter_mut().for_each(|(_, v)| v.rename(r, ids)),
-            _ => {}
         }
     }
 }

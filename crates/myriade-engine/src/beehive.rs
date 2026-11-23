@@ -381,10 +381,9 @@ pub fn smokey(w: &crate::mobs::MobWorld, at: [i32; 3]) -> bool {
             return true;
         }
         // SHAPE_VIRTUAL_POST: Block.column(4, 0, 16), the middle quarter.
-        let (x0, z0) = (f64::from(at[0]), f64::from(at[2]));
-        let blocked = w.block_collision_boxes(at[0], y, at[2]).iter().any(|b| {
+        let blocked = w.collision_boxes(at[0], y, at[2]).iter().any(|b| {
             let (min, max) = (b.min_position(), b.max_position());
-            min.x < x0 + 0.625 && max.x > x0 + 0.375 && min.z < z0 + 0.625 && max.z > z0 + 0.375
+            min.x < 0.625 && max.x > 0.375 && min.z < 0.625 && max.z > 0.375
         });
         if blocked {
             return lit(y - 1);

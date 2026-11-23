@@ -8,14 +8,6 @@
 //! `clientSideStandAnimation`.
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
-use super::{
-    MobWorld, Species, Who,
-    goals::{
-        Cx, Float, FollowParent, Goal, HurtByTarget, LookAtPlayer, MOVE, MeleeAttack,
-        NearestTarget, Panic, RandomLookAround, Stroll, goal_clone,
-    },
-    world::TargetInfo,
-};
 
 /// `anim.v` slot of `clientSideStandAnimation`.
 pub const STAND: usize = 0;
@@ -24,16 +16,6 @@ const STAND_TICKS: f32 = 6.0;
 
 
 
-/// `PanicGoal` with a function of the bear's age for the damage tag: a cub
-/// panics at `PANIC_CAUSES`, an adult only at `PANIC_ENVIRONMENTAL_CAUSES`.
-#[derive(Clone, Debug)]
-struct PolarBearPanic(Panic);
-impl Goal for PolarBearPanic {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 
 

@@ -447,12 +447,6 @@ impl Hub {
             guest
                 .sender
                 .send_many(self.terrain_reveal_packets(world, pos).map(|p| p.encode()));
-            if matches!(world.block_entities.get(&pos), Some(crate::containers::BlockEntity::Mod(entity))
-                if entity.has_client_update_fields())
-                && let Some(log) = world.block_log.as_mut()
-            {
-                log.push(pos);
-            }
         }
     }
 

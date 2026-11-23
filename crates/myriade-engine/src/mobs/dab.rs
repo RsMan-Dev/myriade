@@ -1,13 +1,3 @@
-//! Dynamic activation of brain (DAB), an opt-in server setting (`server.toml` `[entities]`, off by
-//! default): a mob farther from the nearest player runs its AI on fewer ticks, like Pufferfish's
-//! setting of that name. This is not vanilla behaviour, so nothing here runs unless the host turns
-//! it on (`HORIZON_DAB=1`, set by `horizon-server` from `[entities] dab`).
-//!
-//! Only the AI decisions are skipped (`Mob.serverAiStep`: target and goal selectors, the brains,
-//! `customServerAiStep`). Navigation, move, look and jump controls, gravity, fluids, pushes, damage,
-//! effects, despawn checks, riding and leashes tick as always, and the mob's own random draws of the
-//! skipped decisions are not made.
-use super::{MobEvent, MobWorld, Species};
 use horizon_core::geometry::Vec3;
 
 /// The four settings. `start` is in blocks.

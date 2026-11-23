@@ -1,20 +1,3 @@
-//! Turtles (`Turtle`): the egg a bred mother carries (`TurtleBreedGoal`), her
-//! walk home (`TurtleGoHomeGoal`) and the egg she digs into the sand
-//! (`TurtleLayEggGoal`). `extra.flag` is `hasEgg`, `extra.flag2` `isLayingEgg`,
-//! `extra.counter` `layEggCounter`, `extra.home` `homePos`, `extra.counter2`
-//! `goingHome` and `extra.point` `travelPos`. Its own `TurtleMoveControl`
-//! sets the speed it walks and swims at, and `travel` swims with its own
-//! `travelInWater`.
-use super::{
-    MobEvent, MobWorld,
-    control::{EPSILON, Operation, rotlerp},
-    goals::{
-        Breed, Cx, Goal, JUMP, LookAtPlayer, MOVE, MoveToBlock, Panic, Stroll, Tempt, goal_clone,
-        reduced,
-    },
-    nav::NavKind,
-    path::PathType,
-};
 use crate::blocks::Fluid;
 use crate::health::DamageLevel;
 use horizon_core::{
@@ -23,33 +6,7 @@ use horizon_core::{
 };
 use horizon_world::move_gate::MoveGate;
 
-/// `TurtleEggBlock.isSand`.
-fn is_sand(w: &MobWorld, p: [i32; 3]) -> bool {
-    w.has_tag("minecraft:sand", w.block_name(p[0], p[1], p[2]))
-}
 
-/// `Turtle.TurtleLayEggGoal`: a mother with an egg within 9 blocks of home
-/// walks to sand with air above, digs for 200 ticks and lays it.
-#[derive(Clone, Debug)]
-struct LayEgg(MoveToBlock);
-impl LayEgg {
-    /// `isValidTarget`: sand with air above it.
-    fn valid(w: &MobWorld, p: [i32; 3]) -> bool {
-        w.facts.is_air(w.world.block(p[0], p[1] + 1, p[2])) && is_sand(w, p)
-    }
-}
-impl Goal for LayEgg {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-    fn name(&self) -> &'static str {
-        "TurtleLayEggGoal"
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 /// `Turtle.TurtleGoHomeGoal`: a mother with an egg heads home; any adult
 /// that strayed 64 blocks away does now and then.
@@ -58,37 +15,7 @@ struct GoHome {
     stuck: bool,
     close_to_home_try_ticks: i32,
 }
-impl Goal for GoHome {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn name(&self) -> &'static str {
-        "TurtleGoHomeGoal"
-    }
-}
 
-/// `Turtle.TurtleGoToWaterGoal`: a turtle on land walks to water within 24
-/// blocks, unless it is going home or carries an egg.
-#[derive(Clone, Debug)]
-struct GoToWater(MoveToBlock);
-impl GoToWater {
-    fn valid(w: &MobWorld, p: [i32; 3]) -> bool {
-        w.block_name(p[0], p[1], p[2]) == "minecraft:water"
-    }
-}
-impl Goal for GoToWater {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-    fn name(&self) -> &'static str {
-        "TurtleGoToWaterGoal"
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 /// `Turtle.TurtleTravelGoal`: a turtle in water swims towards a spot up to
 /// 512 blocks away, a leg at a time.
@@ -96,29 +23,7 @@ impl Goal for GoToWater {
 struct Travel {
     stuck: bool,
 }
-impl Goal for Travel {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn name(&self) -> &'static str {
-        "TurtleTravelGoal"
-    }
-}
 
-/// `Turtle.TurtleRandomStrollGoal`: no stroll in water, going home or with an
-/// egg.
-#[derive(Clone, Debug)]
-struct RandomStroll(Stroll);
-impl Goal for RandomStroll {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        "TurtleRandomStrollGoal"
-    }
-}
 
 #[cfg(test)]
 mod tests {

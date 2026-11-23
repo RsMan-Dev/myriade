@@ -9,7 +9,6 @@
 //! farming, breeding, panic, POI searches), but keeps gravity, damage, despawn, trading and its XP,
 //! and `Villager.restock` on `WorkAtPoi`'s schedule (see [`skips_brain`]).
 use super::super::villager_brain;
-use super::super::{MobEvent, MobWorld};
 use horizon_core::geometry::Vec3;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 

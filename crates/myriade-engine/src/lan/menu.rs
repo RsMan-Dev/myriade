@@ -461,20 +461,9 @@ impl Slots {
     }
 }
 
-/// The slots of the block entity at `k` its menu shows: a mod container's
-/// count, though items past it stay saved.
+/// The slots of the block entity at `k` its menu shows.
 fn shown(world: &World, k: (i32, i32, i32)) -> Option<&[Option<ItemStack>]> {
-    let e = world.block_entities.get(&k)?;
-    let slots = e.slots();
-    if !matches!(e, BlockEntity::Mod(_)) {
-        return Some(slots);
-    }
-    let state = world.block(k.0, k.1, k.2).0;
-    let count = world
-        .block_entities
-        .mod_container(state)
-        .map_or(0, |c| c.slots);
-    Some(&slots[..count.min(slots.len())])
+    Some(world.block_entities.get(&k)?.slots())
 }
 
 /// How many slots the linked containers `links` have between them.
@@ -635,7 +624,7 @@ impl View<'_> {
         }
         !(self.shulker
             && self.container.as_ref().is_some_and(|c| i < c.len())
-            && !crate::menu::fits_inside_container_items(self.loop_context, stack))
+            && !crate::menu::fits_inside_container_items(stack))
     }
     fn slot_rules(&self, i: usize, stack: &ItemStack, rules: &dyn Rules) -> (bool, u32) {
         let own = self.vanilla_may_place(i, stack, rules);
@@ -1228,7 +1217,7 @@ fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bo
             // tryTransfer: as much as fits, through `safeTake`.
             Some(other) => {
                 let mut moved = 0;
-                if can_be_in_bundle(context, &other) {
+                if can_be_in_bundle(&other) {
                     let amount = other.count.min(contents.room_for(items, &other));
                     let mut slot = HostedSlotView {
                         view,
@@ -1262,7 +1251,7 @@ fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bo
                         stack.count -= amount;
                     }
                     if stack.count > 0 {
-                        let fits = fits_inside_container_items(context, &stack);
+                        let fits = fits_inside_container_items(&stack);
                         contents.try_insert(items, &mut stack, fits);
                     } else {
                         // All of it went in: playRemoveOneSound.
@@ -1287,7 +1276,7 @@ fn bundle_click(view: &mut View, i: usize, right: bool, rules: &dyn Rules) -> bo
     match (view.guest.carried.take(), right) {
         (Some(mut carried), false) => {
             let moved = if allowed {
-                let fits = fits_inside_container_items(context, &carried);
+                let fits = fits_inside_container_items(&carried);
                 contents.try_insert(items, &mut carried, fits)
             } else {
                 0

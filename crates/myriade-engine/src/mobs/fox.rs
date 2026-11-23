@@ -1,26 +1,3 @@
-//! Foxes (`net.minecraft.world.entity.animal.fox.Fox`): the goal list, the
-//! flags byte (sleeping, sitting, crouching, interested, pouncing,
-//! faceplanted), stalking and pouncing, napping in the shade by day, seeking
-//! shelter, perching, eating berries and the food held in the mouth: its whole
-//! `Consumable.onConsume` (the item's effects, its sounds and the eat game
-//! event), so a chorus fruit teleports it and a golden apple feeds it, and
-//! defending trusted entities from whoever hurt them.
-//! The goal that walks to a dropped item is here; the game side takes the
-//! items (`Fox.pickUpItem`, `game/mobs/foxes.rs`). A totem in the mouth is a
-//! `death_protection` item like any other held one (`Mob::damage`).
-use super::{
-    MobEvent, MobWorld, Seen, Species, Who,
-    goals::{
-        Avoid, AvoidEntity, Breed, ClimbOnTopOfPowderSnow, Cx, Float, FollowParent, Goal, JUMP,
-        LOOK, LeapAtTarget, LookAtPlayer, MOVE, MeleeAttack, MoveToBlock, NearestTarget, Panic,
-        Prey, Stroll, TARGET, TargetState, goal_clone, hide_pos, reduced, target_continue,
-        within_home,
-    },
-    living::wrap,
-    raider::heightmap_pos,
-    riders,
-    villager_brain::{closer_to_center, sections_to_village, village_sections},
-};
 use horizon_core::position::BlockPos;
 use horizon_core::{
     geometry::{Axis, Vec3},
@@ -52,67 +29,9 @@ const MAX_CROUCH_AMOUNT: f32 = 5.0;
 
 /// `SoundEvents.FOX_SCREECH`.
 pub const SCREECH: &str = "entity.fox.screech";
-/// `EntityReference.getEntity`: the entity a trusted UUID names, in the level.
-fn trusted_who(w: &MobWorld, uuid: [i32; 4]) -> Option<Who> {
-    if w.player.as_ref().is_some_and(|p| p.uuid == uuid) {
-        Some(Who::Player)
-    } else {
-        w.who_by_uuid(uuid)
-    }
-}
-/// `LivingEntity.getLastHurtByMob` of a trusted entity and its timestamp (0
-/// when nothing hurt it).
-fn hurt_by(w: &MobWorld, who: Who) -> (Option<Who>, i64) {
-    match who {
-        // `PlayerView.hurt_by` keeps the 100 ticks `LivingEntity.tick` keeps it.
-        Who::Player => w
-            .player
-            .as_ref()
-            .and_then(|p| p.hurt_by)
-            .map_or((None, 0), |(by, at)| (Some(by), at)),
-        Who::Mob(id) => w
-            .seen(id)
-            .and_then(|s| s.hurt_by)
-            .map_or((None, 0), |(by, at)| (Some(by), i64::from(at))),
-    }
-}
-
-/// `Fox.DefendTrustedTargetGoal`: take as target whoever last hurt a trusted
-/// entity, growling and raising `DEFENDING` while the goal runs.
-#[derive(Clone, Debug, Default)]
-struct DefendTrusted {
-    /// `trustedLastHurtBy`: the attacker `start` targets.
-    attacker: Option<Who>,
-    /// `timestamp`: the trusted entity's hurt timestamp last defended.
-    timestamp: i64,
-    /// The timestamp `canUse` read, which `start` stores in the same tick.
-    hurt_at: i64,
-    /// `TargetGoal`'s caches; the goal never needs sight (`mustSee` false).
-    st: TargetState,
-}
-impl Goal for DefendTrusted {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "DefendTrustedTargetGoal"
-    }
-    fn flags(&self) -> u8 {
-        TARGET
-    }
-}
 
 
-fn chicken_or_rabbit(s: &Seen) -> bool {
-    matches!(s.species, Species::Chicken | Species::Rabbit)
-}
-fn baby_turtle_on_land(s: &Seen) -> bool {
-    s.species == Species::Turtle && s.baby && !s.in_water
-}
-fn schooling_fish(s: &Seen) -> bool {
-    matches!(
-        s.species,
-        Species::Cod | Species::Salmon | Species::TropicalFish
-    )
-}
+
 
 
 /// The mouth-item snapshot at `Fox.aiStep`'s consumption boundary.
@@ -132,157 +51,10 @@ impl Consumption {
 
 
 
-/// `Fox.isConsumableFood`: the item has food and consumable components.
-fn eats(w: &MobWorld, stack: &crate::items::ItemStack) -> bool {
-    let info = w.items.and_then(|items| items.items.get(&stack.item));
-    crate::item_sync::food(stack, info.and_then(|i| i.food)).is_some()
-        && stack.consumable(info).is_some()
-}
 
 
 
-/// The fox as `Consumable`'s user: its own random, and its own ears.
-struct Eater<'a> {    events: &'a mut Vec<MobEvent>,
-}
-impl EmissionWorld for Eater<'_> {
-    type Error = Infallible;
-    type Stack = crate::items::ItemStack;
-    type Sound = String;
-    type Random = ();
-    type Source = LegacyRandom;
-    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
-        &mut self.m.random
-    }
-    /// `LivingEntity.spawnItemParticles` hands each of the 16 crumbs to
-    /// `Level.addParticle`, which a server does nothing with: the four draws a
-    /// crumb costs still come off the fox's random, as vanilla spends them.
-    fn spawn_item_particles(
-        &mut self,
-        _: crate::items::ItemStack,
-        count: i32,
-    ) -> Result<(), Infallible> {
-        let m = &mut *self.m;
-        let (at, eye) = ([m.position.x, m.position.y, m.position.z], m.eye_y());
-        let (pitch, yaw) = (m.head_pitch, m.yaw);
-        crate::particles::item_use_particles(
-            &mut m.random,
-            pitch,
-            yaw,
-            at,
-            eye,
-            count.max(0) as u32,
-            |_, _| {},
-        );
-        Ok(())
-    }
-    fn overrides_consume_sound(&self) -> bool {
-        false
-    }
-    fn consume_sound(&mut self, _: crate::items::ItemStack) -> Result<String, Infallible> {
-        unreachable!("the consumable plays its own sound")
-    }
-    /// `Entity.playSound`: at the fox's feet, and nothing from a silent fox.
-    fn play_sound(&mut self, sound: String, volume: f32, pitch: f32) -> Result<(), Infallible> {
-        if !self.m.silent {
-            let at = [self.m.position.x, self.m.position.y, self.m.position.z];
-            self.events
-                .push(MobEvent::SoundId(sound, at, volume, pitch));
-        }
-        Ok(())
-    }
-}
 
-/// Standalone AI uses the same candidate/effect algorithm and living landing
-/// helper as Game's owning-host adapter. Native hooks belong to the Game pause;
-/// this borrowed model never manufactures a narrower host for a callback.
-struct Teleporter<'a, 'w> {
-    world: &'a MobWorld<'w>,    events: &'a mut Vec<MobEvent>,
-}
-impl TeleportConsumeWorld for Teleporter<'_, '_> {
-    type Error = Infallible;
-    type Level = ();
-    type Random = ();
-    type Source = LegacyRandom;
-    fn position_field(&self) -> Vec3 {
-        self.mob.position
-    }
-    fn get_random(&mut self) -> Result<(), Infallible> {
-        Ok(())
-    }
-    fn random_source(&mut self, (): ()) -> &mut LegacyRandom {
-        &mut self.mob.random
-    }
-    fn min_y(&mut self, (): ()) -> Result<i32, Infallible> {
-        Ok(self.world.world.bottom_y())
-    }
-    fn logical_height(&mut self, (): ()) -> Result<i32, Infallible> {
-        Ok(self.world.world.shape.logical_height)
-    }
-    fn is_passenger(&mut self) -> Result<bool, Infallible> {
-        Ok(self.mob.extra.passenger)
-    }
-    fn stop_riding(&mut self) -> Result<(), Infallible> {
-        riders::stop_riding(self.mob, None);
-        Ok(())
-    }
-    fn position(&mut self) -> Result<Vec3, Infallible> {
-        Ok(self.mob.position)
-    }
-    fn random_teleport(&mut self, target: Vec3) -> Result<bool, Infallible> {
-        Ok(super::living::random_teleport(
-            self.mob,
-            self.world,
-            target,
-            Some("minecraft:consumable_does_not_teleport_to"),
-            self.events,
-        ))
-    }
-    fn teleport_event(&mut self, (): (), old: Vec3) -> Result<(), Infallible> {
-        self.events.push(MobEvent::GameEvent {
-            event: "minecraft:teleport",
-            at: [old.x, old.y, old.z],
-            source: self.mob.id,
-            state: BlockStateId(0),
-        });
-        Ok(())
-    }
-    fn is_fox(&self) -> bool {
-        true
-    }
-    fn teleport_sound(&mut self, (): (), at: Vec3, _: bool) -> Result<(), Infallible> {
-        self.events.push(MobEvent::Sound(
-            "entity.fox.teleport",
-            [at.x, at.y, at.z],
-            1.0,
-            1.0,
-        ));
-        Ok(())
-    }
-    fn block_position(&mut self) -> Result<BlockPos, Infallible> {
-        Ok(BlockPos::containing(self.mob.position))
-    }
-    fn directional_particles(
-        &mut self,
-        (): (),
-        origin: BlockPos,
-        offset: i32,
-    ) -> Result<(), Infallible> {
-        self.events.push(MobEvent::LevelEvent {
-            id: 2017,
-            pos: [origin.x, origin.y, origin.z],
-            data: offset,
-        });
-        Ok(())
-    }
-    fn reset_fall_distance(&mut self) -> Result<(), Infallible> {
-        self.mob.fall_distance = 0.0;
-        Ok(())
-    }
-    fn reset_impulse(&mut self) -> Result<(), Infallible> {
-        // Mob has no separate CurrentImpulseContext state.
-        Ok(())
-    }
-}
 
 
 /// `Fox.SleepGoal`: nap in the shade by day when nothing is around.
@@ -291,12 +63,6 @@ struct Sleep {
     countdown: i32,
 }
 impl Sleep {
-}
-impl Goal for Sleep {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK | JUMP
-    }
 }
 
 /// `Fox.FoxStrollThroughVillageGoal` (`StrollThroughVillageGoal(fox, 200)`):
@@ -314,15 +80,6 @@ fn block_pos(p: Vec3) -> [i32; 3] {
 fn section_of(p: [i32; 3]) -> [i32; 3] {
     [p[0] >> 4, p[1] >> 4, p[2] >> 4]
 }
-impl Goal for StrollThroughVillage {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "FoxStrollThroughVillage"
-    }
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 /// A shared goal under the fox's own conditions and start-up: the extra
 /// `canUse` of `FoxMeleeAttackGoal` and `FoxLookAtPlayerGoal` and the
@@ -331,31 +88,6 @@ impl Goal for StrollThroughVillage {
 struct Wrap<G> {
     goal: G,    /// The condition also applies to `canContinueToUse`.
     both: bool,}
-impl<G: Goal + Clone + 'static> Wrap<G> {
-    fn new(goal: G) -> Self {
-        Self {
-            goal,
-            when: None,
-            both: false,
-            on_start: None,
-        }
-    }
-}
-impl<G: Goal + Clone + 'static> Goal for Wrap<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.goal.flags()
-    }
-    fn interruptable(&self) -> bool {
-        self.goal.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.goal.every_tick()
-    }
-    fn name(&self) -> &'static str {
-        self.goal.name()
-    }
-}
 
 fn signum(x: f64) -> f64 {
     if x > 0.0 {
@@ -372,12 +104,6 @@ fn signum(x: f64) -> f64 {
 struct Faceplant {
     countdown: i32,
 }
-impl Goal for Faceplant {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK | JUMP
-    }
-}
 
 /// `Fox.StalkPreyGoal`: creep up on a chicken or rabbit more than 6 blocks
 /// away, then crouch and keep still once it is within 6.
@@ -385,27 +111,12 @@ impl Goal for Faceplant {
 struct StalkPrey;
 impl StalkPrey {
 }
-impl Goal for StalkPrey {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 
 /// `Fox.FoxPounceGoal`: once fully crouched with a clear path, leap at the
 /// target, tilt with the flight and bite when within 2 blocks, or end up with
 /// the nose in snow.
 #[derive(Clone, Debug)]
 struct Pounce;
-impl Goal for Pounce {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-    fn interruptable(&self) -> bool {
-        false
-    }
-}
 
 /// `Fox.SeekShelterGoal`: by day, or in a thunderstorm, leave open sky for
 /// somewhere the sky does not see; a fox standing in a village stays put.
@@ -416,19 +127,6 @@ struct SeekShelter {
     wanted: [f64; 3],
 }
 impl SeekShelter {
-    fn new(speed: f64) -> Self {
-        Self {
-            speed,
-            interval: reduced(100),
-            wanted: [0.0; 3],
-        }
-    }
-}
-impl Goal for SeekShelter {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
 }
 
 /// `Fox.PerchAndSearchGoal`: now and then sit down and look around two to
@@ -441,56 +139,8 @@ struct Perch {
 }
 impl Perch {
 }
-impl Goal for Perch {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 
-/// `BlockState` with one property changed.
-fn with_prop(w: &MobWorld, p: [i32; 3], key: &str, value: &str) -> Option<BlockStateId> {
-    let mut s = w.registry.state(w.world.block(p[0], p[1], p[2]))?.clone();
-    s.properties.insert(key.into(), value.into());
-    w.registry.id(&s)
-}
-/// `FoxEatBerriesGoal.isValidTarget`: a ripe sweet berry bush or glow berries.
-fn has_berries(w: &MobWorld, p: [i32; 3]) -> bool {
-    match w.block_name(p[0], p[1], p[2]) {
-        "minecraft:sweet_berry_bush" => w
-            .prop(p[0], p[1], p[2], "age")
-            .and_then(|a| a.parse::<i32>().ok())
-            .is_some_and(|a| a >= 2),
-        "minecraft:cave_vines" | "minecraft:cave_vines_plant" => {
-            w.prop(p[0], p[1], p[2], "berries") == Some("true")
-        }
-        _ => false,
-    }
-}
 
-/// `Fox.FoxEatBerriesGoal`: walk to a ripe berry bush and pick it after 40 ticks.
-#[derive(Clone, Debug)]
-struct EatBerries {
-    block: MoveToBlock,
-    waited: i32,
-}
-impl EatBerries {
-    fn new() -> Self {
-        Self {
-            block: MoveToBlock::new(f64::from(1.2_f32), 12, 1),
-            waited: 0,
-        }
-    }
-}
-impl Goal for EatBerries {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 
 #[cfg(test)]
@@ -551,12 +201,6 @@ mod trust_breed_tests {
 /// `Fox.FoxSearchForItemsGoal`: walk to a dropped item while the mouth is empty.
 #[derive(Clone, Debug)]
 struct SearchForItems;
-impl Goal for SearchForItems {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 #[cfg(test)]
 mod pickup_tests {

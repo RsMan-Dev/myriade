@@ -3107,7 +3107,7 @@ impl Hub {
             }
             T::Vibration => {
                 use horizon_protocol::entity_data::PositionSource as NetworkPositionSource;
-                use myriade_types::PositionSource;
+                use myriade_level::particle_options::PositionSource;
                 let (source, _, ticks) = options.vibration.as_ref()?;
                 let source = match source {
                     PositionSource::Block(pos) => NetworkPositionSource::Block(*pos),

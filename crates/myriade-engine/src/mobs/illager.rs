@@ -1,28 +1,9 @@
-//! Illagers outside raids: pillagers (crossbow charging and volleys) and
-//! vindicators (axes, Johnny), with `IllagerModel`'s arm poses.
-use super::{
-    MobEvent, Species, Who,
-    anim::{Poses, State},
-    goals::{
-        Cx, Float, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, MeleeAttack, NearestTarget, Prey,
-        Stroll, goal_clone, reduced,
-    },
-};
 use crate::items::ItemStack;
 use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::geometry::trig::{DEG_TO_RAD, Mth};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use std::f32::consts::PI;
 
-/// `AvoidEntityGoal<>(this, Creaking.class, 8.0F, walk, sprint)`.
-fn avoid_creaking(walk: f64, sprint: f64) -> super::goals::AvoidEntity {
-    super::goals::AvoidEntity::new(
-        super::goals::Avoid::Species(vec![Species::Creaking]),
-        8.0,
-        walk,
-        sprint,
-    )
-}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Spell {
     Vexes = 1,
@@ -45,12 +26,6 @@ fn spell_color(id: u8) -> [f32; 3] {
 /// spell is cast.
 #[derive(Clone, Debug)]
 pub(super) struct CastingSpell;
-impl Goal for CastingSpell {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 /// `SpellcasterUseSpellGoal` with the evoker's three spells.
 #[derive(Clone, Debug)]
 struct UseSpell {
@@ -73,12 +48,6 @@ impl UseSpell {
             Spell::Fangs => (20, 40, 100, "entity.evoker.prepare_attack"),
             Spell::Wololo => (40, 60, 140, "entity.evoker.prepare_wololo"),
         }
-    }
-}
-impl Goal for UseSpell {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
     }
 }
 /// `createSpellEntity`: the first block below `max_y` whose up face is
@@ -134,20 +103,7 @@ impl CrossbowAttack {
         }
     }
 }
-/// The crossbow goal for other crossbow users (piglins).
-pub fn crossbow_goal(speed: f64, radius: f64) -> impl Goal {
-    CrossbowAttack::new(speed, radius)
-}
 
-impl Goal for CrossbowAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ArmPose {
     BowAndArrow,
@@ -159,9 +115,6 @@ pub enum ArmPose {
     CrossbowHold,
     CrossbowCharge,
     Bow,
-}
-fn hide(p: &mut Poses, part: &str) {
-    p.visible(part, false);
 }
 
 #[cfg(test)]

@@ -305,31 +305,6 @@ impl FallEvent {
     }
 }
 impl MotionWorld<'_, '_, '_> {
-    fn mod_block_fall(
-        &mut self,
-        state: BlockStateId,
-        position: BlockPos,
-        distance: f64,
-        damage: f32,
-    ) -> f32 {
-        crate::block_contact::fall(
-            &mut crate::health::DamageLevel::of(
-                &mut *self.scene,
-                self.assets.registry,
-                self.tag_items,
-                self.block_registries,
-                self.damage_hooks,
-            ),
-            crate::block_contact::Contact {
-                entity: self.player.entity_id,
-                kind: "minecraft:player",
-                state,
-                position,
-            },
-            distance,
-            damage,
-        )
-    }
     fn fall_event(&mut self, event: FallEvent) {
         self.player.events.push(MotionEvent::Fall(event));
     }
@@ -343,9 +318,6 @@ impl MotionWorld<'_, '_, '_> {
         // Player.causeFallDamage exempts players with the mayfly ability,
         // including creative players who are currently walking.
         if self.player.may_fly {
-            if let Some((state, position, original_distance)) = contact {
-                self.mod_block_fall(state, position, original_distance, 0.0);
-            }
             // Only for mods' `player_flyable_fall`: without them the landing
             // stays as vanilla traces it.
             if !self.player.replaying && crate::native_level_hooks::has_mods() {
@@ -382,9 +354,6 @@ impl MotionWorld<'_, '_, '_> {
         }
         // A canceled fall still lands on the block (`Block.fallOn`).
         if cancel {
-            if let Some((state, position, original_distance)) = contact {
-                self.mod_block_fall(state, position, original_distance, 0.0);
-            }
             return Ok(false);
         }
         living_fall::cause_living_fall_damage(
@@ -417,25 +386,11 @@ impl FallDamageWorld for MotionWorld<'_, '_, '_> {
         self.player.fall_distance = value;
     }
     fn fall_on(&mut self, state: BlockStateId, position: BlockPos, distance: f64) -> Result<()> {
-        let previous = self.player.block_landing.take();
-        if crate::block_contact::fall_listens(state) {
-            self.player.block_landing = Some((state, position, distance));
-        }
         // Keep template landing rules (hay, honey, slime, etc.) in control.
-        let result = self
-            .resources
+        self.resources
             .landing
             .fall_on(self, state, position, LandingEntityKind::Player, distance)
-            .map_err(|e| e.to_string().into());
-        let pending = self.player.block_landing.take();
-        self.player.block_landing = previous;
-        if result.is_ok()
-            && let Some((state, position, distance)) = pending
-        {
-            // Some landing rules never call causeFallDamage.
-            self.mod_block_fall(state, position, distance, 0.0);
-        }
-        result
+            .map_err(|e| e.to_string().into())
     }
 
     fn position(&self) -> Vec3 {
@@ -569,8 +524,8 @@ impl BlockLandingWorld for MotionWorld<'_, '_, '_> {
         );
         cancel
     }
-    fn template_suppressed(&self, state: BlockStateId) -> bool {
-        crate::block_contact::template_suppressed(self.assets.registry, state)
+    fn template_suppressed(&self, _state: BlockStateId) -> bool {
+        false
     }
     fn suppressing_bounce(&mut self) -> Result<bool> {
         Ok(self.player.shift_key_down)
@@ -716,9 +671,7 @@ impl LivingFallWorld for FallCall<'_, '_, '_, '_> {
             .attribute("minecraft:fall_damage_multiplier")
     }
     fn modify_fall_damage(&mut self, _distance: f64, damage: f32) -> Result<f32> {
-        Ok(self.contact.map_or(damage, |(state, position, distance)| {
-            self.world.mod_block_fall(state, position, distance, damage)
-        }))
+        Ok(damage)
     }
     fn fall_sound(&mut self, big: bool) -> Result<SceneSound> {
         self.world.living_fall_sound(big)

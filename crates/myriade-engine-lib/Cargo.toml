@@ -22,6 +22,7 @@ horizon-hooks = { path = "../horizon-hooks" }
 horizon-assets = { path = "../horizon-assets" }
 myriade-data = { path = "../myriade-data" }
 myriade-level = { path = "../myriade-level" }
+myriade-types = { path = "../myriade-types" }
 horizon-command = { path = "../horizon-command" }
 horizon-items = { path = "../horizon-items" }
 horizon-core = { path = "../horizon-core" }

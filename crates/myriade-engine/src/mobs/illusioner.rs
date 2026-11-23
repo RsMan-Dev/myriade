@@ -1,14 +1,3 @@
-//! The illusioner (`Illusioner`): a bow-wielding spellcaster that turns
-//! invisible behind four mirror images and blinds its target.
-use super::{
-    MobEvent, Species, Who,
-    goals::{
-        Avoid, AvoidEntity, Cx, Float, Goal, HurtByTarget, LookAtPlayer, NearestTarget, Stroll,
-        goal_clone, reduced,
-    },
-    illager::CastingSpell,
-    undead::BowAttack,
-};
 use horizon_core::random::RandomSource;
 
 const INVISIBILITY: &str = "minecraft:invisibility";
@@ -29,38 +18,6 @@ pub const BLINDNESS_SPELL: u8 = 5;
 
 
 
-/// `IllusionerMirrorSpellGoal` and `IllusionerBlindnessSpellGoal`.
-#[derive(Clone, Debug)]
-struct Spell {
-    spell: u8,
-    warmup: i32,
-    next: i64,
-    last_target: Option<Who>,
-}
-impl Spell {
-    fn new(spell: u8) -> Self {
-        Self {
-            spell,
-            warmup: 0,
-            next: 0,
-            last_target: None,
-        }
-    }
-    /// (casting time, interval, prepare sound).
-    fn timing(&self) -> (i32, i64, &'static str) {
-        if self.spell == MIRROR {
-            (20, 340, "entity.illusioner.prepare_mirror")
-        } else {
-            (20, 180, "entity.illusioner.prepare_blindness")
-        }
-    }
-}
-impl Goal for Spell {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 
 
 

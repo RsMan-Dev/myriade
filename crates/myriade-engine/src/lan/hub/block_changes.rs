@@ -198,14 +198,7 @@ impl Hub {
             return;
         };
         if !bulk.is_empty() {
-            // (what changed in them one at a time went with them, but for one-shot fields: a chunk has none)
-            log.retain(|p| {
-                bulk.binary_search(&(p.0 >> 4, p.2 >> 4)).is_err()
-                    || matches!(
-                        world.block_entities.get(p),
-                        Some(crate::containers::BlockEntity::Mod(m)) if m.has_client_update_fields()
-                    )
-            });
+            log.retain(|p| bulk.binary_search(&(p.0 >> 4, p.2 >> 4)).is_err());
         }
         if log.is_empty() {
             self.finish_terrain_refresh(&refresh);
@@ -330,10 +323,6 @@ impl Hub {
             let metadata_positions = if has_views { &candidates } else { &positions };
             for &pos @ (x, y, z) in metadata_positions {
                 let state = world.block(x, y, z).0;
-                let entity = world.block_entities.get(&pos);
-                if !self.encoder.entity_matches(state, entity) {
-                    continue;
-                }
                 let mut entitled = if has_views {
                     Cow::Owned(
                         holders
@@ -358,9 +347,10 @@ impl Hub {
                 if entitled.is_empty() {
                     continue;
                 }
+                let entity = world.block_entities.get(&pos);
                 // A decorated pot is no block entity: its tag is the chunk's saved one.
                 let tag = match entity {
-                    Some(entity) => self.encoder.change_tag(pos, state, entity),
+                    Some(entity) => self.encoder.update_tag(pos, state, entity),
                     None => world
                         .chunks
                         .get(&(x >> 4, z >> 4))

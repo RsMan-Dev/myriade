@@ -13,7 +13,6 @@
 //! game rules) is kept from the loaded files and written back unchanged.
 //! Worlds saved by older Horizon builds (`region/`, `DIM-1/`, `Player` in
 //! `level.dat`) are migrated on open.
-use crate::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
 mod backpressure;
 use backpressure::compress_records;
 pub mod biome_regions;
@@ -635,11 +634,6 @@ fn fluid_id(name: &str) -> Option<u32> {
 pub use horizon_items::item_nbt::{
     decode_items, encode_item, encode_items, item_from_nbt, item_to_nbt,
 };
-/// Whether a mod block entity is temporarily out of the world for its tick.
-pub fn block_entity_placeholder(entity: &crate::containers::BlockEntity) -> bool {
-    matches!(entity, crate::containers::BlockEntity::Mod(m) if m.id().is_empty())
-}
-
 /// The block entity type ID for the block it sits in (a chest-like container
 /// is a chest, trapped chest or barrel).
 pub fn block_entity_id<'a>(e: &'a crate::containers::BlockEntity, block: &'a str) -> &'a str {
@@ -711,37 +705,6 @@ pub fn decode_end_gateway(tag: &Tag) -> crate::containers::EndGateway {
         exact_teleport: crate::entity_nbt::flag(tag, "ExactTeleport"),
     }
 }
-/// A mod's block entity: its compound without `id` and the position, and
-/// its `Items` as slots (`ContainerHelper.loadAllItems`; the game sizes them
-/// to the block's container when it uses them). `Items` that are not an item
-/// list saved exactly so stay the mod's own.
-fn decode_mod_block_entity(id: String, tag: &Tag) -> Option<crate::containers::ModBlockEntity> {
-    let Tag::Compound(map) = tag else {
-        return None;
-    };
-    let mut nbt = map.clone();
-    for key in ["id", "x", "y", "z"] {
-        nbt.remove(&key.into());
-    }
-    // `Slot` is a byte: 256 slots at most.
-    let mut items = decode_items(nbt.get(&"Items".into()), 256);
-    if nbt.get(&"Items".into()) == Some(&encode_items(&items)) {
-        nbt.remove(&"Items".into());
-        while items.last().is_some_and(Option::is_none) {
-            items.pop();
-        }
-    } else {
-        items.clear();
-    }
-    Some(crate::containers::ModBlockEntity::new(
-        id,
-        crate::containers::ModBlockEntityFields {
-            nbt,
-            items,
-            data: Vec::new(),
-        },
-    ))
-}
 /// Decode an entity at a known block, refusing undeclared IDs and invalid native membership.
 /// Canonical membership wins; blocks absent from the table use vanilla membership.
 pub fn decode_block_entity_for_block(
@@ -752,13 +715,8 @@ pub fn decode_block_entity_for_block(
     // Several vanilla types share a decoded representation (for example barrel
     // and chest). Membership belongs to the saved type, not that representation.
     let saved_id = text(tag.get("id"))?;
-    let valid = match &decoded.1 {
-        crate::containers::BlockEntity::Mod(m) => {
-            crate::block_entity_types::valid(block, m.id()) == Some(true)
-        }
-        _ => crate::block_entity_types::valid(block, &saved_id)
-            .unwrap_or_else(|| decoded.1.fits(block)),
-    };
+    let valid = crate::block_entity_types::valid(block, &saved_id)
+        .unwrap_or_else(|| decoded.1.fits(block));
     valid.then_some(decoded)
 }
 
@@ -767,12 +725,6 @@ pub fn decode_block_entity(tag: &Tag) -> Option<((i32, i32, i32), crate::contain
     let int = |k: &str| tag.get(k).and_then(crate::nbt_path::int_value); // getIntOr
     let id = text(tag.get("id"))?;
     let pos = (int("x")?, int("y")?, int("z")?);
-    if id.contains(':') && !id.starts_with("minecraft:") {
-        return Some((
-            pos,
-            BlockEntity::Mod(Box::new(decode_mod_block_entity(id, tag)?)),
-        ));
-    }
     if id == "minecraft:end_gateway" {
         return Some((pos, BlockEntity::EndGateway(decode_end_gateway(tag))));
     }
@@ -967,8 +919,7 @@ pub fn decode_block_entity(tag: &Tag) -> Option<((i32, i32, i32), crate::contain
         | BlockEntity::DaylightDetector
         | BlockEntity::Bell
         | BlockEntity::EndPortal
-        | BlockEntity::EnchantingTable
-        | BlockEntity::Mod(_) => {}
+        | BlockEntity::EnchantingTable => {}
         // ConduitBlockEntity.loadAdditional: EntityReference.read through
         // UUIDUtil.CODEC, an int array of four.
         BlockEntity::Conduit(target) => {
@@ -1321,9 +1272,6 @@ pub fn encode_with(
     let mut block_entities: Vec<Tag> = chunk
         .block_entities
         .iter()
-        // A mod block entity a native mod is ticking right now
-        // (`tick_mod_block_entity`): its data is out of the world.
-        .filter(|(_, e)| !block_entity_placeholder(e))
         .map(|(p, e)| {
             let block = block_name(p);
             let mut current = block_entity_encode::encode(*p, e, &block);
@@ -1348,7 +1296,6 @@ pub fn encode_with(
                                 e,
                                 crate::containers::BlockEntity::Banner(_)
                                     | crate::containers::BlockEntity::Sign(_)
-                                    | crate::containers::BlockEntity::Mod(_)
                             ) && let Some(name) = original
                                 .get("CustomName")
                                 .and_then(crate::block_entity_nbt::component)
@@ -1639,8 +1586,7 @@ fn decode_column(
                     // A banner keeps its name in its model (`decode_banner`).
                     let name = match &be.1 {
                         crate::containers::BlockEntity::Banner(_) => None,
-                        crate::containers::BlockEntity::Sign(_)
-                        | crate::containers::BlockEntity::Mod(_) => {
+                        crate::containers::BlockEntity::Sign(_) => {
                             text(e.get("CustomName")).map(|name| string(&name))
                         }
                         _ => e.get("CustomName").and_then(nbt_component),
@@ -2284,56 +2230,6 @@ pub struct SaveDir {
     blending_lookup: OnceLock<BlendingLookup>,
 }
 
-fn mod_ticket_to_nbt(ticket: &ModTicket, controller: &str) -> Tag {
-    let owner = match ticket.owner {
-        TicketOwner::Block(pos) => ("block", Tag::IntArray(pos.to_vec())),
-        TicketOwner::Entity(uuid) => (
-            "entity",
-            Tag::IntArray((0..4).map(|i| (uuid >> (96 - 32 * i)) as i32).collect()),
-        ),
-    };
-    Tag::compound([
-        ("controller", Tag::String(controller.into())),
-        ("owner", Tag::compound([owner])),
-        (
-            "chunk_pos",
-            Tag::IntArray(vec![ticket.chunk.0, ticket.chunk.1]),
-        ),
-        (
-            "natural_spawning",
-            Tag::Byte(i8::from(ticket.natural_spawning)),
-        ),
-    ])
-}
-/// A saved ticket: the id of the controller that held it, and the ticket without its slot.
-fn mod_ticket_from_nbt(tag: &Tag) -> Option<(String, ModTicket)> {
-    let Some(Tag::String(controller)) = tag.get("controller") else {
-        return None;
-    };
-    let owner = tag.get("owner")?;
-    let owner = match (owner.get("block"), owner.get("entity")) {
-        (Some(Tag::IntArray(p)), _) if p.len() == 3 => TicketOwner::Block([p[0], p[1], p[2]]),
-        (_, Some(Tag::IntArray(u))) if u.len() == 4 => TicketOwner::Entity(
-            u.iter()
-                .fold(0u128, |acc, &n| acc << 32 | u128::from(n as u32)),
-        ),
-        _ => return None,
-    };
-    let Some(Tag::IntArray(pos)) = tag.get("chunk_pos") else {
-        return None;
-    };
-    let controller = controller.to_string().ok()?;
-    (pos.len() == 2).then(|| {
-        let ticket = ModTicket {
-            controller: 0,
-            owner,
-            chunk: (pos[0], pos[1]),
-            // Tickets saved without the flag don't force natural spawning.
-            natural_spawning: matches!(tag.get("natural_spawning"), Some(Tag::Byte(b)) if *b != 0),
-        };
-        (controller, ticket)
-    })
-}
 fn is_forced_ticket(ticket: &Tag) -> bool {
     matches!(ticket.get("type"), Some(Tag::String(t)) if *t == JavaString::from("minecraft:forced"))
 }
@@ -2480,73 +2376,6 @@ impl SaveDir {
         }));
         put(&mut data, "tickets", Tag::List(tickets));
         write_saved_data(&self.root, "chunk_tickets", data)
-    }
-    /// The chunk tickets of mods (`data/horizon/mod_chunk_tickets.dat`), kept
-    /// out of vanilla's `chunk_tickets.dat` because vanilla decodes its ticket
-    /// types through a registry. Each is saved under its controller's id;
-    /// `slot_of` gives the slot of an id a loaded mod registered. A ticket of
-    /// any other id (a mod that is gone, or a file from before controllers) is
-    /// dropped with a warning, and one that doesn't read is skipped.
-    pub fn load_mod_tickets(&self, slot_of: impl Fn(&str) -> Option<u32>) -> Vec<ModTicket> {
-        let Some(root) = read_dat(&self.mod_tickets_path()) else {
-            return Vec::new();
-        };
-        let Some(Tag::List(tickets)) = root.get("data").and_then(|data| data.get("tickets")) else {
-            return Vec::new();
-        };
-        let mut dropped = std::collections::BTreeSet::new();
-        let loaded = tickets
-            .iter()
-            .filter_map(|tag| {
-                let Some((controller, ticket)) = mod_ticket_from_nbt(tag) else {
-                    log::warn!("Dropping a saved mod chunk ticket that has no readable controller");
-                    return None;
-                };
-                let Some(slot) = slot_of(&controller) else {
-                    dropped.insert(controller);
-                    return None;
-                };
-                Some(ModTicket {
-                    controller: slot,
-                    ..ticket
-                })
-            })
-            .collect();
-        for controller in dropped {
-            log::warn!(
-                "Dropping the saved chunk tickets of ticket controller {controller}: no loaded mod registers it"
-            );
-        }
-        loaded
-    }
-    /// Save the tickets of mods under their controllers' ids (`id_of` gives the id of a slot);
-    /// nothing while there are none and never were.
-    pub fn save_mod_tickets(
-        &self,
-        tickets: &ModTickets,
-        id_of: impl Fn(u32) -> Option<&'static str>,
-    ) -> Result<()> {
-        let path = self.mod_tickets_path();
-        let list: Vec<Tag> = tickets
-            .to_save()
-            .filter_map(|t| Some(mod_ticket_to_nbt(t, id_of(t.controller)?)))
-            .collect();
-        if list.is_empty() && !path.exists() {
-            return Ok(());
-        }
-        write_dat(
-            &path,
-            Tag::compound([
-                ("data", Tag::compound([("tickets", Tag::List(list))])),
-                ("DataVersion", Tag::Int(DATA_VERSION)),
-            ]),
-        )
-    }
-    fn mod_tickets_path(&self) -> PathBuf {
-        self.root
-            .join("data")
-            .join("horizon")
-            .join("mod_chunk_tickets.dat")
     }
     fn region_path(&self, folder: &str, rx: i32, rz: i32) -> PathBuf {
         region_path(&self.root, folder, rx, rz)

@@ -1,15 +1,3 @@
-//! Piglins, piglin brutes, hoglins and zoglins: gold-wearing players are
-//! left alone, gold is admired and bartered, piglins and hoglins zombify
-//! outside the Nether, hoglins headbutt their targets into the air.
-use super::{
-    MobEvent, MobWorld, Seen, Species, Who,
-    anim::{Poses, State},
-    brain::{Ttl, living_near, melee_attack, melee_attack_by_age},
-    goals::{
-        Cx, Float, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, NearestTarget, Prey,
-        RandomLookAround, Stroll, TARGET, TargetState, goal_clone, target_continue,
-    },
-};
 use horizon_core::geometry::{Vec3, trig::Mth};
 use horizon_core::random::{LegacyRandom, LevelRandom, RandomSource};
 use std::f32::consts::PI;
@@ -52,131 +40,10 @@ pub enum Activity {
     Celebrate,
     Ride,
 }
-/// `MemoryModuleType.AVOID_TARGET`: who to keep away from, where it was last
-/// seen (a target that is gone leaves its spot behind) and when the memory
-/// expires.
-#[derive(Clone, Copy, Debug)]
-pub struct AvoidTarget {
-    pub who: Who,
-    pub at: Vec3,
-    pub ttl: Ttl,
-}
-/// `MemoryModuleType.RIDE_TARGET`: the mob a baby piglin means to ride, when
-/// the memory expires and the block the walk to it was last aimed at.
-#[derive(Clone, Copy, Debug)]
-pub struct RideTarget {
-    pub vehicle: u32,
-    pub ttl: Ttl,
-    pub aimed: Option<[i32; 3]>,
-}
-/// What a piglin's or hoglin's brain remembers of its surroundings and of
-/// what it retreats from. Most have no codec; live guarded anger below is saved.
-#[derive(Clone, Debug, Default)]
-pub struct Memories {
-    /// The guarded-block event owns the saved ANGRY_AT entry once set.
-    /// Outer None leaves unmodeled loaded memory alone; Some(None) has no
-    /// authoritative actor identity and clears stale raw data instead of inventing one.
-    /// Its remaining TTL is the existing `Extra::anger` counter.
-    pub guarded_angry_at: Option<Option<[i32; 4]>>,
-    /// `Piglin.setCannotHunt`: the piglin will not start hunting hoglins.
-    pub cannot_hunt: bool,
-    /// `AVOID_TARGET`.
-    pub avoid: Option<AvoidTarget>,
-    /// `RIDE_TARGET`.
-    pub ride: Option<RideTarget>,
-    /// A piglin's `HURT_BY` is set: the `HurtBySensor` saw damage taken
-    /// within the last 40 ticks.
-    pub hurt: bool,
-    /// A piglin's `NEAREST_VISIBLE_BABY_HOGLIN`.
-    pub baby_hoglin: Option<u32>,
-    /// `SetEntityLookTargetSometimes.Ticker.ticksUntilNextStart` of
-    /// `babySometimesRideBabyHoglin`.
-    pub ride_wait: i32,
-    /// `Brain.getActiveNonCoreActivity` as `updateActivity` last left it.
-    pub activity: Activity,
-    /// The `last_hurt_by_time` of the hit `wasHurtBy` last reacted to.
-    pub hurt_seen: i32,
-    /// `VISIBLE_ADULT_PIGLIN_COUNT`: a piglin's counts its brutes too, a
-    /// hoglin's only the piglins.
-    pub piglins: i32,
-    /// `VISIBLE_ADULT_HOGLIN_COUNT`.
-    pub hoglins: i32,
-    /// A hoglin's `NEAREST_VISIBLE_ADULT_PIGLIN`.
-    pub nearest_piglin: Option<u32>,
-    /// A hoglin's `NEAREST_VISIBLE_ADULT_HOGLINS` and a piglin's
-    /// `NEAREST_VISIBLE_ADULT_PIGLINS` (brutes too), nearest first.
-    pub adults: Vec<u32>,
-    /// A piglin's `NEAREST_VISIBLE_ZOMBIFIED`.
-    pub zombified: Option<Who>,
-    /// A piglin's `NEAREST_VISIBLE_NEMESIS`: a wither skeleton or a wither.
-    pub nemesis: Option<Who>,
-    /// A piglin's `NEAREST_PLAYER_HOLDING_WANTED_ITEM` is set.
-    pub sees_loved: bool,
-    /// Retreats other mobs' `broadcastRetreat` asked of this one, which its
-    /// next tick starts with: who to retreat from and where it stands.
-    pub retreats: Vec<(Who, Vec3)>,
-    /// The spear behaviours' memories (`SPEAR_STATUS`...).
-    pub spear: super::spear_use::Memories,
-    /// `ADMIRING_ITEM` set by `StartAdmiringItemIfSeen` (nothing in the off
-    /// hand yet): the ticks left before it expires.
-    pub seen_admire: i32,
-    /// `TIME_TRYING_TO_REACH_ADMIRE_ITEM`, when present.
-    pub reach_time: Option<i32>,
-    /// `DISABLE_WALK_TO_ADMIRE_ITEM`: the ticks left.
-    pub walk_off: i32,
-    /// `ADMIRING_DISABLED`: the ticks left.
-    pub admire_disabled: i32,
-    /// `ATE_RECENTLY`: the ticks left.
-    pub ate_recently: i32,
-    /// A hit stopped the admiring (`wasHurtBy`): the `FinishAdmiring` it raised
-    /// doesn't barter.
-    pub hit_stop: bool,
-}
 
 
 
 
-impl Memories {
-    /// `StartAdmiringItemIfSeen.create(119)` (core activity) and the admire
-    /// activity's `StopAdmiringIfItemTooFarAway(9)` and
-    /// `StopAdmiringIfTiredOfTryingToReachItem(200, 200)`, from the distance
-    /// squared to `NEAREST_VISIBLE_WANTED_ITEM` and whether that item is loved.
-    /// `holding`: the off hand is not empty, which both stop behaviours check.
-    pub fn admire_seen(&mut self, holding: bool, nearest: Option<f64>, loved: bool) {
-        let absent = self.seen_admire == 0;
-        if !absent && !holding {
-            match nearest {
-                Some(d) if d < 81.0 => match self.reach_time {
-                    None => self.reach_time = Some(0),
-                    Some(t) if t > 200 => {
-                        self.seen_admire = 0;
-                        self.reach_time = None;
-                        self.walk_off = 200;
-                    }
-                    Some(t) => self.reach_time = Some(t + 1),
-                },
-                _ => self.seen_admire = 0,
-            }
-        }
-        if absent && loved && self.admire_disabled == 0 && self.walk_off == 0 {
-            self.seen_admire = ADMIRE;
-        }
-    }
-}
-/// `PiglinAi.isPlayerHoldingLovedItem`: gold or anything else in
-/// `#piglin_loved`, in either hand.
-fn holds_loved(w: &MobWorld, p: &super::PlayerView) -> bool {
-    let Some(tag) = w
-        .items
-        .and_then(|i| i.item_tags.get("minecraft:piglin_loved"))
-    else {
-        return false;
-    };
-    [&p.main_hand, &p.off_hand]
-        .into_iter()
-        .flatten()
-        .any(|item| tag.contains(&**item))
-}
 /// `TimeUtil.rangeOfSeconds(5, 7)` of `PiglinAi.AVOID_ZOMBIFIED_DURATION` and
 /// `BABY_AVOID_NEMESIS_DURATION`, sampled from the level random.
 fn avoid_duration(lr: &mut LevelRandom) -> i32 {
@@ -217,24 +84,6 @@ fn retreat_duration(lr: &mut LevelRandom) -> i32 {
 fn hunt_wait(lr: &mut LevelRandom) -> i32 {
     lr.next_int_between_inclusive(600, 2400).unwrap_or(600)
 }
-/// Whether two entities are of one type: both the player, or both mobs of
-/// one species.
-fn same_type(w: &MobWorld, a: Who, b: Who) -> bool {
-    match (a, b) {
-        (Who::Player, Who::Player) => true,
-        (Who::Mob(_), Who::Mob(_)) => {
-            species_of(w, a).is_some() && species_of(w, a) == species_of(w, b)
-        }
-        _ => false,
-    }
-}
-/// What kind of mob `who` is: none for the player.
-fn species_of(w: &MobWorld, who: Who) -> Option<Species> {
-    match who {
-        Who::Player => None,
-        Who::Mob(id) => w.seen(id).map(|s| s.species),
-    }
-}
 /// What `SetWalkTargetAwayFrom.entity` walks away from.
 #[derive(Clone, Copy, Debug)]
 enum AwayFrom {
@@ -272,34 +121,10 @@ impl WalkAway {
         }
     }
 }
-impl Goal for WalkAway {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// A goal of the idle and fight activities: it waits while the brain is in
 /// the retreat activity.
 #[derive(Clone, Debug)]
 struct NotRetreating<G>(G);
-impl<G: Goal + Clone + 'static> Goal for NotRetreating<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-    fn interruptable(&self) -> bool {
-        self.0.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 
 /// A goal of the fight activity: `HoglinAi.updateActivity` runs after the
 /// brain, so a hoglin given a target fights from the next tick on (here
@@ -308,42 +133,12 @@ impl<G: Goal + Clone + 'static> Goal for NotRetreating<G> {
 /// every tick, but it acts only once the activity is fight.
 #[derive(Clone, Debug)]
 struct InFight<G>(G);
-impl<G: Goal + Clone + 'static> Goal for InFight<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-    fn interruptable(&self) -> bool {
-        self.0.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 
 /// A goal of the idle and avoid activities' movement: the ride activity has
 /// none of it (`PiglinAi.initRideHoglinActivity`), so it waits while the
 /// brain is in the ride activity.
 #[derive(Clone, Debug)]
 struct NotRiding<G>(G);
-impl<G: Goal + Clone + 'static> Goal for NotRiding<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-    fn interruptable(&self) -> bool {
-        self.0.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 
 /// `BackUpIfTooClose.create(5, 0.75)` of `PiglinAi.initFightActivity`, behind
 /// `hasCrossbow`: with no walk target and the attack target in sight within 5
@@ -352,37 +147,6 @@ impl<G: Goal + Clone + 'static> Goal for NotRiding<G> {
 #[derive(Clone, Debug)]
 struct BackUpIfTooClose;
 impl BackUpIfTooClose {
-}
-impl Goal for BackUpIfTooClose {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
-/// `StartHuntingHoglin`: an adult piglin that is not angry, has not hunted
-/// recently and sees no adult piglin that has, goes for the nearest adult
-/// hoglin it sees; then it and the adult piglins near it wait before the next
-/// hunt, and the others join in (`broadcastAngerTarget`).
-#[derive(Clone, Debug)]
-struct HuntHoglin {
-    found: Option<u32>,
-    st: TargetState,
-}
-impl Default for HuntHoglin {
-    fn default() -> Self {
-        let mut st = TargetState::default();
-        st.unseen_memory = 60;
-        Self { found: None, st }
-    }
-}
-impl Goal for HuntHoglin {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        TARGET
-    }
 }
 /// `PiglinBruteAi.HOME_CLOSE_ENOUGH_DISTANCE`: how near home the walk target
 /// counts as arrived.
@@ -407,48 +171,21 @@ struct BruteStrollHome {
     /// `StrollToPoi.nextOkStartTime`: the game time before which it does not try.
     next_ok: i64,
 }
-impl Goal for BruteStrollHome {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, true)` of the hoglin's
 /// idle activity: closer than 8 blocks to a repellent, walk away from it.
 #[derive(Clone, Debug)]
 struct HoglinAvoidRepellent;
-impl Goal for HoglinAvoidRepellent {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `PiglinAi.avoidRepellent`: `SetWalkTargetAwayFrom.pos(NEAREST_REPELLENT, 1.0, 8, false)`
 /// of the idle activity. Closer than 8 blocks to a repellent and not walking
 /// anywhere, walk away from it.
 #[derive(Clone, Debug)]
 struct PiglinAvoidRepellent;
-impl Goal for PiglinAvoidRepellent {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `PiglinAi.isPlayerHoldingLovedItem`: the idle and celebrate activities'
 /// `SetEntityLookTarget.create(.., 14.0)` and the ride activity's, with 8.0,
 /// turn to look at the player in sight within that many blocks who holds gold.
 #[derive(Clone, Debug)]
 struct LookAtLoved;
 impl LookAtLoved {
-}
-impl Goal for LookAtLoved {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 /// Admiring a gold item held in the off hand: stand and look at it.
 #[derive(Clone, Debug)]
@@ -457,52 +194,15 @@ struct Admire;
 /// stand by while `GoToWantedItem` (the game sets the point) walks to it.
 #[derive(Clone, Debug)]
 struct AdmireSeen;
-impl Goal for AdmireSeen {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
-impl Goal for Admire {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 /// The celebrate activity: `GoToTargetLocation` on the spot a killed target
 /// fell (within 2 blocks, or 4 and slower while dancing).
 #[derive(Clone, Debug)]
 struct Celebrate;
 impl Celebrate {
 }
-impl Goal for Celebrate {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `GoToWantedItem`: walk to the gold the game spotted.
 #[derive(Clone, Debug)]
 struct GoToWantedItem;
-impl Goal for GoToWantedItem {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
-/// `AbstractPiglinModel.setupAnim`: the ears flap around their default angle
-/// (30 degrees for adults, 5 for babies).
-pub fn ears(p: &mut Poses, s: &State) {
-    use horizon_core::geometry::trig::DEG_TO_RAD;
-    let default = if s.baby { 5.0 } else { 30.0 } * DEG_TO_RAD;
-    let freq = s.age * 0.1 + s.pos * 0.5;
-    let amp = 0.08 + s.speed * 0.4;
-    p.zrot("left_ear", -default - (freq * 1.2).mcos() * amp);
-    p.zrot("right_ear", default + freq.mcos() * amp);
-}
 /// `PiglinArmPose`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PiglinPose {
@@ -512,40 +212,6 @@ pub enum PiglinPose {
     CrossbowHold,
     CrossbowCharge,
     AdmiringItem,
-}
-/// `PiglinModel.setupAnim`; `left` when the piglin's main arm is the left one
-/// and `passenger` when it rides something (`HumanoidModel`'s riding pose).
-pub fn piglin_pose(
-    p: &mut Poses,
-    s: &State,
-    pose: PiglinPose,
-    max_charge: f32,
-    ticks: f32,
-    left: bool,
-    passenger: bool,
-) {
-    piglin_pose_holding(p, s, pose, (max_charge, ticks), left, passenger, None);
-}
-/// `piglin_pose` for a piglin whose main arm holds a spear (`spear`: the
-/// spear and the ticks the arm has used it, 0 at rest).
-pub fn piglin_pose_holding(
-    p: &mut Poses,
-    s: &State,
-    pose: PiglinPose,
-    (max_charge, ticks): (f32, f32),
-    left: bool,
-    passenger: bool,
-    spear: Option<(crate::spear::Kinetic, f32)>,
-) {
-    piglin_pose_humanoid(
-        p,
-        s,
-        pose,
-        (max_charge, ticks),
-        (left, passenger),
-        spear,
-        None,
-    );
 }
 
 

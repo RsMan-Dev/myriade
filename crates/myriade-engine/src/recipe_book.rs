@@ -365,7 +365,6 @@ impl Book {
         for (name, recipe) in &recipes.crafting {
             let (category, grp) = recipes.meta.get(name).cloned().unwrap_or_default();
             let (display, result) = match recipe {
-                Recipe::Mod(_) => continue,
                 Recipe::Shaped {
                     width,
                     height,

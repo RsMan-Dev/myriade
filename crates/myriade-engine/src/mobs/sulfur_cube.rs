@@ -1,14 +1,3 @@
-//! Sulfur cubes (`SulfurCube` on `AbstractCubeMob`): hopping like a slime
-//! but harmless, size 1 babies growing into size 2 adults, swallowing a
-//! block (by hand, from the ground or a dispenser) that stops it in place
-//! and gives it the block's archetype (`SulfurCubeArchetype`: buoyancy,
-//! knockback, sounds, contact damage, a TNT fuse), shearing the block out,
-//! buckets, and the outer/inner models and their render scale.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld,
-    control::MoveKind,
-    goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone},
-};
 use crate::health::DamageLevel;
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_world::attributes::{Modifier, Operation};
@@ -636,36 +625,6 @@ pub fn tnt_explodes() -> bool {
 pub fn set_tnt_explodes(on: bool) {
     TNT_EXPLODES.set(on);
 }
-/// `#sulfur_cube_with_block_immune_to`: the damage a cube with a block shrugs off and is only
-/// knocked by.
-pub fn immune_to(source: &Damage) -> bool {
-    matches!(
-        source.kind,
-        DamageKind::PlayerAttack
-            | DamageKind::MaceSmash
-            | DamageKind::Spear
-            | DamageKind::MobAttack
-            | DamageKind::MobAttackNoAggro
-            | DamageKind::Arrow
-            | DamageKind::Thrown
-            | DamageKind::Explosion
-            | DamageKind::Fireworks
-            | DamageKind::Fall
-            | DamageKind::Sting
-            | DamageKind::Cactus
-            | DamageKind::Freeze
-            | DamageKind::SweetBerryBush
-            | DamageKind::HotFloor
-            | DamageKind::FallingAnvil
-            | DamageKind::FallingBlock
-            | DamageKind::FallingStalactite
-            | DamageKind::DryOut
-            | DamageKind::Spit
-            | DamageKind::Stalagmite
-            | DamageKind::SulfurCubeHot
-            | DamageKind::WindCharge
-    )
-}
 /// `Vec2.rotate`: `Mth.sin`/`Mth.cos` of the angle, in floats.
 fn rotate(x: f32, y: f32, angle: f64) -> (f32, f32) {
     let (cosine, sine) = (
@@ -808,22 +767,10 @@ fn launch(
 struct SulfurTempt {
     player: Option<[f64; 3]>,
 }
-impl Goal for SulfurTempt {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-}
 /// `SulfurCubeSearchForItemsGoal`: hop toward the nearest thing it could
 /// swallow (the game marks it in `point`).
 #[derive(Clone, Debug)]
 struct SearchForItems;
-impl Goal for SearchForItems {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-}
 
 #[cfg(test)]
 mod tnt_rule_tests {

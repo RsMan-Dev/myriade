@@ -1,11 +1,3 @@
-//! Dolphin goals: `DolphinSwimToTreasureGoal`, `DolphinSwimWithPlayerGoal`
-//! and `DolphinJumpGoal`. `extra.flag` is `gotFish` and `extra.home` the
-//! `treasurePos` the game found for it (`MobEvent::DolphinTreasure`). `extra.point` is where the
-//! game saw the first item floating within 8 blocks (`Dolphin.ALLOWED_ITEMS`).
-use super::{
-    MobEvent, Who,
-    goals::{Cx, Goal, JUMP, LOOK, MOVE, goal_clone, reduced},
-};
 use crate::blocks::Fluid;
 use horizon_core::geometry::trig::Mth;
 use horizon_core::random::RandomSource;
@@ -30,15 +22,6 @@ pub struct SwimToTreasure {
 }
 impl SwimToTreasure {
 }
-impl Goal for SwimToTreasure {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn interruptable(&self) -> bool {
-        false
-    }
-}
 
 /// `DolphinSwimWithPlayerGoal`: swim up to a swimming player and give them
 /// Dolphin's Grace.
@@ -51,21 +34,6 @@ impl SwimWithPlayer {
         Self { speed }
     }
 }
-impl Goal for SwimWithPlayer {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
-/// `MobEffectInstance(DOLPHINS_GRACE, 100)`.
-fn grace() -> MobEvent {
-    MobEvent::EffectPlayer {
-        effect: "minecraft:dolphins_grace",
-        ticks: 100,
-        amplifier: 0,
-        ambient: false,
-    }
-}
 
 /// `DolphinJumpGoal`: leap out of clear water and arc back in.
 #[derive(Clone, Debug)]
@@ -74,21 +42,6 @@ pub struct Jump {
     breached: bool,
 }
 impl Jump {
-    pub fn new(interval: i32) -> Self {
-        Self {
-            interval: reduced(interval),
-            breached: false,
-        }
-    }
-}
-impl Goal for Jump {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-    fn interruptable(&self) -> bool {
-        false
-    }
 }
 
 /// `FollowPlayerRiddenEntityGoal(mob, AbstractBoat / AbstractNautilus)`: a
@@ -113,28 +66,10 @@ impl FollowPlayerRidden {
             leading: false,
         }
     }
-    /// `Entity.hasMovedHorizontallyRecently` of the rider, and the player's
-    /// own position (its yaw gives the directions).
-    fn rider<'a>(&self, cx: &'a Cx) -> Option<&'a super::PlayerView> {
-        cx.w.selected_player().filter(|p| {
-            p.vehicle
-                .as_ref()
-                .is_some_and(|v| v.nautilus == self.nautilus)
-        })
-    }
     fn moved(p: &super::PlayerView) -> bool {
         p.vehicle.as_ref().is_some_and(|v| {
             (v.velocity.x * v.velocity.x + v.velocity.z * v.velocity.z).sqrt() > 1.0e-5
         })
-    }
-}
-impl Goal for FollowPlayerRidden {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "FollowPlayerRiddenEntityGoal"
-    }
-    fn flags(&self) -> u8 {
-        0
     }
 }
 
@@ -144,21 +79,9 @@ impl Goal for FollowPlayerRidden {
 pub struct MoveToItem {
     cooldown: i64,
 }
-impl Goal for MoveToItem {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `Dolphin.PlayWithItemsGoal`: a dolphin that holds something throws it away.
 #[derive(Clone, Debug, Default)]
 pub struct PlayWithItems;
-impl Goal for PlayWithItems {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 
 #[cfg(test)]
 mod item_tests {

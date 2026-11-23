@@ -99,9 +99,6 @@ impl ItemEntity {
             // before the move's own handling, no-physics and the stuck
             // multiplier included. PR 1a records the movement unchanged.
             let mut gate = crate::move_gate::armed(
-                context,
-                self.id,
-                "minecraft:item",
                 horizon_world::entity_move::MoverType::SelfMovement,
                 wanted,
             );

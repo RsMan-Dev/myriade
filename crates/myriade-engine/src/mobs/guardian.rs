@@ -1,18 +1,3 @@
-//! Guardians and elder guardians (`Guardian`, `ElderGuardian`): the laser
-//! charging for 80 (60) ticks before it strikes, spikes that hurt melee
-//! attackers while still, flopping on land, the swimming move control, and
-//! the elder's mining fatigue curse every minute.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    control::{MoveKind, Operation, rotlerp},
-    goals::{
-        Cx, Goal, LOOK, LookAtPlayer, MOVE, NearestTarget, RandomLookAround, Stroll, goal_clone,
-    },
-    nav::NavKind,
-    path::PathType,
-    trader::MoveTowardsRestriction,
-};
 use crate::health::DamageLevel;
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{geometry::Vec3, random::RandomSource};
@@ -28,25 +13,10 @@ pub const SPIKES: usize = 2;
 const EYE_X: usize = 3;
 const EYE_Y: usize = 4;
 
-/// `Guardian.class` for `LookAtPlayerGoal`: an elder guardian is a guardian.
-const GUARDIAN_CLASS: &[Species] = &[Species::Guardian, Species::ElderGuardian];
 /// `GuardianAttackGoal`.
 #[derive(Clone, Debug)]
 struct GuardianAttack {
     attack_time: i32,
-}
-impl Goal for GuardianAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-    /// `GuardianAttackGoal.stop`: the guardian strolls as soon as the beam ends.
-    fn strolls_on_stop(&self) -> bool {
-        true
-    }
 }
 /// The GUARDIAN_ELDER_EFFECT parameter of an elder's curse
 /// (`isSilent() ? 0.0F : 1.0F`); the client plays the curse sound only for 1.

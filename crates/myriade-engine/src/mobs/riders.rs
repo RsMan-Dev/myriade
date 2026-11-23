@@ -76,68 +76,6 @@ pub fn seat(attachment: [f64; 3], rider_offset: f64, at: Vec3, yaw: f32) -> Vec3
 }
 
 
-/// `Animal.getDismountLocationForPassenger` for a standing passenger of
-/// `width` by `height`: on the floor of the first block around the
-/// vehicle's, going right, left, behind right, behind left, ahead right,
-/// ahead left, behind and ahead of its facing, where the passenger's box
-/// fits (`DismountHelper.canDismountTo`, without the world border); else on
-/// top of the vehicle. A piglin is no `Animal`: it keeps
-/// `Entity.getDismountLocationForPassenger`, on top of it.
-pub fn dismount_location(w: &MobWorld, vehicle: &Seen, width: f32, height: f32) -> Vec3 {
-    // `Entity.getDismountLocationForPassenger`.
-    let on_top = Vec3::new(
-        vehicle.position.x,
-        vehicle.bounds.max_position().y,
-        vehicle.position.z,
-    );
-    if vehicle.species == Species::Piglin {
-        return on_top;
-    }
-    let (bx, by, bz) = (
-        vehicle.position.x.floor() as i32,
-        vehicle.position.y.floor() as i32,
-        vehicle.position.z.floor() as i32,
-    );
-    // `Direction.fromYRot` of the vehicle's yaw: south, west, north, east.
-    let facing = (f64::from(vehicle.yaw) / 90.0 + 0.5).floor() as i32;
-    let (fx, fz) = [(0, 1), (-1, 0), (0, -1), (1, 0)][(facing & 3) as usize];
-    // `DismountHelper.offsetsForDirection`; `right` is `Direction.getClockWise`.
-    let (rx, rz) = (-fz, fx);
-    let offsets = [
-        (rx, rz),
-        (-rx, -rz),
-        (rx - fx, rz - fz),
-        (-rx - fx, -rz - fz),
-        (fx + rx, fz + rz),
-        (fx - rx, fz - rz),
-        (-fx, -fz),
-        (fx, fz),
-    ];
-    // `EntityDimensions.makeBoundingBox`: the half width is a float.
-    let half = f64::from(width / 2.0);
-    for (dx, dz) in offsets {
-        let (x, z) = (bx + dx, bz + dz);
-        let floor = w.block_floor_height(x, by, z);
-        // `DismountHelper.isBlockFloorValid`.
-        if floor.is_infinite() || floor >= 1.0 {
-            continue;
-        }
-        // `Vec3.upFromBottomCenterOf`.
-        let at = Vec3::new(
-            f64::from(x) + 0.5,
-            f64::from(by) + floor,
-            f64::from(z) + 0.5,
-        );
-        let bounds = Aabb::new(
-            Vec3::new(at.x - half, at.y, at.z - half),
-            Vec3::new(at.x + half, at.y + f64::from(height), at.z + half),
-        );
-        if w.no_collision(bounds) {
-            return at;
-        }
-    }
-    on_top
-}
 
 /// Ranged riders keep this far from their target instead of closing in.
 const RANGED_DISTANCE: f64 = 8.0;
@@ -165,31 +103,10 @@ pub fn solve_body_rot(head: f32, vehicle_body: f32) -> f32 {
     body
 }
 
-// The navigation loan must end even if passenger AI unwinds. Move the live
-// navigation back, including any progress made before the unwind.
-struct NavigationLoan<'a> {}
 
-impl<'a> NavigationLoan<'a> {
-}
 
-impl Drop for NavigationLoan<'_> {
-    fn drop(&mut self) {
-        let redirect = self
-            .rider
-            .ai
-            .navigation_redirect
-            .take()
-            .expect("navigation loan lasts for the tick");
-        self.vehicle.ai.nav = std::mem::replace(&mut self.rider.ai.nav, redirect.own);
-    }
-}
 
-/// Read-only view of entities disjoint from the mob currently ticking.
-struct LiveOthers<'a> {}
 
-impl super::LiveMobs for LiveOthers<'_> {
-
-}
 
 
 

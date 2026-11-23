@@ -1,13 +1,3 @@
-//! Rabbit hopping controls and the clocks consumed by `RabbitModel`.
-use super::{
-    MobEvent, MobWorld, Species,
-    control::Operation,
-    goals::{
-        Avoid, AvoidEntity, Breed, ClimbOnTopOfPowderSnow, Cx, Float, Goal, HurtByTarget, JUMP,
-        LookAtPlayer, MOVE, MeleeAttack, MoveToBlock, NearestTarget, Panic, Stroll, Tempt,
-        goal_clone, reduced,
-    },
-};
 use horizon_core::{
     geometry::{Vec3, trig},
     random::RandomSource,
@@ -44,68 +34,10 @@ pub fn random_variant(white: bool, gold: bool, random: &mut impl RandomSource) -
 }
 
 
-/// `Rabbit.RaidGardenGoal.isValidTarget`: farmland-like ground (`#supports_crops`) under a
-/// carrot crop at its maximum age, while the rabbit wants more food and has not found one.
-fn raid_target(w: &MobWorld, p: [i32; 3], wants_to_raid: bool, can_raid: bool) -> bool {
-    w.has_tag("minecraft:supports_crops", w.block_name(p[0], p[1], p[2]))
-        && wants_to_raid
-        && !can_raid
-        && w.block_name(p[0], p[1] + 1, p[2]) == "minecraft:carrots"
-        && w.prop(p[0], p[1] + 1, p[2], "age")
-            .and_then(|a| a.parse::<i32>().ok())
-            .is_some_and(|age| age >= CARROT_MAX_AGE)
-}
 /// `CarrotBlock.MAX_AGE`.
 const CARROT_MAX_AGE: i32 = 7;
 
-/// `Rabbit.RaidGardenGoal`: a `MoveToBlockGoal` (0.7, 16) to ripe carrots that eats one age
-/// of them, then keeps the rabbit full for 40 ticks (`moreCarrotTicks`).
-#[derive(Clone, Debug)]
-struct RaidGarden {
-    block: MoveToBlock,
-    wants_to_raid: bool,
-    can_raid: bool,
-}
-impl RaidGarden {
-    fn new() -> Self {
-        Self {
-            block: MoveToBlock::new(0.7, 16, 1),
-            wants_to_raid: false,
-            can_raid: false,
-        }
-    }
-}
-impl Goal for RaidGarden {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "RaidGardenGoal"
-    }
-    fn flags(&self) -> u8 {
-        MOVE | JUMP
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
-/// `Rabbit.RabbitAvoidEntityGoal(rabbit, class, maxDist, 2.2, 2.2)`: the
-/// killer bunny flees nothing.
-#[derive(Clone, Debug)]
-struct RabbitAvoid(AvoidEntity);
-impl RabbitAvoid {
-    fn new(what: Avoid, max_dist: f32) -> Self {
-        Self(AvoidEntity::new(what, max_dist, 2.2, 2.2))
-    }
-}
-impl Goal for RabbitAvoid {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "RabbitAvoidEntityGoal"
-    }
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 
 
 

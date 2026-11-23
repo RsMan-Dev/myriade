@@ -1,19 +1,3 @@
-//! Frogs (`Frog`, `FrogAi`): the `Croak`, `ShootTongue` and long jump
-//! behaviours as goals, the poses they set and the client's animation states.
-//! AnimState states: jump, croak, tongue, swim idle.
-//!
-//! The brain's idle `RunOne` picks a croak three times as often as a stroll
-//! (weights 3 and 1; it also holds a do-nothing option that only repeats
-//! the pick), so a frog that is not walking croaks in three of four idle
-//! picks: `Croak` takes those, and the frog's stroll then follows at once.
-use super::{
-    DamageLevel, MobEvent, MobWorld, Species, Who,
-    goals::{
-        AnimalPanic, Breed, Cx, Float, Goal, LOOK, LookAtPlayer, MOVE, RandomLookAround, Stroll,
-        Tempt, goal_clone,
-    },
-    sync,
-};
 use crate::blocks::Fluid;
 use horizon_core::{
     geometry::Vec3,
@@ -100,49 +84,17 @@ pub struct State {
 
 
 
-fn can_eat(species: Species, size: i32) -> bool {
-    matches!(species, Species::Slime | Species::MagmaCube) && size == 1
-}
 
 
 /// `Croak`: the pose sync::CROAKING for 60 ticks (the croak is the frog's ambient
 /// sound).
 #[derive(Clone, Debug)]
 struct Croak;
-impl Goal for Croak {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 /// `IS_PREGNANT`, set by `Frog.spawnChildFromBreeding` and erased once the
 /// frog has laid its frogspawn.
 const PREGNANT: &str = "is_pregnant";
 
-impl<G: Debug> Debug for Unless<G> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.1.fmt(f)
-    }
-}
-impl<G: Goal + Clone + 'static> Goal for Unless<G> {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.1.flags()
-    }
-    fn name(&self) -> &'static str {
-        self.1.name()
-    }
-    fn interruptable(&self) -> bool {
-        self.1.interruptable()
-    }
-    fn every_tick(&self) -> bool {
-        self.1.every_tick()
-    }
-}
 
 /// `FrogAi.initLaySpawnActivity` for a pregnant frog: `TryFindLandNearLiquid(8, 1.0)`
 /// looks for land beside water and walks there, and `TryLaySpawnOnFluidNearLand`
@@ -155,30 +107,8 @@ struct LaySpawn {
     next_ok: i64,
 }
 impl LaySpawn {
-    fn is_air(w: &MobWorld, p: [i32; 3]) -> bool {
-        w.facts.is_air(w.world.block(p[0], p[1], p[2]))
-    }
-    fn empty(w: &MobWorld, p: [i32; 3]) -> bool {
-        w.collision_bounds(p).is_none()
-    }
-    /// `TryFindLandNearLiquid`'s `findFirst` test.
-    fn land_near_water(w: &MobWorld, p: [i32; 3]) -> bool {
-        if !Self::empty(w, p) || Self::empty(w, [p[0], p[1] - 1, p[2]]) {
-            return false;
-        }
-        HORIZONTAL.iter().any(|d| {
-            let n = [p[0] + d[0], p[1], p[2] + d[1]];
-            Self::is_air(w, n) && w.fluid(n[0], n[1] - 1, n[2]) == Fluid::Water
-        })
-    }
 }
 impl LaySpawn {
-}
-impl Goal for LaySpawn {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
 }
 /// `Direction.Plane.HORIZONTAL` as x and z steps: north, east, south, west.
 const HORIZONTAL: [[i32; 2]; 4] = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -208,15 +138,6 @@ fn manhattan_box(o: [i32; 3], range: i32) -> Vec<[i32; 3]> {
 /// shoot the tongue, pull it in and eat it.
 #[derive(Clone, Debug)]
 struct ShootTongue;
-impl Goal for ShootTongue {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 
 
 
@@ -260,23 +181,6 @@ impl LongJump {
         })?;
         Some(self.candidates.remove(i))
     }
-    /// `LongJumpToPreferredBlock.getJumpCandidate`: while it wants them, the
-    /// first drawn spot over a preferred block, else the first one passed over.
-    fn candidate(&mut self, w: &MobWorld, lr: &mut LevelRandom) -> Option<Candidate> {
-        if !self.wanting_preferred {
-            return self.draw(lr);
-        }
-        while !self.candidates.is_empty() {
-            if let Some(c) = self.draw(lr) {
-                let [x, y, z] = c.0;
-                if w.has_tag("minecraft:frog_prefer_jump_to", w.block_name(x, y - 1, z)) {
-                    return Some(c);
-                }
-                self.not_preferred.push(c);
-            }
-        }
-        (!self.not_preferred.is_empty()).then(|| self.not_preferred.remove(0))
-    }
 }
 /// `LongJumpToRandomPos.start`'s candidates: every block of the box but the
 /// mob's own, weighted by the squared distance, in `betweenClosed` order.
@@ -292,18 +196,6 @@ fn candidates([x, y, z]: [i32; 3], width: i32, height: i32) -> Vec<Candidate> {
         }
     }
     out
-}
-impl Goal for LongJump {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn interruptable(&self) -> bool {
-        !self.mid_jump
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]

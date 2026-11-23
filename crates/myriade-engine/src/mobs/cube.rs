@@ -1,12 +1,3 @@
-//! Slimes and magma cubes (`AbstractCubeMob`): sized bodies, hopping
-//! movement (`CubeMobMoveControl`), random directions, contact damage,
-//! squish animation and splitting.
-use super::{
-    Damage, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    control::{MoveKind, Operation, rotlerp},
-    goals::{Cx, Goal, JUMP, LOOK, MOVE, NearestTarget, Prey, goal_clone, reduced},
-};
 use horizon_core::{
     geometry::{Vec3, trig},
     random::RandomSource,
@@ -20,28 +11,10 @@ const TARGET_SQUISH: usize = 1;
 /// CubeMobFloatGoal
 #[derive(Clone, Debug)]
 pub(super) struct CubeFloat;
-impl Goal for CubeFloat {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// CubeMobAttackGoal: face the target and hop at it for up to 300 ticks.
 #[derive(Clone, Debug)]
 struct CubeAttack {
     tired: i32,
-}
-impl Goal for CubeAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 /// CubeMobRandomDirectionGoal
 #[derive(Clone, Debug, Default)]
@@ -49,21 +22,9 @@ pub(super) struct CubeRandomDirection {
     degrees: f32,
     next: i32,
 }
-impl Goal for CubeRandomDirection {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-}
 /// CubeMobKeepOnJumpingGoal
 #[derive(Clone, Debug)]
 pub(super) struct CubeKeepJumping;
-impl Goal for CubeKeepJumping {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-}
 
 #[cfg(test)]
 mod golem_touch_tests {

@@ -41,13 +41,7 @@ impl Hub {
             to[1] - g.position[1],
             to[2] - g.position[2],
         );
-        let gate = crate::move_gate::armed(
-            &self.loop_context,
-            g.entity_id as u32,
-            "minecraft:player",
-            horizon_world::entity_move::MoverType::Player,
-            requested,
-        );
+        let gate = crate::move_gate::armed(horizon_world::entity_move::MoverType::Player, requested);
         let movement = gate.delta();
         // A listener's decision that is not the request (arismoko/horizon#2414, ruling 5): the
         // flag comes from the gate, not from comparing deltas here — a walk's

@@ -1,11 +1,3 @@
-//! Farm animals: pigs, cows, mooshrooms, sheep and chickens (`registerGoals`,
-//! chicken flapping and egg laying, sheep wool colours).
-use super::{
-    MobEvent, MobWorld, Species,
-    goals::{
-        Breed, EatBlock, Float, FollowParent, LookAtPlayer, Panic, RandomLookAround, Stroll, Tempt,
-    },
-};
 use horizon_core::random::RandomSource;
 use std::sync::Arc;
 

@@ -3,7 +3,7 @@
 //! block DataLayers) and the section block-change batches.
 use crate::{
     chunk::{Chunk, ColumnLayout, LevelShape, Light, Section},
-    containers::{BlockEntity, ModBlockEntity},
+    containers::BlockEntity,
     fast_hash::FxHashMap,
     mobs::spawner::{SpawnDataExt, SpawnerExt},
     section_mask::SectionMask,
@@ -30,10 +30,6 @@ use super::terrain_view::{self, Neighbours, Rules};
 const NON_AIR: u8 = 1;
 const FLUID: u8 = 2;
 const ENTITY: u8 = 4;
-
-/// A mod block entity's update tag (`BlockEntity.getUpdateTag`), what
-/// clients get of it; none sends no tag.
-pub type ModUpdateTag = fn([i32; 3], &ModBlockEntity) -> Option<Compound>;
 
 /// The vanilla block entity type of a block (BlockEntityType.validBlocks).
 pub fn block_entity_type(name: &str) -> Option<&'static str> {
@@ -107,10 +103,6 @@ pub struct ChunkEncoder {
     entity_types: Vec<i32>,
     /// Vanilla chest types, separate from other containers stored as `BlockEntity::Chest`.
     chest_types: [i32; 3],
-    /// A native state's declared type, sent only for a matching instance.
-    mod_entities: Vec<Option<Arc<str>>>,
-    /// The mods' update tags (`native_block_entity_update_tag`).
-    pub mod_update_tag: Option<ModUpdateTag>,
     /// The states with `trial_spawner_state=active`, whose trial spawner
     /// update tag holds `next_mob_spawns_at`.
     pub trial_active: Vec<u32>,
@@ -912,13 +904,12 @@ impl ChunkEncoder {
         builtin: &Builtin,
         biome_names: &[String],
         biome_registry: &[String],
-        declared: Option<&crate::block_entity_types::BlockEntityTypes>,
+        _declared: Option<&crate::block_entity_types::BlockEntityTypes>,
     ) -> Self {
         let types = builtin.get("minecraft:block_entity_type");
         let blocks = builtin.get("minecraft:block");
         let mut flags = Vec::new();
         let mut entity_types = Vec::new();
-        let mut mod_entities = Vec::new();
         let mut block_ids = Vec::new();
         for (name, has_fluid, sign) in states {
             let air = matches!(
@@ -932,9 +923,7 @@ impl ChunkEncoder {
                     f |= FLUID;
                 }
             }
-            let modded = declared.and_then(|d| d.type_for(&name));
-            let t = modded
-                .or_else(|| sign.map(crate::blocks::SignForm::block_entity_type))
+            let t = sign.map(crate::blocks::SignForm::block_entity_type)
                 .or_else(|| block_entity_type(&name))
                 .and_then(|t| types.and_then(|ids| ids.id(t)))
                 .unwrap_or(-1);
@@ -943,7 +932,6 @@ impl ChunkEncoder {
             }
             flags.push(f);
             entity_types.push(t);
-            mod_entities.push(modded.map(Arc::from));
             block_ids.push(blocks.and_then(|b| b.id(&name)).unwrap_or(0));
         }
         let biome_ids = biome_names
@@ -972,8 +960,6 @@ impl ChunkEncoder {
                 "minecraft:ender_chest",
             ]
             .map(|name| types.and_then(|ids| ids.id(name)).unwrap_or(-1)),
-            mod_entities,
-            mod_update_tag: None,
             trial_active: Vec::new(),
             block_ids,
             tables: None,
@@ -1098,33 +1084,14 @@ impl ChunkEncoder {
             .filter(|t| **t >= 0)
             .copied()
     }
-    /// Native entities must match the state's declared type, for chunks and updates alike.
-    pub fn entity_matches(&self, state: u32, entity: Option<&BlockEntity>) -> bool {
-        match self
-            .mod_entities
-            .get(state as usize)
-            .and_then(Option::as_deref)
-        {
-            Some(kind) => matches!(entity, Some(BlockEntity::Mod(m)) if m.id() == kind),
-            None => !matches!(entity, Some(BlockEntity::Mod(_))),
-        }
-    }
-
-    /// The update tag of the block entity at `pos` (`getUpdateTag`): a
-    /// mod's from its hook, a vanilla one's from [`entity_tag`].
+    /// The update tag of the block entity at `pos` (`getUpdateTag`), from [`entity_tag`].
     pub fn update_tag(
         &self,
-        pos: (i32, i32, i32),
+        _pos: (i32, i32, i32),
         state: u32,
         entity: &BlockEntity,
     ) -> Option<Tag> {
-        match entity {
-            BlockEntity::Mod(m) => self
-                .mod_update_tag
-                .and_then(|tag| tag([pos.0, pos.1, pos.2], m))
-                .map(Tag::Compound),
-            _ => entity_tag(entity, self.trial_active.contains(&state)),
-        }
+        entity_tag(entity, self.trial_active.contains(&state))
     }
 
     /// The empty vanilla chest snapshot for a terrain reveal. Chunk records elide
@@ -1135,42 +1102,6 @@ impl ChunkEncoder {
         .then(|| Tag::Compound(Compound::new()))
     }
 
-    /// The tag of a block change at `pos`: [`Self::update_tag`] with a mod's
-    /// queued one-shot fields taken and put over it. It takes them, so build it
-    /// once, with viewers, and send it to them all; a chunk or a single player's
-    /// resend uses `update_tag`, which leaves them for such a change. Fields that would take the
-    /// tag past what a client reads (`buf::check_network_nbt`) are dropped, and the plain
-    /// `update_tag` goes instead: no viewer is disconnected or misses the change.
-    pub fn change_tag(
-        &self,
-        pos: (i32, i32, i32),
-        state: u32,
-        entity: &BlockEntity,
-    ) -> Option<Tag> {
-        let tag = self.update_tag(pos, state, entity);
-        let BlockEntity::Mod(m) = entity else {
-            return tag;
-        };
-        let Some(fields) = m.take_client_update_fields() else {
-            return tag;
-        };
-        let mut merged = match &tag {
-            Some(Tag::Compound(tag)) => tag.clone(),
-            _ => Compound::new(),
-        };
-        merged.extend(fields);
-        let merged = Tag::Compound(merged);
-        match check_network_nbt(&merged) {
-            Ok(()) => Some(merged),
-            Err(e) => {
-                log::warn!(
-                    "[lan] {} at {pos:?}: one-shot client update fields dropped: {e}",
-                    m.id()
-                );
-                tag
-            }
-        }
-    }
     /// Whether the state holds a fluid (water, lava, or a waterlogged block).
     pub fn has_fluid(&self, state: u32) -> bool {
         self.coder
@@ -1344,8 +1275,6 @@ impl ChunkEncoder {
             coder: self.coder.clone(),
             entity_types: self.entity_types.clone(),
             chest_types: self.chest_types,
-            mod_entities: self.mod_entities.clone(),
-            mod_update_tag: self.mod_update_tag,
             trial_active: self.trial_active.clone(),
             block_ids: self.block_ids.clone(),
             tables: self.tables.clone(),
@@ -1650,9 +1579,6 @@ impl ChunkEncoder {
         let y = chunk.min_y() + section as i32 * 16 + i32::from(index >> 8);
         let pos = (chunk.x * 16 + x, y, chunk.z * 16 + z);
         let entity = block_entities.get(&pos);
-        if !self.entity_matches(state, entity) {
-            return None;
-        }
         Some(BlockEntityInfo {
             packed_xz: ((x << 4) | z) as i8,
             y: y as i16,

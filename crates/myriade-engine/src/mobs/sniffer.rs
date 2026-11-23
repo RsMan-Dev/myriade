@@ -1,12 +1,3 @@
-//! Sniffers (`Sniffer`, `SnifferAi`): the brain's core, idle, sniff and dig
-//! activities, scenting and sniffing for diggable ground, walking there,
-//! digging up a seed, the explored positions, laying eggs when bred, and
-//! `SnifferModel`'s keyframe animations.
-use super::{
-    MobEvent,
-    anim::{Poses, State},
-    keyframes::Animation,
-};
 use std::collections::HashMap;
 
 // Sniffer state: `variant` the state (below), `scratch[0]` the state the

@@ -1,10 +1,3 @@
-//! Villagers (`Villager`): professions, sleeping, the unhappy head shake,
-//! food, gossip and the raid state. Their AI is the brain in
-//! `villager_brain`.
-use super::{
-    MobEvent, MobWorld, Species,
-    anim::{Poses, State},
-};
 use crate::items::{ItemStack, Items};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::random::RandomSource;
@@ -26,8 +19,6 @@ pub use professions::{Profession, ResolvedProfessions};
 #[path = "villager_identity.rs"]
 mod identity;
 pub use identity::profession_id;
-pub use identity::reported_profession;
-pub(crate) use identity::{command_name, seen_profession_name};
 
 /// The frozen vanilla-only generation shared by the existing context-free consumers.
 pub fn profession_table() -> &'static ResolvedProfessions {
@@ -146,51 +137,6 @@ pub const RAID_VICTORY: u8 = 3;
 /// The raid there was lost (still found by `getRaidAt` until it stops).
 pub const RAID_LOSS: u8 = 4;
 
-/// Villager state beyond `Extra`'s scratch fields.
-#[derive(Clone, Debug, Default)]
-pub struct Ext {
-    /// The raid `getRaidAt` finds where the villager stands (`RAID_NONE`
-    /// ... `RAID_LOSS`), set by the game every tick.
-    pub raid: u8,
-    /// That raid has spawned a wave and is not between waves
-    /// (`hasFirstWaveSpawned && !isBetweenWaves`).
-    pub raid_wave: bool,
-    /// What the villager remembers of players (`gossips`).
-    pub gossips: crate::gossip::Gossips,
-    /// `Villager.lastTradedPlayer`: the most recent trader, consumed by the
-    /// next customServerAiStep. This is runtime state, not saved gossip.
-    pub last_traded_player: Option<[i32; 4]>,
-    pub last_gossip_time: i64,
-    pub last_gossip_decay: i64,
-    /// `foodLevel`: eaten but not yet digested, in food points.
-    pub food_level: i32,
-    /// The eight-slot inventory (`InventoryCarrier`).
-    pub inventory: Vec<ItemStack>,
-    /// `LAST_SLEPT` memory.
-    pub last_slept: Option<i64>,
-    /// `LivingEntity.getSleepingPos`: the bed head it lies in, saved as
-    /// `sleeping_pos`.
-    pub sleeping_pos: Option<[i32; 3]>,
-    /// `GOLEM_DETECTED_RECENTLY` expires at this game time.
-    pub golem_until: i64,
-    /// The `last_hurt_by_time` of the player's hit already counted.
-    pub hurt_seen: i32,
-    /// A zombie villager's cure under way.
-    pub cure: Option<super::zombie_villager::Cure>,
-    /// `CanContinueSleepingEvent.mayContinueSleeping`, set by the game before the tick
-    /// when a native mod may overwrite the bed check; empty means vanilla's.
-    pub may_continue_sleeping: Option<bool>,
-    /// `ZombieVillager.villagerDataFinalized`: only a save with
-    /// `VillagerDataFinalized` or `VillagerData` sets it.
-    pub data_finalized: bool,
-    /// The villager's brain, built at its first tick.
-    pub brain: Option<Box<super::villager_brain::Brain>>,
-    /// Saved memories awaiting the first brain initialization.
-    pub saved_memories: Option<Box<super::villager_brain::Memories>>,
-    /// `[entities] villager_lobotomize`: whether the last check found the villager stuck
-    /// (`villager_lobotomy`). Not saved; `None` until the first check.
-    pub lobotomized: Option<bool>,
-}
 pub mod lobotomy;
 
 /// `VillagerProfession.workSound`.
@@ -211,31 +157,6 @@ pub fn work_sound(index: u8) -> Option<&'static str> {
         "weaponsmith" => "entity.villager.work_weaponsmith",
         _ => return None,
     })
-}
-/// A `CropBlock` at `p`.
-pub fn crop(w: &MobWorld, p: [i32; 3]) -> bool {
-    w.facts
-        .get(w.world.block(p[0], p[1], p[2]))
-        .has_class("CropBlock")
-}
-/// `CropBlock.isMaxAge` for the block at `p`.
-pub fn ripe_crop(w: &MobWorld, p: [i32; 3]) -> bool {
-    let facts = w.facts.get(w.world.block(p[0], p[1], p[2]));
-    if !facts.has_class("CropBlock") {
-        return false;
-    }
-    // The class chain survives content registration, including the two
-    // getMaxAge overrides. PitcherCropBlock is not a CropBlock.
-    let max = if facts.has_class("BeetrootBlock") {
-        3
-    } else if facts.has_class("TorchflowerCropBlock") {
-        2
-    } else {
-        7
-    };
-    w.prop(p[0], p[1], p[2], "age")
-        .and_then(|age| age.parse::<i32>().ok())
-        .is_some_and(|age| age >= max)
 }
 
 // ---- Gossip, food, breeding and golems.
@@ -290,130 +211,6 @@ pub(crate) fn add_to_container(
 }
 
 
-impl Ext {
-    /// `countFoodPointsInInventory`, by the food values of `items`.
-    pub fn food_in_inventory(&self, items: &Items) -> i32 {
-        self.inventory
-            .iter()
-            .map(|s| food_points(items, &s.item) * s.count as i32)
-            .sum()
-    }
-    /// `hasExcessFood` and `wantsMoreFood`.
-    pub fn has_excess_food(&self, items: &Items) -> bool {
-        self.food_in_inventory(items) >= 24
-    }
-    pub fn wants_more_food(&self, items: &Items) -> bool {
-        self.food_in_inventory(items) < 12
-    }
-    fn hungry(&self) -> bool {
-        self.food_level < 12
-    }
-    /// `Villager.eatAndDigestFood`: eat until full, then digest 12 points.
-    pub fn eat_and_digest(&mut self, items: &Items) {
-        if self.hungry() {
-            let mut slot = 0;
-            while slot < self.inventory.len() && self.hungry() {
-                let points = food_points(items, &self.inventory[slot].item);
-                if points > 0 {
-                    while self.inventory[slot].count > 0 && self.hungry() {
-                        self.food_level += points;
-                        self.inventory[slot].count -= 1;
-                    }
-                    if self.inventory[slot].count == 0 {
-                        self.inventory.remove(slot);
-                        continue;
-                    }
-                }
-                slot += 1;
-            }
-        }
-        self.food_level -= 12;
-    }
-    /// Whether the stack fits (`SimpleContainer.canAddItem`).
-    pub fn can_add(&self, stack: &ItemStack, max_stack: u32) -> bool {
-        self.inventory.len() < INVENTORY_SLOTS
-            || self
-                .inventory
-                .iter()
-                .any(|s| s.same_item_same_components(stack) && s.count < max_stack)
-    }
-    /// `SimpleContainer.addItem`: merge into stacks, then free slots; the
-    /// part that did not fit is returned.
-    pub fn add_item(&mut self, stack: ItemStack, max_stack: u32) -> Option<ItemStack> {
-        add_to_container(&mut self.inventory, stack, max_stack, INVENTORY_SLOTS)
-    }
-    /// `SimpleContainer.removeItemType`: take up to `count` of the item from
-    /// the first stacks that hold it.
-    pub fn remove_item(&mut self, item: &str, mut count: u32) {
-        let mut slot = 0;
-        while slot < self.inventory.len() && count > 0 {
-            let s = &mut self.inventory[slot];
-            if &*s.item == item {
-                let n = s.count.min(count);
-                s.count -= n;
-                count -= n;
-                if s.count == 0 {
-                    self.inventory.remove(slot);
-                    continue;
-                }
-            }
-            slot += 1;
-        }
-    }
-    pub fn count_item(&self, item: &str) -> u32 {
-        self.inventory
-            .iter()
-            .filter(|s| &*s.item == item)
-            .map(|s| s.count)
-            .sum()
-    }
-    /// `TradeWithVillager.throwHalfStack`: the half of a big matching stack
-    /// (or whatever is over 24) leaves the inventory.
-    pub fn take_half_stack(
-        &mut self,
-        wanted: impl Fn(&ItemStack) -> bool,
-        max_stack: impl Fn(&str) -> u32,
-    ) -> Option<ItemStack> {
-        for i in 0..self.inventory.len() {
-            let s = &self.inventory[i];
-            if s.count == 0 || !wanted(s) {
-                continue;
-            }
-            let count = if s.count > max_stack(&s.item) / 2 {
-                s.count / 2
-            } else if s.count > 24 {
-                s.count - 24
-            } else {
-                continue;
-            };
-            let taken = ItemStack { count, ..s.clone() };
-            self.inventory[i].count -= count;
-            if self.inventory[i].count == 0 {
-                self.inventory.remove(i);
-            }
-            return Some(taken);
-        }
-        None
-    }
-    /// `Villager.wantsToSpawnGolem`: slept within the last day and no golem
-    /// seen lately.
-    pub fn wants_golem(&self, now: i64) -> bool {
-        self.last_slept.is_some_and(|t| now - t < 24000) && now >= self.golem_until
-    }
-    /// `maybeDecayGossip`: once a day.
-    pub fn maybe_decay(&mut self, now: i64) {
-        if self.last_gossip_decay == 0 {
-            self.last_gossip_decay = now;
-        } else if now >= self.last_gossip_decay + 24000 {
-            self.gossips.decay();
-            self.last_gossip_decay = now;
-        }
-    }
-    /// `Villager.gossip` timing: hearing again waits 1200 ticks.
-    pub fn can_gossip(&self, now: i64) -> bool {
-        now < self.last_gossip_time || now >= self.last_gossip_time + 1200
-    }
-}
 /// What a villager ticking later reads of another one this tick (vanilla
 /// reads the other villager itself).
 #[derive(Clone, Debug, Default)]
@@ -527,50 +324,6 @@ fn golem_attempt<L: super::spawn_rules::SpawnLevel>(
             return Some([x, y + 1, z]);
         }
         above = here;
-    }
-    None
-}
-/// `IronGolem.checkSpawnObstruction`: a floor with a full top face, its feet
-/// free whatever fluid is there, and the two blocks above free.
-fn golem_fits<L: super::spawn_rules::SpawnLevel>(l: &L, [x, y, z]: [i32; 3]) -> bool {
-    use super::spawn_rules::is_valid_empty_spawn;
-    // entityCanStandOn: Block.isFaceFull(collision shape, UP).
-    let floor = l.mob_data().state(l.state(x, y - 1, z));
-    let stands = floor.flags & super::data::STURDY_TOP != 0 && floor.top >= 1.0;
-    // isValidEmptySpawnBlock with Fluids.EMPTY: open water is free too.
-    let feet = is_valid_empty_spawn(Species::IronGolem, l, x, y, z)
-        || &*l.facts().get(l.state(x, y, z)).name == "minecraft:water";
-    stands
-        && feet
-        && is_valid_empty_spawn(Species::IronGolem, l, x, y + 1, z)
-        && is_valid_empty_spawn(Species::IronGolem, l, x, y + 2, z)
-}
-/// `SpawnUtil.trySpawnMob(IRON_GOLEM, MOB_SUMMONED, level, start, 10, 8, 6,
-/// LEGACY_IRON_GOLEM, false)`: up to ten columns tried. In each spot found
-/// `create` makes the golem (`EntityType.create`: the yaw drawn here, then its
-/// `finalizeSpawn` draws, see [`finalize_summoned_golem`]); it is kept only
-/// when `IronGolem.checkSpawnObstruction` passes, and discarded otherwise.
-pub fn summon_golem<L: super::spawn_rules::SpawnLevel, R: RandomSource, T>(
-    l: &L,
-    start: [i32; 3],
-    random: &mut R,
-    mut create: impl FnMut(&mut R, horizon_core::geometry::Vec3, f32) -> T,
-) -> Option<T> {
-    for _ in 0..10 {
-        let Some([x, y, z]) = golem_attempt(l, start, random) else {
-            continue;
-        };
-        // Mth.wrapDegrees(nextFloat() * 360).
-        let mut yaw = random.next_float() * 360.0;
-        if yaw >= 180.0 {
-            yaw -= 360.0;
-        }
-        let at =
-            horizon_core::geometry::Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5);
-        let golem = create(random, at, yaw);
-        if golem_fits(l, [x, y, z]) {
-            return Some(golem);
-        }
     }
     None
 }

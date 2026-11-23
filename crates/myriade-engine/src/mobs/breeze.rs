@@ -1,11 +1,3 @@
-//! Breezes (`Breeze`): the poses and their animations, the long jump's
-//! arithmetic, the sounds of `Breeze.tick` and `BreezeModel`'s layers. The
-//! brain (`BreezeAi` and its behaviours) is in `monster_brain`.
-use super::{
-    Damage, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    keyframes::Animation,
-};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     jmath,
@@ -25,21 +17,6 @@ pub const SLIDING: u8 = 4;
 
 const ALLOWED_ANGLES: [i32; 5] = [40, 55, 60, 75, 80];
 
-/// `LongJump.snapToSurface`: the block above where a clip ten blocks down
-/// hits, else ten blocks up.
-pub(super) fn snap_to_surface(w: &MobWorld, p: Vec3) -> Option<[i32; 3]> {
-    let above = |hit: Vec3| {
-        [
-            hit.x.floor() as i32,
-            hit.y.floor() as i32 + 1,
-            hit.z.floor() as i32,
-        ]
-    };
-    if let Some(hit) = w.clip_block(p, Vec3::new(p.x, p.y - 10.0, p.z)) {
-        return Some(above(hit));
-    }
-    w.clip_block(p, Vec3::new(p.x, p.y + 10.0, p.z)).map(above)
-}
 /// `EntityType.isBlockDangerous` for the breeze (not fire immune).
 pub(super) fn dangerous_block(name: &str) -> bool {
     matches!(

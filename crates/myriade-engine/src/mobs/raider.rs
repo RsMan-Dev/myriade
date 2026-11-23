@@ -1,11 +1,3 @@
-//! Raiders (`PatrollingMonster` and `Raider`): the patrol state every
-//! pillager, vindicator, evoker, witch and ravager carries, the long
-//! distance patrol and hold-ground goals, the ominous banner a patrol leader
-//! wears, and the saved fields.
-use super::{
-    MobEvent, MobWorld, Species, Who,
-    goals::{Cx, Goal, LOOK, MOVE, goal_clone},
-};
 use horizon_core::nbt::Tag;
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -77,25 +69,7 @@ impl State {
     }
 }
 
-/// `Raider.class`: the species a goal that takes `Raider.class` filters out
-/// (`HurtByTargetGoal(this, Raider.class)`). A vex is not a raider.
-pub const RAIDERS: [Species; 6] = [
-    Species::Pillager,
-    Species::Vindicator,
-    Species::Evoker,
-    Species::Illusioner,
-    Species::Witch,
-    Species::Ravager,
-];
 
-/// The raider species (`EntityTypeTags.RAIDERS`).
-pub fn is_raider(s: Species) -> bool {
-    RAIDERS.contains(&s)
-}
-/// `canBeLeader`: witches and ravagers never lead.
-pub fn can_be_leader(s: Species) -> bool {
-    is_raider(s) && !matches!(s, Species::Witch | Species::Ravager)
-}
 
 
 /// `Raid.getOminousBannerInstance`.
@@ -117,19 +91,6 @@ pub enum Reason {
 }
 
 
-/// `Heightmap.Types.MOTION_BLOCKING_NO_LEAVES` position above (x, z).
-pub fn heightmap_pos(w: &MobWorld, x: i32, z: i32) -> [i32; 3] {
-    let top = w.world.top_y();
-    let y = (w.world.bottom_y()..top)
-        .rev()
-        .find(|&y| {
-            let f = w.facts.get(w.world.block(x, y, z));
-            (f.full_collision || f.fluid != crate::blocks::Fluid::None)
-                && !f.name.ends_with("leaves")
-        })
-        .map_or(w.world.bottom_y(), |y| y + 1);
-    [x, y, z]
-}
 
 /// `Vec3.yRot` (the angle is in radians, and the patrol goal passes 90).
 fn y_rot(v: Vec3, angle: f32) -> Vec3 {
@@ -160,12 +121,6 @@ fn reach_box(at: Vec3, rx: f64, ry: f64, rz: f64) -> Aabb {
         Vec3::new(at.x + rx + 1.0, at.y + ry + 1.0, at.z + rz + 1.0),
     )
 }
-impl Goal for LongDistancePatrol {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 impl LongDistancePatrol {
 }
 /// `Vec3i.closerToCenterThan`.
@@ -187,12 +142,6 @@ pub struct ObtainBanner {
 }
 impl ObtainBanner {
 }
-impl Goal for ObtainBanner {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 /// `PathfindToRaidGoal`: outside the village, head for the raid's centre in
 /// hops of up to 15 blocks, recruiting nearby raiders every 20 ticks.
@@ -203,12 +152,6 @@ pub struct PathfindToRaid {
 impl PathfindToRaid {
     fn valid(s: &State) -> bool {
         s.active_raid && !s.raid_over && !s.in_village
-    }
-}
-impl Goal for PathfindToRaid {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
     }
 }
 
@@ -233,22 +176,10 @@ impl MoveThroughVillage {
         }
     }
 }
-impl Goal for MoveThroughVillage {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 /// `Raider.RaiderCelebration`: after a lost village, cheer and jump.
 #[derive(Clone, Debug)]
 pub struct Celebration;
-impl Goal for Celebration {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 /// `Raider.HoldGroundAttackGoal`: while patrolling, stand still and let the
 /// patrol shout when something shows up; attack once it comes close.
@@ -261,15 +192,6 @@ impl HoldGroundAttack {
         Self {
             hostile_radius_sqr: radius * radius,
         }
-    }
-}
-impl Goal for HoldGroundAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
     }
 }
 

@@ -1,8 +1,3 @@
-//! Zombie villagers (`ZombieVillager`): the cure started by a golden apple on
-//! a weakened one, the conversion clock that iron bars and beds speed up, and
-//! the saved fields. Turning villagers into zombie villagers and back is done
-//! by the game (`game/mobs/zombie_villagers.rs`), which owns entity creation.
-use super::{MobEvent, MobWorld, Species, goals::Cx, villager};
 use horizon_core::nbt::{Compound, Tag};
 use horizon_core::random::RandomSource;
 

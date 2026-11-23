@@ -195,12 +195,6 @@ fn is_raider(s: Species) -> bool {
         S::Pillager | S::Vindicator | S::Evoker | S::Illusioner | S::Witch | S::Ravager
     )
 }
-/// The species whose body item Horizon draws and handles as armour (and whose
-/// sun-protection slot is the body): the equines (a horse's armour, a llama's
-/// carpet, a camel's harness) and the wolf, happy ghast, nautilus and sulfur cube.
-pub fn body_slot_species(s: Species) -> bool {
-    super::species::body_slot(s) || equine::is_equine(s)
-}
 
 /// The `finalize` slot of a drop slot's name, for the slots a stack is kept in.
 fn slot_index(slot: &str) -> Option<usize> {

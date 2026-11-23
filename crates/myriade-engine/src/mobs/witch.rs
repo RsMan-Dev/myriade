@@ -1,79 +1,9 @@
-//! Witches (potion drinking and splash potion attacks) and the shared
-//! `RangedAttackGoal` (also used by snow golems).
-use super::{
-    MobEvent, Species, Who,
-    anim::{Poses, State},
-    goals::{
-        Cx, Float, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, NearestTarget, RandomLookAround,
-        Stroll, goal_clone,
-    },
-};
 use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_world::native_load_context::LoopContext;
 
-/// `Witch.registerGoals`' `HurtByTargetGoal(this, Raider.class)`.
-fn hurt_by() -> HurtByTarget {
-    HurtByTarget::new().ignoring(&super::raider::RAIDERS)
-}
-/// `NearestHealableRaiderTargetGoal`: in a raid, target another raider to
-/// heal, then wait 10 seconds (the cooldown lives in `extra.counter2`).
-#[derive(Clone, Debug)]
-struct HealRaiders(NearestTarget);
-impl Default for HealRaiders {
-    fn default() -> Self {
-        Self(
-            NearestTarget::new(
-                super::goals::Prey::Filter(|s| {
-                    super::raider::is_raider(s.species) && s.species != Species::Witch
-                }),
-                true,
-            )
-            .interval(0),
-        )
-    }
-}
-impl Goal for HealRaiders {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 
-/// RangedAttackGoal(speed, intervalMin, intervalMax, radius).
-#[derive(Clone, Debug)]
-pub struct RangedAttack {
-    speed: f64,
-    min: i32,
-    max: i32,
-    radius: f32,
-    fire: Fire,
-    attack_time: i32,
-    see_time: i32,
-}
-impl RangedAttack {
-    pub fn new(speed: f64, min: i32, max: i32, radius: f32, fire: Fire) -> Self {
-        Self {
-            speed,
-            min,
-            max,
-            radius,
-            fire,
-            attack_time: -1,
-            see_time: 0,
-        }
-    }
-}
-impl Goal for RangedAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `WitchRenderer.extractRenderState`'s `isHoldingPotion`: the main hand holds
 /// a potion, either a drunk one (kept by the potion's name, `drink`) or a
 /// plain potion item.

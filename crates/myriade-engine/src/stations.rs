@@ -11,7 +11,6 @@ use crate::{
 use horizon_core::random::{LegacyRandom, RandomSource};
 use horizon_world::loot::PackOverlay;
 use horizon_world::native_load_context::LoopContext;
-#[cfg(test)]
 mod models;
 pub use models::{AnvilResult, EnchantmentRow};
 use serde_json::Value;

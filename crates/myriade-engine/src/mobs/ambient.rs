@@ -1,8 +1,3 @@
-//! What a client's copy of a mob makes on its own, in the
-//! `level().isClientSide()` branches of `aiStep`: nothing of it reaches the
-//! server or goes over the network, so the window's game runs it as it follows
-//! a server.
-use super::{MobEvent, Species, bee};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::random::RandomSource;
 use std::f32::consts::PI;

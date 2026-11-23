@@ -337,26 +337,6 @@ pub fn missing_in(dir: &Path, loaded: &Loaded) -> Vec<MissingMod> {
     super::read_level_dat(dir).map_or_else(Vec::new, |root| missing(&root, loaded))
 }
 
-/// The player chose to open the world in `dir` with its missing mods: its next open goes ahead
-/// without asking again.
-pub fn confirm(dir: &Path) {
-    if let Some(answer) = answered().as_mut().filter(|a| a.folder == same_path(dir)) {
-        answer.confirmed = true;
-    }
-}
-
-/// Whether the player chose to open the world in `dir` with its missing mods.
-pub fn is_confirmed(dir: &Path) -> bool {
-    answered()
-        .as_ref()
-        .is_some_and(|a| a.confirmed && a.folder == same_path(dir))
-}
-
-/// Drops the answer kept for a world that did not open after all.
-pub fn forget_answer() {
-    answered().take();
-}
-
 fn same_path(dir: &Path) -> PathBuf {
     std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_owned())
 }

@@ -1,16 +1,3 @@
-//! Llamas and trader llamas (`Llama`, `TraderLlama`): coat variants and
-//! strength, chests and carpets, taming by riding (maximum temper 30), the
-//! spit ranged attack, hunting wolves (and, for traders, zombies and
-//! illagers) and `LlamaModel`.
-use super::finalize::{Attr, set_base};
-use super::{
-    MobEvent, MobWorld, Seen, Species, Who, equine,
-    goals::{
-        Breed, Cx, Float, FollowParent, Goal, HurtByTarget, LookAtPlayer, NearestTarget, Panic,
-        Prey, RandomLookAround, Stroll, Tempt, goal_clone,
-    },
-    witch::RangedAttack,
-};
 use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
@@ -18,37 +5,8 @@ pub const VARIANTS: [&str; 4] = ["creamy", "white", "brown", "gray"];
 /// `Llama.getMaxTemper`.
 pub const MAX_TEMPER: i32 = 30;
 
-// Llama state: `variant` the coat, `variant2` the strength (1 to 5),
-// `equine_temper` the signed temper, `chested` the chest, `head` the carpet, `flag2`
-// `didSpit`, `ints[0]` a trader llama's despawn delay.
-pub fn is_llama(s: Species) -> bool {
-    matches!(s, Species::Llama | Species::TraderLlama)
-}
-/// The mob is a zombie of any kind (`Zombie.class`).
-fn is_zombie(s: &Seen) -> bool {
-    matches!(
-        s.species,
-        Species::Zombie | Species::Husk | Species::Drowned | Species::ZombieVillager
-    )
-}
-/// The mob is an illager (`AbstractIllager.class`).
-pub fn is_illager(s: &Seen) -> bool {
-    matches!(
-        s.species,
-        Species::Pillager | Species::Vindicator | Species::Evoker | Species::Illusioner
-    )
-}
 /// `TraderLlama.DEFAULT_DESPAWN_DELAY`.
 pub const DEFAULT_DESPAWN_DELAY: i32 = 47999;
-/// `LlamaHurtByTargetGoal`: stops hunting right after a spit.
-#[derive(Clone, Debug)]
-struct LlamaHurtBy(HurtByTarget);
-impl Goal for LlamaHurtBy {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 #[cfg(test)]
 mod tests {
     use super::*;

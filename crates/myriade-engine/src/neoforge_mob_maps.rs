@@ -1,7 +1,7 @@
 //! Immutable, per-world built-in data maps. File codecs run before installation;
 //! simulation readers use exact registry identities and never parse JSON or lock
 //! a process-global current world. The common store owns each generation.
-use crate::mobs::{Species, VILLAGER_TYPES, parrot, species};
+use crate::mobs::{Species, VILLAGER_TYPES, species};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, LazyLock};
@@ -237,17 +237,7 @@ pub fn vanilla_layer(kind: Kind) -> BTreeMap<String, Value> {
                 ))
             })
             .collect(),
-        Kind::ParrotImitations => vanilla_species()
-            .filter_map(|(s, id)| {
-                let sound = parrot::imitation(s)?;
-                let sound = if sound.is_empty() {
-                    EMPTY_SOUND.to_owned()
-                } else {
-                    full_id(sound)
-                };
-                Some((id, json!({ "sound": sound })))
-            })
-            .collect(),
+        Kind::ParrotImitations => Default::default(),
         Kind::VillagerTypes => crate::mobs::finalize::BIOME_VILLAGER_TYPES
             .iter()
             .map(|(biome, t)| {
@@ -311,11 +301,7 @@ static VANILLA_DISTANCES: LazyLock<HashMap<String, f32>> = LazyLock::new(|| {
         })
         .collect()
 });
-static VANILLA_IMITATIONS: LazyLock<HashMap<String, &'static str>> = LazyLock::new(|| {
-    vanilla_species()
-        .filter_map(|(species, id)| Some((local_id(&id).to_owned(), parrot::imitation(species)?)))
-        .collect()
-});
+static VANILLA_IMITATIONS: LazyLock<HashMap<String, &'static str>> = LazyLock::new(Default::default);
 static VANILLA: LazyLock<Arc<NeoForgeMobMaps>> = LazyLock::new(Default::default);
 impl NeoForgeMobMaps {
     /// Immutable no-file snapshot, never replaced by another world's load.

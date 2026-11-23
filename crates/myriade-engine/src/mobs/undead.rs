@@ -1,31 +1,8 @@
-//! Zombies (zombie, husk, drowned, zombie villager) and skeletons (skeleton,
-//! stray, bogged, wither skeleton): goals, bow attacks, water conversion.
-use super::{
-    Damage, MobEvent, Species, Who,
-    doors::{BreakDoor, can_navigate_ground, wooden_door},
-    goals::{
-        Avoid, AvoidEntity, Cx, FleeSun, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, MeleeAttack,
-        NearestTarget, RandomLookAround, RestrictSun, Stroll, goal_clone,
-    },
-    path::Path,
-    spear_use::SpearUse,
-    villager_brain::{
-        closer_to_center, occupied_pois_in_range, others_tickets, sections_to_village,
-        village_sections,
-    },
-};
 use crate::health::DamageLevel;
 use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use horizon_world::move_gate::MoveGate;
 
-/// `ZombifiedPiglin.alertOthers` keeps the source's player identity.
-#[derive(Clone, Debug)]
-pub struct PiglinAlert {
-    pub mob: u32,
-    pub source: u32,
-    pub target: Who,
-}
 
 
 /// The target's isInWater, from the water at its feet.
@@ -39,36 +16,6 @@ fn in_water_at(w: &super::MobWorld, p: Vec3) -> bool {
 /// but nothing in the game sets that field, so the default always applies.
 fn ranged_attack_uncertainty(difficulty: u8) -> f32 {
     14.0 - 4.0 * f32::from(difficulty)
-}
-/// Drowned.DrownedTridentAttackGoal: the ranged goal while holding a trident.
-#[derive(Clone, Debug)]
-struct DrownedTridentAttack(super::witch::RangedAttack);
-impl Goal for DrownedTridentAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        "DrownedTridentAttackGoal"
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
-/// Drowned.DrownedAttackGoal: ZombieAttackGoal on a target it may attack.
-#[derive(Clone, Debug)]
-struct DrownedAttack(MeleeAttack);
-impl Goal for DrownedAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        "DrownedAttackGoal"
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
 }
 /// Drowned.DrownedGoToBeachGoal: at night, swim near the surface to a
 /// standable block with air above.
@@ -84,75 +31,10 @@ fn beach_target(w: &super::MobWorld, p: [i32; 3]) -> bool {
         && empty(p[1] + 2)
         && w.facts.get(w.world.block(p[0], p[1], p[2])).sturdy_full & (1 << 1) != 0
 }
-impl Goal for DrownedGoToBeach {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | super::goals::JUMP
-    }
-    fn name(&self) -> &'static str {
-        "DrownedGoToBeachGoal"
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// Drowned.DrownedSwimUpGoal: at night, deep in water, head for the surface.
 #[derive(Clone, Debug)]
 struct DrownedSwimUp {
     stuck: bool,
-}
-impl Goal for DrownedSwimUp {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn name(&self) -> &'static str {
-        "DrownedSwimUpGoal"
-    }
-}
-/// `AbstractSkeleton.reassessWeaponGoal`'s goal: the bow goal while holding a
-/// bow, otherwise the melee goal (the anonymous `AbstractSkeleton$1`).
-#[derive(Clone, Debug)]
-pub struct SkeletonWeapon {
-    bow: BowAttack,
-    melee: MeleeAttack,
-    use_bow: bool,
-    /// The weapon the goal was last reassessed for.
-    assessed: Option<bool>,
-    hard_interval: i32,
-    normal_interval: i32,
-}
-impl SkeletonWeapon {
-    pub fn new(hard_interval: i32, normal_interval: i32) -> Self {
-        Self {
-            bow: BowAttack::new(1.0, normal_interval, 15.0),
-            melee: MeleeAttack::new(1.2, false),
-            use_bow: false,
-            assessed: None,
-            hard_interval,
-            normal_interval,
-        }
-    }
-}
-impl Goal for SkeletonWeapon {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn name(&self) -> &'static str {
-        if self.use_bow {
-            "BowAttack"
-        } else {
-            "AbstractSkeleton$1"
-        }
-    }
-    fn every_tick(&self) -> bool {
-        if self.use_bow {
-            self.bow.every_tick()
-        } else {
-            self.melee.every_tick()
-        }
-    }
 }
 /// RangedBowAttackGoal for skeletons.
 #[derive(Clone, Debug)]
@@ -180,15 +62,6 @@ impl BowAttack {
         }
     }
 }
-impl Goal for BowAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 #[cfg(test)]
 mod use_overflow_tests {
     use super::*;
@@ -208,31 +81,7 @@ pub fn bow_power(ticks: i32) -> f32 {
 pub struct DrownedGoToWater {
     wanted: [f64; 3],
 }
-impl Goal for DrownedGoToWater {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
-/// `MoveThroughVillageGoal`: at night, walk to a village point of interest
-/// (a taken one) not visited lately, and on to the next.
-#[derive(Clone, Debug)]
-pub struct MoveThroughVillage {
-    speed: f64,
-    only_at_night: bool,
-    distance: i32,    path: Option<Path>,
-    poi: [i32; 3],
-    visited: Vec<[i32; 3]>,
-}
-impl MoveThroughVillage {
-}
-impl Goal for MoveThroughVillage {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `Zombie.ZombieAttackTurtleEggGoal` (a `RemoveBlockGoal` on turtle eggs):
 /// walk to a turtle egg within 24 blocks and trample it.
 #[derive(Clone, Debug)]
@@ -256,15 +105,6 @@ fn turtle_egg_target(w: &super::MobWorld, mob: u32, p: [i32; 3]) -> bool {
         && w.facts.is_air(w.world.block(p[0], p[1] + 1, p[2]))
         && w.facts.is_air(w.world.block(p[0], p[1] + 2, p[2]))
         && w.can_entity_destroy(mob, p, true)
-}
-impl Goal for AttackTurtleEgg {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | super::goals::JUMP
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]

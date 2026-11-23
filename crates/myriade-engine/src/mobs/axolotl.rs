@@ -1,5 +1,3 @@
-//! Axolotl-specific damage, animation and prey rules; activities live in animal_brain.
-use super::{MobEvent, MobWorld, Species, Who, animal_brain, keyframes::AnimationState};
 use horizon_core::random::RandomSource;
 pub const PLAY_DEAD_TICKS: i32 = 200;
 pub const HUNTING_COOLDOWN: i64 = 2400;
@@ -35,64 +33,6 @@ fn roll_play_dead(
         && water
         && entity_source
         && !already
-}
-/// BinaryAnimator(10, IN_OUT_SINE), plus the seven exclusive baby animation states.
-#[derive(Clone, Debug, Default)]
-pub struct Animation {
-    pub playing_dead: bool,
-    old: [u8; 4],
-    value: [u8; 4],
-    pub states: [AnimationState; 7],
-}
-impl Animation {
-    pub fn tick(&mut self, baby: bool, water: bool, ground: bool, moving: bool, age: f32) {
-        self.old = self.value;
-        let flags = [
-            self.playing_dead,
-            !self.playing_dead && water,
-            !self.playing_dead && !water && ground,
-            moving,
-        ];
-        for (v, on) in self.value.iter_mut().zip(flags) {
-            *v = if on {
-                (*v + 1).min(10)
-            } else {
-                v.saturating_sub(1)
-            };
-        }
-        if baby {
-            let selected = if self.playing_dead {
-                6
-            } else if moving {
-                if water && !ground {
-                    1
-                } else if !water && ground {
-                    0
-                } else {
-                    2
-                }
-            } else if water && !ground {
-                4
-            } else if water && ground {
-                5
-            } else {
-                3
-            };
-            for (i, state) in self.states.iter_mut().enumerate() {
-                if i == selected {
-                    state.start_if_stopped(age);
-                } else {
-                    state.stop();
-                }
-            }
-        }
-    }
-    pub fn factor(&self, i: usize, partial: f32) -> f32 {
-        let x = (f32::from(self.old[i])
-            + (f32::from(self.value[i]) - f32::from(self.old[i])) * partial)
-            / 10.0;
-        ((1.0 - horizon_core::jmath::cos(f64::from(x) * std::f64::consts::PI)) / 2.0) as f32
-    }
 }
 #[cfg(test)]
 mod axolotl_parity_tests {

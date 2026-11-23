@@ -1,16 +1,3 @@
-//! Nautili and zombie nautili (`AbstractNautilus`, `Nautilus`,
-//! `ZombieNautilus`, `NautilusAi`, `ZombieNautilusAi`): smooth swimming,
-//! drying out on land, taming with pufferfish, the saddle and armour, the
-//! ridden swim with its dash, charging at pufferfish and at whoever hurt
-//! them, the zombie's temperate and coral variants, and `NautilusModel`.
-use super::{
-    MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    control::{LookKind, MoveKind, Operation},
-    goals::{AnimalPanic, Breed, Cx, Goal, LOOK, MOVE, Stroll, Tempt, goal_clone},
-    keyframes::Animation,
-    nav::NavKind,
-};
 use crate::blocks::Fluid;
 use crate::health::DamageLevel;
 use horizon_core::{geometry::Vec3, random::RandomSource};
@@ -30,16 +17,10 @@ const ATTACK_TARGET_COOLDOWN: &str = "minecraft:attack_target_cooldown";
 /// `ZombieNautilusVariants`: the variant keys in index order.
 pub const VARIANTS: [&str; 2] = ["temperate", "warm"];
 
-pub fn is_nautilus(s: Species) -> bool {
-    matches!(s, Species::Nautilus | Species::ZombieNautilus)
-}
 /// `TamableAnimal.feed`'s heal: twice the food's nutrition, or 1 for an item
 /// without a food component (a fish bucket).
 pub fn feed_heal(nutrition: Option<i32>) -> f32 {
     nutrition.map_or(1.0, |n| 2.0 * n as f32)
-}
-fn in_water_at(w: &MobWorld, p: Vec3) -> bool {
-    w.fluid(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32) == Fluid::Water
 }
 /// `ChargeAttack(80, ..., speed, 2, 12, 11, dash)`: rush straight at the
 /// target and ram it once.
@@ -56,15 +37,6 @@ impl Charge {
             start: Vec3::ZERO,
             velocity: Vec3::ZERO,
         }
-    }
-}
-impl Goal for Charge {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
     }
 }
 

@@ -1,34 +1,9 @@
-//! Doors a mob gets through on its own: `DoorInteractGoal` with its two
-//! users, `BreakDoorGoal` (zombies that can break doors, vindicators in a
-//! raid) and `OpenDoorGoal` (`AbstractIllager.RaiderOpenDoorGoal`).
-use super::{
-    MobEvent, MobWorld, Species,
-    goals::{Cx, Goal, MOVE, goal_clone, reduced},
-    nav::NavKind,
-    raider,
-};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
 /// `DefaultDoorBreakTime`: `BreakDoorGoal.getDoorBreakTime` is
 /// `max(240, doorBreakTime)`, and the vindicator's 6 is below it.
 const DOOR_BREAK_TIME: i32 = 240;
 
-/// The species that extend `Zombie` (`CanBreakDoors` is theirs to save).
-pub fn is_zombie(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Zombie
-            | Species::Husk
-            | Species::Drowned
-            | Species::ZombieVillager
-            | Species::ZombifiedPiglin
-    )
-}
-/// `DoorBlock.isWoodenDoor`: a door a hand opens, which is any but iron.
-pub fn wooden_door(w: &MobWorld, p: [i32; 3]) -> bool {
-    let name = w.block_name(p[0], p[1], p[2]);
-    name.ends_with("_door") && name != "minecraft:iron_door"
-}
 /// `DoorInteractGoal`'s door: where it is and whether one is there.
 #[derive(Clone, Debug, Default)]
 struct Interact {
@@ -36,25 +11,6 @@ struct Interact {
     has_door: bool,
 }
 impl Interact {
-    /// `DoorInteractGoal.isOpen`: the door is still there and open.
-    fn is_open(&mut self, w: &MobWorld) -> bool {
-        if !self.has_door {
-            return false;
-        }
-        let d = self.door;
-        if !w.block_name(d[0], d[1], d[2]).ends_with("_door") {
-            self.has_door = false;
-            return false;
-        }
-        w.prop(d[0], d[1], d[2], "open") == Some("true")
-    }
-    /// `DoorInteractGoal.setOpen`.
-    fn set_open(&self, cx: &mut Cx, open: bool) {
-        let d = self.door;
-        if self.has_door && cx.w.block_name(d[0], d[1], d[2]).ends_with("_door") {
-            cx.events.push(MobEvent::SetDoorOpen { pos: d, open });
-        }
-    }
 }
 /// `BlockPos.closerToCenterThan`.
 pub(super) fn closer_to_center(p: [i32; 3], at: Vec3, distance: f64) -> bool {
@@ -94,23 +50,6 @@ impl BreakDoor {
             last_break_progress: -1,
         }
     }
-    /// `DOOR_BREAKING_PREDICATE`.
-    fn valid_difficulty(&self, w: &MobWorld) -> bool {
-        if self.vindicator {
-            w.difficulty.normal || w.difficulty.hard
-        } else {
-            w.difficulty.hard
-        }
-    }
-}
-impl Goal for BreakDoor {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        if self.vindicator { MOVE } else { 0 }
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 
 /// `AbstractIllager.RaiderOpenDoorGoal` (`OpenDoorGoal` that does not wait
@@ -119,15 +58,6 @@ impl Goal for BreakDoor {
 #[derive(Clone, Debug, Default)]
 pub struct RaiderOpenDoor {
     interact: Interact,
-}
-impl Goal for RaiderOpenDoor {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 
 /// `InteractWithDoor.create()`, the piglin brain's core behaviour: while it
@@ -144,21 +74,6 @@ pub struct InteractWithDoor {
     doors: Vec<[i32; 3]>,
 }
 impl InteractWithDoor {
-    /// A door mobs open (`MOB_INTERACTABLE_DOORS`) at `p`, and whether it is open.
-    fn door_open(w: &MobWorld, p: [i32; 3]) -> Option<bool> {
-        let name = w.block_name(p[0], p[1], p[2]);
-        (name.ends_with("_door") && w.has_tag("minecraft:mob_interactable_doors", name))
-            .then(|| w.prop(p[0], p[1], p[2], "open") == Some("true"))
-    }
-}
-impl Goal for InteractWithDoor {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 
 #[cfg(test)]

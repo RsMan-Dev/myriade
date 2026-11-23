@@ -61,7 +61,7 @@ impl Hub {
                 (swap, swap.and_then(|_| g.viewed.views.remove(&entered)))
             else {
                 g.viewed.forget_views();
-                return Vec::new();
+                return;
             };
             // The level left keeps what its client holds; the next pass starts its linger. From
             // revision 4 its client learns its binding right after the Respawn.

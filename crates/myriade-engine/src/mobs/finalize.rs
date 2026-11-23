@@ -586,9 +586,6 @@ fn skeleton(s: Species) -> bool {
             | Species::WitherSkeleton
     )
 }
-fn raider(s: Species) -> bool {
-    super::raider::is_raider(s)
-}
 /// `EntityType.isAllowedInPeaceful`: the types built with `notInPeaceful`.
 pub fn allowed_in_peaceful(kind: &str) -> bool {
     !matches!(

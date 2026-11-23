@@ -1,14 +1,3 @@
-//! Endermen: anger from being stared at, teleporting (randomly in daylight,
-//! when hit by projectiles or water, and towards a distant target), freezing
-//! while looked at, and picking up / placing `enderman_holdable` blocks.
-use super::{
-    Damage, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    goals::{
-        Cx, Float, Goal, HurtByTarget, JUMP, LookAtPlayer, MOVE, MeleeAttack, NearestTarget,
-        RandomLookAround, Stroll, TARGET, goal_clone, reduced,
-    },
-};
 use crate::items::{BlockLootRoll, ItemStack};
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -32,12 +21,6 @@ pub fn native_ender_entity_teleport(
 /// EndermanFreezeWhenLookedAt
 #[derive(Clone, Debug)]
 struct FreezeWhenLookedAt;
-impl Goal for FreezeWhenLookedAt {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-}
 /// EndermanLookForPlayerGoal: anger after being stared at for 5 ticks,
 /// teleport away when stared at close up, or towards a far target.
 #[derive(Clone, Debug)]
@@ -46,30 +29,12 @@ struct LookForPlayer {
     aggro: i32,
     teleport: i32,
 }
-impl Goal for LookForPlayer {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        TARGET
-    }
-}
 /// EndermanTakeBlockGoal
 #[derive(Clone, Debug)]
 struct TakeBlock;
-impl Goal for TakeBlock {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 /// EndermanLeaveBlockGoal
 #[derive(Clone, Debug)]
 struct LeaveBlock;
-impl Goal for LeaveBlock {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 
 /// The tool `Enderman.dropCustomDeathLoot` rolls the carried block's drops
 /// with: a diamond axe enchanted by `VanillaEnchantmentProviders.ENDERMAN_LOOT_DROP`

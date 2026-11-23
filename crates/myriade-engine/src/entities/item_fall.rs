@@ -8,7 +8,6 @@ impl ItemEntity {
     /// no age, delay or owner, not yet ticked.
     pub fn new(id: u32, stack: ItemStack, position: Vec3, velocity: Vec3, bob_offset: f32) -> Self {
         Self {
-            attachment_lifetime: Default::default(),
             rotation: [0.0, 0.0],
             join: Default::default(),
             no_gravity: false,

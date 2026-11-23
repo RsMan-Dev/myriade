@@ -1,16 +1,3 @@
-//! Creakings (`Creaking`): they freeze while any player looks at them, wake
-//! up when one looks from within 12 blocks, then hunt the nearest visible
-//! player and hit every 40 ticks (the brain, `CreakingAi`, is in
-//! `monster_brain`). One bound to a creaking heart takes no damage (it only
-//! sways and hurts the heart's resin spreader), dies when the heart no
-//! longer protects it and falls apart with the heart.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    keyframes::Animation,
-    monster_brain,
-    path::PathType,
-};
 use crate::containers::BlockEntity;
 use horizon_core::{geometry::Vec3, random::RandomSource};
 use std::collections::HashMap;

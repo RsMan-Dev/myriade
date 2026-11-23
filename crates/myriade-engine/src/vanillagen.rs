@@ -455,20 +455,6 @@ impl VanillaTerrain {
     pub fn region_random(&self, cx: i32, cz: i32) -> Box<dyn PieceRandom> {
         self.generator.region_random(ChunkPos::new(cx, cz))
     }
-    /// A mob chunk generation spawns, as the chunk saves it
-    /// (`StructureMobFinalizer::spawn_generated`).
-    pub fn spawn_generated(
-        &self,
-        kind: &str,
-        position: horizon_core::geometry::Vec3,
-        yaw: f32,
-        biome: &str,
-        random: &mut dyn PieceRandom,
-        group: &mut Option<crate::mobs::finalize::Group>,
-    ) -> Option<horizon_core::nbt::Compound> {
-        self.structure_mobs
-            .spawn_generated(kind, position, yaw, biome, random, group)
-    }
     /// Only the generated range of a proto chunk (the Nether is 0..256)
     /// is copied into a column.
     fn generated_range(chunk: &ProtoChunk, out: &Chunk) -> (i32, i32) {

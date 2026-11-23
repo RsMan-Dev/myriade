@@ -1,14 +1,3 @@
-//! Happy ghasts and ghastlings (`HappyGhast`, `HappyGhastAi`): the adult
-//! floats about following torchlight of snowballs and harnesses, the
-//! ghastling follows players and adults, a harnessed adult can be ridden and
-//! flown, healing is slow (fast in the rain) and `HappyGhastModel`.
-use super::{
-    MobEvent, MobWorld,
-    anim::{Poses, State},
-    control::{LookKind, MoveKind, Operation},
-    goals::{Cx, Float, Goal, LOOK, MOVE, goal_clone},
-    nav::NavKind,
-};
 use horizon_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
@@ -26,18 +15,6 @@ fn player_collision(alive: bool, baby: bool, still: bool, feet_y: f64, top: f64)
 /// `HappyGhastFloatGoal`: a `FloatGoal` off a still timeout.
 #[derive(Clone, Debug)]
 struct HappyGhastFloat;
-impl Goal for HappyGhastFloat {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "HappyGhastFloatGoal"
-    }
-    fn flags(&self) -> u8 {
-        Float.flags()
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `TemptGoal.ForNonPathfinders`: drift toward a player holding food, or
 /// food and harnesses for a bare adult.
 #[derive(Clone, Debug, Default)]
@@ -46,15 +23,6 @@ struct GhastTempt {
 }
 impl GhastTempt {
 }
-impl Goal for GhastTempt {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "ForNonPathfinders"
-    }
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 /// `Ghast.RandomFloatAroundGoal` with a restriction and a wish for open
 /// air next to something solid.
 #[derive(Clone, Debug)]
@@ -62,43 +30,6 @@ struct FloatAround {
     blocks: i32,
 }
 impl FloatAround {
-    fn good(&self, w: &MobWorld, p: Vec3) -> bool {
-        if self.blocks <= 0 {
-            return true;
-        }
-        let at = [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
-        if !w.facts.is_air(w.world.block(at[0], at[1], at[2])) {
-            return false;
-        }
-        for d in [
-            [1, 0, 0],
-            [-1, 0, 0],
-            [0, 1, 0],
-            [0, -1, 0],
-            [0, 0, 1],
-            [0, 0, -1],
-        ] {
-            for i in 1..self.blocks {
-                if !w.facts.is_air(w.world.block(
-                    at[0] + d[0] * i,
-                    at[1] + d[1] * i,
-                    at[2] + d[2] * i,
-                )) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-}
-impl Goal for FloatAround {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "RandomFloatAroundGoal"
-    }
-    fn flags(&self) -> u8 {
-        MOVE
-    }
 }
 /// Texture of the harness layer for the worn item.
 pub fn harness_texture(item: &str) -> Option<String> {

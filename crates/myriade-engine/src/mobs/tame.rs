@@ -1,15 +1,3 @@
-//! Tamable animals (`TamableAnimal`): wolves with their variants, taming,
-//! sitting, following and defending the owner, begging, anger and shaking
-//! off water (`Wolf`, `WolfModel`).
-use super::{
-    MobEvent, MobWorld, PlayerView, Species, Who,
-    anim::{Poses, State},
-    goals::{
-        Breed, Cx, Float, Goal, HurtByTarget, JUMP, LOOK, LeapAtTarget, LookAtPlayer, MOVE,
-        MeleeAttack, NearestTarget, Panic, Prey, RandomLookAround, Stroll, TARGET, goal_clone,
-        reduced,
-    },
-};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{
     geometry::{Aabb, Axis, Vec3},
@@ -62,104 +50,15 @@ pub const SHAKE: usize = 1;
 /// the shoulder of the owner it touches; the host does the landing.
 #[derive(Clone, Debug)]
 struct LandOnOwnersShoulder;
-impl Goal for LandOnOwnersShoulder {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
-/// `NonTameRandomTargetGoal`: a tameable mob's prey target, only while it is
-/// wild. Vanilla re-tests the subclass selector while hunting, so a baby
-/// turtle that enters water stops being hunted.
-#[derive(Clone, Debug)]
-struct NonTameTarget(NearestTarget);
-impl NonTameTarget {
-    fn new(inner: NearestTarget) -> Self {
-        Self(inner.named("NonTameRandomTargetGoal"))
-    }
-    fn prey_matches(prey: &Prey, who: Who, w: &MobWorld) -> bool {
-        match prey {
-            Prey::Player => who == Who::Player,
-            Prey::Species(list) => match who {
-                Who::Player => false,
-                Who::Mob(id) => w.seen(id).is_some_and(|s| list.contains(&s.species)),
-            },
-            Prey::Filter(f) => match who {
-                Who::Player => false,
-                Who::Mob(id) => w.seen(id).is_some_and(f),
-            },
-        }
-    }
-}
-impl Goal for NonTameTarget {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn name(&self) -> &'static str {
-        "NonTameRandomTargetGoal"
-    }
-}
-/// `Turtle.BABY_ON_LAND_SELECTOR`: a baby turtle out of water.
-fn baby_turtle_on_land(s: &super::Seen) -> bool {
-    s.species == Species::Turtle && s.baby && !s.in_water
-}
-/// `Wolf.PREY_SELECTOR`: sheep, rabbits and foxes.
-fn wolf_prey(s: &super::Seen) -> bool {
-    matches!(s.species, Species::Sheep | Species::Rabbit | Species::Fox)
-}
 /// Whether `uuid` is the saved owner. A host with no UUID yet owns what it
 /// tamed under the placeholder `[0, 0, 0, 1]`.
 pub fn owned_by(owner: Option<[i32; 4]>, uuid: [i32; 4]) -> bool {
     owner.is_some_and(|o| o == uuid || (o == [0, 0, 0, 1] && uuid == [0; 4]))
 }
 
-/// `TamableAnimal.TamableAnimalPanicGoal`: the wrapped `PanicGoal` is built
-/// with the damage tag its species fears (`#panic_environmental_causes` for a
-/// wolf, the default `#panic_causes` for a cat or parrot), and a panic
-/// teleports a pet to a far owner.
-#[derive(Clone, Debug)]
-struct TamePanic(Panic);
-impl Goal for TamePanic {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 /// `SitWhenOrderedToGoal`.
 #[derive(Clone, Debug)]
 struct SitWhenOrdered;
-impl Goal for SitWhenOrdered {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-}
-/// `Wolf.WolfAvoidEntityGoal`: untamed wolves flee llamas.
-#[derive(Clone, Debug)]
-struct AvoidLlamas(super::goals::AvoidEntity);
-impl AvoidLlamas {
-    fn new() -> Self {
-        Self(super::goals::AvoidEntity::new(
-            super::goals::Avoid::Species(vec![Species::Llama, Species::TraderLlama]),
-            24.0,
-            1.5,
-            1.5,
-        ))
-    }
-}
-/// `Wolf.WolfAvoidEntityGoal`: a wild wolf runs from a llama, the more
-/// likely the stronger it is (`strength >= random.nextInt(5)`), and drops
-/// its target while it does.
-impl Goal for AvoidLlamas {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "WolfAvoidEntityGoal"
-    }
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 /// `FollowOwnerGoal(speed, startDistance, stopDistance)`.
 #[derive(Clone, Debug)]
 struct FollowOwner {
@@ -178,33 +77,15 @@ impl FollowOwner {
         }
     }
 }
-impl Goal for FollowOwner {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-}
 /// `OwnerHurtByTargetGoal`: attack what hurt the owner.
 #[derive(Clone, Debug)]
 struct OwnerHurtBy {
     timestamp: i64,
 }
-impl Goal for OwnerHurtBy {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        TARGET
-    }
-}
 /// `OwnerHurtTargetGoal`: attack what the owner attacks.
 #[derive(Clone, Debug)]
 struct OwnerHurt {
     timestamp: i64,
-}
-impl Goal for OwnerHurt {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        TARGET
-    }
 }
 /// `BegGoal`: tilt the head at a player holding something interesting.
 #[derive(Clone, Debug)]
@@ -213,30 +94,6 @@ struct Beg {
     ticks: i32,
 }
 impl Beg {
-    fn interesting(&self, w: &MobWorld) -> bool {
-        let Some(p) = w.selected_player() else {
-            return false;
-        };
-        let held = |i: &Option<std::sync::Arc<str>>| {
-            // `BegGoal.playerHoldingInteresting`: a bone or food, tame or not.
-            i.as_deref()
-                .is_some_and(|i| i == "minecraft:bone" || self.food.iter().any(|f| f == i))
-        };
-        p.alive && (held(&p.main_hand) || held(&p.off_hand))
-    }
-}
-impl Goal for Beg {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        LOOK
-    }
-}
-/// `NeutralMob.isValidPlayerTarget`: a player in survival or adventure, off
-/// peaceful.
-fn valid_player_target(w: &MobWorld) -> bool {
-    w.selected_player()
-        .is_some_and(|p| !p.creative && !p.spectator)
-        && w.difficulty.id != 0
 }
 
 /// `WolfRenderState.getBodyRollAngle`.
@@ -264,85 +121,15 @@ const LIE: usize = 0;
 const LIE_TAIL: usize = 1;
 const RELAX: usize = 2;
 
-/// `Cat.registerGoals`: `WaterAvoidingRandomStrollGoal(this, 0.8, 1.0000001E-5F)`,
-/// the ocelot's probability (a cat strolls out of water one tick in 100000).
-pub fn cat_stroll() -> Stroll {
-    let mut stroll = Stroll::avoiding_water(0.8);
-    stroll.water_avoiding = Some(1.000_000_1e-5);
-    stroll
-}
 /// `Ocelot.OcelotTemptGoal(ocelot, 0.6, ocelot food, true)`.
 #[derive(Clone, Debug)]
 struct OcelotTempt(super::goals::Tempt);
-impl Goal for OcelotTempt {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "OcelotTemptGoal"
-    }
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 impl OcelotTempt {
-}
-/// `Ocelot.OcelotAvoidEntityGoal(ocelot, Player.class, 16.0F, 0.8, 1.33)`.
-#[derive(Clone, Debug)]
-struct OcelotAvoid(super::goals::AvoidEntity);
-impl OcelotAvoid {
-    fn new() -> Self {
-        Self(super::goals::AvoidEntity::new(
-            super::goals::Avoid::Player,
-            16.0,
-            0.8,
-            1.33,
-        ))
-    }
-}
-impl Goal for OcelotAvoid {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "OcelotAvoidEntityGoal"
-    }
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
 }
 /// `Cat.CatTemptGoal`: only wild cats come for fish. The second field is
 /// `selectedPlayer`, the player the cat has picked to approach unscared.
 #[derive(Clone, Debug)]
 struct CatTempt(super::goals::Tempt, Option<[i32; 4]>);
-impl Goal for CatTempt {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
-fn has_tag(w: &MobWorld, p: [i32; 3], tag: &str) -> bool {
-    let name = w.facts.get(w.world.block(p[0], p[1], p[2])).name.clone();
-    w.block_tags.get(tag).is_some_and(|t| t.contains(&*name))
-}
-fn empty_above(w: &MobWorld, p: [i32; 3]) -> bool {
-    w.facts
-        .get(w.world.block(p[0], p[1] + 1, p[2]))
-        .name
-        .as_ref()
-        == "minecraft:air"
-}
-/// `Cat.CatAvoidEntityGoal`: the player avoidance only while untamed.
-#[derive(Clone, Debug)]
-struct CatAvoid(super::goals::AvoidEntity);
-impl Goal for CatAvoid {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 /// `Cat.CatRelaxOnOwnerGoal`: while the owner sleeps, the cat lies down beside
 /// them, and may leave a morning gift when they wake up.
 #[derive(Clone, Debug, Default)]
@@ -352,71 +139,16 @@ struct CatRelaxOnOwner {
 }
 impl CatRelaxOnOwner {
 }
-impl Goal for CatRelaxOnOwner {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
-}
 /// `CatLieOnBlockGoal`: tame cats lie on beds and other warm blocks.
 #[derive(Clone, Debug)]
 struct CatLieOnBlock(super::goals::MoveToBlock);
-fn can_lie_on(w: &MobWorld, p: [i32; 3]) -> bool {
-    empty_above(w, p) && has_tag(w, p, "minecraft:cats_can_lie_on")
-}
-impl Goal for CatLieOnBlock {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `CatSitOnBlockGoal`: unopened chests, lit furnaces and the foot of beds.
 #[derive(Clone, Debug)]
 struct CatSitOnBlock(super::goals::MoveToBlock);
-fn can_sit_on(w: &MobWorld, p: [i32; 3]) -> bool {
-    if !empty_above(w, p) || !has_tag(w, p, "minecraft:cats_can_sit_on") {
-        return false;
-    }
-    let f = w.facts.get(w.world.block(p[0], p[1], p[2]));
-    match f.name.as_ref() {
-        // The lit state is the only light source a furnace has.
-        "minecraft:furnace" => f.emission > 0,
-        // `ChestBlockEntity.getOpenCount(level, pos) < 1`: players' openers
-        // and the copper golems' own count.
-        "minecraft:chest" => {
-            let key = (p[0], p[1], p[2]);
-            !w.lid_openers.contains_key(&key)
-                && w.world.chest_openers.get(&key).is_none_or(|o| o.0 < 1)
-        }
-        // A bed's foot only (`BedBlock.PART != HEAD`).
-        _ => w.prop(p[0], p[1], p[2], "part") != Some("head"),
-    }
-}
-impl Goal for CatSitOnBlock {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        JUMP | MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `OcelotAttackGoal`: stalk slowly, dash in, swipe every second.
 #[derive(Clone, Debug)]
 struct OcelotAttack {
     attack_time: i32,
-}
-impl Goal for OcelotAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
 }
 /// `Cat.finalizeSpawn` variant: any but all-black, which a full moon allows.
 pub fn cat_variant(w_moon_full: bool, r: &mut impl RandomSource) -> u8 {
@@ -436,124 +168,6 @@ pub struct Feline {
     pub lie_down: f32,
     pub lie_down_tail: f32,
     pub relax_one: f32,
-}
-pub fn feline(p: &mut Poses, s: &State, st: &Feline) {
-    let baby = s.baby;
-    let age = if baby { 0.5 } else { 1.0 };
-    let (crouching, sprinting, sitting) = (st.crouching, st.sprinting, st.sitting);
-    let add = |p: &mut Poses, part: &str, x: f32, y: f32, z: f32| {
-        let v = p.get(part);
-        v[0] += x;
-        v[1] += y;
-        v[2] += z;
-    };
-    if crouching {
-        add(p, "body", 0.0, age, 0.0);
-        add(p, "head", 0.0, 2.0 * age, 0.0);
-        add(p, "tail1", 0.0, age, 0.0);
-        add(p, "tail2", 0.0, -4.0 * age, 2.0 * age);
-        p.xrot("tail1", PI / 2.0);
-        p.xrot("tail2", PI / 2.0);
-    } else if sprinting {
-        let y1 = p.get("tail1")[1];
-        p.get("tail2")[1] = y1;
-        add(p, "tail2", 0.0, 0.0, 2.0 * age);
-        p.xrot("tail1", PI / 2.0);
-        p.xrot("tail2", PI / 2.0);
-    }
-    p.xrot("head", s.x_rot.to_radians());
-    p.yrot("head", s.y_rot.to_radians());
-    let (pos, sp) = (s.pos, s.speed);
-    if !sitting {
-        if !baby {
-            p.xrot("body", PI / 2.0);
-        }
-        if sprinting {
-            p.xrot("left_hind_leg", (pos * 0.6662).mcos() * sp);
-            p.xrot("right_hind_leg", (pos * 0.6662 + 0.3).mcos() * sp);
-            p.xrot("left_front_leg", (pos * 0.6662 + PI + 0.3).mcos() * sp);
-            p.xrot("right_front_leg", (pos * 0.6662 + PI).mcos() * sp);
-            p.xrot("tail2", 1.727_876_1 + PI / 10.0 * pos.mcos() * sp);
-        } else {
-            p.xrot("left_hind_leg", (pos * 0.6662).mcos() * sp);
-            p.xrot("right_hind_leg", (pos * 0.6662 + PI).mcos() * sp);
-            p.xrot("left_front_leg", (pos * 0.6662 + PI).mcos() * sp);
-            p.xrot("right_front_leg", (pos * 0.6662).mcos() * sp);
-            let swing = if crouching { 0.471_238_94 } else { PI / 4.0 };
-            p.xrot("tail2", 1.727_876_1 + swing * pos.mcos() * sp);
-        }
-    } else if baby {
-        let x = p.get("body")[3] - 0.436_332_32;
-        p.xrot("body", x);
-        add(p, "body", 0.0, 1.25, 0.0);
-        add(p, "head", 0.0, 0.0, 0.75);
-        let t = p.get("tail1")[3] + 0.545_415_4;
-        p.xrot("tail1", t);
-        add(p, "tail1", 0.0, 4.0, -0.9);
-        add(p, "left_hind_leg", 0.0, 0.0, -0.9);
-        add(p, "right_hind_leg", 0.0, 0.0, -0.9);
-    } else {
-        p.xrot("body", PI / 4.0);
-        add(p, "body", 0.0, -4.0 * age, 5.0 * age);
-        add(p, "head", 0.0, -3.3 * age, age);
-        add(p, "tail1", 0.0, 8.0 * age, -2.0 * age);
-        add(p, "tail2", 0.0, 2.0 * age, -0.8 * age);
-        p.xrot("tail1", 1.727_876_1);
-        p.xrot("tail2", 2.670_354);
-        p.xrot("left_front_leg", -PI / 20.0);
-        add(p, "left_front_leg", 0.0, 2.0 * age, -2.0 * age);
-        p.xrot("right_front_leg", -PI / 20.0);
-        add(p, "right_front_leg", 0.0, 2.0 * age, -2.0 * age);
-        p.xrot("left_hind_leg", -PI / 2.0);
-        add(p, "left_hind_leg", 0.0, 3.0 * age, -4.0 * age);
-        p.xrot("right_hind_leg", -PI / 2.0);
-        add(p, "right_hind_leg", 0.0, 3.0 * age, -4.0 * age);
-    }
-    let lie = st.lie_down;
-    let lie_tail = st.lie_down_tail;
-    if lie > 0.0 && baby {
-        add(p, "body", 1.0, 0.0, 0.0);
-        let hx = p.get("head")[3];
-        p.xrot("head", rot_lerp(lie, hx, PI / 18.0));
-        let hz = p.get("head")[5];
-        p.zrot("head", rot_lerp(lie, hz, -PI * 5.0 / 12.0));
-        add(p, "head", 1.5, 0.75, -0.5);
-        p.xrot("right_front_leg", -PI / 4.0);
-        add(p, "right_front_leg", 3.5, -0.5, 0.0);
-        p.xrot("left_front_leg", -PI / 2.0);
-        add(p, "left_front_leg", 1.5, -1.0, -2.0);
-        p.xrot("right_hind_leg", PI * 2.0 / 9.0);
-        p.yrot("right_hind_leg", PI / 9.0);
-        p.zrot("right_hind_leg", -PI / 9.0);
-        add(p, "right_hind_leg", 2.5, -0.25, 0.5);
-        add(p, "left_hind_leg", 1.5, 0.0, -1.0);
-        let t = p.get("tail1");
-        let (tx, ty, tz) = (t[3], t[4], t[5]);
-        p.xrot("tail1", tx + rot_lerp(lie_tail, tx, -PI / 6.0));
-        p.yrot("tail1", ty + rot_lerp(lie_tail, ty, 0.0));
-        p.zrot("tail1", tz + rot_lerp(lie_tail, tz, -PI / 18.0));
-        add(p, "tail1", 1.0, 0.5, -0.25);
-    } else if lie > 0.0 {
-        let (hz, hy) = (p.get("head")[5], p.get("head")[4]);
-        p.zrot("head", rot_lerp(lie, hz, -1.270_796_3));
-        p.yrot("head", rot_lerp(lie, hy, 1.270_796_3));
-        p.xrot("left_front_leg", -1.270_796_3);
-        p.xrot("right_front_leg", -0.470_796_35);
-        p.zrot("right_front_leg", -0.2);
-        add(p, "right_front_leg", age, 0.0, 0.0);
-        p.xrot("left_hind_leg", -0.4);
-        p.xrot("right_hind_leg", 0.5);
-        p.zrot("right_hind_leg", -0.5);
-        add(p, "right_hind_leg", 0.8 * age, 2.0 * age, 0.0);
-        let (t1, t2) = (p.get("tail1")[3], p.get("tail2")[3]);
-        p.xrot("tail1", rot_lerp(lie_tail, t1, 0.8));
-        p.xrot("tail2", rot_lerp(lie_tail, t2, -0.4));
-    }
-    let relax = st.relax_one;
-    if relax > 0.0 {
-        let hx = p.get("head")[3];
-        p.xrot("head", rot_lerp(relax, hx, -0.581_776_44));
-    }
 }
 
 #[cfg(test)]

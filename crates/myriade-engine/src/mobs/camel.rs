@@ -1,13 +1,3 @@
-//! Camels (`Camel`): ridden by two, sitting down and standing up now and
-//! then, dashing instead of jumping, eating cactus, always "tame".
-use super::{
-    MobEvent, MobWorld,
-    anim::{Poses, State},
-    goals::{
-        AnimalPanic, Breed, Cx, Float, FollowParent, Goal, LookAtPlayer, MOVE, RandomLookAround,
-        Stroll, Tempt, goal_clone,
-    },
-};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::geometry::{Aabb, Vec3};
 use horizon_core::random::RandomSource;
@@ -23,17 +13,6 @@ const SIT_DOWN: i64 = 40;
 const STAND_UP: i64 = 52;
 pub const DASH_COOLDOWN: i32 = 55;
 
-/// `CamelAi`'s `triggerIf(Predicate.not(Camel::refuseToMove),
-/// BabyFollowAdult.create(...))`: a sitting camel does not start following an
-/// adult, whose walk target would stand it up.
-#[derive(Clone, Debug)]
-struct FollowWhenStanding(FollowParent);
-impl Goal for FollowWhenStanding {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-}
 /// `Camel.getDefaultDimensions` for `Pose.SITTING`: the adult camel's box
 /// 1.43 lower with its eyes at 0.845, or a baby's 0.425 tall box with its
 /// eyes at 0.41. Standing, an adult has the type's box and a baby
@@ -49,27 +28,9 @@ pub fn sitting_dims(baby: bool) -> (f32, f32, f32) {
 pub fn is_camel(s: super::Species) -> bool {
     matches!(s, super::Species::Camel | super::Species::CamelHusk)
 }
-/// `CamelAi.CamelPanic`: standing up at once to flee.
-#[derive(Clone, Debug)]
-struct CamelPanic(AnimalPanic);
-impl Goal for CamelPanic {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        self.0.flags()
-    }
-    fn every_tick(&self) -> bool {
-        self.0.every_tick()
-    }
-}
 /// `CamelAi.RandomSitting`: after 20 seconds in a pose, sit or stand.
 #[derive(Clone, Debug)]
 struct RandomSitting;
-impl Goal for RandomSitting {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 
 
 

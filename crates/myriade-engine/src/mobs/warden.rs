@@ -1,14 +1,3 @@
-//! The warden (`Warden`, `AngerManagement`): anger kept per entity,
-//! vibration listening, the sonic boom and melee attack, the heartbeat and
-//! tendril animations, the model and its emissive layers. Its brain
-//! (`WardenAi`) is in `warden_brain`.
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, TargetChange, Who,
-    anim::{Poses, State},
-    keyframes::Animation,
-    path::PathType,
-    warden_brain::{self, Brain},
-};
 use crate::health::DamageLevel;
 use crate::sculk::{self, Context, Info};
 use horizon_core::{
@@ -21,8 +10,6 @@ use std::{
     f32::consts::PI,
 };
 
-pub const EMERGE_DURATION: i64 = warden_brain::EMERGE_DURATION as i64;
-pub const DIGGING_COOLDOWN: i64 = warden_brain::DIGGING_COOLDOWN;
 const DEFAULT_ANGER: i32 = 35;
 const PROJECTILE_ANGER: i32 = 10;
 const ON_HURT_ANGER_BOOST: i32 = 20;
@@ -114,224 +101,16 @@ impl AngerLevel {
     }
 }
 
-/// `AngerManagement`: anger per suspect, highest first.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct AngerManagement {
-    suspects: Vec<Who>,
-    anger: HashMap<Who, i32>,
-    /// `angerByUuid`: the suspects that are not in the level, kept by UUID so
-    /// their anger goes on calming down while they are away and finds them
-    /// again when they come back. `Who` cannot carry one of those (its mobs are
-    /// live ids), which is why a save writes this half as UUIDs.
-    unloaded: BTreeMap<[i32; 4], i32>,
-    /// `conversionDelay`: the anger ticks left before `unloaded` is looked up
-    /// in the level again. Vanilla draws the first value from a thread-local
-    /// `RandomSource` (0..=2 ticks); a fresh anger starts at 0 here, the fastest
-    /// of those, since the mob layer has no such stream and drawing from the
-    /// mob's own random would shift that stream's parity.
-    conversion_delay: i32,
-    highest: i32,
-}
 /// `AngerManagement.CONVERSION_DELAY`: anger ticks between two lookups of the
 /// suspects that are away.
 const CONVERSION_DELAY: i32 = 2;
-impl AngerManagement {
-    /// `new AngerManagement(filter, List<Pair<UUID, Integer>>)`: a saved anger
-    /// starts with every suspect in the UUID map. The live map fills up again as
-    /// the ticks find them in the level (`convertFromUuids`).
-    pub fn from_saved(pairs: impl IntoIterator<Item = ([i32; 4], i32)>) -> Self {
-        Self {
-            unloaded: pairs.into_iter().collect(),
-            ..Self::default()
-        }
-    }
-    /// The suspects that are not in the level, by UUID, angriest first: what a
-    /// save writes after the loaded ones (`createUuidAngerPairs` lists the
-    /// suspects, then this map).
-    pub fn unloaded(&self) -> impl Iterator<Item = ([i32; 4], i32)> + '_ {
-        let mut pairs: Vec<([i32; 4], i32)> = self.unloaded.iter().map(|(u, a)| (*u, *a)).collect();
-        pairs.sort_by_key(|(_, anger)| std::cmp::Reverse(*anger));
-        pairs.into_iter()
-    }
-    /// One anger tick (`Warden.customServerAiStep` runs it every 20 game
-    /// ticks): the UUIDs that are due are looked up in the level, then every
-    /// suspect calms by one - the ones that are away, then the ones in the
-    /// level, whose invalid are forgotten. `by_uuid` is `Level.getEntity(uuid)`
-    /// as a `Who` (`Game::who_by_uuid`); a world that cannot answer resolves
-    /// nothing, so those suspects stay away for another tick.
-    pub fn tick(&mut self, valid: impl Fn(Who) -> bool, by_uuid: impl Fn([i32; 4]) -> Option<Who>) {
-        self.conversion_delay -= 1;
-        if self.conversion_delay <= 0 {
-            self.convert_from_uuids(by_uuid);
-            self.conversion_delay = CONVERSION_DELAY;
-        }
-        self.unloaded.retain(|_, anger| {
-            if *anger <= 1 {
-                return false;
-            }
-            *anger -= 1;
-            true
-        });
-        let mut dropped = Vec::new();
-        for (who, anger) in self.anger.iter_mut() {
-            if *anger > 1 && valid(*who) {
-                *anger -= 1;
-            } else {
-                dropped.push(*who);
-            }
-        }
-        for who in dropped {
-            self.anger.remove(&who);
-            self.suspects.retain(|s| *s != who);
-        }
-        self.sort_and_update_highest();
-    }
-    /// `AngerManagement.convertFromUuids`: a suspect that is back in the level
-    /// rejoins the live map with the anger it kept while it was away. One that
-    /// is already in the live map was angered again before this lookup: vanilla's
-    /// `increaseAnger` would have added the anger kept under its UUID then
-    /// (`angerByUuid.removeInt`, uncapped), which the mob layer cannot do as it
-    /// knows no UUIDs, so that anger is added here.
-    fn convert_from_uuids(&mut self, by_uuid: impl Fn([i32; 4]) -> Option<Who>) {
-        let away = std::mem::take(&mut self.unloaded);
-        for (uuid, anger) in away {
-            match by_uuid(uuid) {
-                Some(who) if self.anger.contains_key(&who) => {
-                    *self.anger.entry(who).or_default() += anger;
-                }
-                Some(who) => {
-                    self.anger.insert(who, anger);
-                    self.suspects.push(who);
-                }
-                None => {
-                    self.unloaded.insert(uuid, anger);
-                }
-            }
-        }
-    }
-    fn sort_and_update_highest(&mut self) {
-        // AngerManagement.Sorter: the angry first, then players, then the
-        // angriest; a stable sort keeps the order of ties.
-        let anger = self.anger.clone();
-        let level = |w: &Who| anger.get(w).copied().unwrap_or(0);
-        self.suspects.sort_by(|a, b| {
-            let (aa, ab) = (level(a), level(b));
-            let (angry_a, angry_b) = (
-                AngerLevel::by_anger(aa).is_angry(),
-                AngerLevel::by_anger(ab).is_angry(),
-            );
-            if angry_a != angry_b {
-                return if angry_a {
-                    std::cmp::Ordering::Less
-                } else {
-                    std::cmp::Ordering::Greater
-                };
-            }
-            let (player_a, player_b) = (*a == Who::Player, *b == Who::Player);
-            if player_a != player_b {
-                return if player_a {
-                    std::cmp::Ordering::Less
-                } else {
-                    std::cmp::Ordering::Greater
-                };
-            }
-            ab.cmp(&aa)
-        });
-        self.highest = match self.suspects.len() {
-            0 => 0,
-            1 => level(&self.suspects[0]),
-            _ => self.suspects.iter().map(&level).max().unwrap_or(0),
-        };
-    }
-    /// `increaseAnger`: the entity's new anger (at most 150).
-    pub fn increase(&mut self, who: Who, amount: i32) -> i32 {
-        let new_suspect = !self.anger.contains_key(&who);
-        let current = (self.anger.get(&who).copied().unwrap_or(0) + amount).min(MAX_ANGER);
-        self.anger.insert(who, current);
-        if new_suspect {
-            self.suspects.push(who);
-        }
-        self.sort_and_update_highest();
-        current
-    }
-    pub fn clear(&mut self, who: Who) {
-        self.anger.remove(&who);
-        self.suspects.retain(|s| *s != who);
-        self.sort_and_update_highest();
-    }
-    /// `getActiveAnger`: the target's anger, or the highest when there is none.
-    pub fn active_anger(&self, target: Option<Who>) -> i32 {
-        match target {
-            None => self.highest,
-            Some(t) => self.anger.get(&t).copied().unwrap_or(0),
-        }
-    }
-    /// `getActiveEntity`: the first suspect that can still be targeted.
-    pub fn active_entity(&self, can_target: impl Fn(Who) -> bool) -> Option<Who> {
-        self.suspects.iter().copied().find(|w| can_target(*w))
-    }
-    pub fn anger_of(&self, who: Who) -> i32 {
-        self.anger.get(&who).copied().unwrap_or(0)
-    }
-    pub fn suspects(&self) -> &[Who] {
-        &self.suspects
-    }
-}
 
-/// The warden's state: anger, its vibration listener and its brain.
-#[derive(Clone, Debug, Default)]
-pub struct Warden {
-    pub anger: AngerManagement,
-    pub vibration: sculk::Data,
-    pub brain: Brain,
-    /// `getClientAngerLevel`, synchronised once a second.
-    pub client_anger: i32,
-    /// Attackers noted by `hurtServer` and not yet reacted to.
-    hurt_by: Vec<(Option<Who>, bool)>,
-}
-impl Warden {
-    pub fn target(&self) -> Option<Who> {
-        self.brain.mem.attack_target.value()
-    }
-}
 
 
 // ---- entity facts ----
 
-/// `Entity.isAlliedTo`: `source` on `warden`'s team (`Team.isAlliedTo`).
-fn allied(teams: &super::Teams<'_>, warden: u32, source: Option<Who>) -> bool {
-    let Some(source) = source else {
-        return false;
-    };
-    crate::scoreboard::teams_allied(teams.of(Who::Mob(warden)), teams.of(source))
-}
-/// A `GameEvent.Context` as this warden reads it: `canReceiveVibration`
-/// refuses a living source its `canTargetEntity` rejects, allies included.
-pub fn heard_by(ctx: Context, teams: &super::Teams<'_>, warden: u32) -> Context {
-    Context {
-        targetable: ctx.targetable
-            && !allied(teams, warden, ctx.source.and_then(|source| source.actor())),
-        ..ctx
-    }
-}
 
 
-/// `Warden.canTargetEntity`: living, neither creative nor spectator, not a
-/// warden, not an ally, not invulnerable, alive.
-pub fn can_target(w: &MobWorld, warden: u32, who: Who) -> bool {
-    let targetable = match who {
-        Who::Player => w
-            .selected_player()
-            .is_some_and(|p| p.alive && !p.creative && !p.spectator),
-        Who::Mob(id) => w
-            .seen(id)
-            .is_some_and(|s| s.alive && s.species != Species::Warden && !s.invulnerable),
-    };
-    targetable && !allied(&w.teams, warden, Some(who))
-}
-fn position_of(w: &MobWorld, who: Who) -> Option<Vec3> {
-    w.target_info(who).map(|t| t.position)
-}
 
 // ---- anger ----
 

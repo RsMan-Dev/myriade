@@ -1,12 +1,3 @@
-//! Copper golems (`CopperGolem`): their brain (`CopperGolemAi`, in
-//! `animal_brain`) carries items from copper chests to chests
-//! (`transport_items`); here the chest interaction animations, the idle head
-//! spin, and weathering until they turn into statues.
-use super::{
-    MobEvent, MobWorld,
-    anim::{Poses, State},
-    keyframes::Animation,
-};
 use horizon_core::random::RandomSource;
 use std::collections::HashMap;
 

@@ -1,25 +1,6 @@
-//! Golems: iron golems (fighting monsters, the heavy swing that throws its
-//! target up, cracks as they weaken, iron repairs and poppies for villagers)
-//! and snow golems (snowballs at monsters, the snow trail, melting).
-use super::{
-    MobEvent, MobWorld, Species, Who,
-    anim::{Poses, State},
-    goals::{
-        Cx, Goal, HurtByTarget, LOOK, LookAtPlayer, MOVE, MeleeAttack, NearestTarget, Prey,
-        RandomLookAround, Stroll, goal_clone, reduced,
-    },
-    villager_brain::{
-        closest_section, occupied_pois_in_range, others_tickets, sections_to_village,
-        village_sections,
-    },
-};
 use crate::projectiles::{Projectile, ProjectileKind};
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
-/// `Enemy` monsters an iron golem goes after (never creepers).
-pub(super) fn golem_prey(s: &super::Seen) -> bool {
-    s.hostile && s.species != Species::Creeper
-}
 /// `ResetUniversalAngerTargetGoal` with `alertOthersOfSameType` false (the
 /// iron golem's): with the `universal_anger` rule on, a golem whose latest
 /// attacker is a player, hit after the one it last handled, forgets its
@@ -28,15 +9,6 @@ pub(super) fn golem_prey(s: &super::Seen) -> bool {
 pub struct ResetUniversalAnger {
     /// `lastHurtByPlayerTimestamp`.
     timestamp: i32,
-}
-impl Goal for ResetUniversalAnger {
-    goal_clone!();
-    fn name(&self) -> &'static str {
-        "ResetUniversalAngerTargetGoal"
-    }
-    fn flags(&self) -> u8 {
-        0
-    }
 }
 /// `SectionPos.of`: the section a position is in.
 fn section_of(p: Vec3) -> [i32; 3] {
@@ -58,12 +30,6 @@ fn section_center(s: [i32; 3]) -> [f64; 3] {
 /// good word for (reputation of -100 or worse) is attacked on sight.
 #[derive(Clone, Debug)]
 struct DefendVillage;
-impl Goal for DefendVillage {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        super::goals::TARGET
-    }
-}
 /// `MoveTowardsTargetGoal`: close in on a target within range.
 #[derive(Clone, Debug)]
 struct MoveTowardsTarget {
@@ -72,27 +38,11 @@ struct MoveTowardsTarget {
     /// The spot `canUse` picked, which `start` walks to.
     wanted: [f64; 3],
 }
-impl Goal for MoveTowardsTarget {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
-/// `Level.isBrightOutside`: a fixed-time dimension (the End) is never bright.
-fn bright_outside(w: &MobWorld) -> bool {
-    w.daylight && !w.dimension_type.has_fixed_time
-}
 /// `OfferFlowerGoal`: by day, now and then, hold out a poppy to a villager.
 #[derive(Clone, Debug)]
 struct OfferFlower {
     ticks: i32,
     villager: Option<u32>,
-}
-impl Goal for OfferFlower {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE | LOOK
-    }
 }
 fn triangle_wave(x: f32, period: f32) -> f32 {
     ((x % period) - period * 0.5).abs() / (period * 0.5) * 2.0 - 1.0

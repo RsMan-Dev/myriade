@@ -1,24 +1,7 @@
-//! The per-tick mob update in vanilla order (`Entity.baseTick`,
-//! `LivingEntity.baseTick/tick/aiStep`, `Mob.serverAiStep`) and the
-//! dispatch to each species family's goals and special behaviour.
-pub(crate) use freezing::in_powder_snow;
-pub use freezing::{can_freeze, wears_gaze_disguise};
 mod feeding;
 mod freezing;
 
-pub use feeding::takes_food;
 
-use super::{
-    Damage, DamageKind, MobEvent, MobWorld, Species, Who, aquatic,
-    control::{BodyRotation, LookControl, MoveControl},
-    farm,
-    goals::{Cx, GoalSelector},
-    hostile,
-    nav::Navigation,
-    path::{PATH_TYPES, Path},
-    push::{Cap, Verdict, root_vehicle},
-    undead,
-};
 use crate::blocks::Fluid;
 use crate::breathing::{Breath, breathe, drown, own_air};
 use crate::health::DamageLevel;
@@ -31,10 +14,8 @@ use horizon_world::native_load_context::LoopContext;
 
 #[path = "ai_glide.rs"]
 mod glide;
-use glide::update_fall_flying;
 
 mod step;
-pub(super) use step::inherited_step_sound;
 
 
 /// `SwingAnimation`: the swing's kind and its base ticks, as the mob sends them.
@@ -64,77 +45,6 @@ pub fn swing_duration(animation: SwingAnimation, dig_speed: Option<i32>, fatigue
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Ai {
-    /// `Mob.homePosition` and `homeRadius`: where a restricted mob stays
-    /// (a lead's holder, a happy ghast's float area).
-    pub home: Option<([i32; 3], i32)>,
-    /// Mob keeps homePosition even when clearHome makes homeRadius -1.
-    /// Active homes still use `home`; this only retains its hidden position.
-    last_home_position: [i32; 3],
-    pub goals: GoalSelector,
-    pub targets: GoalSelector,
-    pub nav: Navigation,
-    pub(super) navigation_redirect: Option<Box<super::nav::Redirect>>,
-    pub mov: MoveControl,
-    pub look: LookControl,
-    pub body: BodyRotation,
-    /// JumpControl.jump (requested this tick).
-    pub jump: bool,
-    /// LivingEntity.jumping
-    pub jumping: bool,
-    pub no_jump_delay: i32,
-    pub xxa: f32,
-    pub yya: f32,
-    pub zza: f32,
-    pub speed: f32,
-    pub target: Option<Who>,
-    pub last_hurt_by: Option<Who>,
-    pub last_hurt_by_time: i32,
-    /// The bare UUID of an unresolved `lastHurtByMob` (see `hurt_by`).
-    pub last_hurt_by_ref: Option<[i32; 4]>,
-    /// Ticks left during which kills count as player kills.
-    pub last_hurt_by_player: i32,
-    pub no_action_time: i32,
-    pub ai_paused: bool, // A mod paused serverAiStep (`MobRef::set_ai_paused`): mobs/ai_pause.rs.
-    pub dab_turns: u32,
-    pub aggressive: bool,
-    pub panicking: bool,
-    pub malus: [Option<f32>; PATH_TYPES],
-    /// A path computed in canUse and consumed by start.
-    pub pending_path: Option<Path>,
-    /// Sensing: line-of-sight results cached for one tick.
-    pub seen_cache: Vec<(Who, bool)>,
-    /// Swing animation progress (attackAnim) and ticks.
-    pub swing_time: i32,
-    pub swinging: bool,
-    /// The current swing's `SwingDescription.durationTicks`; 0 is the default 6.
-    pub swing_duration: i32,
-    /// Walked distance and the next footstep.
-    pub steps: super::living::Steps,
-}
-impl Ai {
-    /// `Mob.getHomePosition`, including the position retained by clearHome.
-    pub fn home_position(&self) -> [i32; 3] {
-        self.home.map_or(self.last_home_position, |(pos, _)| pos)
-    }
-    /// Adopt only the two persistent home fields after loading Mob data.
-    pub fn restore_home(&mut self, pos: [i32; 3], radius: i32) {
-        self.last_home_position = pos;
-        self.home = (radius != -1).then_some((pos, radius));
-    }
-    /// `Mob.clearHome`: clear the radius, retaining the position.
-    pub fn clear_home(&mut self) {
-        self.last_home_position = self.home_position();
-        self.home = None;
-    }
-    /// `Mob.isWithinRestriction(pos)`: an unrestricted mob is within
-    /// everywhere.
-    pub fn is_within_home(&self, p: [i32; 3]) -> bool {
-        self.home
-            .is_none_or(|(c, r)| super::goals::within_home(c, r, p))
-    }
-}
 /// The module implementing a species' behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Family {
@@ -179,115 +89,9 @@ pub enum Family {
     Panda,
     PolarBear,
 }
-pub fn family(s: Species) -> Family {
-    use Species as S;
-    match s {
-        S::Pig | S::Cow | S::Mooshroom | S::Sheep | S::Chicken => Family::Farm,
-        S::Zombie
-        | S::Husk
-        | S::Drowned
-        | S::ZombieVillager
-        | S::Skeleton
-        | S::Stray
-        | S::Bogged
-        | S::Parched
-        | S::WitherSkeleton
-        | S::ZombifiedPiglin => Family::Undead,
-        S::Creeper | S::Spider | S::CaveSpider | S::Silverfish | S::Endermite => Family::Hostile,
-        S::Squid
-        | S::GlowSquid
-        | S::Cod
-        | S::Tadpole
-        | S::Salmon
-        | S::TropicalFish
-        | S::Pufferfish
-        | S::Dolphin
-        | S::Axolotl => Family::Aquatic,
-        S::Giant => Family::Inert,
-        S::Witch => Family::Witch,
-        S::Wolf | S::Cat => Family::Tame,
-        S::Blaze | S::Ghast => Family::Nether,
-        S::IronGolem | S::SnowGolem | S::CopperGolem => Family::Golem,
-        S::Pillager | S::Vindicator | S::Evoker | S::Illusioner => Family::Illager,
-        S::Vex => Family::Vex,
-        S::Ravager => Family::Ravager,
-        S::Wither => Family::Wither,
-        S::Allay => Family::Allay,
-        S::Creaking => Family::Creaking,
-        S::Villager => Family::Villager,
-        S::WanderingTrader => Family::Trader,
-        S::Breeze => Family::Breeze,
-        S::Sniffer => Family::Sniffer,
-        S::HappyGhast => Family::HappyGhast,
-        S::Piglin | S::PiglinBrute | S::Hoglin | S::Zoglin => Family::Piglin,
-        S::Horse
-        | S::Donkey
-        | S::Mule
-        | S::SkeletonHorse
-        | S::ZombieHorse
-        | S::Camel
-        | S::CamelHusk
-        | S::Llama
-        | S::TraderLlama => Family::Equine,
-        S::Nautilus | S::ZombieNautilus => Family::Nautilus,
-        S::Phantom => Family::Phantom,
-        S::Enderman => Family::Enderman,
-        S::Slime | S::MagmaCube | S::SulfurCube => Family::Cube,
-        S::Guardian | S::ElderGuardian => Family::Guardian,
-        S::Warden => Family::Warden,
-        S::Shulker => Family::Shulker,
-        S::Strider => Family::Strider,
-        S::Bat => Family::Bat,
-        S::Bee => Family::Bee,
-        S::Panda => Family::Panda,
-        S::PolarBear => Family::PolarBear,
-        _ => Family::Generic,
-    }
-}
 
 
 
-/// Subclasses of `net.minecraft.world.entity.monster.Monster`.
-pub fn is_monster(s: Species) -> bool {
-    use Species as S;
-    matches!(
-        s,
-        S::Zombie
-            | S::Husk
-            | S::Drowned
-            | S::ZombieVillager
-            | S::ZombifiedPiglin
-            | S::Giant
-            | S::Skeleton
-            | S::Stray
-            | S::Bogged
-            | S::Parched
-            | S::WitherSkeleton
-            | S::Creeper
-            | S::Spider
-            | S::CaveSpider
-            | S::Enderman
-            | S::Endermite
-            | S::Silverfish
-            | S::Witch
-            | S::Pillager
-            | S::Vindicator
-            | S::Evoker
-            | S::Illusioner
-            | S::Ravager
-            | S::Vex
-            | S::Piglin
-            | S::PiglinBrute
-            | S::Zoglin
-            | S::Blaze
-            | S::Guardian
-            | S::ElderGuardian
-            | S::Breeze
-            | S::Creaking
-            | S::Warden
-            | S::Wither
-    )
-}
 /// A tick either completed or paused at the fox's inline consumption boundary.
 #[derive(Debug)]
 pub enum TickProgress {
@@ -305,175 +109,7 @@ pub enum TickProgress {
 
 
 
-/// The mob's view of the shared inside walk: its box, its life, the level's
-/// blocks, its own `entityInside` moments (kept as their own code, run
-/// mid-walk where vanilla runs them), and the part's contact, fired mid-walk
-/// over the level random host the mob's tick already holds.
-struct MobInside<'a, 'w, 'l> {    w: &'a MobWorld<'w>,
-    level: &'a mut DamageLevel<'l>,
-    events: &'a mut Vec<MobEvent>,
-}
 
-impl crate::block_contact::InsideWalk for MobInside<'_, '_, '_> {
-    type Error = ();
-    fn bounds_at(&self, at: Vec3) -> horizon_core::geometry::Aabb {
-        self.m.bounds_at(at)
-    }
-    fn is_alive(&self) -> bool {
-        self.m.alive()
-    }
-    fn block(&self, at: horizon_core::position::BlockPos) -> horizon_world::registry::BlockStateId {
-        self.w.world.block(at.x, at.y, at.z)
-    }
-    fn is_air(&self, state: horizon_world::registry::BlockStateId) -> bool {
-        self.w.registry.state(state).is_none_or(|d| {
-            matches!(
-                d.name.as_str(),
-                "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
-            )
-        })
-    }
-    fn inside_shape(
-        &mut self,
-        _state: horizon_world::registry::BlockStateId,
-        _at: horizon_core::position::BlockPos,
-    ) -> crate::block_contact::InsideShape {
-        // `getEntityInsideCollisionShape` is the whole block for every block a
-        // mob meets, as the mob's own walk always treated it.
-        crate::block_contact::InsideShape::Full
-    }
-    fn entity_inside(
-        &mut self,
-        at: horizon_core::position::BlockPos,
-        state: horizon_world::registry::BlockStateId,
-        _step: i32,
-        precise: bool,
-        effects: &mut myriade_types::InsideEffects,
-    ) -> std::result::Result<(), ()> {
-        let (x, y, z) = (at.x, at.y, at.z);
-        let p = [x, y, z];
-        // The part's contact, mid-walk, staged: its writes join this step only
-        // when it answered, and a panic is contained.
-        if let Some(hooks) = crate::block_contact::HOOKS.get()
-            && let Some(dimension) = crate::block_contact::current_level()
-            && (hooks.inside_listens)(state)
-        {
-            let mut staged = myriade_types::InsideEffects::default();
-            let mut writes = Vec::new();
-            let kind = self.m.kind.id.clone();
-            let id = self.m.id as i32;
-            (hooks.inside_fire)(
-                self.level,
-                dimension,
-                id,
-                &kind,
-                state,
-                at,
-                precise,
-                &mut staged,
-                &mut writes,
-            );
-            effects.absorb_step(staged);
-            crate::block_contact::inside_written(state, at, writes);
-        }
-        // PowderSnowBlock.entityInside: a burning mob destroys the
-        // block (`canEntityGrief` for the mob), then EXTINGUISH puts it out.
-        if self.w.block_name(x, y, z) == "minecraft:powder_snow" {
-            if self.m.is_on_fire() && self.w.can_grief(self.m.id) {
-                self.events.push(MobEvent::BreakBlock {
-                    pos: p,
-                    drop: false,
-                    by: None,
-                    breaker: None,
-                });
-            }
-            self.m.extinguish_fire();
-        }
-        match self.w.block_name(x, y, z) {
-            "minecraft:cactus" => {
-                self.m
-                    .damage(self.level, 1.0, Damage::of(DamageKind::Cactus));
-            }
-            // CampfireBlock.entityInside: a lit campfire hurts a
-            // living entity by its fire damage (1, soul 2).
-            name @ ("minecraft:campfire" | "minecraft:soul_campfire")
-                if self.w.prop(x, y, z, "lit") == Some("true") =>
-            {
-                let damage = if name == "minecraft:campfire" {
-                    1.0
-                } else {
-                    2.0
-                };
-                self.m
-                    .damage(self.level, damage, Damage::of(DamageKind::Campfire));
-            }
-            // WebBlock.entityInside -> makeStuckInBlock, which a
-            // spider ignores for cobwebs and a wither always.
-            "minecraft:cobweb"
-                if !matches!(
-                    self.m.species(),
-                    Species::Spider | Species::CaveSpider | Species::Wither
-                ) =>
-            {
-                self.m.fall_distance = 0.0;
-                self.m.stuck_multiplier = if self.m.has_effect("minecraft:weaving") {
-                    Vec3::new(0.5, 0.25, 0.5)
-                } else {
-                    Vec3::new(0.25, f64::from(0.05_f32), 0.25)
-                };
-            }
-            "minecraft:sweet_berry_bush"
-                if !matches!(self.m.species(), Species::Fox | Species::Bee) =>
-            {
-                if self.m.species() != Species::Wither {
-                    self.m.fall_distance = 0.0;
-                    self.m.stuck_multiplier =
-                        Vec3::new(f64::from(0.8_f32), 0.75, f64::from(0.8_f32));
-                }
-                let moved = self.m.previous.subtract(self.m.position);
-                if self.w.prop(x, y, z, "age") != Some("0")
-                    && moved.horizontal_distance_squared() > 0.0
-                    && (moved.x.abs() >= f64::from(0.003_f32)
-                        || moved.z.abs() >= f64::from(0.003_f32))
-                {
-                    self.m
-                        .damage(self.level, 1.0, Damage::of(DamageKind::SweetBerryBush));
-                }
-            }
-            // PowderSnowBlock.entityInside: a living entity is stuck
-            // (and forgets its fall) only while the block at its
-            // own feet is powder snow.
-            "minecraft:powder_snow"
-                if self.w.block_name(
-                    self.m.position.x.floor() as i32,
-                    self.m.position.y.floor() as i32,
-                    self.m.position.z.floor() as i32,
-                ) == "minecraft:powder_snow" =>
-            {
-                if self.m.species() != Species::Wither {
-                    self.m.fall_distance = 0.0;
-                    self.m.stuck_multiplier =
-                        Vec3::new(f64::from(0.9_f32), 1.5, f64::from(0.9_f32));
-                }
-                let known_movement = self
-                    .w
-                    .controlling_player_movement
-                    .unwrap_or(self.m.velocity);
-                if let Some(velocity) =
-                    powder_snow_particle_velocity(known_movement, self.level.random())
-                {
-                    self.events.push(MobEvent::PowderSnowParticle {
-                        at: [self.m.position.x, f64::from(y + 1), self.m.position.z],
-                        velocity,
-                    });
-                }
-            }
-            "minecraft:honey_block" => honey_slide(self.m, p, self.level, self.events),
-            _ => {}
-        }
-        Ok(())
-    }
-}
 
 #[cfg(test)]
 mod powder_snow_particle_tests {
@@ -508,21 +144,8 @@ pub fn in_wall(
 
 
 
-// Keep the actual selectors (including partially updated goal state) attached to
-// their mob even when a goal callback unwinds. Drop does not invoke goal code.
-struct BorrowedGoalSelectors<'a> {    targets: GoalSelector,
-    goals: GoalSelector,
-}
 
-impl<'a> BorrowedGoalSelectors<'a> {
-}
 
-impl Drop for BorrowedGoalSelectors<'_> {
-    fn drop(&mut self) {
-        self.mob.ai.targets = std::mem::take(&mut self.targets);
-        self.mob.ai.goals = std::mem::take(&mut self.goals);
-    }
-}
 
 #[cfg(test)]
 mod selector_restore_tests {
@@ -565,31 +188,6 @@ mod selector_restore_tests {
 
 }
 
-/// `Cat.removeWhenFarAway` and `Ocelot.removeWhenFarAway`: an untamed cat or an
-/// untrusting ocelot is removed once it is older than 2400 ticks. That is
-/// `Entity.tickCount`, not `AgeableMob.age`, which only counts a baby up to
-/// adulthood. `Animal.removeWhenFarAway` keeps every other animal.
-fn feline_removed_when_far(s: Species, tamed: bool, ticks: u32) -> bool {
-    matches!(s, Species::Cat | Species::Ocelot) && !tamed && ticks > 2400
-}
-/// The types whose `removeWhenFarAway` is always false (`Villager`,
-/// `WanderingTrader`, `AbstractGolem`: iron, snow and copper golems and
-/// shulkers; `Allay`, `Warden`), and the wither, whose `checkDespawn` never
-/// removes it for distance.
-fn never_removed_when_far(s: Species) -> bool {
-    matches!(
-        s,
-        Species::Villager
-            | Species::WanderingTrader
-            | Species::IronGolem
-            | Species::SnowGolem
-            | Species::CopperGolem
-            | Species::Shulker
-            | Species::Allay
-            | Species::Warden
-            | Species::Wither
-    )
-}
 /// `AgeableMob.canUseGoldenDandelion`: a golden dandelion in hand, a baby
 /// whose particle timer has run out, and a type outside
 /// `#minecraft:cannot_be_age_locked`.
@@ -601,14 +199,6 @@ pub fn can_use_golden_dandelion(
 ) -> bool {
     item == "minecraft:golden_dandelion" && baby && cooldown == 0 && !cannot_be_age_locked
 }
-/// Whether `playEatingSound` binds the sound to the animal: the frog's, the
-/// goat's and the sniffer's are `level().playSound(null, this, ..., NEUTRAL,
-/// ...)`, the others `Entity.playSound` at its position.
-pub fn eating_sound_is_bound(species: Species) -> bool {
-    matches!(species, Species::Frog | Species::Goat | Species::Sniffer)
-}
-/// Mob.doHurtTarget: attack damage (+ species extras) to the target.
-pub use super::combat::do_hurt_target;
 
 
 

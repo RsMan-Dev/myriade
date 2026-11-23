@@ -104,21 +104,6 @@ pub fn identity(
     }
     let bytes = std::fs::read(root.join("facts.json")).map_err(IdentityError::Read)?;
     let mut hash = hash_facts(&bytes)?;
-    // A root without mod entries keeps its block-only identity.
-    let report = match std::fs::read(root.join("registries.json")) {
-        Ok(bytes) => Some(crate::lan::data::with_custom_stats(parse_registries(
-            &bytes,
-        )?)),
-        Err(_) => None,
-    };
-    if let Some(report) = report {
-        for registry in REGISTRIES {
-            let entries = mod_entries(&report, registry);
-            if !entries.is_empty() {
-                hash = hash_entries(hash, registry, &entries);
-            }
-        }
-    }
     let membership = match std::fs::read(root.join(crate::mod_content::BLOCK_ENTITY_TYPES)) {
         Ok(bytes) => serde_json::from_slice::<BTreeMap<String, String>>(&bytes)
             .map_err(IdentityError::Json)?,

@@ -1,26 +1,9 @@
 //! Result-slot take handling, including pre-take revalidation and remainders.
 use super::*;
 impl Menu {
-    pub(super) fn crafting_result_is_current(&self, env: &Env, slot: usize) -> bool {
-        if !env.recipes.has_mod_crafting() {
-            return true;
-        }
-        env.recipes
-            .find_with(
-                env.loop_context,
-                &self.state.containers[GRID],
-                self.state.grid_size,
-                &|id| {
-                    env.maps
-                        .and_then(|maps| maps.state(id))
-                        .map(|(_, scale)| scale)
-                },
-            )
-            .is_some_and(|(_, result)| {
-                self.slot(slot).is_some_and(|shown| {
-                    shown.count == result.count && shown.same_item_same_components(&result)
-                })
-            })
+    /// A result is current: no mod recipe can have changed it.
+    pub(super) fn crafting_result_is_current(&self, _env: &Env, _slot: usize) -> bool {
+        true
     }
 
     /// `ResultSlot.onTake` and the other `Slot.onTake` overrides.
@@ -185,20 +168,7 @@ impl Menu {
             .recipes
             .find_with(env.loop_context, &grid, n, &map_scale)
         {
-            Some((id, _))
-                if env.loop_context.side()
-                    == horizon_world::native_load_context::LoopSide::Server
-                    || !matches!(
-                        env.recipes.recipe(id),
-                        Some(crate::crafting::Recipe::Mod(_))
-                    ) =>
-            {
-                env.recipes.remainders(id, &grid, n, &|s| env.remainder(s))
-            }
-            Some(_) => grid
-                .iter()
-                .map(|cell| cell.as_ref().and_then(|s| env.remainder(s)))
-                .collect(),
+            Some((id, _)) => env.recipes.remainders(id, &grid, n, &|s| env.remainder(s)),
             None => return,
         };
         for cell in 0..n * n {

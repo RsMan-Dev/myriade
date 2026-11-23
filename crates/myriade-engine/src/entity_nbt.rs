@@ -25,7 +25,6 @@ mod ai_pause;
 pub use ai_pause::{paused_in as ai_paused_saved, write_ai_paused};
 mod refs;
 mod saved_attributes;
-pub use refs::who_by_uuid;
 
 use {
     horizon_core::nbt::{Compound, Tag},
@@ -323,7 +322,6 @@ fn is_animal(id: &str) -> bool {
             | "zombie_nautilus"
     )
 }
-use crate::mobs::persistent_anger;
 /// The single player's UUID (`offline_uuid("Player")`): the entity the
 /// neutral mobs are angry at.
 pub(crate) fn player_uuid() -> [i32; 4] {
@@ -742,7 +740,6 @@ pub fn orbs_from_nbt(tag: &Tag) -> Vec<ExperienceOrb> {
     let count = number(tag.get("Count")).unwrap_or(1).max(1) as u32;
     let orb = ExperienceOrb {
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
-        attachment_lifetime: Default::default(),
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
         rotation: rotation(tag),
         join: Default::default(),
@@ -1472,7 +1469,6 @@ pub fn cushion_from_nbt(tag: &Tag, id: u32) -> Option<Cushion> {
     let color =
         crate::entities::dye_index(&text(tag.get("color")).unwrap_or_else(|| "white".into()));
     Some(Cushion {
-        attachment_lifetime: Default::default(),
         join: Default::default(),
         id,
         position,
@@ -1611,7 +1607,6 @@ pub fn item_frame_to_nbt(f: &ItemFrame, uuid: [i32; 4], raw: Option<&Tag>) -> Ta
 pub fn item_frame_from_nbt(tag: &Tag, id: u32) -> Option<ItemFrame> {
     let pos = hanging::attached_block_pos(tag)?;
     Some(ItemFrame {
-        attachment_lifetime: Default::default(),
         join: Default::default(),
         id,
         pos,

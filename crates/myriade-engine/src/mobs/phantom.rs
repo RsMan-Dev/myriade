@@ -1,28 +1,11 @@
-//! Phantoms: circling an anchor high above, swooping at the player every
-//! eight to twelve seconds, scared off by cats (`Phantom`).
-use super::{
-    MobEvent, MobWorld, Species, Who,
-    control::MoveKind,
-    goals::{Cx, Goal, MOVE, TARGET, goal_clone, reduced},
-};
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{geometry::Vec3, random::RandomSource};
 
-fn can_attack(w: &MobWorld) -> bool {
-    w.selected_player()
-        .is_some_and(|p| p.alive && !p.creative && !p.spectator)
-}
 /// `PhantomAttackPlayerTargetGoal`: every three seconds, the player
 /// within 16 blocks across and 64 up or down.
 #[derive(Clone, Debug)]
 struct AttackPlayerTarget {
     next_scan: i32,
-}
-impl Goal for AttackPlayerTarget {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        TARGET
-    }
 }
 /// `PhantomAttackStrategyGoal`: circle, then swoop.
 #[derive(Clone, Debug)]
@@ -30,12 +13,6 @@ struct AttackStrategy {
     next_sweep: i32,
 }
 impl AttackStrategy {
-}
-impl Goal for AttackStrategy {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        0
-    }
 }
 /// `PhantomCircleAroundAnchorGoal`.
 #[derive(Clone, Debug, Default)]
@@ -47,26 +24,11 @@ struct CircleAroundAnchor {
 }
 impl CircleAroundAnchor {
 }
-fn empty(w: &MobWorld, x: i32, y: i32, z: i32) -> bool {
-    w.facts.get(w.world.block(x, y, z)).name.as_ref() == "minecraft:air"
-}
-impl Goal for CircleAroundAnchor {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `PhantomSweepAttackGoal`: dive at the target, bite on contact.
 #[derive(Clone, Debug)]
 struct SweepAttack {
     scared: bool,
     cat_search: u32,
-}
-impl Goal for SweepAttack {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
 }
 fn approach(from: f32, to: f32, step: f32) -> f32 {
     if from < to {

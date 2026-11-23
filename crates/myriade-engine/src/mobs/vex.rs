@@ -1,14 +1,3 @@
-//! Vexes (`Vex`): summoned by evokers, flying through walls around their
-//! bound origin, charging at their target, and wasting away after their
-//! limited life.
-use super::{
-    Damage, DamageKind, MobEvent, Species, Who,
-    anim::{Poses, State},
-    control::Operation,
-    goals::{
-        Cx, Float, Goal, HurtByTarget, LookAtPlayer, MOVE, NearestTarget, goal_clone, reduced,
-    },
-};
 use crate::health::DamageLevel;
 use horizon_core::geometry::trig::Mth;
 use horizon_core::{geometry::Vec3, random::RandomSource};
@@ -20,41 +9,12 @@ use std::f32::consts::PI;
 /// `VexChargeAttackGoal`.
 #[derive(Clone, Debug)]
 struct Charge;
-impl Goal for Charge {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-    fn every_tick(&self) -> bool {
-        true
-    }
-}
 /// `VexRandomMoveGoal`: drift to an empty block near the bound origin.
 #[derive(Clone, Debug)]
 struct RandomMove;
-impl Goal for RandomMove {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        MOVE
-    }
-}
 /// `VexCopyOwnerTargetGoal`: the evoker's target.
 #[derive(Clone, Debug)]
 struct CopyOwnerTarget;
-impl Goal for CopyOwnerTarget {
-    goal_clone!();
-    fn flags(&self) -> u8 {
-        super::goals::TARGET
-    }
-}
-/// `TargetingConditions.test` for the owner's target: `canBeSeenByAnyone`
-/// leaves out the dead and spectators.
-fn copyable(w: &crate::mobs::MobWorld, t: Who) -> bool {
-    match t {
-        Who::Player => w.player.as_ref().is_some_and(|p| p.alive && !p.spectator),
-        Who::Mob(id) => w.seen(id).is_some_and(|s| s.alive),
-    }
-}
 
 
 

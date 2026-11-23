@@ -48,9 +48,7 @@ impl Hub {
 impl Hub {
     pub(super) fn discard_closed_input(&mut self, i: usize) -> bool {
         // The I/O owner can also close concurrently between packets.
-        if !self.guests[i].left_reason.is_empty()
-            || self.guests[i].sender.payload_transport().closed()
-        {
+        if !self.guests[i].left_reason.is_empty() {
             let discarded = self.guests.update(i, |g| std::mem::take(&mut g.inbox));
             drop(discarded);
             true

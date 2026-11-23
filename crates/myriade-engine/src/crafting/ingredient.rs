@@ -9,7 +9,6 @@ use super::{ItemStack, Items};
 use crate::native_stack_hooks::ingredient_test as native_ingredient_test;
 use display::display_stacks;
 use horizon_world::native_load_context::LoadContext;
-use myriade_types::{WalkedIngredient, resolved_items};
 pub use myriade_types::{IngredientRule, Shape};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -240,98 +239,52 @@ impl Ingredient {
             _ => false,
         }
     }
+    /// The vanilla ingredient: an item id, a `#tag`, a list of those, or an
+    /// `{"item"}` / `{"tag"}` object.
     pub fn parse(v: &Value, items: &Items) -> Option<Self> {
-        // A mod's own kind: `resolve` asked the hook once at load and left
-        // the item list it matches with the occurrence; one no load
-        // resolved fails the file.
-        let walked = WalkedIngredient::walk(
-            v,
-            &items.item_tag_order,
-            &|tag| {
-                Some(
-                    items
-                        .block_tag_order
-                        .get(tag)?
-                        .iter()
-                        .filter_map(|block| {
-                            let item = items
-                                .block_items
-                                .get(block)
-                                .map(String::as_str)
-                                .unwrap_or(block);
-                            (item != "minecraft:air" && items.get(item).is_some())
-                                .then(|| item.to_owned())
-                        })
-                        .collect(),
-                )
-            },
-            &resolved_items,
-            &components::json_patch,
-        );
-        let Some(walked) = walked else {
+        let order = Self::vanilla_order(v, items);
+        let Some(order) = order else {
             log::error!("recipes: invalid ingredient (unresolved tag or malformed input): {v}");
             return None;
         };
-        // A mod kind's empty answer is warned about at load, with its recipe file.
-        if walked.order.is_empty() && walked.custom.is_none() {
-            log::warn!(
-                "recipes: ingredient has no placement candidates; recipe cannot be placed: {v}"
-            );
-        }
-        Self::of_walked(walked, items)
-    }
-    /// The walk of an item ingredient's answer: NeoForge's standard shapes
-    /// keep their children, and a mod's own kind keeps its kind and NBT metadata,
-    /// since the load-time list only names items and matching a concrete
-    /// stack (its components) is the match-time hook's.
-    fn of_walked(walked: WalkedIngredient, items: &Items) -> Option<Self> {
-        // The shapes' children walk the same way; a child no wrapper
-        // answers fails the file.
-        let children = match walked.children {
-            Some((shape, kids)) => Some((
-                shape,
-                kids.into_iter()
-                    .map(|kid| Self::of_walked(kid, items))
-                    .collect::<Option<_>>()?,
-            )),
-            None => None,
-        };
-        let shown = match &walked.display {
-            Some(display) => Some(display_stacks(display, items)?),
-            None => None,
-        };
         let mut ingredient = Self {
-            items: walked.set,
-            order: walked.order,
-            custom: walked.custom,
-            rule: walked.rule,
+            items: order.iter().cloned().collect(),
+            order,
+            custom: None,
+            children: None,
+            rule: None,
             compiled: None,
-            shown,
-            display: walked.display,
+            display: None,
+            shown: None,
             component_defaults: items.component_defaults.clone(),
-            children,
         };
         ingredient.prepare_components(items)?;
-        let order: Vec<String> = match &ingredient.children {
-            Some((Shape::Difference, kids)) => ingredient
-                .order
-                .iter()
-                .filter(|id| !kids[1].default_matches(&ItemStack::new(id, 1)))
-                .cloned()
-                .collect(),
-            Some((Shape::Intersection, _)) => ingredient
-                .order
-                .iter()
-                .filter(|id| ingredient.default_matches(&ItemStack::new(id, 1)))
-                .cloned()
-                .collect(),
-            _ => return Some(ingredient),
-        };
-        if ingredient.is_simple() {
-            ingredient.items = order.iter().cloned().collect();
+        if ingredient.order.is_empty() {
+            log::warn!("recipes: ingredient has no placement candidates; recipe cannot be placed: {v}");
         }
-        ingredient.order = order;
         Some(ingredient)
+    }
+
+    fn vanilla_order(v: &Value, items: &Items) -> Option<Vec<String>> {
+        match v {
+            Value::String(id) => match id.strip_prefix('#') {
+                Some(tag) => items.item_tag_order.get(tag).cloned(),
+                None => Some(vec![id.clone()]),
+            },
+            Value::Array(entries) => {
+                let mut order = Vec::new();
+                for entry in entries {
+                    order.extend(Self::vanilla_order(entry, items)?);
+                }
+                Some(order)
+            }
+            Value::Object(o) => match (o.get("item"), o.get("tag")) {
+                (Some(Value::String(id)), _) => Some(vec![id.clone()]),
+                (_, Some(Value::String(tag))) => items.item_tag_order.get(tag).cloned(),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 }
 

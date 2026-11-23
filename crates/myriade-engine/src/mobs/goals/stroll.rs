@@ -29,74 +29,19 @@ pub struct Stroll {
     wanted: [f64; 3],label: Option<&'static str>,
 }
 impl Stroll {
-    /// `RandomStrollGoal.<init>` (interval 120, checks the no-action time).
-    pub fn new(speed: f64) -> Self {
-        Self {
-            speed,
-            interval: 120,
-            check_no_action: true,
-            water_avoiding: None,
-            swim: false,
-            flying: false,
-            fly: false,
-            parrot: false,
-            look: false,
-            force: false,
-            wanted: [0.0; 3],
-            position: None,
-            gate: None,
-            label: None,
-        }
-    }
     /// The goal's class name, for debugging.
     pub fn named(mut self, label: &'static str) -> Self {
         self.label = Some(label);
         self
     }
-    pub fn avoiding_water(speed: f64) -> Self {
-        Self {
-            water_avoiding: Some(0.001),
-            ..Self::new(speed)
-        }
-    }
     pub fn interval(mut self, i: i32) -> Self {
         self.interval = i;
         self
-    }
-    /// WaterAvoidingRandomFlyingGoal (a nearby air position).
-    pub fn flying(speed: f64) -> Self {
-        Self {
-            flying: true,
-            ..Self::new(speed)
-        }
-    }
-    /// `RandomStroll.fly(speed)`: `getTargetFlyPos`, an air or water spot
-    /// within 10 by 7 (`AirAndWaterRandomPos.getPos(body, 10, 7, -2, ...)`).
-    pub fn fly(speed: f64) -> Self {
-        Self {
-            fly: true,
-            ..Self::new(speed)
-        }
     }
     /// `setFlags(MOVE, LOOK)`: the stroll keeps the head too (the guardian's).
     pub fn looking(mut self) -> Self {
         self.look = true;
         self
-    }
-    /// `Parrot.ParrotWanderGoal(speed)`, a WaterAvoidingRandomFlyingGoal.
-    pub fn parrot(speed: f64) -> Self {
-        Self {
-            water_avoiding: Some(0.001),
-            parrot: true,
-            ..Self::new(speed)
-        }
-    }
-    /// RandomSwimmingGoal(speed, interval)
-    pub fn swimming(speed: f64, interval: i32) -> Self {
-        Self {
-            swim: true,
-            ..Self::new(speed).interval(interval)
-        }
     }
 }
 impl Goal for Stroll {
