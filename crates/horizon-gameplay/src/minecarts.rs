@@ -6,7 +6,7 @@ use myriade_engine::join_seq::{JoinList, ListStamp};
 use myriade_engine::mobs::{seen_grid::SeenGrid};
 use myriade_engine::{
     items::{ItemStack, Items},
-    mobs::{Part, Species},
+    mobs::Species,
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},
@@ -554,27 +554,6 @@ pub fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
         keep *= 0.95_f32;
     }
     f64::from(keep)
-}
-pub struct CartModels {
-    pub models: HashMap<CartKind, Part>,
-}
-impl CartModels {
-    pub fn load(document: Option<&myriade_engine::mobs::EntityModelDocument>) -> Self {
-        let kinds = [
-            CartKind::Rideable,
-            CartKind::Chest,
-            CartKind::Hopper,
-            CartKind::Furnace,
-            CartKind::Tnt,
-            CartKind::CommandBlock,
-            CartKind::Spawner,
-        ];
-        let models = kinds
-            .into_iter()
-            .filter_map(|k| document?.model(&format!("{}#main", k.id())).map(|m| (k, m)))
-            .collect();
-        Self { models }
-    }
 }
 /// Saving and loading.
 impl Minecart {

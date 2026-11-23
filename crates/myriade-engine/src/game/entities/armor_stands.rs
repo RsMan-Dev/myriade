@@ -9,7 +9,7 @@ use myriade_engine::{
     Result,
     entities::ArmorStand,
     items::ItemStack,
-    mobs::{Who, anim::Poses},
+    mobs::Who,
 };
 use horizon_core::{
     geometry::{Aabb, Vec3},

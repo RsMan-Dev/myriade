@@ -212,29 +212,6 @@ mod tests {
         spider.no_ai = true;
         assert!(!controls_vehicle(&spider, &skeleton, false, false));
     }
-    /// `LivingEntityRenderer.extractRenderState` draws a rider of a living
-    /// vehicle from `solveBodyRot` (the vehicle's body, interpolated with
-    /// `rotLerp`), and anything else from its own body.
-    #[test]
-    fn a_rider_of_a_living_vehicle_is_drawn_from_the_vehicles_body() {
-        let mut m = of(2, Species::Pillager);
-        m.body_yaw = 0.0;
-        m.previous_body_yaw = 0.0;
-        m.head_yaw = 100.0;
-        m.previous_head_yaw = 100.0;
-        m.extra.mount = Some(7);
-        m.extra.vehicle_body = Some((7, 30.0, 50.0));
-        let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
-        // Halfway, the vehicle's body is at 40: the head is 60 off, so the
-        // body is 85-clamped to 40 and turned a fifth of 60 toward the head.
-        assert!(close(super::super::anim::body_rot(&m, 0.5), 52.0));
-        assert!(close(super::super::anim::state(&m, 0.5).y_rot, 48.0));
-        // Off that vehicle (or onto a boat), its own body again.
-        m.extra.mount = Some(8);
-        assert!(close(super::super::anim::body_rot(&m, 0.5), 0.0));
-        m.extra.mount = None;
-        assert!(close(super::super::anim::body_rot(&m, 0.5), 0.0));
-    }
     /// An NPC plugin's enlarged fake player: the name it carries sits on the
     /// top of its scaled box, and on a seat it hangs `Avatar`'s 0.6 lower, scaled too.
     #[test]

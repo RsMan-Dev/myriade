@@ -49,13 +49,11 @@ pub mod illager;
 pub mod illusioner;
 pub mod invulnerable;
 pub mod item_break;
-pub mod keyframes;
 pub mod leash;
 pub mod living;
 pub mod llama;
 mod mob_slot;
 pub mod monster_brain;
-mod model;
 pub mod nautilus;
 pub mod neutral_anger;
 pub use mob_slot::MobSlot;
@@ -186,7 +184,6 @@ use horizon_world::native_load_context::LoopContext;
 use serde_json::Value;
 use std::{collections::HashMap, fs, path::Path, sync::Arc};
 
-pub use model::{Part, Polygon};
 
 /// Kept for callers of the earlier simple AI; species now select behaviour.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,7 +196,6 @@ pub enum Brain {
     Creeper,
 }
 /// Model animation family (vanilla `EntityModel.setupAnim` implementations).
-pub use anim::Anim;
 pub use species::Species;
 
 mod breeding;
@@ -247,13 +243,7 @@ pub struct MobType {
     pub max_head_y_rot: f32,
     pub ambient_interval: i32,
     pub flags: Flags,
-    pub model: Arc<Part>,
-    /// Every baked layer of this entity's models keyed by `model#layer`
-    /// (e.g. `sheep#wool`, `zombie_baby#main`).
-    pub layers: crate::fast_hash::FxHashMap<String, Arc<Part>>,
-    pub texture: String,
     pub brain: Brain,
-    pub anim: Anim,
     pub sounds: [&'static str; 3],
     pub sound_overrides: entity_sounds::Sounds,
     /// Animal.isFood items (resolved from the item tag).
@@ -279,9 +269,6 @@ impl MobType {
             })
     }
 
-    pub fn layer(&self, key: &str) -> Option<&Arc<Part>> {
-        self.layers.get(key)
-    }
 }
 /// Each type's default attribute values, parsed exactly (serde_json's
 /// default float parsing can miss the nearest double by one ulp).
@@ -312,46 +299,16 @@ impl MobTypes {
     /// The types with the attribute catalog of the same resources
     /// (`attributes.json`), for a caller without the game's own.
     pub fn load(root: &Path) -> crate::Result<Self> {
-        Self::load_with_models(root, true, None, None, &Self::root_catalog(root)?)
+        Self::load_for_server(root, &Self::root_catalog(root)?)
     }
 
-    /// Load client mob data using defaults already decoded by the resource
-    /// bootstrap. This avoids decoding `items.json` a second time for Allay
-    /// inventory limits.
-    pub fn load_with_defaults(
-        root: &Path,
-        defaults: &horizon_world::item_defaults::Defaults,
-        attributes: &horizon_world::attributes::entity::Catalog,
-    ) -> crate::Result<Self> {
-        Self::load_with_models(root, true, None, Some(defaults), attributes)
-    }
-
-    /// The dedicated server needs entity facts and AI, but never their render
-    /// geometry. Keep one empty part for the fields shared with the client
-    /// rather than parsing and retaining every entity-model layer.
+    /// Entity facts and AI of every species, with `attributes` as the catalog
+    /// whose bounds the types' mobs clamp to.
     pub fn load_for_server(
         root: &Path,
         attributes: &horizon_world::attributes::entity::Catalog,
     ) -> crate::Result<Self> {
-        Self::load_with_models(root, false, None, None, attributes)
-    }
-
-    /// The client startup already parsed `entity-models.json` for the handoff
-    /// and the other model loaders; read the model layers from that copy.
-    pub fn load_with_document(root: &Path, document: &EntityModelDocument) -> crate::Result<Self> {
-        Self::load_with_models(root, true, Some(document), None, &Self::root_catalog(root)?)
-    }
-
-    /// The client startup already has the entity model document, the item
-    /// defaults and the attribute catalog. Reuse them instead of decoding
-    /// their files again.
-    pub fn load_with_document_and_defaults(
-        root: &Path,
-        document: &EntityModelDocument,
-        defaults: &horizon_world::item_defaults::Defaults,
-        attributes: &horizon_world::attributes::entity::Catalog,
-    ) -> crate::Result<Self> {
-        Self::load_with_models(root, true, Some(document), Some(defaults), attributes)
+        Self::load_with_models(root, None, attributes)
     }
 
     fn root_catalog(root: &Path) -> crate::Result<horizon_world::attributes::entity::Catalog> {
@@ -364,8 +321,6 @@ impl MobTypes {
     /// `attributes`: the catalog whose bounds the types' mobs clamp to.
     fn load_with_models(
         root: &Path,
-        models_needed: bool,
-        document: Option<&EntityModelDocument>,
         item_defaults: Option<&horizon_world::item_defaults::Defaults>,
         attributes: &horizon_world::attributes::entity::Catalog,
     ) -> crate::Result<Self> {
@@ -373,17 +328,8 @@ impl MobTypes {
         let bytes = fs::read(root.join("entity-types.json"))?;
         let types: Value = serde_json::from_slice(&bytes)?;
         let exact = exact_attributes(&bytes);
-        let models = models_needed
-            .then(|| -> crate::Result<EntityModelDocument> {
-                match document {
-                    Some(document) => Ok(document.clone()),
-                    None => EntityModelDocument::load(root),
-                }
-            })
-            .transpose()?;
         let entity_type_tags =
             crate::items::load_tags(root, "entity_type", &horizon_world::loot::PackOverlay::NONE)?;
-        let empty_model = Arc::new(Part::parse("root", &Value::Null));
         let item_tags =
             crate::items::load_tags(root, "item", &horizon_world::loot::PackOverlay::NONE)
                 .unwrap_or_default();
@@ -458,28 +404,8 @@ impl MobTypes {
             if t.is_null() {
                 continue;
             }
-            let model_key = format!("minecraft:{}", def.model);
-            let model = models
-                .as_ref()
-                .and_then(|models| models.value().get(&model_key));
-            if models_needed && model.is_none() {
-                continue;
-            }
             let defaults = exact.get(&id).cloned().unwrap_or_default();
             let fields = MobType::catalog_fields(&defaults, attributes);
-            let mut layers = crate::fast_hash::FxHashMap::default();
-            if let Some(all) = models.as_ref().and_then(|m| m.value().as_object()) {
-                for prefix in def.layer_prefixes() {
-                    let start = format!("minecraft:{prefix}#");
-                    for (k, v) in all.iter().filter(|(k, _)| k.starts_with(&start)) {
-                        let part = Part::parse("root", v);
-                        layers.insert(
-                            k.trim_start_matches("minecraft:").to_owned(),
-                            Arc::new(part),
-                        );
-                    }
-                }
-            }
             let category = t["category"].as_str().unwrap_or("creature").to_owned();
             let mut flags = def.flags(t["fire_immune"].as_bool().unwrap_or(false));
             flags.powder_snow_walkable = entity_type_tags
@@ -520,16 +446,7 @@ impl MobTypes {
                     max_head_y_rot: def.max_head_y_rot(),
                     ambient_interval: def.ambient_interval(),
                     flags,
-                    model: model.map_or_else(
-                        || empty_model.clone(),
-                        |model| {
-                            Arc::new(Part::parse("root", model))
-                        },
-                    ),
-                    layers,
-                    texture: def.texture.to_owned(),
                     brain: def.brain(),
-                    anim: def.anim,
                     sounds: def.sounds,
                     sound_overrides: entity_sounds::Sounds::default(),
                     food: def.food_tag().map_or_else(|| Arc::from(Vec::new()), tag),
@@ -2389,37 +2306,6 @@ pub fn living_random() -> (EntityRandom, [i32; 4]) {
     let uuid = crate::save::insecure_uuid(&mut random);
     (EntityRandom::own(random), uuid)
 }
-/// A parsed `entity-models.json` document, shared while loading model batches.
-/// Each lookup still constructs an independent part tree for the caller.
-#[derive(Clone)]
-pub struct EntityModelDocument(Arc<Value>);
-
-impl EntityModelDocument {
-    pub fn load(root: &Path) -> crate::Result<Self> {
-        Ok(Self(Arc::new(serde_json::from_slice(&fs::read(
-            root.join("entity-models.json"),
-        )?)?)))
-    }
-
-    pub fn model(&self, key: &str) -> Option<Part> {
-        self.0.get(key).map(|m| Part::parse("root", m))
-    }
-
-    pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.0
-            .as_object()
-            .into_iter()
-            .flat_map(|all| all.keys().map(String::as_str))
-    }
-
-    /// The parsed document, for loaders that read several keys from it.
-    pub fn value(&self) -> &Value {
-        &self.0
-    }
-}
-
-
-
 /// `LivingEntity.elytraAnimationState`: eased wing angles and render interpolation.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct ElytraAnimation {
@@ -2653,11 +2539,7 @@ pub(crate) mod sensor_scan_tests {
                 animal: true,
                 ..Default::default()
             },
-            model: Arc::new(Part::parse("root", &json!({}))),
-            layers: Default::default(),
-            texture: String::new(),
             brain: Brain::Passive,
-            anim: Anim::Rabbit,
             sounds: [""; 3],
             sound_overrides: Default::default(),
             food: Arc::default(),
@@ -3646,67 +3528,6 @@ mod effect_refusal_tests {
     }
 }
 #[cfg(test)]
-mod model_document_sharing_tests {
-    use super::*;
-
-    fn part_dump(part: &Part) -> String {
-        format!("{part:?}")
-    }
-
-    /// The startup reads `entity-models.json` once and hands the same document
-    /// to every model loader; reading it again per loader must build the same
-    /// types, model for model and layer for layer.
-    #[test]
-    fn a_shared_document_builds_the_same_types() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../.local/myriade-engine")
-            .join(horizon_core::VANILLA_VERSION);
-        if !root.join("entity-models.json").exists() {
-            return;
-        }
-        let document = EntityModelDocument::load(&root).unwrap();
-        let shared = MobTypes::load_with_document(&root, &document).unwrap();
-        let independent = MobTypes::load(&root).unwrap();
-        assert_eq!(shared.types.len(), independent.types.len());
-        for (id, independent) in &independent.types {
-            let shared = shared.types.get(id).unwrap_or_else(|| panic!("{id}"));
-            assert_eq!(independent.id, shared.id);
-            assert_eq!(independent.species, shared.species);
-            assert_eq!(
-                (
-                    independent.width,
-                    independent.height,
-                    independent.eye_height,
-                ),
-                (shared.width, shared.height, shared.eye_height)
-            );
-            assert_eq!(independent.attributes, shared.attributes);
-            assert_eq!(independent.item_stack_limits, shared.item_stack_limits);
-            assert_eq!(
-                part_dump(&independent.model),
-                part_dump(&shared.model),
-                "{id} model"
-            );
-            let mut independent_layers: Vec<_> = independent.layers.iter().collect();
-            let mut shared_layers: Vec<_> = shared.layers.iter().collect();
-            independent_layers.sort_by_key(|(key, _)| key.as_str());
-            shared_layers.sort_by_key(|(key, _)| key.as_str());
-            assert_eq!(independent_layers.len(), shared_layers.len(), "{id} layers");
-            for ((independent_key, independent_part), (shared_key, shared_part)) in
-                independent_layers.into_iter().zip(shared_layers)
-            {
-                assert_eq!(independent_key, shared_key, "{id} layer key");
-                assert_eq!(
-                    part_dump(independent_part),
-                    part_dump(shared_part),
-                    "{id} layer {independent_key}"
-                );
-            }
-        }
-    }
-}
-
-#[cfg(test)]
 mod named_damage_tests {
     use super::*;
 
@@ -3983,7 +3804,5 @@ mod projectile_damage;
 
 pub mod control;
 
-pub mod anim;
-pub mod body_anim;
 
 pub mod landing;

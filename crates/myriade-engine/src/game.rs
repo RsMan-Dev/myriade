@@ -380,13 +380,7 @@ struct WorldRest {
     nether_environment: Environment,
     end_environment: Environment,
     behaviours: Behaviours,
-    /// The player model's right and left arms.
-    player_arm: [Option<myriade_engine::mobs::Part>; 2],
-    /// The slim model's right and left arms (3 pixels wide).
-    player_arm_slim: [Option<myriade_engine::mobs::Part>; 2],
     player_type: Option<Arc<myriade_engine::mobs::MobType>>,
-    /// `SpinAttackEffectModel` (Riptide's spinning boxes).
-    spin_attack: Option<myriade_engine::mobs::Part>,
     stations: myriade_engine::stations::StationData,
 }
 

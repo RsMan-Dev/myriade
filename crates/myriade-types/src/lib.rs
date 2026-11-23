@@ -23,8 +23,6 @@ mod client_camera;
 pub use client_camera::*;
 mod client_first_person;
 pub use client_first_person::*;
-mod client_keyframe_animation;
-pub use client_keyframe_animation::*;
 mod client_particle_keys;
 pub use client_particle_keys::*;
 mod client_particles;

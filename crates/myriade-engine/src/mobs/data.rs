@@ -3,7 +3,6 @@
 //! (`WalkNodeEvaluator.getPathTypeFromState` with vanilla's tags bound),
 //! pathfindability, spawn-surface predicates, collision tops, each entity
 //! type's spawn placement and the client's keyframe animation definitions.
-use super::keyframes::Animation;
 use super::path::PathType;
 use crate::blocks::{BlockFacts, Fluid};
 use horizon_assets::resource_source::ResourceRoot;
@@ -145,7 +144,6 @@ pub struct MobData {
     pub placements: HashMap<String, Placement>,
     /// Each entity type's `SpawnPlacements.getHeightmapType`.
     pub heightmaps: HashMap<String, String>,
-    pub animations: HashMap<String, Animation>,
     /// Biome tags (spawns_warm_variant_farm_animals, is_ocean...) by tag id.
     pub biome_tags: HashMap<String, std::collections::HashSet<String>>,
     /// Entity type tags (`data/*/tags/entity_type`).
@@ -188,14 +186,6 @@ impl MobData {
             crate::items::load_tags(root, "entity_type", &horizon_world::loot::PackOverlay::NONE)
                 .unwrap_or_default();
         data
-    }
-    /// Only the keyframe animation definitions of `mob-data.json`.
-    pub fn load_animations(root: &Path) -> HashMap<String, Animation> {
-        fs::read(root.join("mob-data.json"))
-            .ok()
-            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
-            .map(|v| Self::from_json(&v).animations)
-            .unwrap_or_default()
     }
     fn resolved_state(&self, state: BlockStateId) -> Option<&ResolvedState> {
         self.resolved
@@ -289,18 +279,11 @@ impl MobData {
             .flatten()
             .filter_map(|(k, p)| Some((k.clone(), p["heightmap"].as_str()?.to_owned())))
             .collect();
-        let animations = v["animations"]
-            .as_object()
-            .into_iter()
-            .flatten()
-            .map(|(k, a)| (k.clone(), Animation::parse(a)))
-            .collect();
         Self {
             resolved: Default::default(),
             states,
             placements,
             heightmaps,
-            animations,
             biome_tags: HashMap::new(),
             entity_tags: HashMap::new(),
             pois: Default::default(),
@@ -358,7 +341,6 @@ impl MobData {
             states,
             placements: HashMap::new(),
             heightmaps: HashMap::new(),
-            animations: HashMap::new(),
             biome_tags: HashMap::new(),
             entity_tags: HashMap::new(),
             pois: Default::default(),

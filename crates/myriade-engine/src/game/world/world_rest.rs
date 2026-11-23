@@ -168,9 +168,6 @@ pub(super) fn load_world_rest(
         mob_types,
         mob_data,
         // The player and spin-attack models are drawn: none on the server.
-        player_arm: [None, None],
-        player_arm_slim: [None, None],
         player_type: None,
-        spin_attack: None,
     })
 }

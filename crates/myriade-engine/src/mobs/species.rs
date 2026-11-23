@@ -1,7 +1,7 @@
 //! Supported vanilla mob types: model layers, default textures, animation
 //! family, sounds, baby dimensions and the per-class constants
 //! (`getMaxHeadXRot`, `getAmbientSoundInterval`, `getWaterSlowDown`...).
-use super::{Brain, Flags, anim::Anim};
+use super::{Brain, Flags};
 
 impl super::MobType {
     /// The vanilla entity type whose class this type's mobs are: the type
@@ -123,35 +123,25 @@ pub enum Baby {
 pub struct Def {
     pub species: Species,
     pub name: &'static str,
-    pub model: &'static str,
-    pub texture: &'static str,
-    pub anim: Anim,
     pub sounds: [&'static str; 3],
     pub step_sound: Option<&'static str>,
     pub baby: Baby,
 }
 macro_rules! def {
-    ($s:ident, $name:literal, $model:literal, $tex:literal, $anim:expr, [$a:literal, $h:literal, $d:literal], $step:expr, $baby:expr) => {
+    ($s:ident, $name:literal, [$a:literal, $h:literal, $d:literal], $step:expr, $baby:expr) => {
         Def {
             species: Species::$s,
             name: $name,
-            model: $model,
-            texture: $tex,
-            anim: $anim,
             sounds: [$a, $h, $d],
             step_sound: $step,
             baby: $baby,
         }
     };
 }
-use Anim as A;
 pub const ALL: &[Def] = &[
     def!(
         Pig,
         "pig",
-        "pig#main",
-        "entity/pig/pig_temperate",
-        A::Quadruped,
         ["entity.pig.ambient", "entity.pig.hurt", "entity.pig.death"],
         Some("entity.pig.step"),
         Baby::Abs(0.45, 0.45, 0.40625)
@@ -159,9 +149,6 @@ pub const ALL: &[Def] = &[
     def!(
         Cow,
         "cow",
-        "cow#main",
-        "entity/cow/cow_temperate",
-        A::Quadruped,
         ["entity.cow.ambient", "entity.cow.hurt", "entity.cow.death"],
         Some("entity.cow.step"),
         Baby::Abs(0.45, 0.7, 0.69)
@@ -169,9 +156,6 @@ pub const ALL: &[Def] = &[
     def!(
         Mooshroom,
         "mooshroom",
-        "mooshroom#main",
-        "entity/cow/mooshroom_red",
-        A::Quadruped,
         ["entity.cow.ambient", "entity.cow.hurt", "entity.cow.death"],
         Some("entity.cow.step"),
         Baby::Abs(0.45, 0.7, 0.69)
@@ -179,9 +163,6 @@ pub const ALL: &[Def] = &[
     def!(
         Sheep,
         "sheep",
-        "sheep#main",
-        "entity/sheep/sheep",
-        A::Sheep,
         [
             "entity.sheep.ambient",
             "entity.sheep.hurt",
@@ -193,9 +174,6 @@ pub const ALL: &[Def] = &[
     def!(
         Chicken,
         "chicken",
-        "chicken#main",
-        "entity/chicken/chicken_temperate",
-        A::Chicken,
         [
             "entity.chicken.ambient",
             "entity.chicken.hurt",
@@ -207,9 +185,6 @@ pub const ALL: &[Def] = &[
     def!(
         Rabbit,
         "rabbit",
-        "rabbit#main",
-        "entity/rabbit/rabbit_brown",
-        A::Rabbit,
         [
             "entity.rabbit.ambient",
             "entity.rabbit.hurt",
@@ -221,9 +196,6 @@ pub const ALL: &[Def] = &[
     def!(
         ZombieHorse,
         "zombie_horse",
-        "zombie_horse#main",
-        "entity/horse/horse_zombie",
-        A::Horse,
         [
             "entity.zombie_horse.ambient",
             "entity.zombie_horse.hurt",
@@ -235,9 +207,6 @@ pub const ALL: &[Def] = &[
     def!(
         SkeletonHorse,
         "skeleton_horse",
-        "skeleton_horse#main",
-        "entity/horse/horse_skeleton",
-        A::Horse,
         [
             "entity.skeleton_horse.ambient",
             "entity.skeleton_horse.hurt",
@@ -249,9 +218,6 @@ pub const ALL: &[Def] = &[
     def!(
         Giant,
         "giant",
-        "giant#main",
-        "entity/zombie/zombie",
-        A::Humanoid { zombie_arms: true },
         ["", "entity.generic.hurt", "entity.generic.death"],
         None,
         Baby::None
@@ -259,9 +225,6 @@ pub const ALL: &[Def] = &[
     def!(
         Horse,
         "horse",
-        "horse#main",
-        "entity/horse/horse_brown",
-        A::Horse,
         [
             "entity.horse.ambient",
             "entity.horse.hurt",
@@ -273,9 +236,6 @@ pub const ALL: &[Def] = &[
     def!(
         Donkey,
         "donkey",
-        "donkey#main",
-        "entity/horse/donkey",
-        A::Horse,
         [
             "entity.donkey.ambient",
             "entity.donkey.hurt",
@@ -287,9 +247,6 @@ pub const ALL: &[Def] = &[
     def!(
         Mule,
         "mule",
-        "mule#main",
-        "entity/horse/mule",
-        A::Horse,
         [
             "entity.mule.ambient",
             "entity.mule.hurt",
@@ -301,9 +258,6 @@ pub const ALL: &[Def] = &[
     def!(
         Llama,
         "llama",
-        "llama#main",
-        "entity/llama/llama_creamy",
-        A::Llama,
         [
             "entity.llama.ambient",
             "entity.llama.hurt",
@@ -315,9 +269,6 @@ pub const ALL: &[Def] = &[
     def!(
         TraderLlama,
         "trader_llama",
-        "trader_llama#main",
-        "entity/llama/llama_creamy",
-        A::Llama,
         [
             "entity.llama.ambient",
             "entity.llama.hurt",
@@ -329,9 +280,6 @@ pub const ALL: &[Def] = &[
     def!(
         Goat,
         "goat",
-        "goat#main",
-        "entity/goat/goat",
-        A::Goat,
         [
             "entity.goat.ambient",
             "entity.goat.hurt",
@@ -343,9 +291,6 @@ pub const ALL: &[Def] = &[
     def!(
         Panda,
         "panda",
-        "panda#main",
-        "entity/panda/panda",
-        A::Panda,
         [
             "entity.panda.ambient",
             "entity.panda.hurt",
@@ -357,9 +302,6 @@ pub const ALL: &[Def] = &[
     def!(
         PolarBear,
         "polar_bear",
-        "polar_bear#main",
-        "entity/bear/polarbear",
-        A::PolarBear,
         [
             "entity.polar_bear.ambient",
             "entity.polar_bear.hurt",
@@ -371,9 +313,6 @@ pub const ALL: &[Def] = &[
     def!(
         Fox,
         "fox",
-        "fox#main",
-        "entity/fox/fox",
-        A::Fox,
         ["entity.fox.ambient", "entity.fox.hurt", "entity.fox.death"],
         None,
         Baby::Scale(0.6, Some(0.34375))
@@ -381,9 +320,6 @@ pub const ALL: &[Def] = &[
     def!(
         Wolf,
         "wolf",
-        "wolf#main",
-        "entity/wolf/wolf",
-        A::Wolf,
         [
             "entity.wolf.ambient",
             "entity.wolf.hurt",
@@ -395,9 +331,6 @@ pub const ALL: &[Def] = &[
     def!(
         Cat,
         "cat",
-        "cat#main",
-        "entity/cat/cat_tabby",
-        A::Feline,
         ["entity.cat.ambient", "entity.cat.hurt", "entity.cat.death"],
         None,
         Baby::Abs(0.3, 0.35, 0.34375)
@@ -405,9 +338,6 @@ pub const ALL: &[Def] = &[
     def!(
         Ocelot,
         "ocelot",
-        "ocelot#main",
-        "entity/cat/ocelot",
-        A::Feline,
         [
             "entity.ocelot.ambient",
             "entity.ocelot.hurt",
@@ -419,9 +349,6 @@ pub const ALL: &[Def] = &[
     def!(
         Parrot,
         "parrot",
-        "parrot#main",
-        "entity/parrot/parrot_red_blue",
-        A::Parrot,
         [
             "entity.parrot.ambient",
             "entity.parrot.hurt",
@@ -433,9 +360,6 @@ pub const ALL: &[Def] = &[
     def!(
         Bee,
         "bee",
-        "bee#main",
-        "entity/bee/bee",
-        A::Bee,
         ["", "entity.bee.hurt", "entity.bee.death"],
         None,
         Baby::Scale(0.5, None)
@@ -443,9 +367,6 @@ pub const ALL: &[Def] = &[
     def!(
         Turtle,
         "turtle",
-        "turtle#main",
-        "entity/turtle/turtle",
-        A::Turtle,
         [
             "entity.turtle.ambient_land",
             "entity.turtle.hurt",
@@ -457,9 +378,6 @@ pub const ALL: &[Def] = &[
     def!(
         Armadillo,
         "armadillo",
-        "armadillo#main",
-        "entity/armadillo/armadillo",
-        A::Armadillo,
         [
             "entity.armadillo.ambient",
             "entity.armadillo.hurt",
@@ -471,9 +389,6 @@ pub const ALL: &[Def] = &[
     def!(
         Frog,
         "frog",
-        "frog#main",
-        "entity/frog/frog_temperate",
-        A::Frog,
         [
             "entity.frog.ambient",
             "entity.frog.hurt",
@@ -485,9 +400,6 @@ pub const ALL: &[Def] = &[
     def!(
         Axolotl,
         "axolotl",
-        "axolotl#main",
-        "entity/axolotl/axolotl_lucy",
-        A::Axolotl,
         [
             "entity.axolotl.idle_water",
             "entity.axolotl.hurt",
@@ -499,9 +411,6 @@ pub const ALL: &[Def] = &[
     def!(
         Squid,
         "squid",
-        "squid#main",
-        "entity/squid/squid",
-        A::Squid,
         [
             "entity.squid.ambient",
             "entity.squid.hurt",
@@ -513,9 +422,6 @@ pub const ALL: &[Def] = &[
     def!(
         GlowSquid,
         "glow_squid",
-        "glow_squid#main",
-        "entity/squid/glow_squid",
-        A::Squid,
         [
             "entity.glow_squid.ambient",
             "entity.glow_squid.hurt",
@@ -527,9 +433,6 @@ pub const ALL: &[Def] = &[
     def!(
         Tadpole,
         "tadpole",
-        "tadpole#main",
-        "entity/tadpole/tadpole",
-        A::Fish,
         ["", "entity.tadpole.hurt", "entity.tadpole.death"],
         None,
         Baby::None
@@ -537,9 +440,6 @@ pub const ALL: &[Def] = &[
     def!(
         Cod,
         "cod",
-        "cod#main",
-        "entity/fish/cod",
-        A::Fish,
         ["entity.cod.ambient", "entity.cod.hurt", "entity.cod.death"],
         None,
         Baby::None
@@ -547,9 +447,6 @@ pub const ALL: &[Def] = &[
     def!(
         Salmon,
         "salmon",
-        "salmon#main",
-        "entity/fish/salmon",
-        A::Fish,
         [
             "entity.salmon.ambient",
             "entity.salmon.hurt",
@@ -561,9 +458,6 @@ pub const ALL: &[Def] = &[
     def!(
         TropicalFish,
         "tropical_fish",
-        "tropical_fish_small#main",
-        "entity/fish/tropical_a",
-        A::Fish,
         [
             "entity.tropical_fish.ambient",
             "entity.tropical_fish.hurt",
@@ -575,9 +469,6 @@ pub const ALL: &[Def] = &[
     def!(
         Pufferfish,
         "pufferfish",
-        "pufferfish_big#main",
-        "entity/fish/pufferfish",
-        A::Pufferfish,
         ["", "entity.puffer_fish.hurt", "entity.puffer_fish.death"],
         None,
         Baby::None
@@ -585,9 +476,6 @@ pub const ALL: &[Def] = &[
     def!(
         Dolphin,
         "dolphin",
-        "dolphin#main",
-        "entity/dolphin/dolphin",
-        A::Dolphin,
         [
             "entity.dolphin.ambient_water",
             "entity.dolphin.hurt",
@@ -599,9 +487,6 @@ pub const ALL: &[Def] = &[
     def!(
         Bat,
         "bat",
-        "bat#main",
-        "entity/bat/bat",
-        A::Bat,
         ["entity.bat.ambient", "entity.bat.hurt", "entity.bat.death"],
         None,
         Baby::None
@@ -609,9 +494,6 @@ pub const ALL: &[Def] = &[
     def!(
         Villager,
         "villager",
-        "villager#main",
-        "entity/villager/villager",
-        A::Villager,
         [
             "entity.villager.ambient",
             "entity.villager.hurt",
@@ -623,9 +505,6 @@ pub const ALL: &[Def] = &[
     def!(
         WanderingTrader,
         "wandering_trader",
-        "wandering_trader#main",
-        "entity/wandering_trader/wandering_trader",
-        A::Villager,
         [
             "entity.wandering_trader.ambient",
             "entity.wandering_trader.hurt",
@@ -637,9 +516,6 @@ pub const ALL: &[Def] = &[
     def!(
         IronGolem,
         "iron_golem",
-        "iron_golem#main",
-        "entity/iron_golem/iron_golem",
-        A::IronGolem,
         ["", "entity.iron_golem.hurt", "entity.iron_golem.death"],
         Some("entity.iron_golem.step"),
         Baby::None
@@ -647,9 +523,6 @@ pub const ALL: &[Def] = &[
     def!(
         SnowGolem,
         "snow_golem",
-        "snow_golem#main",
-        "entity/snow_golem/snow_golem",
-        A::SnowGolem,
         [
             "entity.snow_golem.ambient",
             "entity.snow_golem.hurt",
@@ -661,9 +534,6 @@ pub const ALL: &[Def] = &[
     def!(
         CopperGolem,
         "copper_golem",
-        "copper_golem#main",
-        "entity/copper_golem/copper_golem",
-        A::CopperGolem,
         ["", "entity.copper_golem.hurt", "entity.copper_golem.death"],
         Some("entity.copper_golem.step"),
         Baby::None
@@ -671,9 +541,6 @@ pub const ALL: &[Def] = &[
     def!(
         Zombie,
         "zombie",
-        "zombie#main",
-        "entity/zombie/zombie",
-        A::Zombie,
         [
             "entity.zombie.ambient",
             "entity.zombie.hurt",
@@ -685,9 +552,6 @@ pub const ALL: &[Def] = &[
     def!(
         Husk,
         "husk",
-        "husk#main",
-        "entity/zombie/husk",
-        A::Zombie,
         [
             "entity.husk.ambient",
             "entity.husk.hurt",
@@ -699,9 +563,6 @@ pub const ALL: &[Def] = &[
     def!(
         Drowned,
         "drowned",
-        "drowned#main",
-        "entity/zombie/drowned",
-        A::Drowned,
         [
             "entity.drowned.ambient",
             "entity.drowned.hurt",
@@ -713,9 +574,6 @@ pub const ALL: &[Def] = &[
     def!(
         ZombieVillager,
         "zombie_villager",
-        "zombie_villager#main",
-        "entity/zombie_villager/zombie_villager",
-        A::ZombieVillager,
         [
             "entity.zombie_villager.ambient",
             "entity.zombie_villager.hurt",
@@ -727,9 +585,6 @@ pub const ALL: &[Def] = &[
     def!(
         Skeleton,
         "skeleton",
-        "skeleton#main",
-        "entity/skeleton/skeleton",
-        A::Skeleton,
         [
             "entity.skeleton.ambient",
             "entity.skeleton.hurt",
@@ -741,9 +596,6 @@ pub const ALL: &[Def] = &[
     def!(
         Stray,
         "stray",
-        "stray#main",
-        "entity/skeleton/stray",
-        A::Skeleton,
         [
             "entity.stray.ambient",
             "entity.stray.hurt",
@@ -755,9 +607,6 @@ pub const ALL: &[Def] = &[
     def!(
         Parched,
         "parched",
-        "parched#main",
-        "entity/skeleton/parched",
-        A::Skeleton,
         [
             "entity.parched.ambient",
             "entity.parched.hurt",
@@ -769,9 +618,6 @@ pub const ALL: &[Def] = &[
     def!(
         Bogged,
         "bogged",
-        "bogged#main",
-        "entity/skeleton/bogged",
-        A::Skeleton,
         [
             "entity.bogged.ambient",
             "entity.bogged.hurt",
@@ -783,9 +629,6 @@ pub const ALL: &[Def] = &[
     def!(
         WitherSkeleton,
         "wither_skeleton",
-        "wither_skeleton#main",
-        "entity/skeleton/wither_skeleton",
-        A::Skeleton,
         [
             "entity.wither_skeleton.ambient",
             "entity.wither_skeleton.hurt",
@@ -797,9 +640,6 @@ pub const ALL: &[Def] = &[
     def!(
         Creeper,
         "creeper",
-        "creeper#main",
-        "entity/creeper/creeper",
-        A::Creeper,
         ["", "entity.creeper.hurt", "entity.creeper.death"],
         None,
         Baby::None
@@ -807,9 +647,6 @@ pub const ALL: &[Def] = &[
     def!(
         Spider,
         "spider",
-        "spider#main",
-        "entity/spider/spider",
-        A::Spider,
         [
             "entity.spider.ambient",
             "entity.spider.hurt",
@@ -821,9 +658,6 @@ pub const ALL: &[Def] = &[
     def!(
         CaveSpider,
         "cave_spider",
-        "cave_spider#main",
-        "entity/spider/cave_spider",
-        A::Spider,
         [
             "entity.spider.ambient",
             "entity.spider.hurt",
@@ -835,9 +669,6 @@ pub const ALL: &[Def] = &[
     def!(
         Enderman,
         "enderman",
-        "enderman#main",
-        "entity/enderman/enderman",
-        A::Enderman,
         [
             "entity.enderman.ambient",
             "entity.enderman.hurt",
@@ -849,9 +680,6 @@ pub const ALL: &[Def] = &[
     def!(
         Endermite,
         "endermite",
-        "endermite#main",
-        "entity/endermite/endermite",
-        A::Silverfish,
         [
             "entity.endermite.ambient",
             "entity.endermite.hurt",
@@ -863,9 +691,6 @@ pub const ALL: &[Def] = &[
     def!(
         Silverfish,
         "silverfish",
-        "silverfish#main",
-        "entity/silverfish/silverfish",
-        A::Silverfish,
         [
             "entity.silverfish.ambient",
             "entity.silverfish.hurt",
@@ -877,9 +702,6 @@ pub const ALL: &[Def] = &[
     def!(
         Slime,
         "slime",
-        "slime#main",
-        "entity/slime/slime",
-        A::Slime,
         ["", "entity.slime.hurt", "entity.slime.death"],
         None,
         Baby::None
@@ -887,9 +709,6 @@ pub const ALL: &[Def] = &[
     def!(
         MagmaCube,
         "magma_cube",
-        "magma_cube#main",
-        "entity/slime/magmacube",
-        A::MagmaCube,
         ["", "entity.magma_cube.hurt", "entity.magma_cube.death"],
         None,
         Baby::None
@@ -897,9 +716,6 @@ pub const ALL: &[Def] = &[
     def!(
         Witch,
         "witch",
-        "witch#main",
-        "entity/witch/witch",
-        A::Witch,
         [
             "entity.witch.ambient",
             "entity.witch.hurt",
@@ -911,9 +727,6 @@ pub const ALL: &[Def] = &[
     def!(
         Phantom,
         "phantom",
-        "phantom#main",
-        "entity/phantom/phantom",
-        A::Phantom,
         [
             "entity.phantom.ambient",
             "entity.phantom.hurt",
@@ -925,9 +738,6 @@ pub const ALL: &[Def] = &[
     def!(
         Evoker,
         "evoker",
-        "evoker#main",
-        "entity/illager/evoker",
-        A::Illager,
         [
             "entity.evoker.ambient",
             "entity.evoker.hurt",
@@ -939,9 +749,6 @@ pub const ALL: &[Def] = &[
     def!(
         Illusioner,
         "illusioner",
-        "illusioner#main",
-        "entity/illager/illusioner",
-        A::Illager,
         [
             "entity.illusioner.ambient",
             "entity.illusioner.hurt",
@@ -953,9 +760,6 @@ pub const ALL: &[Def] = &[
     def!(
         Allay,
         "allay",
-        "allay#main",
-        "entity/allay/allay",
-        A::Allay,
         [
             "entity.allay.ambient_without_item",
             "entity.allay.hurt",
@@ -967,9 +771,6 @@ pub const ALL: &[Def] = &[
     def!(
         Creaking,
         "creaking",
-        "creaking#main",
-        "entity/creaking/creaking",
-        A::Creaking,
         [
             "entity.creaking.ambient",
             "entity.generic.hurt",
@@ -981,9 +782,6 @@ pub const ALL: &[Def] = &[
     def!(
         Camel,
         "camel",
-        "camel#main",
-        "entity/camel/camel",
-        A::Camel,
         [
             "entity.camel.ambient",
             "entity.camel.hurt",
@@ -995,9 +793,6 @@ pub const ALL: &[Def] = &[
     def!(
         HappyGhast,
         "happy_ghast",
-        "happy_ghast#main",
-        "entity/ghast/happy_ghast",
-        A::HappyGhast,
         [
             "entity.happy_ghast.ambient",
             "entity.happy_ghast.hurt",
@@ -1009,9 +804,6 @@ pub const ALL: &[Def] = &[
     def!(
         Sniffer,
         "sniffer",
-        "sniffer#main",
-        "entity/sniffer/sniffer",
-        A::Sniffer,
         [
             "entity.sniffer.idle",
             "entity.sniffer.hurt",
@@ -1023,9 +815,6 @@ pub const ALL: &[Def] = &[
     def!(
         Breeze,
         "breeze",
-        "breeze#main",
-        "entity/breeze/breeze",
-        A::Breeze,
         [
             "entity.breeze.idle_ground",
             "entity.breeze.hurt",
@@ -1037,9 +826,6 @@ pub const ALL: &[Def] = &[
     def!(
         Wither,
         "wither",
-        "wither#main",
-        "entity/wither/wither",
-        A::Wither,
         [
             "entity.wither.ambient",
             "entity.wither.hurt",
@@ -1051,9 +837,6 @@ pub const ALL: &[Def] = &[
     def!(
         Ravager,
         "ravager",
-        "ravager#main",
-        "entity/illager/ravager",
-        A::Ravager,
         [
             "entity.ravager.ambient",
             "entity.ravager.hurt",
@@ -1065,9 +848,6 @@ pub const ALL: &[Def] = &[
     def!(
         Vex,
         "vex",
-        "vex#main",
-        "entity/illager/vex",
-        A::Vex,
         ["entity.vex.ambient", "entity.vex.hurt", "entity.vex.death"],
         None,
         Baby::None
@@ -1075,9 +855,6 @@ pub const ALL: &[Def] = &[
     def!(
         Shulker,
         "shulker",
-        "shulker#main",
-        "entity/shulker/shulker",
-        A::Shulker,
         [
             "entity.shulker.ambient",
             "entity.shulker.hurt",
@@ -1089,9 +866,6 @@ pub const ALL: &[Def] = &[
     def!(
         Guardian,
         "guardian",
-        "guardian#main",
-        "entity/guardian/guardian",
-        A::Guardian,
         [
             "entity.guardian.ambient",
             "entity.guardian.hurt",
@@ -1103,9 +877,6 @@ pub const ALL: &[Def] = &[
     def!(
         ElderGuardian,
         "elder_guardian",
-        "elder_guardian#main",
-        "entity/guardian/guardian_elder",
-        A::Guardian,
         [
             "entity.elder_guardian.ambient",
             "entity.elder_guardian.hurt",
@@ -1117,9 +888,6 @@ pub const ALL: &[Def] = &[
     def!(
         Pillager,
         "pillager",
-        "pillager#main",
-        "entity/illager/pillager",
-        A::Illager,
         [
             "entity.pillager.ambient",
             "entity.pillager.hurt",
@@ -1131,9 +899,6 @@ pub const ALL: &[Def] = &[
     def!(
         Vindicator,
         "vindicator",
-        "vindicator#main",
-        "entity/illager/vindicator",
-        A::Illager,
         [
             "entity.vindicator.ambient",
             "entity.vindicator.hurt",
@@ -1145,9 +910,6 @@ pub const ALL: &[Def] = &[
     def!(
         Piglin,
         "piglin",
-        "piglin#main",
-        "entity/piglin/piglin",
-        A::Piglin,
         [
             "entity.piglin.ambient",
             "entity.piglin.hurt",
@@ -1159,9 +921,6 @@ pub const ALL: &[Def] = &[
     def!(
         PiglinBrute,
         "piglin_brute",
-        "piglin_brute#main",
-        "entity/piglin/piglin_brute",
-        A::Piglin,
         [
             "entity.piglin_brute.ambient",
             "entity.piglin_brute.hurt",
@@ -1173,9 +932,6 @@ pub const ALL: &[Def] = &[
     def!(
         ZombifiedPiglin,
         "zombified_piglin",
-        "zombified_piglin#main",
-        "entity/piglin/zombified_piglin",
-        A::ZombifiedPiglin,
         [
             "entity.zombified_piglin.ambient",
             "entity.zombified_piglin.hurt",
@@ -1187,9 +943,6 @@ pub const ALL: &[Def] = &[
     def!(
         Hoglin,
         "hoglin",
-        "hoglin#main",
-        "entity/hoglin/hoglin",
-        A::Hoglin,
         [
             "entity.hoglin.ambient",
             "entity.hoglin.hurt",
@@ -1201,9 +954,6 @@ pub const ALL: &[Def] = &[
     def!(
         Zoglin,
         "zoglin",
-        "zoglin#main",
-        "entity/hoglin/zoglin",
-        A::Hoglin,
         [
             "entity.zoglin.ambient",
             "entity.zoglin.hurt",
@@ -1215,9 +965,6 @@ pub const ALL: &[Def] = &[
     def!(
         Ghast,
         "ghast",
-        "ghast#main",
-        "entity/ghast/ghast",
-        A::Ghast,
         [
             "entity.ghast.ambient",
             "entity.ghast.hurt",
@@ -1229,9 +976,6 @@ pub const ALL: &[Def] = &[
     def!(
         Blaze,
         "blaze",
-        "blaze#main",
-        "entity/blaze/blaze",
-        A::Blaze,
         [
             "entity.blaze.ambient",
             "entity.blaze.hurt",
@@ -1243,9 +987,6 @@ pub const ALL: &[Def] = &[
     def!(
         Strider,
         "strider",
-        "strider#main",
-        "entity/strider/strider",
-        A::Strider,
         [
             "entity.strider.ambient",
             "entity.strider.hurt",
@@ -1257,9 +998,6 @@ pub const ALL: &[Def] = &[
     def!(
         Warden,
         "warden",
-        "warden#main",
-        "entity/warden/warden",
-        A::Warden,
         [
             "entity.warden.ambient",
             "entity.warden.hurt",
@@ -1272,9 +1010,6 @@ pub const ALL: &[Def] = &[
     def!(
         CamelHusk,
         "camel_husk",
-        "camel#main",
-        "entity/camel/camel_husk",
-        A::Camel,
         [
             "entity.camel_husk.ambient",
             "entity.camel_husk.hurt",
@@ -1286,9 +1021,6 @@ pub const ALL: &[Def] = &[
     def!(
         Nautilus,
         "nautilus",
-        "nautilus#main",
-        "entity/nautilus/nautilus",
-        A::Nautilus,
         [
             "entity.nautilus.ambient",
             "entity.nautilus.hurt",
@@ -1300,9 +1032,6 @@ pub const ALL: &[Def] = &[
     def!(
         ZombieNautilus,
         "zombie_nautilus",
-        "zombie_nautilus#main",
-        "entity/nautilus/zombie_nautilus",
-        A::Nautilus,
         [
             "entity.zombie_nautilus.ambient",
             "entity.zombie_nautilus.hurt",
@@ -1315,9 +1044,6 @@ pub const ALL: &[Def] = &[
     def!(
         SulfurCube,
         "sulfur_cube",
-        "sulfur_cube#main",
-        "entity/sulfur_cube/sulfur_cube_outer",
-        A::Slime,
         ["", "entity.sulfur_cube.hurt", "entity.sulfur_cube.death"],
         None,
         Baby::None
@@ -1327,9 +1053,6 @@ pub const ALL: &[Def] = &[
     def!(
         Mannequin,
         "mannequin",
-        "player#main",
-        "entity/player/wide/steve",
-        A::Humanoid { zombie_arms: false },
         ["", "entity.generic.hurt", "entity.generic.death"],
         None,
         Baby::None
@@ -1408,80 +1131,6 @@ pub fn vanilla_id(s: Species) -> &'static str {
     &IDS[index]
 }
 impl Def {
-    /// Model layer families to load for this entity (adult, baby, variants).
-    pub fn layer_prefixes(&self) -> Vec<&'static str> {
-        let base = self.model.split('#').next().unwrap_or(self.name);
-        let mut v = vec![base];
-        let extra: &[&str] = match self.species {
-            Species::Pig => &["pig_baby", "cold_pig"],
-            Species::Mannequin => &["player_slim"],
-            Species::Cow => &[
-                "cow_baby",
-                "cold_cow",
-                "cold_cow_baby",
-                "warm_cow",
-                "warm_cow_baby",
-            ],
-            Species::Mooshroom => &["mooshroom_baby"],
-            Species::Sheep => &["sheep_baby"],
-            Species::Chicken => &["chicken_baby", "cold_chicken"],
-            Species::Rabbit => &["rabbit_baby"],
-            Species::Horse => &["horse_baby", "horse_armor"],
-            Species::Donkey => &["donkey_baby"],
-            Species::Mule => &["mule_baby"],
-            Species::Llama => &["llama_baby"],
-            Species::TraderLlama => &["trader_llama_baby", "llama", "llama_baby"],
-            Species::Goat => &["goat_baby"],
-            Species::Panda => &["panda_baby"],
-            Species::PolarBear => &["polar_bear_baby"],
-            Species::Fox => &["fox_baby"],
-            Species::Wolf => &["wolf_baby", "wolf_armor"],
-            Species::Sniffer => &["sniffer_baby"],
-            Species::HappyGhast => &[
-                "happy_ghast_baby",
-                "happy_ghast_harness",
-                "happy_ghast_ropes",
-                "happy_ghast_baby_harness",
-                "happy_ghast_baby_ropes",
-            ],
-            Species::Cat => &["cat_baby"],
-            Species::Ocelot => &["ocelot_baby"],
-            Species::Bee => &["bee_baby"],
-            Species::Turtle => &["turtle_baby"],
-            Species::Armadillo => &["armadillo_baby"],
-            Species::Axolotl => &["axolotl_baby"],
-            Species::Squid => &["squid_baby"],
-            Species::GlowSquid => &["glow_squid_baby"],
-            Species::Salmon => &["salmon_small", "salmon_large"],
-            Species::TropicalFish => &["tropical_fish_large"],
-            Species::Pufferfish => &["pufferfish_small", "pufferfish_medium"],
-            Species::Dolphin => &["dolphin_baby"],
-            Species::Villager => &["villager_baby", "villager_no_hat", "villager_baby_no_hat"],
-            Species::Zombie => &["zombie_baby"],
-            Species::Husk => &["husk_baby"],
-            Species::Drowned => &["drowned_baby"],
-            Species::ZombieVillager => &[
-                "zombie_villager_baby",
-                "zombie_villager_no_hat",
-                "zombie_villager_baby_no_hat",
-            ],
-            Species::Piglin => &["piglin_baby"],
-            Species::ZombifiedPiglin => &["zombified_piglin_baby"],
-            Species::Hoglin => &["hoglin_baby"],
-            Species::Zoglin => &["zoglin_baby"],
-            Species::Strider => &["strider_baby"],
-            Species::Camel => &["camel_baby"],
-            Species::CamelHusk => &["camel_husk"],
-            Species::Nautilus => &["nautilus_baby", "nautilus_armor"],
-            Species::ZombieNautilus => &["zombie_nautilus_coral", "nautilus_armor", "nautilus"],
-            Species::SulfurCube => &["sulfur_cube_small"],
-            Species::ZombieHorse => &["zombie_horse_baby", "undead_horse_armor"],
-            Species::SkeletonHorse => &["skeleton_horse_baby", "undead_horse_armor"],
-            _ => &[],
-        };
-        v.extend_from_slice(extra);
-        v
-    }
     pub fn flags(&self, fire_immune: bool) -> Flags {
         use Species as S;
         let s = self.species;
